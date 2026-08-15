@@ -1,0 +1,191 @@
+/* Impeccable Design System Tokens for Industrial Dashboard (Clean, Minimal, Modern) */
+:root {
+  /* Typography Scale - Elegant Looped Apple-Like Thai (Sarabun & SF Pro) */
+  --font-sans: 'Sarabun', -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Thonburi", 'Inter', 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Refined Elevation & Shadows */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.06), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.07), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.08), 0 4px 8px -2px rgba(0, 0, 0, 0.03);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+  --shadow-glow-indigo: 0 0 20px rgba(99, 102, 241, 0.18);
+  --shadow-glow-violet: 0 0 20px rgba(139, 92, 246, 0.18);
+
+  /* Status Colors */
+  --color-status-draft: #64748b;
+  --color-status-pending: #d97706;
+  --color-status-approved: #16a34a;
+  --color-status-rejected: #dc2626;
+  --color-status-po: #2563eb;
+  --color-status-received: #059669;
+
+  /* Card Surfaces & Borders */
+  --border-color-subtle: rgba(226, 232, 240, 0.85);
+  --bg-card: #ffffff;
+  --bg-surface-elevated: #f8fafc;
+
+  /* Micro Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: normal;
+  line-height: 1.5;
+}
+
+code, kbd, samp, pre {
+  font-family: var(--font-mono);
+}
+
+/* Modal Overlay & Backdrop */
+.glass-backdrop {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background-color: rgba(15, 23, 42, 0.55);
+}
+
+/* Modal Container */
+.modal-content {
+  background-color: #ffffff;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.03);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  z-index: 10;
+  color: #1e293b;
+}
+
+/* Custom Component Utility Classes */
+.impeccable-card {
+  background-color: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+}
+
+.impeccable-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: rgba(203, 213, 225, 0.9);
+}
+
+.btn-impeccable {
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease, border-color 180ms ease;
+  border-radius: 0.75rem;
+}
+
+.btn-impeccable:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -4px rgba(79, 70, 229, 0.2);
+}
+
+.table-row-impeccable {
+  transition: background-color 150ms ease;
+}
+
+.table-row-impeccable:hover {
+  background-color: rgba(248, 250, 252, 0.85);
+}
+
+.impeccable-table-th {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+  background-color: #f8fafc;
+}
+
+.impeccable-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Form Elements */
+.impeccable-input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: #1e293b;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  transition: all 180ms ease;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+.impeccable-input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+.impeccable-input:disabled {
+  background-color: #f8fafc;
+  color: #94a3b8;
+  border-color: #e2e8f0;
+}
+
+.impeccable-label {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 0.375rem;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Print Overrides */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .print-container {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+}

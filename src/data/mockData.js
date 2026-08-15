@@ -1,0 +1,809 @@
+// Initial Mock Master Data for Production (PD) & Quality Control (QC)
+// Designed for local testing without pre-existing PR/PO workflow documents
+
+export const initialProducts = [
+  // ─── PRODUCTION (PD) ITEMS ───
+  {
+    id: 'PROD-PD-001',
+    code: 'PD-OIL-068',
+    name: 'น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)',
+    category: 'PD',
+    purchaseUnit: 'ถัง (200L)',
+    stockUnit: 'ลิตร',
+    conversionRate: 200,
+    unit: 'ลิตร',
+    price: 14500,
+    stockBalance: 2400,
+    reorderPoint: 1000,
+    leadTimeDays: 5,
+    location: 'PD Warehouse Zone A-01',
+    supplierId: null
+  },
+  {
+    id: 'PROD-PD-002',
+    code: 'PD-GRS-002',
+    name: 'จาระบีทนความร้อนสูงเกรดอาหาร (High-Temp Food Grade Grease NLGI 2)',
+    category: 'PD',
+    purchaseUnit: 'กล่อง (12 กระป๋อง)',
+    stockUnit: 'กระป๋อง',
+    conversionRate: 12,
+    unit: 'กระป๋อง',
+    price: 9600,
+    stockBalance: 25,
+    reorderPoint: 10,
+    leadTimeDays: 3,
+    location: 'PD Tool Room B-03',
+    supplierId: null
+  },
+  {
+    id: 'PROD-PD-003',
+    code: 'PD-BLT-380',
+    name: 'สายพานลำเลียงทนความร้อน (Timing Belt 380-5M-15)',
+    category: 'PD',
+    purchaseUnit: 'เส้น',
+    stockUnit: 'เส้น',
+    conversionRate: 1,
+    unit: 'เส้น',
+    price: 620,
+    stockBalance: 6,
+    reorderPoint: 8,
+    leadTimeDays: 7,
+    location: 'PD Spare Parts Rack C-02',
+    supplierId: null
+  },
+  {
+    id: 'PROD-PD-004',
+    code: 'PD-GLV-NBR',
+    name: 'ถุงมือไนไตรล์ป้องกันสารเคมี (Nitrile Chemical Resistant Gloves Size L)',
+    category: 'PD',
+    purchaseUnit: 'กล่อง (100 ชิ้น)',
+    stockUnit: 'คู่',
+    conversionRate: 50,
+    unit: 'คู่',
+    price: 320,
+    stockBalance: 2000,
+    reorderPoint: 750,
+    leadTimeDays: 3,
+    location: 'PD Safety Storage D-01',
+    supplierId: null
+  },
+  {
+    id: 'PROD-PD-005',
+    code: 'PD-CLN-IND',
+    name: 'น้ำยาทำความสะอาดคราบน้ำมันเครื่องจักร (Heavy Duty Degreaser Cleaner)',
+    category: 'PD',
+    purchaseUnit: 'แกลลอน (20L)',
+    stockUnit: 'ลิตร',
+    conversionRate: 20,
+    unit: 'ลิตร',
+    price: 1850,
+    stockBalance: 360,
+    reorderPoint: 120,
+    leadTimeDays: 4,
+    location: 'PD Chemical Store Zone E',
+    supplierId: null
+  },
+  {
+    id: 'PROD-PD-006',
+    code: 'PD-FLT-050',
+    name: 'ไส้กรองน้ำมันระบบหล่อเย็น (Coolant Cartridge Filter 50 Micron)',
+    category: 'PD',
+    purchaseUnit: 'กล่อง (10 ชิ้น)',
+    stockUnit: 'ชิ้น',
+    conversionRate: 10,
+    unit: 'ชิ้น',
+    price: 4200,
+    stockBalance: 30,
+    reorderPoint: 12,
+    leadTimeDays: 5,
+    location: 'PD Spare Parts Rack C-05',
+    supplierId: null
+  },
+  {
+    id: 'PROD-PD-007',
+    code: 'PD-STP-015',
+    name: 'สายรัดพาเลทพลาสติก PP Band (15mm x 3000m)',
+    category: 'PD',
+    purchaseUnit: 'ม้วน',
+    stockUnit: 'ม้วน',
+    conversionRate: 1,
+    unit: 'ม้วน',
+    price: 980,
+    stockBalance: 20,
+    reorderPoint: 8,
+    leadTimeDays: 3,
+    location: 'PD Packing Station Zone F',
+    supplierId: null
+  },
+  {
+    id: 'PROD-PD-008',
+    code: 'PD-STF-001',
+    name: 'ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)',
+    category: 'PD',
+    purchaseUnit: 'ลัง (6 ม้วน)',
+    stockUnit: 'ม้วน',
+    conversionRate: 6,
+    unit: 'ม้วน',
+    price: 1100,
+    stockBalance: 60,
+    reorderPoint: 25,
+    leadTimeDays: 2,
+    location: 'PD Packing Station Zone F',
+    supplierId: null
+  },
+  {
+    id: 'PROD-PD-009',
+    code: 'PD-BRG-620',
+    name: 'ตลับลูกปืนเม็ดกลมร่องลึก (Deep Groove Ball Bearing 6205-2RS)',
+    category: 'PD',
+    purchaseUnit: 'ตลับ',
+    stockUnit: 'ตลับ',
+    conversionRate: 1,
+    unit: 'ตลับ',
+    price: 280,
+    stockBalance: 22,
+    reorderPoint: 10,
+    leadTimeDays: 5,
+    location: 'PD Tool Room B-01',
+    supplierId: null
+  },
+  {
+    id: 'PROD-PD-010',
+    code: 'PD-MSK-N95',
+    name: 'หน้ากากป้องกันฝุ่นละอองและละอองสารเคมี N95',
+    category: 'PD',
+    purchaseUnit: 'กล่อง (20 ชิ้น)',
+    stockUnit: 'ชิ้น',
+    conversionRate: 20,
+    unit: 'ชิ้น',
+    price: 480,
+    stockBalance: 700,
+    reorderPoint: 300,
+    leadTimeDays: 3,
+    location: 'PD Safety Storage D-02',
+    supplierId: null
+  },
+
+  // ─── QUALITY CONTROL (QC) ITEMS ───
+  {
+    id: 'PROD-QC-001',
+    code: 'QC-BUF-PH7',
+    name: 'สารละลายบัฟเฟอร์มาตรฐานสอบเทียบ pH 7.00 Buffer Solution (500ml)',
+    category: 'QC',
+    purchaseUnit: 'ขวด',
+    stockUnit: 'ขวด',
+    conversionRate: 1,
+    unit: 'ขวด',
+    price: 750,
+    stockBalance: 8,
+    reorderPoint: 4,
+    leadTimeDays: 5,
+    location: 'QC Lab Cabinet L-01',
+    supplierId: null
+  },
+  {
+    id: 'PROD-QC-002',
+    code: 'QC-BUF-PH4',
+    name: 'สารละลายบัฟเฟอร์มาตรฐานสอบเทียบ pH 4.01 Buffer Solution (500ml)',
+    category: 'QC',
+    purchaseUnit: 'ขวด',
+    stockUnit: 'ขวด',
+    conversionRate: 1,
+    unit: 'ขวด',
+    price: 750,
+    stockBalance: 6,
+    reorderPoint: 3,
+    leadTimeDays: 5,
+    location: 'QC Lab Cabinet L-01',
+    supplierId: null
+  },
+  {
+    id: 'PROD-QC-003',
+    code: 'QC-PPT-100',
+    name: 'ทิปปิเปตไมโครสีขาว (Micropipette Tips 100-1000 uL, DNase/RNase Free)',
+    category: 'QC',
+    purchaseUnit: 'กล่อง (1000 ชิ้น)',
+    stockUnit: 'ชิ้น',
+    conversionRate: 1000,
+    unit: 'ชิ้น',
+    price: 1200,
+    stockBalance: 15000,
+    reorderPoint: 5000,
+    leadTimeDays: 4,
+    location: 'QC Consumable Shelf K-02',
+    supplierId: null
+  },
+  {
+    id: 'PROD-QC-004',
+    code: 'QC-FLT-WAT',
+    name: 'กระดาษกรองเชิงคุณภาพ Whatman Grade 1 (เส้นผ่านศูนย์กลาง 110mm)',
+    category: 'QC',
+    purchaseUnit: 'กล่อง (100 แผ่น)',
+    stockUnit: 'แผ่น',
+    conversionRate: 100,
+    unit: 'แผ่น',
+    price: 950,
+    stockBalance: 1200,
+    reorderPoint: 400,
+    leadTimeDays: 7,
+    location: 'QC Consumable Shelf K-03',
+    supplierId: null
+  },
+  {
+    id: 'PROD-QC-005',
+    code: 'QC-AGR-PCA',
+    name: 'อาหารเลี้ยงเชื้อ Plate Count Agar (PCA) สำหรับทดสอบจุลชีววิทยา (500g)',
+    category: 'QC',
+    purchaseUnit: 'ขวด (500g)',
+    stockUnit: 'กรัม',
+    conversionRate: 500,
+    unit: 'กรัม',
+    price: 2850,
+    stockBalance: 2500,
+    reorderPoint: 1000,
+    leadTimeDays: 10,
+    location: 'QC Microbiology Refrigerator M-01',
+    supplierId: null
+  },
+  {
+    id: 'PROD-QC-006',
+    code: 'QC-PDI-STR',
+    name: 'แผ่นทดสอบความสะอาดสวอปสำเร็จรูป (Surface Hygiene Swab Test Kits)',
+    category: 'QC',
+    purchaseUnit: 'กล่อง (50 ชิ้น)',
+    stockUnit: 'ชิ้น',
+    conversionRate: 50,
+    unit: 'ชิ้น',
+    price: 3600,
+    stockBalance: 400,
+    reorderPoint: 150,
+    leadTimeDays: 7,
+    location: 'QC Inspection Room I-02',
+    supplierId: null
+  },
+  {
+    id: 'PROD-QC-007',
+    code: 'QC-THM-CAL',
+    name: 'โพรบวัดอุณหภูมิดิจิตอลพร้อมใบรับรองการสอบเทียบ ISO/IEC 17025',
+    category: 'QC',
+    purchaseUnit: 'ชุด',
+    stockUnit: 'ชุด',
+    conversionRate: 1,
+    unit: 'ชุด',
+    price: 4500,
+    stockBalance: 4,
+    reorderPoint: 2,
+    leadTimeDays: 14,
+    location: 'QC Calibration Cabinet C-01',
+    supplierId: null
+  },
+  {
+    id: 'PROD-QC-008',
+    code: 'QC-BEA-250',
+    name: 'บีกเกอร์แก้วโบโรซิลิเกตทนความร้อน (Glass Beaker Borosilicate 250ml)',
+    category: 'QC',
+    purchaseUnit: 'ชิ้น',
+    stockUnit: 'ชิ้น',
+    conversionRate: 1,
+    unit: 'ชิ้น',
+    price: 160,
+    stockBalance: 25,
+    reorderPoint: 10,
+    leadTimeDays: 3,
+    location: 'QC Glassware Rack G-01',
+    supplierId: null
+  },
+  {
+    id: 'PROD-QC-009',
+    code: 'QC-IPA-998',
+    name: 'ไอโซโพรพิลแอลกอฮอล์เกรดวิเคราะห์ (Isopropanol / IPA 99.8% AR Grade 2.5L)',
+    category: 'QC',
+    purchaseUnit: 'แกลลอน (2.5L)',
+    stockUnit: 'ลิตร',
+    conversionRate: 2.5,
+    unit: 'ลิตร',
+    price: 1350,
+    stockBalance: 25,
+    reorderPoint: 10,
+    leadTimeDays: 4,
+    location: 'QC Flammable Safety Cabinet F-01',
+    supplierId: null
+  },
+  {
+    id: 'PROD-QC-010',
+    code: 'QC-WIP-KIM',
+    name: 'กระดาษเช็ดเลนส์และเครื่องมือวิทยาศาสตร์ไร้ขุย (Kimwipes Delicate Task Wipers)',
+    category: 'QC',
+    purchaseUnit: 'กล่อง (280 แผ่น)',
+    stockUnit: 'แผ่น',
+    conversionRate: 280,
+    unit: 'แผ่น',
+    price: 145,
+    stockBalance: 14000,
+    reorderPoint: 5600,
+    leadTimeDays: 2,
+    location: 'QC Consumable Shelf K-01',
+    supplierId: null
+  }
+];
+
+export const initialVendors = [
+  {
+    id: 'VEN-001',
+    code: 'VND-TH-001',
+    name: 'บริษัท สยามอินดัสเตรียล ซัพพลาย แอนด์ เซอร์วิส จำกัด',
+    contactPerson: 'คุณธนากร สมบูรณ์',
+    phone: '02-345-6789',
+    taxId: '0105558012341',
+    department: 'PD',
+    address: '88/12 นิคมอุตสาหกรรมบางปู ซอย 11 ต.บางปูใหม่ อ.เมือง จ.สมุทรปราการ 10280'
+  },
+  {
+    id: 'VEN-002',
+    code: 'VND-TH-002',
+    name: 'บริษัท พรีเมียร์ แมชชีน แอนด์ สแปร์พาร์ท จำกัด',
+    contactPerson: 'คุณสุภาพร รัตนเวช',
+    phone: '02-789-0123',
+    taxId: '0105559023452',
+    department: 'PD',
+    address: '456/78 ถ.เทพารักษ์ ต.บางพลีใหญ่ อ.บางพลี จ.สมุทรปราการ 10540'
+  },
+  {
+    id: 'VEN-003',
+    code: 'VND-TH-003',
+    name: 'บริษัท บางกอกไซแอนติฟิก อินสตรูเมนท์ส จำกัด',
+    contactPerson: 'ดร.กิตติพงศ์ วงศ์สวรรค์',
+    phone: '02-555-8899',
+    taxId: '0105560034563',
+    department: 'QC',
+    address: '99/5 อาคารไซแอนซ์แล็บ ถ.พหลโยธิน แขวงลาดยาว เขตจตุจักร กรุงเทพฯ 10900'
+  },
+  {
+    id: 'VEN-004',
+    code: 'VND-TH-004',
+    name: 'บริษัท ไทยแล็บ แอนด์ เคมีคอล ซัพพลาย จำกัด',
+    contactPerson: 'คุณนพดล สุขเกษม',
+    phone: '02-987-6543',
+    taxId: '0105561045674',
+    department: 'QC',
+    address: '120/14 ถ.รามอินทรา แขวงมีนบุรี เขตมีนบุรี กรุงเทพฯ 10510'
+  },
+  {
+    id: 'VEN-005',
+    code: 'VND-TH-005',
+    name: 'บริษัท โปรเทคทีฟ เซฟตี้ โซลูชั่นส์ จำกัด',
+    contactPerson: 'คุณวรรณา จันทร์เพ็ญ',
+    phone: '02-444-1122',
+    taxId: '0105562056785',
+    department: 'BOTH',
+    address: '333/19 ถ.เพชรเกษม แขวงหนองค้างพลู เขตหนองแขม กรุงเทพฯ 10160'
+  },
+  {
+    id: 'VEN-006',
+    code: 'VND-TH-006',
+    name: 'บริษัท รุ่งเรือง แพคเกจจิ้ง แอนด์ แมททีเรียลส์ จำกัด',
+    contactPerson: 'คุณสมศักดิ์ เจริญพร',
+    phone: '02-666-3322',
+    taxId: '0105563067896',
+    department: 'BOTH',
+    address: '77/8 หมู่ 3 ถ.เศรษฐกิจ 1 ต.คลองมะเดื่อ อ.กระทุ่มแบน จ.สมุทรสาคร 74110'
+  }
+];
+
+// ─── INITIAL PR WORKFLOW RECORDS ─────────────────────────────────────────────
+// Generated cases covering: PD & QC, FACTORY & OFFICE, SELF & ONLINE, Standard & High-Value MEMO
+// All set to status: 'SUBMITTED' (รอตรวจสอบจาก Asst. Manager)
+export const initialPRs = [
+  // ─── PRODUCTION (PD) CASES ───
+  
+  // Case 1: PD + FACTORY + SELF (Standard Value)
+  {
+    id: 'PR-PD-001',
+    prNo: 'PD001/2026',
+    department: 'PD',
+    source: 'FACTORY',
+    purchaseChannel: 'SELF',
+    requestedBy: 'คุณวิชัย (PD)',
+    requestedDate: '2026-08-14',
+    requiredDate: '2026-08-22',
+    status: 'SUBMITTED',
+    specUrl: '',
+    items: [
+      {
+        productId: 'PROD-PD-002',
+        code: 'PD-GRS-002',
+        name: 'จาระบีทนความร้อนสูงเกรดอาหาร (High-Temp Food Grade Grease NLGI 2)',
+        category: 'PD',
+        unit: 'กระป๋อง (1kg)',
+        price: 850,
+        qty: 10
+      }
+    ],
+    totalAmount: 8500,
+    note: 'ขอสั่งซื้อจาระบีทนความร้อนสูงเกรดอาหาร เพื่อรองรับรอบการบำรุงรักษาเชิงป้องกัน (PM) เครื่องจักรสายการผลิตหลัก ประจำเดือนสิงหาคม',
+    memo: null,
+    activityLog: [
+      {
+        action: 'สร้างและเปิดใบ PR',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '14/8/2026 08:30:00',
+        note: 'เปิดใบขอซื้อใหม่ส่งเข้าสู่ระบบเพื่อรอการตรวจสอบจากหัวหน้างาน'
+      }
+    ]
+  },
+
+  // Case 2: PD + FACTORY + ONLINE (Shopee)
+  {
+    id: 'PR-PD-002',
+    prNo: 'PD002/2026',
+    department: 'PD',
+    source: 'FACTORY',
+    purchaseChannel: 'ONLINE',
+    requestedBy: 'คุณวิชัย (PD)',
+    requestedDate: '2026-08-14',
+    requiredDate: '2026-08-20',
+    status: 'SUBMITTED',
+    specUrl: 'https://shopee.co.th/product/industrial-belt-timing-380-5m-15',
+    items: [
+      {
+        productId: 'PROD-PD-003',
+        code: 'PD-BLT-380',
+        name: 'สายพานลำเลียงทนความร้อน (Timing Belt 380-5M-15)',
+        category: 'PD',
+        unit: 'เส้น',
+        price: 620,
+        qty: 8
+      }
+    ],
+    totalAmount: 4960,
+    note: 'สั่งซื้อสายพานลำเลียงทนความร้อนด่วนผ่าน Shopee Official Store เนื่องจากร้านค้าทั่วไปไม่มีสต็อกขนาดตรงรุ่นเครื่องจักร',
+    memo: null,
+    activityLog: [
+      {
+        action: 'สร้างและเปิดใบ PR',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '14/8/2026 09:15:00',
+        note: 'เปิดใบขอซื้อช่องทาง Online รอการตรวจสอบจาก Asst. Manager'
+      }
+    ]
+  },
+
+  // Case 3: PD + OFFICE + SELF
+  {
+    id: 'PR-PD-003',
+    prNo: 'PD003/2026',
+    department: 'PD',
+    source: 'OFFICE',
+    purchaseChannel: 'SELF',
+    requestedBy: 'คุณวิชัย (PD)',
+    requestedDate: '2026-08-14',
+    requiredDate: '2026-08-25',
+    status: 'SUBMITTED',
+    specUrl: '',
+    items: [
+      {
+        productId: 'PROD-PD-007',
+        code: 'PD-STP-015',
+        name: 'สายรัดพาเลทพลาสติก PP Band (15mm x 3000m)',
+        category: 'PD',
+        unit: 'ม้วน',
+        price: 980,
+        qty: 4
+      }
+    ],
+    totalAmount: 3920,
+    note: 'สั่งซื้อสายรัดพาเลทพลาสติกเพื่อใช้ในงานจัดเตรียมเอกสารและแพ็คเกจจิ้งของสำนักงานฝ่ายควบคุมการผลิต (Production Control Office)',
+    memo: null,
+    activityLog: [
+      {
+        action: 'สร้างและเปิดใบ PR',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '14/8/2026 10:00:00',
+        note: 'เปิดใบขอซื้อหมวดสำนักงานฝ่ายผลิต'
+      }
+    ]
+  },
+
+  // Case 4: PD + OFFICE + ONLINE (Lazada)
+  {
+    id: 'PR-PD-004',
+    prNo: 'PD004/2026',
+    department: 'PD',
+    source: 'OFFICE',
+    purchaseChannel: 'ONLINE',
+    requestedBy: 'คุณวิชัย (PD)',
+    requestedDate: '2026-08-14',
+    requiredDate: '2026-08-21',
+    status: 'SUBMITTED',
+    specUrl: 'https://www.lazada.co.th/products/stretch-film-heavy-duty-pack12',
+    items: [
+      {
+        productId: 'PROD-PD-008',
+        code: 'PD-STF-001',
+        name: 'ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)',
+        category: 'PD',
+        unit: 'ม้วน',
+        price: 420,
+        qty: 12
+      }
+    ],
+    totalAmount: 5040,
+    note: 'สั่งซื้อฟิล์มยืดพันพาเลทผ่านโปรโมชั่น Lazada สำหรับใช้ในงานสโตร์จัดส่งและเอกสารแพ็คกิ้งประจำออฟฟิศ',
+    memo: null,
+    activityLog: [
+      {
+        action: 'สร้างและเปิดใบ PR',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '14/8/2026 10:45:00',
+        note: 'เปิดใบขอซื้อออนไลน์สำนักงานฝ่ายผลิต'
+      }
+    ]
+  },
+
+  // Case 5: PD + FACTORY + SELF (High-Value >= 20,000 THB with MEMO)
+  {
+    id: 'PR-PD-005',
+    prNo: 'PD005/2026',
+    department: 'PD',
+    source: 'FACTORY',
+    purchaseChannel: 'SELF',
+    requestedBy: 'คุณวิชัย (PD)',
+    requestedDate: '2026-08-14',
+    requiredDate: '2026-08-28',
+    status: 'SUBMITTED',
+    specUrl: '',
+    items: [
+      {
+        productId: 'PROD-PD-001',
+        code: 'PD-OIL-068',
+        name: 'น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)',
+        category: 'PD',
+        unit: 'ถัง (200L)',
+        price: 14500,
+        qty: 2
+      }
+    ],
+    totalAmount: 29000,
+    note: 'ขออนุมัติจัดซื้อน้ำมันไฮดรอลิกอุตสาหกรรม 2 ถัง (400L) สำหรับงานเปลี่ยนถ่ายน้ำมันระบบเครื่องปั๊มไฮดรอลิกขนาดใหญ่ตามรอบ Overhaul ประจำปี',
+    memo: {
+      memoNo: 'MEMO-PD-2026-001',
+      subject: 'ขออนุมัติจัดซื้อน้ำมันไฮดรอลิกสำหรับรอบการบำรุงรักษาใหญ่ประจำปี (Annual Overhaul)',
+      reason: 'เครื่องเพรสไฮดรอลิกหลักของโรงงานถึงรอบระยะเวลาเปลี่ยนถ่ายของเหลวหล่อเย็นและน้ำมันไฮดรอลิก เพื่อป้องกันปั๊มชำรุดเสียหายจากความร้อนสะสม',
+      benefit: 'ลดความเสี่ยงเครื่องจักรหยุดชะงัก (Downtime) ในช่วงเร่งยอดผลิตไตรมาส 3 และช่วยยืดอายุการใช้งานกระบอกสูบไฮดรอลิก',
+      classification: 'EXPENSE',
+      priceComparison: 'เปรียบเทียบผู้จำหน่าย 3 ราย: บจก. เคมีคอล ซัพพลาย เสนอราคาคุ้มค่าที่สุด มีใบรับรอง COA และพร้อมจัดส่งภายใน 5 วันทำการ',
+      committee: 'คุณวิชัย (ผู้จัดทำคำขอ), คุณสมชาย (ผู้ช่วยผู้จัดการฝ่ายตรวจสอบ)'
+    },
+    activityLog: [
+      {
+        action: 'สร้างและเปิดใบ PR (แนบ MEMO วงเงินสูง)',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '14/8/2026 11:30:00',
+        note: 'เปิดใบขอซื้อวงเงิน ฿29,000 พร้อมแนบฟอร์ม Memo เสนอเพื่อขออนุมัติ'
+      }
+    ]
+  },
+
+  // ─── QUALITY CONTROL (QC) CASES ───
+
+  // Case 6: QC + FACTORY (Lab) + SELF (Standard Value)
+  {
+    id: 'PR-QC-001',
+    prNo: 'QC001/2026',
+    department: 'QC',
+    source: 'FACTORY',
+    purchaseChannel: 'SELF',
+    requestedBy: 'คุณกิตติศักดิ์ (QC)',
+    requestedDate: '2026-08-14',
+    requiredDate: '2026-08-20',
+    status: 'SUBMITTED',
+    specUrl: '',
+    items: [
+      {
+        productId: 'PROD-QC-001',
+        code: 'QC-BUF-PH7',
+        name: 'สารละลายบัฟเฟอร์มาตรฐานสอบเทียบ pH 7.00 Buffer Solution (500ml)',
+        category: 'QC',
+        unit: 'ขวด',
+        price: 750,
+        qty: 8
+      }
+    ],
+    totalAmount: 6000,
+    note: 'สั่งซื้อสารละลายบัฟเฟอร์มาตรฐาน pH 7.00 สำหรับใช้สอบเทียบเครื่องวัดความเป็นกรด-ด่าง (pH Meter) ประจำห้องปฏิบัติการ QC ทุกกะการผลิต',
+    memo: null,
+    activityLog: [
+      {
+        action: 'สร้างและเปิดใบ PR',
+        user: 'คุณกิตติศักดิ์ (QC)',
+        role: 'Requester (QC)',
+        timestamp: '14/8/2026 08:45:00',
+        note: 'เปิดใบขอซื้อสารเคมีมาตรฐานห้องแล็บ QC ส่งเข้าสู่ระบบ'
+      }
+    ]
+  },
+
+  // Case 7: QC + FACTORY (Lab) + ONLINE (Shopee)
+  {
+    id: 'PR-QC-002',
+    prNo: 'QC002/2026',
+    department: 'QC',
+    source: 'FACTORY',
+    purchaseChannel: 'ONLINE',
+    requestedBy: 'คุณกิตติศักดิ์ (QC)',
+    requestedDate: '2026-08-14',
+    requiredDate: '2026-08-19',
+    status: 'SUBMITTED',
+    specUrl: 'https://shopee.co.th/product/whatman-grade1-filter-paper-110mm-lab',
+    items: [
+      {
+        productId: 'PROD-QC-004',
+        code: 'QC-FLT-WAT',
+        name: 'กระดาษกรองเชิงคุณภาพ Whatman Grade 1 (เส้นผ่านศูนย์กลาง 110mm)',
+        category: 'QC',
+        unit: 'กล่อง (100 แผ่น)',
+        price: 950,
+        qty: 5
+      }
+    ],
+    totalAmount: 4750,
+    note: 'สั่งซื้อกระดาษกรอง Whatman ผ่านร้านค้า Official ใน Shopee เพื่อใช้ทดสอบตะกอนและวิเคราะห์สารปนเปื้อนในวัตถุดิบนำเข้า',
+    memo: null,
+    activityLog: [
+      {
+        action: 'สร้างและเปิดใบ PR',
+        user: 'คุณกิตติศักดิ์ (QC)',
+        role: 'Requester (QC)',
+        timestamp: '14/8/2026 09:30:00',
+        note: 'เปิดใบขอซื้อออนไลน์อุปกรณ์แล็บ QC'
+      }
+    ]
+  },
+
+  // Case 8: QC + OFFICE + SELF
+  {
+    id: 'PR-QC-003',
+    prNo: 'QC003/2026',
+    department: 'QC',
+    source: 'OFFICE',
+    purchaseChannel: 'SELF',
+    requestedBy: 'คุณกิตติศักดิ์ (QC)',
+    requestedDate: '2026-08-14',
+    requiredDate: '2026-08-24',
+    status: 'SUBMITTED',
+    specUrl: '',
+    items: [
+      {
+        productId: 'PROD-QC-003',
+        code: 'QC-PPT-100',
+        name: 'ทิปปิเปตไมโครสีขาว (Micropipette Tips 100-1000 uL, DNase/RNase Free)',
+        category: 'QC',
+        unit: 'กล่อง (1000 ชิ้น)',
+        price: 1200,
+        qty: 5
+      }
+    ],
+    totalAmount: 6000,
+    note: 'จัดเตรียมชุดทิปปิเปตและอุปกรณ์สุ่มตัวอย่างสำหรับจัดทำรายงานใบรับรองคุณภาพ (COA Inspection Office)',
+    memo: null,
+    activityLog: [
+      {
+        action: 'สร้างและเปิดใบ PR',
+        user: 'คุณกิตติศักดิ์ (QC)',
+        role: 'Requester (QC)',
+        timestamp: '14/8/2026 10:15:00',
+        note: 'เปิดใบขอซื้ออุปกรณ์สำนักงาน/วิเคราะห์ผลฝ่าย QC'
+      }
+    ]
+  },
+
+  // Case 9: QC + OFFICE + ONLINE (Lazada)
+  {
+    id: 'PR-QC-004',
+    prNo: 'QC004/2026',
+    department: 'QC',
+    source: 'OFFICE',
+    purchaseChannel: 'ONLINE',
+    requestedBy: 'คุณกิตติศักดิ์ (QC)',
+    requestedDate: '2026-08-14',
+    requiredDate: '2026-08-21',
+    status: 'SUBMITTED',
+    specUrl: 'https://www.lazada.co.th/products/glass-beaker-borosilicate-250ml-set20',
+    items: [
+      {
+        productId: 'PROD-QC-008',
+        code: 'QC-BEA-250',
+        name: 'บีกเกอร์แก้วโบโรซิลิเกตทนความร้อน (Glass Beaker Borosilicate 250ml)',
+        category: 'QC',
+        unit: 'ชิ้น',
+        price: 160,
+        qty: 20
+      }
+    ],
+    totalAmount: 3200,
+    note: 'สั่งซื้อบีกเกอร์แก้วโบโรซิลิเกตทดแทนอุปกรณ์เดิมที่ชำรุด โดยสั่งผ่าน Lazada Mall เพื่อความรวดเร็วในการส่งมอบ',
+    memo: null,
+    activityLog: [
+      {
+        action: 'สร้างและเปิดใบ PR',
+        user: 'คุณกิตติศักดิ์ (QC)',
+        role: 'Requester (QC)',
+        timestamp: '14/8/2026 11:00:00',
+        note: 'เปิดใบขอซื้อออนไลน์บีกเกอร์แก้วห้องเตรียมตัวอย่าง QC'
+      }
+    ]
+  },
+
+  // Case 10: QC + FACTORY (Lab) + SELF (High-Value >= 20,000 THB with MEMO)
+  {
+    id: 'PR-QC-005',
+    prNo: 'QC005/2026',
+    department: 'QC',
+    source: 'FACTORY',
+    purchaseChannel: 'SELF',
+    requestedBy: 'คุณกิตติศักดิ์ (QC)',
+    requestedDate: '2026-08-14',
+    requiredDate: '2026-08-30',
+    status: 'SUBMITTED',
+    specUrl: '',
+    items: [
+      {
+        productId: 'PROD-QC-007',
+        code: 'QC-THM-CAL',
+        name: 'โพรบวัดอุณหภูมิดิจิตอลพร้อมใบรับรองการสอบเทียบ ISO/IEC 17025',
+        category: 'QC',
+        unit: 'ชุด',
+        price: 4500,
+        qty: 4
+      },
+      {
+        productId: 'PROD-QC-006',
+        code: 'QC-PDI-STR',
+        name: 'แผ่นทดสอบความสะอาดสวอปสำเร็จรูป (Surface Hygiene Swab Test Kits)',
+        category: 'QC',
+        unit: 'กล่อง (50 ชิ้น)',
+        price: 3600,
+        qty: 2
+      }
+    ],
+    totalAmount: 25200,
+    note: 'ขออนุมัติจัดซื้อโพรบวัดอุณหภูมิดิจิตอลพร้อมใบรับรองการสอบเทียบ ISO 17025 และชุดสวอปตรวจประเมินความสะอาดไลน์ผลิต สำหรับรอบตรวจรับรองระบบคุณภาพ',
+    memo: {
+      memoNo: 'MEMO-QC-2026-001',
+      subject: 'ขออนุมัติจัดซื้ออุปกรณ์ตรวจวัดและชุดสวอปทดสอบสุขอนามัยสำหรับเตรียมรับการตรวจประเมินมาตรฐานโรงงาน',
+      reason: 'โพรบวัดอุณหภูมิเดิมหมดอายุรอบการสอบเทียบมาตรฐาน และต้องใช้ชุดตรวจ Swab Test เพื่อตรวจสอบความสะอาดของเครื่องจักรในสายการผลิตตามมาตรฐาน GMP/HACCP',
+      benefit: 'รับรองความแม่นยำของผลการทดสอบทางจุลชีววิทยาและอุณหภูมิ พร้อมเอกสาร Certificate สำหรับรองรับการตรวจ Audit จากลูกค้า',
+      classification: 'ASSET',
+      priceComparison: 'เปรียบเทียบผู้จำหน่าย 3 ราย: บริษัท ไทยแล็บ แอนด์ เคมีคอล ซัพพลาย จำกัด มีใบรับรองการสอบเทียบที่ได้รับการรับรองจาก สมอ. (TISI) และราคาต่ำสุด',
+      committee: 'คุณกิตติศักดิ์ (ผู้จัดทำคำขอ), คุณสมชาย (ผู้ช่วยผู้จัดการฝ่ายตรวจสอบ)'
+    },
+    activityLog: [
+      {
+        action: 'สร้างและเปิดใบ PR (แนบ MEMO วงเงินสูง)',
+        user: 'คุณกิตติศักดิ์ (QC)',
+        role: 'Requester (QC)',
+        timestamp: '14/8/2026 11:45:00',
+        note: 'เปิดใบขอซื้อวงเงิน ฿25,200 พร้อมแนบเอกสารบันทึกข้อความ (MEMO)'
+      }
+    ]
+  }
+];
+
+export const initialPOs = [];
+export const initialStockLogs = [];
+
+export const initialBudgets = {
+  PD: { monthlyBudget: 150000, spent: 0, pending: 51420, variance: 0 },
+  QC: { monthlyBudget: 80000, spent: 0, pending: 45150, variance: 0 }
+};
+
+export const initialCounters = {
+  PD: { PR: 5, PO: 0 },
+  QC: { PR: 5, PO: 0 }
+};
+

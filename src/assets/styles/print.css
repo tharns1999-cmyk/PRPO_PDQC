@@ -1,0 +1,35 @@
+/* src/assets/styles/print.css */
+
+@media print {
+  /* Hide the rest of the application body when printing */
+  body {
+    background-color: white !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Set page rules */
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+
+  /* Ensure text is black and crisp */
+  * {
+    color: black !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Hide scrollbars during print */
+  ::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Force background colors on specific elements if needed (requires webkit prefix for most browsers) */
+  .bg-gray-100 {
+    background-color: #f3f4f6 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
