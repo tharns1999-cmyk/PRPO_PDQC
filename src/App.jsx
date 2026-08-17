@@ -40,6 +40,7 @@ export default function App() {
   const [preselectedProduct, setPreselectedProduct] = useState(null);
   const [selectedPRForModal, setSelectedPRForModal] = useState(null);
   const [selectedPOForModal, setSelectedPOForModal] = useState(null);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Initialize Data
   const refreshData = async () => {
@@ -112,13 +113,18 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex bg-slate-100 font-sans text-slate-800">
-      {/* Fixed Sidebar Menu */}
+      {/* Fixed Sidebar Menu (Desktop) & Overlay Drawer (Mobile) */}
       <Sidebar
         activeView={activeView}
-        setActiveView={setActiveView}
+        setActiveView={(view) => {
+          setActiveView(view);
+          setIsMobileSidebarOpen(false);
+        }}
         currentRole={currentRole}
         prs={prs}
         pos={pos}
+        isMobileOpen={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
 
       {/* Main Content Area */}
@@ -132,6 +138,7 @@ export default function App() {
           onOpenPO={handleOpenPOById}
           onLogout={handleLogout}
           onRefresh={refreshData}
+          onToggleMobileSidebar={() => setIsMobileSidebarOpen(prev => !prev)}
         />
 
         {/* Dynamic Content View Area */}

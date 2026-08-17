@@ -47,6 +47,13 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
         const pQty = Number(target.purchaseQty ?? target.qty) || 1;
         target.price = price;
         target.total = pQty * price;
+      } else if (field === 'conversionRate') {
+        const rate = Number(value) > 0 ? Number(value) : 1;
+        const pQty = Number(target.purchaseQty ?? target.qty) || 1;
+        target.conversionRate = rate;
+        target.stockQty = pQty * rate;
+      } else if (field === 'purchaseUnit') {
+        target.purchaseUnit = value;
       }
       next[index] = target;
       return next;
@@ -385,8 +392,32 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                         <td className="p-3 pl-4 font-mono font-bold text-slate-500 text-[11px]">{item.code || '-'}</td>
                         <td className="p-3">
                           <div className="font-bold text-slate-800 text-xs">{item.name}</div>
-                          {rate > 1 && (
-                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">1 {pUnit} = {rate} {sUnit}</div>
+                          {isEditingItems ? (
+                            <div className="flex items-center gap-1.5 text-[10px] text-amber-800 font-mono mt-1 bg-amber-50 p-1 rounded border border-amber-200 w-fit">
+                              <span>1</span>
+                              <input
+                                type="text"
+                                value={item.purchaseUnit || ''}
+                                onChange={e => handleItemFieldChange(idx, 'purchaseUnit', e.target.value)}
+                                placeholder="หน่วยซื้อ"
+                                className="w-16 bg-white border border-amber-300 rounded px-1 py-0.5 text-center font-bold"
+                              />
+                              <span>=</span>
+                              <input
+                                type="number"
+                                min="0.001"
+                                step="any"
+                                value={item.conversionRate ?? 1}
+                                onChange={e => handleItemFieldChange(idx, 'conversionRate', e.target.value)}
+                                placeholder="อัตราแปลง"
+                                className="w-12 bg-white border border-amber-300 rounded px-1 py-0.5 text-center font-bold text-indigo-700"
+                              />
+                              <span>{sUnit}</span>
+                            </div>
+                          ) : (
+                            rate > 1 && (
+                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">1 {pUnit} = {rate} {sUnit}</div>
+                            )
                           )}
                         </td>
                         <td className="p-3 text-center">

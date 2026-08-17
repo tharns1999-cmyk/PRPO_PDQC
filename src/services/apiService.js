@@ -1,9 +1,20 @@
 import { storageService } from './storageService';
 import { workflowEngine } from './workflowEngine';
+import { auditService } from './auditService';
 import { PO_STATUS } from '../config/constants';
 
 // API Service Layer for Data & Operations
 export const apiService = {
+  // --- Audit Trail Operations (GAS Ready) ---
+  async getAuditLogs(filters) {
+    return auditService.getLogs(filters);
+  },
+  async exportAuditLogsToGAS(filters) {
+    return auditService.exportToGASPayload(filters);
+  },
+  async clearAuditLogs() {
+    return auditService.clearLogs();
+  },
   // --- Data Getters ---
   async getProducts() {
     return storageService.getProducts();
@@ -110,8 +121,9 @@ export const apiService = {
   },
 
   // --- Master Data CRUD ---
-  async saveProduct(product) {
+  async saveProduct(product, user = null) {
     const products = storageService.getProducts();
+    const isUpdate = Boolean(product.id);
     if (product.id) {
       const idx = products.findIndex(p => p.id === product.id);
       if (idx !== -1) products[idx] = product;
@@ -120,11 +132,22 @@ export const apiService = {
       products.push(product);
     }
     storageService.saveProducts(products);
+
+    auditService.logAction({
+      action: isUpdate ? 'PRODUCT_UPDATED' : 'PRODUCT_CREATED',
+      actor: user || 'Admin / Master Manager',
+      department: product.category,
+      docNo: product.code || product.id,
+      docType: 'PRODUCT',
+      details: `${isUpdate ? 'ปรับปรุงข้อมูลสินค้า' : 'สร้างรายการสินค้าใหม่'} "${product.name}" (${product.code}) แผนก ${product.category}`
+    });
+
     return product;
   },
 
-  async saveVendor(vendor) {
+  async saveVendor(vendor, user = null) {
     const vendors = storageService.getVendors();
+    const isUpdate = Boolean(vendor.id);
     if (vendor.id) {
       const idx = vendors.findIndex(v => v.id === vendor.id);
       if (idx !== -1) vendors[idx] = vendor;
@@ -133,6 +156,16 @@ export const apiService = {
       vendors.push(vendor);
     }
     storageService.saveVendors(vendors);
+
+    auditService.logAction({
+      action: isUpdate ? 'VENDOR_UPDATED' : 'VENDOR_CREATED',
+      actor: user || 'Admin / Vendor Manager',
+      department: vendor.category || 'ALL',
+      docNo: vendor.code || vendor.id,
+      docType: 'VENDOR',
+      details: `${isUpdate ? 'ปรับปรุงข้อมูลผู้ขาย' : 'เพิ่มผู้ขายรายใหม่'} "${vendor.name}" (${vendor.code || vendor.id})`
+    });
+
     return vendor;
   }
 };

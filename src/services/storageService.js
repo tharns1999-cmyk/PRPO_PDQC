@@ -1,7 +1,7 @@
 import { STORAGE_KEYS, ROLES } from '../config/constants';
 import { initialProducts, initialVendors, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData';
 
-const DATA_VERSION = 'prpo_master_v4';
+const DATA_VERSION = 'prpo_clean_v1';
 
 export const storageService = {
   // Initialize storage if empty or version mismatch

@@ -339,4 +339,5 @@ export const STORAGE_KEYS = {
   BUDGETS:      'prpo_budgets_data',
   PR_COUNTERS:  'prpo_pr_counters',  // { "HR": 1, "PD": 2, ... }
   SIGNATURES:   'prpo_signatures',   // { [roleId/userId]: { signatureUrl, name, updatedAt } }
+  AUDIT_LOGS:   'prpo_audit_logs',   // [ { id, timestamp, action, actorName, docNo, details, ... } ]
 };

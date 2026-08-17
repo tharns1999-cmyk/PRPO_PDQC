@@ -256,14 +256,14 @@ export default function POListView({ pos, currentRole, onRefresh }) {
       <div className="impeccable-card overflow-hidden">
         <div className="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar relative">
           <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-500 font-medium tracking-wide">
-                <th className="p-5 pl-7">เลขที่ PO / อ้างอิง</th>
-                <th className="p-5">ผู้จำหน่าย (Vendor)</th>
-                <th className="p-5">ช่องทาง</th>
-                <th className="p-5">กำหนดส่ง</th>
-                <th className="p-5 text-center">สถานะ</th>
-                <th className="p-5 text-center pr-7">การกระทำ</th>
+            <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs border-b border-slate-200">
+              <tr className="text-slate-700 font-bold text-xs uppercase tracking-wider">
+                <th className="p-4 pl-7 bg-slate-100">เลขที่ PO / อ้างอิง</th>
+                <th className="p-4 bg-slate-100">ผู้จำหน่าย (Vendor)</th>
+                <th className="p-4 bg-slate-100">ช่องทาง</th>
+                <th className="p-4 bg-slate-100">กำหนดส่ง</th>
+                <th className="p-4 text-center bg-slate-100">สถานะ</th>
+                <th className="p-4 text-center pr-7 bg-slate-100">การกระทำ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80">

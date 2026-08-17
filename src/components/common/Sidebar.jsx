@@ -1,11 +1,19 @@
 import React from 'react';
 import { 
   LayoutDashboard, ClipboardList, ShoppingBag, Warehouse, 
-  SendToBack, Wallet, Database, ShieldAlert, Factory, Sparkles 
+  SendToBack, Wallet, Database, ShieldAlert, Factory, Sparkles, X 
 } from 'lucide-react';
 import { workflowEngine } from '../../services/workflowEngine';
 
-export default function Sidebar({ activeView, setActiveView, currentRole, prs = [], pos = [] }) {
+export default function Sidebar({ 
+  activeView, 
+  setActiveView, 
+  currentRole, 
+  prs = [], 
+  pos = [],
+  isMobileOpen = false,
+  onCloseMobile = () => {}
+}) {
   const isOnlinePurchaser = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER';
 
   // Calculate Task Counts for Badges
@@ -39,32 +47,42 @@ export default function Sidebar({ activeView, setActiveView, currentRole, prs = 
 
   const menuItems = [
     { id: 'online-tasks', label: 'จัดซื้อออนไลน์', icon: ShoppingBag, visible: currentRole.canOnlinePurchase, badge: taskCounts.onlineCount > 0 ? taskCounts.onlineCount : null },
-    { id: 'po-list', label: isOnlinePurchaser ? 'ประวัติใบสั่งซื้อ' : 'ใบสั่งซื้อ', icon: isOnlinePurchaser ? ClipboardList : ShoppingBag, visible: true, badge: !isOnlinePurchaser && taskCounts.poCount > 0 ? taskCounts.poCount : null },
     { id: 'dashboard', label: 'ภาพรวมระบบ', icon: LayoutDashboard, visible: !isOnlinePurchaser },
     { id: 'my-workspace', label: 'งานของฉัน', icon: Sparkles, visible: !isOnlinePurchaser, badge: taskCounts.total > 0 ? taskCounts.total : null },
     { id: 'pr-list', label: 'ใบขอซื้อ', icon: ClipboardList, visible: !isOnlinePurchaser, badge: taskCounts.prCount > 0 ? taskCounts.prCount : null },
-    { id: 'stock-card', label: 'คลังสต็อก', icon: Warehouse, visible: !isOnlinePurchaser },
-    { id: 'quick-issue', label: 'เบิกสินค้า', icon: SendToBack, visible: !isOnlinePurchaser },
+    { id: 'po-list', label: isOnlinePurchaser ? 'ประวัติใบสั่งซื้อ' : 'ใบสั่งซื้อ', icon: isOnlinePurchaser ? ClipboardList : ShoppingBag, visible: true, badge: !isOnlinePurchaser && taskCounts.poCount > 0 ? taskCounts.poCount : null },
+    { id: 'stock-card', label: 'คลัง stock', icon: Warehouse, visible: !isOnlinePurchaser },
+    { id: 'quick-issue', label: 'เบิกใช้งาน', icon: SendToBack, visible: !isOnlinePurchaser },
     { id: 'budget', label: 'งบประมาณ', icon: Wallet, visible: !isOnlinePurchaser && currentRole.canViewBudget },
     { id: 'master-data', label: 'ข้อมูลหลัก', icon: Database, visible: !isOnlinePurchaser && currentRole.canManageMaster }
   ];
 
-  return (
-    <aside className="w-60 bg-slate-900 border-r border-slate-800 shrink-0 h-screen fixed left-0 top-0 flex flex-col p-3.5 no-print z-40 hidden md:flex shadow-2xl shadow-slate-900/50">
-      
+  const renderNavContent = (onItemClick = null) => (
+    <>
       {/* Logo & System Title */}
-      <div className="flex items-center gap-2.5 mb-5 px-1.5 pt-1 pb-3.5 border-b border-slate-800/80">
-        <div className="bg-gradient-to-tr from-indigo-500 to-indigo-600 p-2.5 rounded-2xl shadow-lg shadow-indigo-500/30 shrink-0">
-          <Factory className="w-5 h-5 text-white" />
+      <div className="flex items-center justify-between mb-5 px-1.5 pt-1 pb-3.5 border-b border-slate-800/80">
+        <div className="flex items-center gap-2.5 overflow-hidden">
+          <div className="bg-gradient-to-tr from-indigo-500 to-indigo-600 p-2.5 rounded-2xl shadow-lg shadow-indigo-500/30 shrink-0">
+            <Factory className="w-5 h-5 text-white" />
+          </div>
+          <div className="overflow-hidden">
+            <h1 className="font-bold text-sm tracking-tight text-white leading-tight truncate">
+              ระบบ PR/PO & คลัง
+            </h1>
+            <span className="text-[11px] text-indigo-300 font-medium block truncate mt-0.5">
+              {isOnlinePurchaser ? 'จัดซื้อออนไลน์' : 'ควบคุมงาน PD & QC'}
+            </span>
+          </div>
         </div>
-        <div className="overflow-hidden">
-          <h1 className="font-bold text-sm tracking-tight text-white leading-tight truncate">
-            ระบบ PR/PO & คลัง
-          </h1>
-          <span className="text-[11px] text-indigo-300 font-medium block truncate mt-0.5">
-            {isOnlinePurchaser ? 'จัดซื้อออนไลน์' : 'ควบคุมงาน PD & QC'}
-          </span>
-        </div>
+        {onItemClick && (
+          <button 
+            onClick={onCloseMobile}
+            className="md:hidden p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+            aria-label="Close menu"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* ── Navigation Links ── */}
@@ -78,7 +96,10 @@ export default function Sidebar({ activeView, setActiveView, currentRole, prs = 
           return (
             <button
               key={item.id}
-              onClick={() => setActiveView(item.id)}
+              onClick={() => {
+                setActiveView(item.id);
+                if (onItemClick) onItemClick();
+              }}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-semibold text-xs sm:text-[13px] transition-all cursor-pointer ${
                 isActive
                   ? isOnlinePurchaser 
@@ -116,6 +137,31 @@ export default function Sidebar({ activeView, setActiveView, currentRole, prs = 
           </div>
         )}
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* ── Desktop Sidebar (Fixed Left) ── */}
+      <aside className="w-60 bg-slate-900 border-r border-slate-800 shrink-0 h-screen fixed left-0 top-0 flex-col p-3.5 no-print z-40 hidden md:flex shadow-2xl shadow-slate-900/50">
+        {renderNavContent()}
+      </aside>
+
+      {/* ── Mobile Sidebar Drawer (Overlay) ── */}
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex no-print animate-fade-in">
+          {/* Backdrop Overlay */}
+          <div 
+            className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs transition-opacity"
+            onClick={onCloseMobile}
+          />
+
+          {/* Drawer Container */}
+          <aside className="relative w-72 max-w-[85vw] bg-slate-900 h-full flex flex-col p-4 shadow-2xl z-10 animate-slide-in-left border-r border-slate-800">
+            {renderNavContent(onCloseMobile)}
+          </aside>
+        </div>
+      )}
+    </>
   );
 }

@@ -1,6 +1,7 @@
 import { storageService } from './storageService';
 import { PR_STATUS, PO_STATUS, DEPARTMENTS } from '../config/constants';
 import { notificationService } from './notificationService';
+import { auditService } from './auditService';
 
 export const workflowEngine = {
   
@@ -134,6 +135,9 @@ export const workflowEngine = {
       const price = Number(item.price) || 0;
       return {
         ...item,
+        purchaseUnit: item.purchaseUnit || item.unit || 'ชิ้น',
+        stockUnit: item.stockUnit || item.unit || 'ชิ้น',
+        conversionRate: rate,
         purchaseQty: pQty,
         stockQty: sQty,
         qty: pQty,
@@ -194,6 +198,15 @@ export const workflowEngine = {
     });
 
     storageService.savePRs(prs);
+
+    auditService.logAction({
+      action: 'PR_REJECTED',
+      actor: user,
+      department: pr.department,
+      docNo: pr.prNo,
+      docType: 'PR',
+      details: `ส่งกลับ / ปฏิเสธ PR เลขที่ ${pr.prNo} (${actionLabel}): ${reason.trim()}`
+    });
 
     // Dispatch Notification
     notificationService.dispatch({
@@ -341,6 +354,15 @@ export const workflowEngine = {
 
     storageService.savePRs(prs);
 
+    auditService.logAction({
+      action: 'PR_CANCELLED',
+      actor: user,
+      department: pr.department,
+      docNo: pr.prNo,
+      docType: 'PR',
+      details: `ยกเลิกใบขอซื้อเลขที่ ${pr.prNo}: ${reason.trim()}`
+    });
+
     // Dispatch Notification
     notificationService.dispatch({
       type: 'PR_CANCELLED',
@@ -388,6 +410,15 @@ export const workflowEngine = {
     });
 
     storageService.savePOs(pos);
+
+    auditService.logAction({
+      action: 'PO_CANCELLED',
+      actor: user,
+      department: po.department,
+      docNo: po.poNo,
+      docType: 'PO',
+      details: `ยกเลิกใบสั่งซื้อ ${po.poNo}: ${reason.trim()}`
+    });
 
     // Also update parent PR activity log if exists
     if (po.prId) {
@@ -592,6 +623,16 @@ export const workflowEngine = {
 
     prs.unshift(newPR);
     storageService.savePRs(prs);
+
+    auditService.logAction({
+      action: isDraft ? 'PR_DRAFT_CREATED' : 'PR_SUBMITTED',
+      actor: user,
+      department: newPR.department,
+      docNo: newPR.prNo,
+      docType: 'PR',
+      details: `${isDraft ? 'บันทึกแบบร่าง PR' : 'สร้างและยื่นส่งใบขอซื้อ'} เลขที่ ${newPR.prNo} ยอดรวม ฿${newPR.totalAmount.toLocaleString()}`
+    });
+
     return newPR;
   },
   
@@ -615,6 +656,15 @@ export const workflowEngine = {
     });
     
     storageService.savePRs(prs);
+
+    auditService.logAction({
+      action: 'PR_SUBMITTED',
+      actor: user,
+      department: pr.department,
+      docNo: pr.prNo,
+      docType: 'PR',
+      details: `ส่งใบขอซื้อเลขที่ ${pr.prNo} ยอดเงิน ฿${(pr.totalAmount || 0).toLocaleString()} เข้าสู่ระบบเพื่อตรวจสอบ`
+    });
 
     // Dispatch In-App & LINE Notification
     notificationService.dispatch({
@@ -741,6 +791,8 @@ export const workflowEngine = {
         poNo,
         prId: pr.id,
         prNo: pr.prNo,
+        // ─── ส่งต่อ requestedBy จาก PR เพื่อให้ Requester สามารถ trace ownership ของ PO ได้ ───
+        requestedBy: pr.requestedBy || '',
         vendorId: vId,
         vendorName: vName,
         department: pr.department,
@@ -770,6 +822,15 @@ export const workflowEngine = {
       
       generatedPOs.push(newPO);
       pos.unshift(newPO);
+
+      auditService.logAction({
+        action: 'PR_APPROVED_PO_CREATED',
+        actor: user,
+        department: pr.department,
+        docNo: newPO.poNo,
+        docType: 'PO',
+        details: `อนุมัติ PR ${pr.prNo} ออกใบสั่งซื้อ ${newPO.poNo} (ผู้ขาย: ${vName}) ยอดเงิน ฿${newPO.grandTotal.toLocaleString()}`
+      });
 
       // Dispatch Notification for each PO
       if (newPO.purchaseChannel === 'ONLINE') {
@@ -945,6 +1006,15 @@ export const workflowEngine = {
       role: user.title,
       timestamp,
       note: note || `รับสินค้าและบันทึกเข้า Stock เรียบร้อย`
+    });
+
+    auditService.logAction({
+      action: 'GOODS_RECEIVED_PO_CLOSED',
+      actor: user,
+      department: po.department,
+      docNo: po.poNo,
+      docType: 'PO',
+      details: `ตรวจรับสินค้าเข้าคลัง และปิดใบสั่งซื้อ ${po.poNo}`
     });
 
     // Also close the PR

@@ -10,26 +10,35 @@ export default function Navbar({
   onOpenPR, 
   onOpenPO, 
   onLogout,
-  onRefresh 
+  onRefresh,
+  onToggleMobileSidebar
 }) {
   const [showNotiDrawer, setShowNotiDrawer] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   return (
     <header className="bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-30 no-print">
-      <div className="w-full px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div className="w-full px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         
-        {/* Mobile Menu Button */}
-        <div className="flex items-center gap-3">
-          <button className="md:hidden p-2 -ml-2 text-slate-400 hover:text-slate-700 hover:bg-slate-50 rounded-lg transition-colors">
+        {/* Mobile Menu Button & System Title */}
+        <div className="flex items-center gap-2 sm:gap-3 overflow-hidden">
+          <button 
+            onClick={onToggleMobileSidebar}
+            className="md:hidden p-2 -ml-1 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer active:scale-95 shrink-0"
+            aria-label="Open Navigation Menu"
+            title="เปิดเมนูการใช้งาน"
+          >
             <Menu className="w-5 h-5" />
           </button>
           
-          <div className="hidden sm:block">
-            <h2 className="font-bold text-slate-800 text-sm">ระบบขอซื้อและคลังสินค้า (PR/PO & Inventory)</h2>
-            <p className="text-[11px] text-slate-400">
+          <div className="overflow-hidden">
+            <h2 className="font-bold text-slate-800 text-xs sm:text-sm truncate">
+              <span className="sm:hidden">ระบบ PR/PO & คลัง</span>
+              <span className="hidden sm:inline">ระบบขอซื้อและคลังสินค้า (PR/PO & Inventory)</span>
+            </h2>
+            <p className="text-[10px] sm:text-[11px] text-slate-400 truncate">
               {currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER'
-                ? 'ฝ่ายจัดซื้อออนไลน์ (Shopee / Lazada) — Online Procurement Hub'
+                ? 'ฝ่ายจัดซื้อออนไลน์ (Shopee / Lazada)'
                 : 'ควบคุมงานฝ่ายผลิต (PD) และฝ่ายควบคุมคุณภาพ (QC)'}
             </p>
           </div>

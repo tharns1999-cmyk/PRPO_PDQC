@@ -11,26 +11,20 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
   const [selectedPR, setSelectedPR] = useState(null);
   const [selectedPO, setSelectedPO] = useState(null);
 
-  // Helper to check if user is involved in a doc
-  const isUserInvolved = (doc) => {
+  // ─── Helper: ตรวจสอบว่า user เคยดำเนินการกับ doc นี้โดยตรงหรือไม่
+  // (สร้าง หรือ มีใน activityLog) → ใช้เป็น base สำหรับ "waiting" bucket
+  const hasDirectlyActedOn = (doc) => {
     if (!doc || !currentRole) return false;
     const names = [currentRole.name, currentRole.employeeName, currentRole.displayName, currentRole.username].filter(Boolean);
 
-    // 1. Created by this user
+    // 1. เป็นผู้สร้างเอกสาร
     if (names.includes(doc.requestedBy) || names.includes(doc.applicantName1)) return true;
 
-    // 2. User has action history in activityLog
-    if (doc.activityLog && doc.activityLog.some(log => names.includes(log.user) || (currentRole.title && log.role === currentRole.title))) return true;
-
-    // 3. For Reviewers / Approvers / Admins (Level >= 2):
-    // Active documents in their department / organization scope
-    if (currentRole.canViewAllDepts || currentRole.department === doc.department) {
-      if (currentRole.level >= 2 || currentRole.id === 'ADMIN' || currentRole.roleId === 'ADMIN') {
-        // Exclude drafts of other users
-        if (doc.status === 'DRAFT') return false;
-        return true;
-      }
-    }
+    // 2. มี activity log ของตัวเองใน doc นี้
+    if (doc.activityLog?.some(log =>
+      names.includes(log.user) ||
+      (currentRole.title && log.role === currentRole.title)
+    )) return true;
 
     return false;
   };
@@ -40,11 +34,55 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
     const waiting = [];
     const completed = [];
 
+    const userLevel = Number(currentRole?.level || 1);
+    const isAdmin = currentRole?.id === 'ADMIN' || currentRole?.roleId === 'ADMIN' || userLevel >= 99;
+    const isOnlinePurchaser = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER' || currentRole?.positionKey === 'ONLINE_PURCHASER';
+    const isPlantMgr = userLevel >= 3 || currentRole?.canFinalApprove;
+    const isAsstMgr = userLevel === 2 && !isOnlinePurchaser;
+
+    // ─── PR Status ที่หมายความว่า "task ผ่านมือ role นี้ไปแล้ว" ───
+    // ถ้า PR อยู่ใน statuses เหล่านี้ แสดงว่า role นั้นๆ ดำเนินการเสร็จแล้ว
+    // และตอนนี้รอ downstream (คนถัดไปใน workflow) ทำงาน
+    const waitingStatusesFor = {
+      // Plant Manager: task ของตัวเองคือ REVIEWED → ถ้าผ่านไปเป็น APPROVED/PO_ISSUED/IN_PROGRESS_ONLINE แล้วรอ downstream
+      plantMgr: ['APPROVED', 'PO_ISSUED', 'IN_PROGRESS_ONLINE'],
+      // Asst. Mgr: task ของตัวเองคือ SUBMITTED/REJECTED_TO_L2 → ถ้าผ่านไปเป็น REVIEWED+ แล้วรอ Plant Mgr
+      asstMgr: ['REVIEWED', 'APPROVED', 'PO_ISSUED', 'IN_PROGRESS_ONLINE'],
+      // Requester: task ของตัวเองคือ DRAFT/REJECTED_TO_DRAFT → ถ้า submit ไปแล้ว รออีก 2 ชั้น
+      requester: ['SUBMITTED', 'REJECTED_TO_L2', 'REVIEWED', 'APPROVED', 'PO_ISSUED', 'IN_PROGRESS_ONLINE'],
+      // Online Purchaser: task คือ IN_PROGRESS_ONLINE (PO) → ถ้า ordered ไปแล้วรอ department รับของ
+      onlinePurchaser: ['ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'],
+    };
+
     // Process PRs
     prs.forEach(pr => {
       const canAction = pr.status !== 'CLOSED' && pr.status !== 'CANCELLED' && workflowEngine.canAction(currentRole, pr);
-      const involved = isUserInvolved(pr);
       const isDone = pr.status === 'CLOSED' || pr.status === 'CANCELLED';
+      const actedOn = hasDirectlyActedOn(pr);
+
+      // ─── ตรรกะ "รอผู้อื่นดำเนินการ" สำหรับ PR ───
+      // เงื่อนไข: doc ผ่านมือตัวเอง (actedOn) หรือเป็น Admin/high-level ที่มองเห็น
+      // AND status อยู่ "หลัง" จุดที่ตัวเองดำเนินการแล้ว
+      let isWaiting = false;
+      if (!canAction && !isDone) {
+        if (isAdmin) {
+          // Admin เห็น doc ที่ยังไม่เสร็จทุกใบ
+          isWaiting = true;
+        } else if (isPlantMgr) {
+          // Plant Manager: รอผู้อื่น = PR ที่ตัวเองอนุมัติไปแล้ว (status หลัง APPROVED)
+          // ต้องมี actedOn (ตัวเองเคย approve หรือ reject ใน log) หรือ PR อยู่ใน scope ที่ตัวเองเคย action ไปแล้ว
+          isWaiting = actedOn && waitingStatusesFor.plantMgr.includes(pr.status);
+        } else if (isAsstMgr) {
+          // Asst. Mgr: รอผู้อื่น = PR ที่ตัวเอง review ผ่านไปแล้ว (status หลัง REVIEWED)
+          isWaiting = actedOn && waitingStatusesFor.asstMgr.includes(pr.status);
+        } else if (isOnlinePurchaser) {
+          // Online Purchaser ไม่มีส่วนใน PR flow โดยตรง
+          isWaiting = false;
+        } else {
+          // Requester (level 1): รอผู้อื่น = PR ที่ตัวเองสร้างและ submit ไปแล้ว
+          isWaiting = actedOn && waitingStatusesFor.requester.includes(pr.status);
+        }
+      }
 
       const taskItem = {
         id: pr.id,
@@ -60,18 +98,75 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
 
       if (canAction) {
         actionRequired.push(taskItem);
-      } else if (!isDone && involved) {
+      } else if (isWaiting) {
         waiting.push(taskItem);
-      } else if (isDone && involved) {
+      } else if (isDone && actedOn) {
         completed.push(taskItem);
       }
     });
+
+    // ─── Helper: PO ไม่มี requestedBy ใน legacy data → cross-reference จาก parent PR ───
+    // ใช้เพื่อตรวจสอบว่า Requester/Asst.Mgr เป็นเจ้าของ PO นี้ผ่าน PR ที่เชื่อมกันอยู่
+    const isLinkedToOwnPR = (po) => {
+      if (!po.prId && !po.prNo) return false;
+      return prs.some(pr =>
+        (pr.id === po.prId || pr.prNo === po.prNo) && hasDirectlyActedOn(pr)
+      );
+    };
 
     // Process POs
     pos.forEach(po => {
       const isDone = po.status === 'CLOSED' || po.status === 'CANCELLED' || po.status === 'RECEIVED';
       const canAction = !isDone && workflowEngine.canAction(currentRole, po);
-      const involved = isUserInvolved(po);
+      // isOwnerOfPO: ตรวจสอบ ownership ทั้งจาก PO โดยตรง และจาก parent PR (fallback สำหรับ legacy POs)
+      const actedOnPO = hasDirectlyActedOn(po);
+      const isOwnerOfPO = actedOnPO || isLinkedToOwnPR(po);
+
+      // ─── ตรรกะ "รอผู้อื่นดำเนินการ" สำหรับ PO ───
+      //
+      // Workflow:
+      //   SELF:   PR approved → [ISSUED] → Requester ซื้อ+รับของ → [RECEIVED] → CLOSED
+      //   ONLINE: PR approved → [IN_PROGRESS_ONLINE] → Online Purchaser สั่งซื้อ
+      //           → [ORDERED_PENDING_DELIVERY] → Requester รับของ → [RECEIVED] → CLOSED
+      //
+      // Role  | ต้องทำ                             | รอผู้อื่น
+      // -------|------------------------------------|-----------------------------------------
+      // REQ   | ISSUED, ORDERED_PENDING_DELIVERY,  | IN_PROGRESS_ONLINE (รอ Online Purchaser)
+      //        | IN_DELIVERY, PARTIAL               |
+      // ONLINE| IN_PROGRESS_ONLINE                 | ORDERED_PENDING_DELIVERY, IN_DELIVERY, PARTIAL
+      // ASST  | -                                  | ISSUED, IN_PROGRESS_ONLINE, ORDERED..., PARTIAL
+      // PLANT | -                                  | ISSUED, IN_PROGRESS_ONLINE, ORDERED..., PARTIAL
+      // ADMIN | ทุกอย่าง (canAction ด้าน workflowEngine) | ใบที่ยังไม่เสร็จ
+
+      let isWaiting = false;
+      if (!canAction && !isDone) {
+        if (isAdmin) {
+          // Admin เห็นทุก PO ที่ยังไม่เสร็จ
+          isWaiting = true;
+        } else if (isOnlinePurchaser) {
+          // Online Purchaser: รอผู้อื่น = PO ที่ตัวเองสั่งซื้อแล้ว รอ Requester รับของ
+          // (ORDERED_PENDING_DELIVERY, IN_DELIVERY, PARTIAL → รอ dept รับ)
+          isWaiting = actedOnPO && waitingStatusesFor.onlinePurchaser.includes(po.status);
+        } else if (isPlantMgr) {
+          // Plant Manager: รอผู้อื่น = PO ที่ตัวเอง approve PR มาแล้ว ตอนนี้รอ downstream
+          // actedOnPO = true เพราะ Plant Mgr อยู่ใน PO activityLog (สร้าง PO จาก PR approval)
+          isWaiting = actedOnPO && [
+            'ISSUED', 'IN_PROGRESS_ONLINE', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'
+          ].includes(po.status);
+        } else if (isAsstMgr) {
+          // Asst. Manager: อยู่ใน PR activityLog (review) แต่ไม่อยู่ใน PO activityLog
+          // ใช้ isLinkedToOwnPR เพื่อ trace กลับไปที่ PR ที่ตัวเอง review แล้ว
+          isWaiting = isLinkedToOwnPR(po) && [
+            'ISSUED', 'IN_PROGRESS_ONLINE', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'
+          ].includes(po.status);
+        } else {
+          // Requester (level 1):
+          // SELF purchase: ISSUED → canAction = true (ไปซื้อและรับของ) → ไม่มาถึงบรรทัดนี้
+          // ONLINE purchase: IN_PROGRESS_ONLINE → canAction = false → รอผู้อื่น (Online Purchaser กำลังสั่งซื้อ)
+          // ONLINE purchase: ORDERED_PENDING_DELIVERY → canAction = true (รับของ) → ไม่มาถึงบรรทัดนี้
+          isWaiting = isOwnerOfPO && po.status === 'IN_PROGRESS_ONLINE';
+        }
+      }
 
       const taskItem = {
         id: po.id,
@@ -87,9 +182,10 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
 
       if (canAction) {
         actionRequired.push(taskItem);
-      } else if (!isDone && involved) {
+      } else if (isWaiting) {
         waiting.push(taskItem);
-      } else if (isDone && involved) {
+      } else if (isDone && isOwnerOfPO) {
+        // ใช้ isOwnerOfPO แทน actedOnPO เพื่อรองรับ legacy POs ที่ไม่มี requestedBy
         completed.push(taskItem);
       }
     });

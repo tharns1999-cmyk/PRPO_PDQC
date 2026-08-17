@@ -706,19 +706,19 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
       {/* 4. Items Table */}
       <div className="p-5 sm:p-6 overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar relative">
         <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead>
-            <tr className="text-slate-400 text-xs font-semibold border-b border-slate-100 bg-slate-50/50">
-              <th className="pb-3.5 pt-2 pl-3">รหัสสินค้า</th>
-              <th className="pb-3.5 pt-2">รายการสินค้าที่ต้องซื้อ</th>
-              <th className="pb-3.5 pt-2 text-right">
+          <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs border-b border-slate-200">
+            <tr className="text-slate-700 text-xs font-bold uppercase tracking-wider">
+              <th className="py-3 pl-3 bg-slate-100">รหัสสินค้า</th>
+              <th className="py-3 bg-slate-100">รายการสินค้าที่ต้องซื้อ</th>
+              <th className="py-3 text-right bg-slate-100">
                 {isPending ? 'ราคาซื้อจริง / หน่วย (฿)' : 'ราคาต่อหน่วย (฿)'}
               </th>
-              <th className="pb-3.5 pt-2 text-center">
+              <th className="py-3 text-center bg-slate-100">
                 {isPending ? 'จำนวนที่สั่งซื้อได้จริง' : 'จำนวนสั่งซื้อ (Qty)'}
               </th>
-              <th className="pb-3.5 pt-2 text-right">ยอดรวมจริง (Line Total)</th>
-              <th className="pb-3.5 pt-2 text-center">ยอดเข้าคลัง (Stock)</th>
-              <th className="pb-3.5 pt-2 text-right pr-3">การจัดการ</th>
+              <th className="py-3 text-right bg-slate-100">ยอดรวมจริง (Line Total)</th>
+              <th className="py-3 text-center bg-slate-100">ยอดเข้าคลัง (Stock)</th>
+              <th className="py-3 text-right pr-3 bg-slate-100">การจัดการ</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100/90">

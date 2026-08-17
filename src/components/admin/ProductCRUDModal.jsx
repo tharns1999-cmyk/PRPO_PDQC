@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { apiService } from '../../services/apiService';
 import { 
   Package, X, Building2, Tag, Layers, MapPin, Hash, 
-  Coins, Clock, AlertTriangle, Boxes, Store, Sparkles, Check, Lightbulb
+  Coins, Clock, AlertTriangle, Boxes, Store, Sparkles, Check, Lightbulb,
+  ArrowRight, Repeat
 } from 'lucide-react';
 import SearchableSelect from '../common/SearchableSelect';
 
@@ -272,111 +273,162 @@ export default function ProductCRUDModal({ editProd, vendors = [], currentRole, 
               </div>
 
               {/* Unit Configuration Grid (Purchase Unit, Stock Unit, Conversion Rate) */}
-              <div className="p-4 bg-indigo-50/40 rounded-2xl border border-indigo-100/80 space-y-4">
-                <div className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                  <Layers className="w-4 h-4 text-indigo-600" />
-                  <span>การแปลงหน่วยนับ (2-Way Unit Mapping)</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {/* Purchase Unit */}
-                  <div>
-                    <label className="impeccable-label">
-                      หน่วยสั่งซื้อ (Purchase Unit) <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      name="purchaseUnit"
-                      value={purchaseUnit}
-                      onChange={e => setPurchaseUnit(e.target.value)}
-                      placeholder="เช่น ถัง, กล่อง, ลัง"
-                      required
-                      className="impeccable-input font-medium bg-white"
-                    />
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {COMMON_PURCHASE_UNITS.slice(0, 4).map(u => (
-                        <button
-                          key={u}
-                          type="button"
-                          onClick={() => setPurchaseUnit(u)}
-                          className={`text-[10px] px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                            purchaseUnit === u
-                              ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          {u}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Stock Unit */}
-                  <div>
-                    <label className="impeccable-label">
-                      หน่วยคลัง/เบิก (Stock Unit) <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      name="stockUnit"
-                      value={stockUnit}
-                      onChange={e => setStockUnit(e.target.value)}
-                      placeholder="เช่น ลิตร, ชิ้น, ม้วน"
-                      required
-                      className="impeccable-input font-medium bg-white"
-                    />
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {COMMON_STOCK_UNITS.slice(0, 4).map(u => (
-                        <button
-                          key={u}
-                          type="button"
-                          onClick={() => setStockUnit(u)}
-                          className={`text-[10px] px-1.5 py-0.5 rounded border transition-all cursor-pointer ${
-                            stockUnit === u
-                              ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          {u}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Conversion Rate */}
-                  <div>
-                    <label className="impeccable-label">
-                      อัตราการแปลง (Conversion Rate) <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      name="conversionRate"
-                      min="0.001"
-                      step="any"
-                      value={conversionRate}
-                      onChange={e => setConversionRate(e.target.value)}
-                      required
-                      className="impeccable-input font-mono font-bold text-center text-indigo-950 bg-white"
-                    />
-                    <span className="text-[10px] text-slate-400 mt-1 block text-center">
-                      1 {purchaseUnit || 'หน่วยซื้อ'} = {conversionRate || 1} {stockUnit || 'หน่วยเบิก'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Conversion Live Preview Callout */}
-                <div className="p-3 bg-white rounded-xl border border-indigo-200/80 flex items-center justify-between gap-3 text-xs">
+              <div className="p-5 bg-gradient-to-br from-indigo-50/70 via-slate-50/50 to-indigo-50/30 rounded-2xl border border-indigo-100/90 shadow-sm space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-indigo-100/70">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
-                    <span className="font-semibold text-slate-600">สรุปอัตราการแปลง:</span>
-                    <span className="font-bold text-indigo-900 font-mono">
-                      1 {purchaseUnit} = {conversionRate} {stockUnit}
+                    <div className="p-1.5 bg-indigo-600 text-white rounded-lg shadow-sm shadow-indigo-200">
+                      <Repeat className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-indigo-950">การแปลงหน่วยนับ (2-Way Unit Mapping)</h4>
+                      <p className="text-[10px] text-slate-500 font-medium">กำหนดหน่วยออกเอกสารสั่งซื้อ และหน่วยตัดสต็อกคลังเพื่อแปลงยอดรับเข้าอัตโนมัติ</p>
+                    </div>
+                  </div>
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${
+                    Number(conversionRate) === 1
+                      ? 'bg-slate-100 text-slate-600 border-slate-200'
+                      : 'bg-indigo-100 text-indigo-800 border-indigo-200 shadow-xs'
+                  }`}>
+                    {Number(conversionRate) === 1 ? '1 : 1 (หน่วยเดียวกัน)' : `1 ➔ ${conversionRate} (แปลงหน่วยอัตโนมัติ)`}
+                  </span>
+                </div>
+
+                {/* 3-Column Harmonized Card Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 items-stretch">
+                  {/* 1. Purchase Unit */}
+                  <div className="flex flex-col justify-between bg-white/90 backdrop-blur-xs p-3.5 rounded-xl border border-indigo-100/80 shadow-xs hover:border-indigo-300 transition-all">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                          <span>หน่วยสั่งซื้อ (Purchase Unit)</span>
+                          <span className="text-rose-500">*</span>
+                        </label>
+                        <span className="text-[10px] text-slate-400 font-medium">PR / PO</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          name="purchaseUnit"
+                          value={purchaseUnit}
+                          onChange={e => setPurchaseUnit(e.target.value)}
+                          placeholder="เช่น ถัง, กล่อง, ลัง"
+                          required
+                          className="impeccable-input font-semibold text-slate-800 bg-white h-[42px] pl-3 pr-3 border-slate-200 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-2.5 border-t border-slate-100">
+                      <span className="text-[10px] font-semibold text-slate-400 block mb-1.5">เลือกจากหน่วยที่พบบ่อย:</span>
+                      <div className="flex flex-wrap gap-1 min-h-[32px] items-center">
+                        {COMMON_PURCHASE_UNITS.slice(0, 5).map(u => (
+                          <button
+                            key={u}
+                            type="button"
+                            onClick={() => setPurchaseUnit(u)}
+                            className={`text-[10px] px-2 py-1 rounded-md transition-all duration-150 cursor-pointer font-medium ${
+                              purchaseUnit === u
+                                ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200/60 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200'
+                            }`}
+                          >
+                            {u}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Stock Unit */}
+                  <div className="flex flex-col justify-between bg-white/90 backdrop-blur-xs p-3.5 rounded-xl border border-indigo-100/80 shadow-xs hover:border-indigo-300 transition-all">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                          <span>หน่วยคลัง/เบิก (Stock Unit)</span>
+                          <span className="text-rose-500">*</span>
+                        </label>
+                        <span className="text-[10px] text-slate-400 font-medium">สต็อกคลัง</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          name="stockUnit"
+                          value={stockUnit}
+                          onChange={e => setStockUnit(e.target.value)}
+                          placeholder="เช่น ลิตร, ชิ้น, ม้วน"
+                          required
+                          className="impeccable-input font-semibold text-slate-800 bg-white h-[42px] pl-3 pr-3 border-slate-200 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-2.5 border-t border-slate-100">
+                      <span className="text-[10px] font-semibold text-slate-400 block mb-1.5">เลือกจากหน่วยที่พบบ่อย:</span>
+                      <div className="flex flex-wrap gap-1 min-h-[32px] items-center">
+                        {COMMON_STOCK_UNITS.slice(0, 5).map(u => (
+                          <button
+                            key={u}
+                            type="button"
+                            onClick={() => setStockUnit(u)}
+                            className={`text-[10px] px-2 py-1 rounded-md transition-all duration-150 cursor-pointer font-medium ${
+                              stockUnit === u
+                                ? 'bg-indigo-600 text-white shadow-xs font-bold'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200/60 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200'
+                            }`}
+                          >
+                            {u}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Conversion Rate */}
+                  <div className="flex flex-col justify-between bg-white/90 backdrop-blur-xs p-3.5 rounded-xl border border-indigo-100/80 shadow-xs hover:border-indigo-300 transition-all">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                          <span>อัตราการแปลง (Conversion Rate)</span>
+                          <span className="text-rose-500">*</span>
+                        </label>
+                        <span className="text-[10px] text-indigo-600 font-bold">อัตราส่วน</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          name="conversionRate"
+                          min="0.001"
+                          step="any"
+                          value={conversionRate}
+                          onChange={e => setConversionRate(e.target.value)}
+                          required
+                          className="impeccable-input font-mono font-black text-center text-indigo-950 bg-white h-[42px] text-base border-indigo-200 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-3 pt-2.5 border-t border-slate-100 flex flex-col justify-center min-h-[52px]">
+                      <span className="text-[10px] font-semibold text-slate-400 block mb-1 text-center">อัตราส่วนการแปลง:</span>
+                      <div className="flex items-center justify-center">
+                        <span className="text-[11px] font-mono font-bold text-indigo-900 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 block text-center truncate">
+                          1 {purchaseUnit || 'หน่วยซื้อ'} = {conversionRate || 1} {stockUnit || 'หน่วยเบิก'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Conversion Banner Callout */}
+                <div className="p-3 bg-white rounded-xl border border-indigo-200/70 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
+                    <span className="font-medium text-slate-600">ตัวอย่างการทำงาน:</span>
+                    <span className="font-bold text-slate-900 font-mono flex items-center gap-1">
+                      สั่งซื้อ <span className="text-indigo-700 font-bold">1 {purchaseUnit || 'หน่วยซื้อ'}</span>
+                      <ArrowRight className="w-3 h-3 text-indigo-400 inline" />
+                      ระบบรับเข้าคลัง <span className="text-emerald-700 font-bold">{conversionRate || 1} {stockUnit || 'หน่วยเบิก'}</span>
                     </span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                    Number(conversionRate) === 1
-                      ? 'bg-slate-100 text-slate-600'
-                      : 'bg-indigo-100 text-indigo-800'
-                  }`}>
-                    {Number(conversionRate) === 1 ? '1:1 (หน่วยเดียวกัน)' : 'แปลงอัตโนมัติเมื่อรับเข้า'}
+                  <span className="text-[11px] text-slate-400 italic">
+                    * ช่วยคำนวณตัดสต็อกแม่นยำอัตโนมัติ
                   </span>
                 </div>
               </div>

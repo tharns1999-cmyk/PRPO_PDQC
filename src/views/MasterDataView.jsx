@@ -219,16 +219,16 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
           <div className="impeccable-card overflow-hidden">
             <div className="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar relative">
               <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-500 font-medium tracking-wide">
-                    <th className="p-4 pl-6">รหัส</th>
-                    <th className="p-4">ชื่อสินค้า</th>
-                    <th className="p-4">แผนก</th>
-                    <th className="p-4">หน่วยนับ</th>
-                    <th className="p-4 text-right">ราคา/หน่วย</th>
-                    <th className="p-4 text-right">ROP</th>
-                    <th className="p-4 text-right">Lead Time</th>
-                    <th className="p-4 text-center pr-6">การกระทำ</th>
+                <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs border-b border-slate-200">
+                  <tr className="text-slate-700 font-bold text-xs uppercase tracking-wider">
+                    <th className="p-4 pl-6 bg-slate-100">รหัส</th>
+                    <th className="p-4 bg-slate-100">ชื่อสินค้า</th>
+                    <th className="p-4 bg-slate-100">แผนก</th>
+                    <th className="p-4 bg-slate-100">หน่วยนับ</th>
+                    <th className="p-4 text-right bg-slate-100">ราคา/หน่วย</th>
+                    <th className="p-4 text-right bg-slate-100">ROP</th>
+                    <th className="p-4 text-right bg-slate-100">Lead Time</th>
+                    <th className="p-4 text-center pr-6 bg-slate-100">การกระทำ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100/80">
@@ -331,14 +331,14 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
           <div className="impeccable-card overflow-hidden">
             <div className="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar relative">
               <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="bg-slate-50/50 border-b border-slate-100 text-slate-500 font-medium tracking-wide">
-                    <th className="p-4 pl-6">รหัส</th>
-                    <th className="p-4">ชื่อผู้ขาย / บริษัท</th>
-                    <th className="p-4">แผนก</th>
-                    <th className="p-4">ผู้ติดต่อ</th>
-                    <th className="p-4">เบอร์โทร</th>
-                    <th className="p-4 text-center pr-6">การกระทำ</th>
+                <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs border-b border-slate-200">
+                  <tr className="text-slate-700 font-bold text-xs uppercase tracking-wider">
+                    <th className="p-4 pl-6 bg-slate-100">รหัส</th>
+                    <th className="p-4 bg-slate-100">ชื่อผู้ขาย / บริษัท</th>
+                    <th className="p-4 bg-slate-100">แผนก</th>
+                    <th className="p-4 bg-slate-100">ผู้ติดต่อ</th>
+                    <th className="p-4 bg-slate-100">เบอร์โทร</th>
+                    <th className="p-4 text-center pr-6 bg-slate-100">การกระทำ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100/80">
