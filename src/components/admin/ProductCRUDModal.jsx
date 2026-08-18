@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { apiService } from '../../services/apiService';
+import { modalService } from '../../services/modalService';
 import { 
   Package, X, Building2, Tag, Layers, MapPin, Hash, 
   Coins, Clock, AlertTriangle, Boxes, Store, Sparkles, Check, Lightbulb,
@@ -70,10 +71,11 @@ export default function ProductCRUDModal({ editProd, vendors = [], currentRole, 
       };
 
       await apiService.saveProduct(prodObj);
+      modalService.success('บันทึกสินค้าเรียบร้อย', `บันทึกข้อมูลสินค้า "${prodObj.name}" สำเร็จ`);
       onClose();
       onRefresh();
     } catch (err) {
-      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + err.message);
+      modalService.error('เกิดข้อผิดพลาดในการบันทึกข้อมูล', err.message);
     } finally {
       setIsSaving(false);
     }

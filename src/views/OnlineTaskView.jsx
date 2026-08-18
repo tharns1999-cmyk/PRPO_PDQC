@@ -8,6 +8,7 @@ import {
 import EmptyState from '../components/common/EmptyState';
 import AttachmentViewerModal from '../components/common/AttachmentViewerModal';
 import PODetailsModal from '../components/po/PODetailsModal';
+import { modalService } from '../services/modalService';
 
 export default function OnlineTaskView({ currentRole, onRefresh }) {
   const [pos, setPOs] = useState([]);
@@ -480,16 +481,16 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
 
   const handleAcknowledgeAndOrder = async () => {
     if (!vendorName.trim()) {
-      return alert('กรุณาระบุชื่อร้านค้าออนไลน์ / ช่องทางที่สั่งซื้อ (เช่น Shopee ร้าน ABC, Lazada Official)');
+      return modalService.warning('กรุณาระบุชื่อร้านค้าออนไลน์ / ช่องทางที่สั่งซื้อ (เช่น Shopee ร้าน ABC, Lazada Official)');
     }
 
     // Validate inputs
     for (let it of items) {
       if (it.unitPrice === '' || Number(it.unitPrice) < 0) {
-        return alert(`กรุณาระบุราคาต่อหน่วยของ "${it.name}" ให้ถูกต้อง`);
+        return modalService.warning(`กรุณาระบุราคาต่อหน่วยของ "${it.name}" ให้ถูกต้อง`);
       }
       if (!it.purchaseQty || Number(it.purchaseQty) <= 0) {
-        return alert(`กรุณาระบุจำนวนสั่งซื้อของ "${it.name}" ให้มากกว่า 0`);
+        return modalService.warning(`กรุณาระบุจำนวนสั่งซื้อของ "${it.name}" ให้มากกว่า 0`);
       }
     }
 
@@ -499,17 +500,24 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
     }
     confirmMsg += `\n\nต้องการบันทึกและส่งต่องานใช่หรือไม่?`;
 
-    if (!window.confirm(confirmMsg)) {
+    const confirmed = await modalService.confirm({
+      title: 'ยืนยันการสั่งซื้อสินค้าออนไลน์',
+      message: confirmMsg,
+      confirmText: 'ยืนยันสั่งซื้อแล้ว',
+      cancelText: 'ยกเลิก'
+    });
+
+    if (!confirmed) {
       return;
     }
 
     setIsSubmitting(true);
     try {
       await apiService.acknowledgeOnlineTask(po.id, vendorName.trim(), currentRole, items, varianceNote.trim());
-      alert(`บันทึกการสั่งซื้อสำหรับ PO ${po.poNo} เรียบร้อย! ระบบแจ้งเตือนแผนก ${po.department} ให้รอตรวจรับสินค้า`);
+      await modalService.success('บันทึกการสั่งซื้อเรียบร้อย', `บันทึกการสั่งซื้อสำหรับ PO ${po.poNo} เรียบร้อยแล้ว! ระบบแจ้งเตือนแผนก ${po.department} ให้รอตรวจรับสินค้า`);
       onUpdate();
     } catch (err) {
-      alert('เกิดข้อผิดพลาด: ' + err.message);
+      modalService.error('เกิดข้อผิดพลาดในการบันทึก', err.message);
     } finally {
       setIsSubmitting(false);
     }

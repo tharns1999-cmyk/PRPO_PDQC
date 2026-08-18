@@ -1,7 +1,7 @@
-import { storageService } from './storageService';
-import { PR_STATUS, PO_STATUS, DEPARTMENTS } from '../config/constants';
-import { notificationService } from './notificationService';
-import { auditService } from './auditService';
+import { storageService } from './storageService.js';
+import { PR_STATUS, PO_STATUS, DEPARTMENTS } from '../config/constants.js';
+import { notificationService } from './notificationService.js';
+import { auditService } from './auditService.js';
 
 export const workflowEngine = {
   
@@ -34,45 +34,7 @@ export const workflowEngine = {
       return role.department === 'ALL' || role.department === dept || isAdmin;
     };
 
-    // --- PR Document Action Checks ---
-    if (doc.prNo || !doc.poNo) {
-      const pr = doc;
-
-      // 1. DRAFT or REJECTED_TO_DRAFT:
-      // Only the requester who owns the draft can action it (or Admin)
-      if (['DRAFT', 'REJECTED_TO_DRAFT'].includes(pr.status)) {
-        if (isAdmin) return true;
-        if (role.canSubmitPR && matchesDept(pr.department) && isDocOwner(pr)) {
-          return true;
-        }
-        return false;
-      }
-
-      // 2. SUBMITTED or REJECTED_TO_L2 (Review Level 1 - Asst. Manager):
-      // Only Level 2 Reviewers / Asst Managers (strictly NOT Plant Manager Level 3, NOT Requesters Level 1, NOT Online Purchaser)
-      if (['SUBMITTED', 'REJECTED_TO_L2'].includes(pr.status)) {
-        if (isAdmin) return true;
-        if (isOnlinePurchaser) return false;
-        // Disallow Level 3 (Plant Mgr / Approvers) and Level 1 (Requesters)
-        if (userLevel >= 3 || role.canFinalApprove || userLevel <= 1) return false;
-
-        const isLevel2Reviewer = userLevel === 2 || role.canReview || role.id === 'ASST_MANAGER' || role.id === 'REVIEWER' || role.positionKey === 'REVIEWER' || role.roleId === 'ASST_MANAGER';
-        return isLevel2Reviewer && matchesDept(pr.department);
-      }
-
-      // 3. REVIEWED (Final Approval - Plant Manager):
-      // Only Level 3 Approvers / Plant Managers (strictly NOT Level 2 Asst Managers, NOT Requesters Level 1, NOT Online Purchaser)
-      if (pr.status === 'REVIEWED') {
-        if (isAdmin) return true;
-        if (isOnlinePurchaser) return false;
-        const isLevel3Approver = userLevel >= 3 || role.canFinalApprove || role.id === 'PLANT_MANAGER' || role.id === 'APPROVER' || role.positionKey === 'APPROVER' || role.roleId === 'PLANT_MANAGER';
-        return isLevel3Approver && matchesDept(pr.department);
-      }
-
-      return false;
-    }
-
-    // --- PO Document Action Checks ---
+    // --- 1. PO Document Action Checks (if document is a PO) ---
     if (doc.poNo) {
       const po = doc;
 
@@ -82,16 +44,17 @@ export const workflowEngine = {
       }
 
       // 2. PO Goods Receiving (ORDERED_PENDING_DELIVERY, ISSUED, PARTIAL, IN_DELIVERY):
-      // Belongs to the department requester / staff in that department (or Admin, or doc owner)
+      // ─── PRIMARY RULE: ONLY Requester / Supervisor (Level 1) of that department can receive goods!
+      // Asst. Mgr (Level 2) and Plant Mgr (Level 3) and Online Purchaser CANNOT receive goods.
       if (['ORDERED_PENDING_DELIVERY', 'ISSUED', 'PARTIAL', 'IN_DELIVERY'].includes(po.status)) {
         if (isAdmin) return true;
         if (isOnlinePurchaser) return false;
+        
+        // Strictly disallow Level >= 2 managers (Asst. Mgr, Plant Mgr) from receiving goods
+        if (userLevel >= 2) return false;
 
-        // If this specific user created the PR for this PO
-        if (isDocOwner(po)) return true;
-
-        // Department requester receiving goods
-        if (role.canReceiveGoods && role.department === po.department && userLevel === 1) {
+        // Department requester or supervisor (Level 1) of that department
+        if (userLevel === 1 && matchesDept(po.department)) {
           return true;
         }
 
@@ -99,6 +62,40 @@ export const workflowEngine = {
       }
 
       return false;
+    }
+
+    // --- 2. PR Document Action Checks (if document is a PR) ---
+    const pr = doc;
+
+    // 1. DRAFT or REJECTED_TO_DRAFT:
+    // Only the requester who owns the draft can action it (or Admin)
+    if (['DRAFT', 'REJECTED_TO_DRAFT'].includes(pr.status)) {
+      if (isAdmin) return true;
+      if (role.canSubmitPR && matchesDept(pr.department) && isDocOwner(pr)) {
+        return true;
+      }
+      return false;
+    }
+
+    // 2. SUBMITTED or REJECTED_TO_L2 (Review Level 1 - Asst. Manager):
+    // Only Level 2 Reviewers / Asst Managers (strictly NOT Plant Manager Level 3, NOT Requesters Level 1, NOT Online Purchaser)
+    if (['SUBMITTED', 'REJECTED_TO_L2'].includes(pr.status)) {
+      if (isAdmin) return true;
+      if (isOnlinePurchaser) return false;
+      // Disallow Level 3 (Plant Mgr / Approvers) and Level 1 (Requesters)
+      if (userLevel >= 3 || role.canFinalApprove || userLevel <= 1) return false;
+
+      const isLevel2Reviewer = userLevel === 2 || role.canReview || role.id === 'ASST_MANAGER' || role.id === 'REVIEWER' || role.positionKey === 'REVIEWER' || role.roleId === 'ASST_MANAGER';
+      return isLevel2Reviewer && matchesDept(pr.department);
+    }
+
+    // 3. REVIEWED (Final Approval - Plant Manager):
+    // Only Level 3 Approvers / Plant Managers (strictly NOT Level 2 Asst Managers, NOT Requesters Level 1, NOT Online Purchaser)
+    if (pr.status === 'REVIEWED') {
+      if (isAdmin) return true;
+      if (isOnlinePurchaser) return false;
+      const isLevel3Approver = userLevel >= 3 || role.canFinalApprove || role.id === 'PLANT_MANAGER' || role.id === 'APPROVER' || role.positionKey === 'APPROVER' || role.roleId === 'PLANT_MANAGER';
+      return isLevel3Approver && matchesDept(pr.department);
     }
 
     return false;
@@ -774,8 +771,8 @@ export const workflowEngine = {
       const poNo = isSplit ? `${basePoNo}-${splitCount}` : basePoNo;
       
       const subtotal = items.reduce((sum, item) => sum + (item.price * (item.purchaseQty ?? item.qty)), 0);
-      const vat = pr.purchaseChannel === 'ONLINE' ? 0 : Math.round(subtotal * 0.07);
-      const grandTotal = subtotal + vat;
+      const vat = 0;
+      const grandTotal = subtotal;
 
       const poStatus = pr.purchaseChannel === 'ONLINE' ? 'IN_PROGRESS_ONLINE' : 'ISSUED';
       
@@ -791,21 +788,29 @@ export const workflowEngine = {
         poNo,
         prId: pr.id,
         prNo: pr.prNo,
-        // ─── ส่งต่อ requestedBy จาก PR เพื่อให้ Requester สามารถ trace ownership ของ PO ได้ ───
+        // ─── Snapshot PR ownership data so Requester can always access this PO ───
         requestedBy: pr.requestedBy || '',
+        requesterId: pr.requesterId || null,
+        department: pr.department,
         vendorId: vId,
         vendorName: vName,
-        department: pr.department,
         purchaseChannel: pr.purchaseChannel,
+        onlineLink: pr.onlineLink || null,
+        specUrl: pr.specUrl || null,
         issueDate: new Date().toISOString().split('T')[0],
         deliveryDate: pr.requiredDate,
         status: poStatus,
-        items: items.map(item => ({ 
-          ...item, 
-          receivedQty: 0, 
-          receivedStockQty: 0,
-          actUnitPrice: null 
-        })),
+        items: items.map(item => {
+          const pQty = Number(item.purchaseQty ?? item.qty) || 0;
+          return {
+            ...item,
+            orderedQty: pQty,
+            receivedQty: 0,
+            receivedStockQty: 0,
+            remainingQty: pQty,
+            actUnitPrice: null
+          };
+        }),
         subtotal,
         vat,
         grandTotal,
@@ -864,6 +869,150 @@ export const workflowEngine = {
 
     storageService.savePOs(pos);
     return generatedPOs.length === 1 ? generatedPOs[0] : generatedPOs;
+  },
+
+  // ─── Partial / Full Goods Receiving ──────────────────────────────────────────
+  // receivingItems: Array of { productId, receivedThisTime (in purchaseQty units) }
+  // If all items are fully received → CLOSED. Else → PARTIAL.
+  async receiveGoods(poId, receivingItems, user, note = '') {
+    const pos = storageService.getPOs();
+    const products = storageService.getProducts();
+    const stockLogs = storageService.getStockLogs();
+    const prs = storageService.getPRs();
+    const timestamp = new Date().toLocaleString('th-TH');
+
+    const po = pos.find(p => p.id === poId);
+    if (!po) throw new Error('ไม่พบเอกสาร PO ในระบบ');
+    if (['CLOSED', 'CANCELLED'].includes(po.status)) throw new Error('PO นี้ถูกปิดหรือยกเลิกแล้ว');
+
+    const receiveMap = {};
+    receivingItems.forEach(r => { receiveMap[r.productId] = Number(r.receivedThisTime) || 0; });
+
+    let allFullyReceived = true;
+    const receivedSummaryParts = [];
+
+    po.items.forEach(poItem => {
+      const pQty = Number(poItem.orderedQty ?? poItem.purchaseQty ?? poItem.qty) || 0;
+      const alreadyReceived = Number(poItem.receivedQty) || 0;
+      const remaining = pQty - alreadyReceived;
+      const thisReceive = Math.min(receiveMap[poItem.productId] ?? 0, remaining);
+
+      if (thisReceive <= 0) {
+        if (alreadyReceived < pQty) allFullyReceived = false;
+        return;
+      }
+
+      const rate = Number(poItem.conversionRate) > 0 ? Number(poItem.conversionRate) : 1;
+      const stockReceive = thisReceive * rate;
+
+      poItem.receivedQty = alreadyReceived + thisReceive;
+      poItem.receivedStockQty = (Number(poItem.receivedStockQty) || 0) + stockReceive;
+      poItem.remainingQty = pQty - poItem.receivedQty;
+      poItem.orderedQty = pQty;
+
+      if (poItem.receivedQty < pQty) allFullyReceived = false;
+
+      // Update product stock balance
+      const prodIndex = products.findIndex(p => p.id === poItem.productId);
+      if (prodIndex !== -1) {
+        const prod = products[prodIndex];
+        const currentBal = Number(prod.stockBalance) || 0;
+        const newBal = currentBal + stockReceive;
+        prod.stockBalance = newBal;
+
+        const sUnit = prod.stockUnit || prod.unit || 'ชิ้น';
+        const pUnit = prod.purchaseUnit || prod.unit || sUnit;
+        const logNote = rate > 1
+          ? `รับสินค้า ${thisReceive} ${pUnit} (= ${stockReceive} ${sUnit}) จาก PO ${po.poNo}`
+          : `รับสินค้า ${thisReceive} ${sUnit} จาก PO ${po.poNo}`;
+
+        stockLogs.unshift({
+          id: `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+          date: timestamp,
+          productId: poItem.productId,
+          productCode: poItem.code,
+          type: 'IN',
+          docNo: po.poNo,
+          qty: stockReceive,
+          unit: sUnit,
+          balance: newBal,
+          user: `${user.name} (${user.title})`,
+          note: note || logNote
+        });
+
+        receivedSummaryParts.push(`${poItem.name}: ${thisReceive} ${pUnit}`);
+      }
+    });
+
+    po.status = allFullyReceived ? 'CLOSED' : 'PARTIAL';
+    const summaryNote = receivedSummaryParts.length > 0
+      ? `รับของในรอบนี้: ${receivedSummaryParts.join(', ')}${note ? ` — ${note}` : ''}`
+      : note || 'รับสินค้าบางส่วน';
+
+    po.activityLog.push({
+      action: allFullyReceived ? 'รับสินค้าครบและปิด PO (Goods Received – Closed)' : 'รับสินค้าบางส่วน (Partial Receiving)',
+      user: user.name,
+      role: user.title,
+      timestamp,
+      note: summaryNote
+    });
+
+    auditService.logAction({
+      action: allFullyReceived ? 'GOODS_RECEIVED_PO_CLOSED' : 'GOODS_RECEIVED_PARTIAL',
+      actor: user,
+      department: po.department,
+      docNo: po.poNo,
+      docType: 'PO',
+      details: `${allFullyReceived ? 'ตรวจรับสินค้าครบและปิด PO' : 'ตรวจรับสินค้าบางส่วน'} ${po.poNo}: ${summaryNote}`
+    });
+
+    // If fully closed, also close parent PR
+    if (allFullyReceived) {
+      const pr = prs.find(p => p.id === po.prId);
+      if (pr) {
+        pr.status = 'CLOSED';
+        pr.activityLog.push({
+          action: 'ปิดเอกสาร (Closed)',
+          user: user.name,
+          role: user.title,
+          timestamp,
+          note: `PO ${po.poNo} รับสินค้าครบแล้ว ปิดใบ PR อัตโนมัติ`
+        });
+      }
+      storageService.savePRs(prs);
+
+      notificationService.dispatch({
+        type: 'GOODS_RECEIVED',
+        title: 'รับสินค้าครบแล้ว — ปิด PO เรียบร้อย (+IN)',
+        message: `PO ${po.poNo} รับสินค้าครบทุกรายการแล้ว สต็อกการ์ดถูกอัปเดตเรียบร้อย`,
+        docNo: po.poNo,
+        refDocType: 'PO',
+        refDocId: po.id,
+        department: po.department,
+        targetRoles: [po.department === 'PD' ? 'REQUESTER_PD' : 'REQUESTER_QC', 'ADMIN', 'ASST_MANAGER'],
+        amount: po.grandTotal,
+        actor: user.name
+      });
+    } else {
+      notificationService.dispatch({
+        type: 'GOODS_PARTIAL',
+        title: '⚠️ รับสินค้าบางส่วน — ยังมียอดค้างอยู่',
+        message: `PO ${po.poNo} รับสินค้าบางส่วนแล้ว (${summaryNote}) ยังมีรายการที่รอรับอยู่`,
+        docNo: po.poNo,
+        refDocType: 'PO',
+        refDocId: po.id,
+        department: po.department,
+        targetRoles: [po.department === 'PD' ? 'REQUESTER_PD' : 'REQUESTER_QC', 'ADMIN'],
+        amount: po.grandTotal,
+        actor: user.name
+      });
+    }
+
+    storageService.savePOs(pos);
+    storageService.saveProducts(products);
+    storageService.saveStockLogs(stockLogs);
+
+    return po;
   },
 
   // Update actual price for ONLINE PO and calculate variance

@@ -28,7 +28,7 @@ export default function KPICards({ prs, pos, products, budgetSummary, currentRol
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       {/* Pending PRs Card */}
-      <div className="impeccable-card p-5 sm:p-6 bg-white border border-slate-200/90 hover:border-amber-300 transition-all group flex flex-col justify-between">
+      <div className="impeccable-card p-5 sm:p-6 bg-white hover:border-amber-200 transition-all group flex flex-col justify-between">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">PR รอพิจารณาอนุมัติ</p>
@@ -40,14 +40,14 @@ export default function KPICards({ prs, pos, products, budgetSummary, currentRol
             <Clock className="w-5 h-5" />
           </div>
         </div>
-        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-medium">
+        <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[11px] text-slate-400 font-medium">
           <span>รอ Asst / Plant Mgr</span>
           <span className="text-amber-600 font-bold">Action Queue</span>
         </div>
       </div>
 
       {/* Active POs Card */}
-      <div className="impeccable-card p-5 sm:p-6 bg-white border border-slate-200/90 hover:border-blue-300 transition-all group flex flex-col justify-between">
+      <div className="impeccable-card p-5 sm:p-6 bg-white hover:border-blue-200 transition-all group flex flex-col justify-between">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">PO รอรับเข้าคลัง</p>
@@ -59,14 +59,14 @@ export default function KPICards({ prs, pos, products, budgetSummary, currentRol
             <ShoppingCart className="w-5 h-5" />
           </div>
         </div>
-        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-medium">
+        <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[11px] text-slate-400 font-medium">
           <span>รอส่งมอบสินค้า</span>
           <span className="text-blue-600 font-bold">In Delivery</span>
         </div>
       </div>
 
       {/* Low Stock Warning Card */}
-      <div className="impeccable-card p-5 sm:p-6 bg-white border border-slate-200/90 hover:border-rose-300 transition-all group flex flex-col justify-between">
+      <div className="impeccable-card p-5 sm:p-6 bg-white hover:border-rose-200 transition-all group flex flex-col justify-between">
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">สินค้าแตะจุดสั่งซื้อ (ROP)</p>
@@ -78,14 +78,14 @@ export default function KPICards({ prs, pos, products, budgetSummary, currentRol
             <AlertTriangle className="w-5 h-5" />
           </div>
         </div>
-        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-medium">
+        <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[11px] text-slate-400 font-medium">
           <span>ความเสี่ยงของขาดสต็อก</span>
           <span className="text-rose-600 font-bold">{lowStockCount > 0 ? 'ควรเปิด PR ด่วน' : 'ปกติ'}</span>
         </div>
       </div>
 
       {/* Budget Summary Card */}
-      <div className="impeccable-card p-5 sm:p-6 bg-white border border-slate-200/90 hover:border-emerald-300 transition-all group flex flex-col justify-between">
+      <div className="impeccable-card p-5 sm:p-6 bg-white hover:border-emerald-200 transition-all group flex flex-col justify-between">
         <div>
           <div className="flex items-start justify-between">
             <div className="min-w-0 flex-1 pr-2">

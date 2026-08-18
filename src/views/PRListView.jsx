@@ -73,7 +73,7 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate }) 
         {currentRole.canCreatePR && (
           <button 
             onClick={() => onNavigate('pr-create')}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/30 transition-all hover:-translate-y-0.5"
+            className="btn-impeccable bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 flex items-center justify-center gap-2 border border-slate-900"
           >
             <Plus className="w-4 h-4" />
             สร้างใบ PR ใหม่
@@ -83,55 +83,55 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate }) 
 
       {/* Insight Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="impeccable-card p-5 sm:p-6 bg-white border border-slate-200/90 hover:border-indigo-300 transition-all flex flex-col justify-between">
+        <div className="impeccable-card p-5 sm:p-6 bg-white hover:border-slate-300 transition-all flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">ยอดรวม PR ในตัวกรอง</p>
-              <h3 className="text-2xl font-black text-slate-800 mt-1.5 font-mono tracking-tight">
+              <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">ยอดรวม PR ในตัวกรอง</p>
+              <h3 className="text-2xl font-black text-slate-900 mt-1.5 font-mono tracking-tight">
                 ฿{metrics.totalAmount.toLocaleString()}
               </h3>
             </div>
-            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
+            <div className="p-2.5 bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100">
               <DollarSign className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+          <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-xs">
             <span className="text-slate-400 font-medium">รายการทั้งหมด</span>
-            <span className="text-indigo-700 font-bold">{metrics.totalCount} รายการ</span>
+            <span className="text-slate-700 font-bold">{metrics.totalCount} รายการ</span>
           </div>
         </div>
 
-        <div className="impeccable-card p-5 sm:p-6 bg-white border border-slate-200/90 hover:border-amber-300 transition-all flex flex-col justify-between">
+        <div className="impeccable-card p-5 sm:p-6 bg-white hover:border-amber-200 transition-all flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">รออนุมัติสั่งซื้อ</p>
+              <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">รออนุมัติสั่งซื้อ</p>
               <h3 className="text-2xl font-black text-amber-700 mt-1.5 font-mono tracking-tight">
                 {metrics.pendingCount} <span className="text-xs font-semibold text-slate-400 font-sans">รายการ</span>
               </h3>
             </div>
-            <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100">
+            <div className="p-2.5 bg-amber-50 text-amber-700 rounded-xl border border-amber-200">
               <Clock className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+          <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-xs">
             <span className="text-slate-400 font-medium">มูลค่ารออนุมัติ</span>
             <span className="text-amber-700 font-bold">฿{metrics.pendingAmount.toLocaleString()}</span>
           </div>
         </div>
 
-        <div className="impeccable-card p-5 sm:p-6 bg-white border border-slate-200/90 hover:border-emerald-300 transition-all flex flex-col justify-between">
+        <div className="impeccable-card p-5 sm:p-6 bg-white hover:border-emerald-200 transition-all flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">อนุมัติแล้ว / ออก PO</p>
+              <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">อนุมัติแล้ว / ออก PO</p>
               <h3 className="text-2xl font-black text-emerald-700 mt-1.5 font-mono tracking-tight">
                 {metrics.approvedCount} <span className="text-xs font-semibold text-slate-400 font-sans">รายการ</span>
               </h3>
             </div>
-            <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+            <div className="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200">
               <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+          <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-xs">
             <span className="text-slate-400 font-medium">สถานะ</span>
             <span className="text-emerald-700 font-bold">ผ่านการอนุมัติแล้ว</span>
           </div>
@@ -139,12 +139,12 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate }) 
       </div>
 
       {/* Unified Search & Filter Control Bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs">
         {/* Status Filters */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-50 rounded-xl overflow-x-auto custom-scrollbar">
+        <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar pb-1 lg:pb-0">
           <button 
             onClick={() => setFilterStatus('ALL')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'ALL' ? 'bg-white text-slate-800 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'ALL' ? 'bg-slate-900 text-white shadow-md shadow-slate-900/10' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
           >
             ทั้งหมด
           </button>
@@ -155,7 +155,7 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate }) 
               <button 
                 key={key}
                 onClick={() => setFilterStatus(key)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === key ? 'bg-white text-slate-800 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === key ? 'bg-slate-900 text-white shadow-md shadow-slate-900/10' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
               >
                 {status.label}
               </button>
@@ -164,32 +164,32 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate }) 
         </div>
 
         {/* Right Controls: Dept Filter & Search Input */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           {currentRole.canViewAllDepts && (
-            <div className="relative">
+            <div className="relative min-w-[140px]">
               <select
                 value={deptFilter}
                 onChange={e => setDeptFilter(e.target.value)}
-                className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2.5 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all cursor-pointer"
+                className="impeccable-input cursor-pointer"
               >
                 <option value="ALL">ทุกแผนก</option>
                 <option value="PD">ฝ่ายผลิต (PD)</option>
                 <option value="QC">ควบคุมคุณภาพ (QC)</option>
                 <option value="HR">HR & Admin (HR)</option>
                 <option value="ACCT">ฝ่ายบัญชี (ACCT)</option>
-                <option value="LAB">Microbiology Lab (LAB)</option>
+                <option value="LAB">Micro Lab (LAB)</option>
               </select>
             </div>
           )}
 
-          <div className="relative flex-1 md:w-64">
+          <div className="relative flex-1 sm:w-64 min-w-[200px]">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="ค้นหาเลข PR, ผู้ขอ, สินค้า..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+              className="impeccable-input pl-9 pr-8"
             />
             {searchQuery && (
               <button 
@@ -205,17 +205,17 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate }) 
 
       {/* PR Table */}
       <div className="impeccable-card overflow-hidden">
-        <div className="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar relative">
-          <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs border-b border-slate-200">
-              <tr className="text-slate-700 font-bold text-xs uppercase tracking-wider">
-                <th className="p-4 pl-7 bg-slate-100">เลขที่ PR</th>
-                <th className="p-4 bg-slate-100">ผู้ขอซื้อ / ฝ่าย</th>
-                <th className="p-4 bg-slate-100">รายการสินค้า</th>
-                <th className="p-4 bg-slate-100">ช่องทาง</th>
-                <th className="p-4 text-right bg-slate-100">ยอดรวม</th>
-                <th className="p-4 text-center bg-slate-100">สถานะ</th>
-                <th className="p-4 text-center pr-7 bg-slate-100">การกระทำ</th>
+        <div className="overflow-x-auto overflow-y-auto max-h-[550px] custom-scrollbar relative">
+          <table className="w-full text-left text-sm min-w-[800px]">
+            <thead className="sticky top-0 z-20 shadow-xs">
+              <tr>
+                <th className="impeccable-table-th pl-6">เลขที่ PR</th>
+                <th className="impeccable-table-th">ผู้ขอซื้อ / ฝ่าย</th>
+                <th className="impeccable-table-th w-1/3">รายการสินค้า</th>
+                <th className="impeccable-table-th">ช่องทาง</th>
+                <th className="impeccable-table-th text-right">ยอดรวม</th>
+                <th className="impeccable-table-th text-center">สถานะ</th>
+                <th className="impeccable-table-th text-center pr-6">การกระทำ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80">
@@ -234,9 +234,9 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate }) 
                   const channel = PURCHASE_CHANNEL[pr.purchaseChannel] || PURCHASE_CHANNEL.SELF;
                   
                   return (
-                    <tr key={pr.id} className="hover:bg-slate-50/80 transition-colors group">
-                      <td className="p-5 pl-7">
-                        <div className="font-mono font-medium text-slate-600 flex items-center gap-2">
+                    <tr key={pr.id} className="table-row-impeccable group border-b border-slate-50 last:border-0">
+                      <td className="p-4 pl-6 whitespace-nowrap">
+                        <div className="font-mono font-semibold text-slate-900 flex items-center gap-2">
                           {pr.prNo}
                           {pr.memo && (
                             <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1" title="มี MEMO แนบ">
@@ -244,23 +244,23 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate }) 
                             </span>
                           )}
                         </div>
-                        <div className="text-xs text-slate-400 mt-1">{pr.requestedDate}</div>
+                        <div className="text-[11px] text-slate-500 mt-1">{pr.requestedDate}</div>
                       </td>
-                      <td className="p-5">
-                        <div className="font-semibold text-slate-800">{pr.requestedBy}</div>
-                        <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                      <td className="p-4 whitespace-nowrap">
+                        <div className="font-semibold text-slate-900">{pr.requestedBy}</div>
+                        <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
                           <Building2 className="w-3 h-3 text-slate-400" />
                           <span>{pr.department}</span>
                         </div>
                       </td>
-                      <td className="p-5 text-slate-600">
-                        <div className="font-medium">{pr.items.length} รายการ</div>
-                        <div className="text-xs text-slate-400 truncate max-w-[200px]">
+                      <td className="p-4 text-slate-600">
+                        <div className="font-semibold text-slate-900 whitespace-nowrap">{pr.items.length} รายการ</div>
+                        <div className="text-[11px] text-slate-500 truncate max-w-[200px]">
                           {pr.items.map(i => i.name).join(', ')}
                         </div>
                       </td>
-                      <td className="p-5">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-1 rounded w-max">
+                      <td className="p-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-100 px-2 py-1 rounded-md w-max">
                           {pr.purchaseChannel === 'ONLINE' ? (
                             <ShoppingCart className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                           ) : (
@@ -269,22 +269,22 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate }) 
                           <span>{channel.label}</span>
                         </div>
                       </td>
-                      <td className="p-5 text-right font-semibold text-slate-700">
+                      <td className="p-4 text-right font-semibold text-slate-900 whitespace-nowrap">
                         ฿{pr.totalAmount?.toLocaleString()}
                       </td>
-                      <td className="p-5 text-center">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${PR_STATUS[pr.status]?.color}`}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-current opacity-75"></span>
+                      <td className="p-4 text-center whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-bold border shadow-xs ${PR_STATUS[pr.status]?.color}`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80"></span>
                           {PR_STATUS[pr.status]?.label}
                         </span>
                       </td>
-                      <td className="p-5 pr-7 text-center">
+                      <td className="p-4 pr-6 text-center whitespace-nowrap">
                         <button 
                           onClick={() => setSelectedPR(pr)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all border ${canAction ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-700'}`}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all border shadow-xs cursor-pointer ${canAction ? 'bg-slate-900 text-white border-slate-900 hover:bg-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                         >
                           <FileSearch className="w-4 h-4" />
-                          {canAction ? 'ดำเนินการ' : 'ดูรายละเอียด'}
+                          {canAction ? 'ดำเนินการ' : 'รายละเอียด'}
                         </button>
                       </td>
                     </tr>

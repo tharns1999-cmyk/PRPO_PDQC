@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { PO_STATUS } from '../../config/constants';
 import { apiService } from '../../services/apiService';
 import { storageService } from '../../services/storageService';
+import { modalService } from '../../services/modalService';
 import { 
   Printer, Download, History, XCircle, CheckCircle, AlertTriangle, 
   ExternalLink, ShoppingCart, Info, X, Building2, Calendar, FileText, 
@@ -13,26 +14,92 @@ import AttachmentViewerModal from '../common/AttachmentViewerModal';
 
 export default function PODetailsModal({ selectedPO, currentRole, onClose, onRefresh }) {
   const [isReceiving, setIsReceiving] = useState(false);
+  const [showReceivingPanel, setShowReceivingPanel] = useState(false);
+  const [receivingQtys, setReceivingQtys] = useState({});
+  const [receiveNote, setReceiveNote] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [customVendorName, setCustomVendorName] = useState('');
   const [vendors, setVendors] = useState([]);
   const [viewingAttachment, setViewingAttachment] = useState(null);
 
+  // Pre-fill receiving qtys from remaining quantities
+  const initReceivingQtys = (fillAll = false) => {
+    const qtys = {};
+    selectedPO.items.forEach(item => {
+      const ordered = Number(item.orderedQty ?? item.purchaseQty ?? item.qty) || 0;
+      const received = Number(item.receivedQty) || 0;
+      const remaining = Math.max(0, ordered - received);
+      qtys[item.productId] = fillAll ? remaining : remaining; // default to remaining for convenience
+    });
+    setReceivingQtys(qtys);
+  };
+
   useEffect(() => {
     setVendors(storageService.getVendors());
-  }, []);
+    if (selectedPO?.items) {
+      initReceivingQtys(true);
+    }
+  }, [selectedPO]);
+
+  const handleToggleReceiving = () => {
+    setShowReceivingPanel(p => !p);
+  };
+
+  const handleFillAll = () => initReceivingQtys(true);
+
+  const handleSubmitReceiving = async () => {
+    const receivingItems = selectedPO.items.map(item => ({
+      productId: item.productId,
+      receivedThisTime: Number(receivingQtys[item.productId]) || 0
+    }));
+    const totalReceiving = receivingItems.reduce((s, r) => s + r.receivedThisTime, 0);
+    if (totalReceiving <= 0) return modalService.warning('กรุณาระบุจำนวนที่รับอย่างน้อยหนึ่งรายการ');
+
+    const allRemaining = selectedPO.items.every(item => {
+      const ordered = Number(item.orderedQty ?? item.purchaseQty ?? item.qty) || 0;
+      const received = Number(item.receivedQty) || 0;
+      const remaining = ordered - received;
+      const thisReceive = Number(receivingQtys[item.productId]) || 0;
+      return thisReceive >= remaining;
+    });
+
+    const confirmMsg = allRemaining
+      ? `ยืนยันตรวจรับสินค้าครบทุกรายการ และปิด PO ${selectedPO.poNo} หรือไม่?`
+      : `ยืนยันตรวจรับสินค้าบางส่วนสำหรับ PO ${selectedPO.poNo} หรือไม่? (สถานะจะเป็น PARTIAL และยังมียอดค้างอยู่)`;
+    
+    const confirmed = await modalService.confirm({
+      title: 'ยืนยันการตรวจรับสินค้า',
+      message: confirmMsg,
+      type: allRemaining ? 'success' : 'warning',
+      confirmText: allRemaining ? 'ตรวจรับครบและปิด PO' : 'บันทึกรับบางส่วน',
+      cancelText: 'ยกเลิก'
+    });
+    if (!confirmed) return;
+
+    setIsReceiving(true);
+    try {
+      await apiService.receiveGoods(selectedPO.id, receivingItems, currentRole, receiveNote.trim());
+      await modalService.success('ตรวจรับสินค้าสำเร็จ', `บันทึกการตรวจรับเข้าสต็อกสำหรับ PO ${selectedPO.poNo} เรียบร้อยแล้ว`);
+      onRefresh();
+      onClose();
+    } catch (err) {
+      modalService.error('เกิดข้อผิดพลาดในการตรวจรับ', err.message);
+    } finally {
+      setIsReceiving(false);
+    }
+  };
 
   const handleAssignVendor = async () => {
     let finalVendorId = null;
     let finalVendorName = '';
 
     if (selectedPO.purchaseChannel === 'ONLINE') {
-      if (!customVendorName.trim()) return alert('กรุณาระบุชื่อร้านค้าออนไลน์');
+      if (!customVendorName.trim()) return modalService.warning('กรุณาระบุชื่อร้านค้าออนไลน์');
       finalVendorName = customVendorName.trim();
       finalVendorId = 'ONLINE';
     } else {
-      if (!selectedVendorId) return alert('กรุณาเลือกผู้ขาย');
+      if (!selectedVendorId) return modalService.warning('กรุณาเลือกผู้ขาย');
       finalVendorId = selectedVendorId;
       finalVendorName = vendors.find(v => v.id === selectedVendorId)?.name;
     }
@@ -40,63 +107,62 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     setIsAssigning(true);
     try {
       await apiService.assignVendorToPO(selectedPO.id, finalVendorId, finalVendorName, currentRole);
+      await modalService.success('ระบุผู้ขายสำเร็จ', `กำหนดผู้จัดจำหน่ายสำหรับ PO ${selectedPO.poNo} เรียบร้อย`);
       onRefresh();
       onClose();
     } catch (err) {
-      alert('Error: ' + err.message);
+      modalService.error('เกิดข้อผิดพลาด', err.message);
     } finally {
       setIsAssigning(false);
     }
   };
 
-  const handleReceiveAll = async () => {
-    if (!window.confirm(`ยืนยันการรับสินค้าตามใบสั่งซื้อ ${selectedPO.poNo} เต็มจำนวนทั้งหมดเข้าคลัง?`)) return;
-
-    setIsReceiving(true);
-    try {
-      await apiService.receiveAllGoods(selectedPO.id, currentRole, 'รับสินค้าเข้าคลังเต็มจำนวนจากการกดรับ (Auto Stock-In)');
-      onRefresh();
-      onClose();
-    } catch (err) {
-      alert('Error: ' + err.message);
-    } finally {
-      setIsReceiving(false);
-    }
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const [isCancelling, setIsCancelling] = useState(false);
-
   const handleCancelPO = async () => {
-    const reason = prompt('กรุณาระบุเหตุผลในการยกเลิกใบสั่งซื้อ (PO):');
+    const reason = await modalService.prompt({
+      title: 'ยกเลิกใบสั่งซื้อ (PO)',
+      message: `กรุณาระบุเหตุผลในการยกเลิกใบสั่งซื้อเลขที่ ${selectedPO.poNo}:`,
+      placeholder: 'ระบุเหตุผลในการยกเลิก...',
+      required: true,
+      confirmText: 'ยืนยันยกเลิก PO',
+      cancelText: 'ปิด',
+      type: 'danger'
+    });
     if (!reason || !reason.trim()) return;
 
     setIsCancelling(true);
     try {
       await apiService.cancelPO(selectedPO.id, currentRole, reason.trim());
-      alert('ยกเลิกใบสั่งซื้อเรียบร้อยแล้ว');
+      await modalService.success('ยกเลิกสำเร็จ', `ยกเลิกใบสั่งซื้อ ${selectedPO.poNo} เรียบร้อยแล้ว`);
       if (onRefresh) onRefresh();
       onClose();
     } catch (err) {
-      alert('เกิดข้อผิดพลาด: ' + err.message);
+      modalService.error('เกิดข้อผิดพลาดในการยกเลิก', err.message);
     } finally {
       setIsCancelling(false);
     }
   };
 
+  const handlePrint = () => window.print();
+  const [isCancelling, setIsCancelling] = useState(false);
+
   const isOnlinePurchaser = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER';
   const isPOCancellable = !['CLOSED', 'RECEIVED', 'CANCELLED'].includes(selectedPO.status);
   const canCancelPO = !isOnlinePurchaser && (
-    currentRole?.id === 'ADMIN' || 
-    currentRole?.roleId === 'ADMIN' || 
-    (currentRole?.level && currentRole?.level >= 2) || 
-    currentRole?.canFinalApprove || 
-    currentRole?.canReview || 
+    currentRole?.id === 'ADMIN' ||
+    currentRole?.roleId === 'ADMIN' ||
+    (currentRole?.level && currentRole?.level >= 2) ||
+    currentRole?.canFinalApprove ||
+    currentRole?.canReview ||
     (currentRole?.canReceiveGoods && (currentRole?.canViewAllDepts || currentRole?.department === selectedPO.department))
   );
+
+  // Requester / Supervisor can receive goods (level 1, same dept, or admin)
+  const canReceiveGoods = !isOnlinePurchaser && (
+    currentRole?.id === 'ADMIN' ||
+    currentRole?.roleId === 'ADMIN' ||
+    (Number(currentRole?.level) === 1 && (currentRole?.department === 'ALL' || currentRole?.department === selectedPO.department))
+  );
+  const isReceivable = ['ISSUED', 'ORDERED_PENDING_DELIVERY', 'PARTIAL', 'IN_DELIVERY'].includes(selectedPO.status);
 
   const statusInfo = PO_STATUS[selectedPO.status] || { label: selectedPO.status, color: 'bg-slate-100 text-slate-700 border-slate-200' };
 
@@ -106,10 +172,10 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
         <PrintablePO po={selectedPO} />
       </div>
       <div className="fixed inset-0 glass-backdrop z-[60] flex items-center justify-center p-3 sm:p-4 print:hidden animate-fade-in">
-        <div className="modal-content w-full max-w-4xl max-h-[92vh] bg-white rounded-3xl shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col text-slate-800 animate-zoom-in">
+        <div className="modal-content w-full max-w-4xl max-h-[92vh] bg-white rounded-2xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col text-slate-800 animate-zoom-in">
           
           {/* ── Header (Clean Executive Ribbon) ── */}
-          <div className="flex-shrink-0 border-b border-slate-100 p-5 sm:p-6 bg-slate-50/50">
+          <div className="flex-shrink-0 border-b border-slate-200 p-5 sm:p-6 bg-slate-50/80">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-2 flex-1 min-w-0">
                 <div className="flex items-center gap-3 flex-wrap">
@@ -163,7 +229,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
           </div>
 
           {/* ── Content (Scrollable) ── */}
-          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 custom-scrollbar bg-slate-50/30">
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 custom-scrollbar bg-slate-100/40">
             
             {/* Vendor & Dates Section */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
@@ -270,14 +336,14 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-100/60 text-slate-500 font-bold border-b border-slate-100">
+                  <thead className="shadow-xs">
                     <tr>
-                      <th className="p-3 pl-4">รหัสสินค้า</th>
-                      <th className="p-3">ชื่อสินค้า</th>
-                      <th className="p-3 text-center">จำนวนสั่งซื้อ</th>
-                      <th className="p-3 text-center">รับแล้ว</th>
-                      <th className="p-3 text-right">ราคา/หน่วย (฿)</th>
-                      <th className="p-3 text-right pr-4">รวมเงิน (฿)</th>
+                      <th className="impeccable-table-th pl-4">รหัสสินค้า</th>
+                      <th className="impeccable-table-th">ชื่อสินค้า</th>
+                      <th className="impeccable-table-th text-center">จำนวนสั่งซื้อ</th>
+                      <th className="impeccable-table-th text-center">รับแล้ว</th>
+                      <th className="impeccable-table-th text-right">ราคา/หน่วย (฿)</th>
+                      <th className="impeccable-table-th text-right pr-4">รวมเงิน (฿)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -292,15 +358,15 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                       const isQtyChanged = item.originalPurchaseQty && Number(item.originalPurchaseQty) !== Number(pQty);
 
                       return (
-                        <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
-                          <td className="p-3 pl-4 font-mono font-bold text-slate-500 text-[11px]">{item.code || '-'}</td>
+                        <tr key={idx} className="table-row-impeccable border-b border-slate-50 last:border-0">
+                          <td className="p-3 pl-4 font-mono font-bold text-slate-500 text-[11px] whitespace-nowrap">{item.code || '-'}</td>
                           <td className="p-3">
                             <div className="font-bold text-slate-800 text-xs">{item.name}</div>
                             {rate > 1 && (
                               <div className="text-[10px] text-slate-400 font-mono mt-0.5">1 {pUnit} = {rate} {sUnit}</div>
                             )}
                           </td>
-                          <td className="p-3 text-center">
+                          <td className="p-3 text-center whitespace-nowrap">
                             <div>
                               <span className="font-bold text-slate-800 font-mono">{Number(pQty).toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>{' '}
                               <span className="text-slate-500">{pUnit}</span>
@@ -312,18 +378,18 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                               )}
                             </div>
                           </td>
-                          <td className="p-3 text-center">
+                          <td className="p-3 text-center whitespace-nowrap">
                             <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono ${item.receivedQty >= pQty ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                               {Number(item.receivedQty || 0).toLocaleString()} {pUnit}
                             </span>
                           </td>
-                          <td className="p-3 text-right">
+                          <td className="p-3 text-right whitespace-nowrap">
                             <div className="font-mono text-slate-700">฿{Number(price).toLocaleString()}</div>
                             {isPriceChanged && (
                               <div className="text-[10px] text-amber-600 font-mono line-through">เดิม ฿{Number(item.originalEstimatedPrice).toLocaleString()}</div>
                             )}
                           </td>
-                          <td className="p-3 text-right font-mono font-bold text-slate-900 pr-4">
+                          <td className="p-3 text-right font-mono font-bold text-slate-900 pr-4 whitespace-nowrap">
                             ฿{(item.total || (price * pQty))?.toLocaleString()}
                           </td>
                         </tr>
@@ -331,14 +397,18 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                     })}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-slate-50/60 border-t border-slate-200">
-                      <td colSpan="5" className="p-2.5 text-right font-medium text-slate-500 text-xs">มูลค่ารวม (Sub Total):</td>
-                      <td className="p-2.5 text-right font-bold font-mono text-slate-800 pr-4">฿{selectedPO.subtotal?.toLocaleString()}</td>
-                    </tr>
-                    <tr className="bg-slate-50/60">
-                      <td colSpan="5" className="p-2.5 text-right font-medium text-slate-500 text-xs">ภาษีมูลค่าเพิ่ม (VAT 7%):</td>
-                      <td className="p-2.5 text-right font-bold font-mono text-slate-800 pr-4">฿{selectedPO.vat?.toLocaleString()}</td>
-                    </tr>
+                    {selectedPO.vat > 0 ? (
+                      <>
+                        <tr className="bg-slate-50/60 border-t border-slate-200">
+                          <td colSpan="5" className="p-2.5 text-right font-medium text-slate-500 text-xs">มูลค่ารวม (Sub Total):</td>
+                          <td className="p-2.5 text-right font-bold font-mono text-slate-800 pr-4">฿{selectedPO.subtotal?.toLocaleString()}</td>
+                        </tr>
+                        <tr className="bg-slate-50/60">
+                          <td colSpan="5" className="p-2.5 text-right font-medium text-slate-500 text-xs">ภาษีมูลค่าเพิ่ม (VAT 7%):</td>
+                          <td className="p-2.5 text-right font-bold font-mono text-slate-800 pr-4">฿{selectedPO.vat?.toLocaleString()}</td>
+                        </tr>
+                      </>
+                    ) : null}
                     <tr className="bg-indigo-50/60 border-t border-indigo-100">
                       <td colSpan="5" className="p-3 text-right font-bold text-indigo-900 text-xs">ยอดเงินสุทธิ (Grand Total):</td>
                       <td className="p-3 text-right font-black font-mono text-indigo-700 text-base pr-4">฿{selectedPO.grandTotal?.toLocaleString()}</td>
@@ -347,6 +417,79 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                 </table>
               </div>
             </div>
+
+            {/* ─── Goods Receiving Panel ─── */}
+            {canReceiveGoods && isReceivable && showReceivingPanel && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-emerald-900 flex items-center gap-2">
+                    <Download className="w-4 h-4 text-emerald-600" />
+                    ตรวจรับสินค้าเข้าคลัง (Goods Receiving)
+                  </span>
+                  <button
+                    onClick={handleFillAll}
+                    className="text-xs font-bold px-3 py-1.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors cursor-pointer"
+                  >
+                    รับทั้งหมด (Fill All Remaining)
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {selectedPO.items.map((item, idx) => {
+                    const ordered = Number(item.orderedQty ?? item.purchaseQty ?? item.qty) || 0;
+                    const received = Number(item.receivedQty) || 0;
+                    const remaining = ordered - received;
+                    const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
+                    return (
+                      <div key={idx} className="bg-white rounded-xl p-3 border border-emerald-100 flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-800 truncate">{item.name}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            สั่ง: <span className="font-mono font-bold">{ordered}</span> / 
+                            รับแล้ว: <span className="font-mono font-bold text-emerald-600">{received}</span> / 
+                            คงเหลือ: <span className="font-mono font-bold text-amber-600">{remaining}</span> {pUnit}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <label className="text-[11px] font-bold text-slate-500รับครั้งนี้:">
+                            รับครั้งนี้:
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={remaining}
+                            step="any"
+                            value={receivingQtys[item.productId] ?? 0}
+                            onChange={e => setReceivingQtys(prev => ({ ...prev, [item.productId]: Number(e.target.value) }))}
+                            disabled={remaining <= 0}
+                            className="w-24 text-center text-xs font-mono font-bold bg-white border border-emerald-300 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 disabled:bg-slate-100 disabled:text-slate-400 transition-all"
+                          />
+                          <span className="text-xs text-slate-500">{pUnit}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                  <input
+                    type="text"
+                    value={receiveNote}
+                    onChange={e => setReceiveNote(e.target.value)}
+                    placeholder="หมายเหตุ (เพิ่มเติม เช่น สภาพสมบูรณ์, ตรวจสอบคุณภาพแล้ว)"
+                    className="flex-1 text-xs bg-white border border-emerald-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
+                  />
+                  <button
+                    onClick={handleSubmitReceiving}
+                    disabled={isReceiving}
+                    className="whitespace-nowrap px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {isReceiving ? 'กำลังบันทึก...' : 'บันทึกการรับของ'}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Activity Log Timeline */}
             <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3">
@@ -418,20 +561,25 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                   ปิดหน้าต่าง
                 </button>
 
-                {/* Only show "สั่งซื้อเรียบร้อย" if PO is ISSUED or IN_PROGRESS_ONLINE */}
-                {(selectedPO.status === 'ISSUED' || selectedPO.status === 'IN_PROGRESS_ONLINE') && 
+                {/* Online Purchaser: Mark as ordered */}
+                {(selectedPO.status === 'ISSUED' || selectedPO.status === 'IN_PROGRESS_ONLINE') &&
                  (currentRole.id === 'ADMIN' || currentRole.canOnlinePurchase || currentRole.roleId === 'ONLINE_PURCHASER') && (
                   <button
                     onClick={async () => {
                       const targetStatus = selectedPO.purchaseChannel === 'ONLINE' ? 'ORDERED_PENDING_DELIVERY' : 'IN_DELIVERY';
-                      if (window.confirm(`ยืนยันบันทึกว่าสั่งซื้อสินค้าเรียบร้อยแล้วสำหรับ PO ${selectedPO.poNo} ใช่หรือไม่?`)) {
+                      const confirmed = await modalService.confirm({
+                        title: 'ยืนยันการสั่งซื้อสินค้า',
+                        message: `ยืนยันบันทึกว่าสั่งซื้อสินค้าเรียบร้อยแล้วสำหรับ PO ${selectedPO.poNo} หรือไม่?`,
+                        confirmText: 'ยืนยันสั่งซื้อแล้ว',
+                        cancelText: 'ยกเลิก'
+                      });
+                      if (confirmed) {
                         try {
                           await apiService.updatePOStatus(selectedPO.id, targetStatus, currentRole);
+                          await modalService.success('บันทึกสั่งซื้อแล้ว', `บันทึกสถานะ PO ${selectedPO.poNo} เป็นกำลังจัดส่งเรียบร้อย`);
                           onRefresh();
                           onClose();
-                        } catch (err) {
-                          alert('Error: ' + err.message);
-                        }
+                        } catch (err) { modalService.error('เกิดข้อผิดพลาด', err.message); }
                       }
                     }}
                     disabled={!selectedPO.vendorId}
@@ -442,15 +590,18 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                   </button>
                 )}
 
-                {/* Authorized staff receive goods & close PO */}
-                {!isOnlinePurchaser && (currentRole.id === 'ADMIN' || currentRole.roleId === 'ASST_MANAGER' || (currentRole.canReceiveGoods && (currentRole.canViewAllDepts || currentRole.department === selectedPO.department))) && selectedPO.status !== 'CLOSED' && selectedPO.status !== 'CANCELLED' && (
+                {/* Requester: Toggle goods receiving panel */}
+                {canReceiveGoods && isReceivable && (
                   <button
-                    onClick={handleReceiveAll}
-                    disabled={isReceiving}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 disabled:bg-slate-400 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                    onClick={handleToggleReceiving}
+                    className={`px-4 py-2 text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                      showReceivingPanel
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                    }`}
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>{isReceiving ? 'กำลังบันทึก...' : 'รับเข้าคลัง & ปิด PO'}</span>
+                    <span>{showReceivingPanel ? 'ซ่อนฟอร์มรับสินค้า' : 'รับสินค้าเข้าคลัง (+IN)'}</span>
                   </button>
                 )}
 

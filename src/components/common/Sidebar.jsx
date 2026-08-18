@@ -60,24 +60,24 @@ export default function Sidebar({
   const renderNavContent = (onItemClick = null) => (
     <>
       {/* Logo & System Title */}
-      <div className="flex items-center justify-between mb-5 px-1.5 pt-1 pb-3.5 border-b border-slate-800/80">
-        <div className="flex items-center gap-2.5 overflow-hidden">
-          <div className="bg-gradient-to-tr from-indigo-500 to-indigo-600 p-2.5 rounded-2xl shadow-lg shadow-indigo-500/30 shrink-0">
+      <div className="flex items-center justify-between mb-6 px-2 pt-2 pb-5 border-b border-slate-800/80">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <div className="bg-gradient-to-tr from-indigo-600 to-indigo-500 p-2.5 rounded-xl shadow-md shadow-indigo-600/20 shrink-0">
             <Factory className="w-5 h-5 text-white" />
           </div>
           <div className="overflow-hidden">
-            <h1 className="font-bold text-sm tracking-tight text-white leading-tight truncate">
+            <h1 className="font-bold text-[15px] tracking-tight text-white leading-tight truncate">
               ระบบ PR/PO & คลัง
             </h1>
-            <span className="text-[11px] text-indigo-300 font-medium block truncate mt-0.5">
-              {isOnlinePurchaser ? 'จัดซื้อออนไลน์' : 'ควบคุมงาน PD & QC'}
+            <span className="text-[11px] text-slate-400 font-medium block truncate mt-0.5">
+              {isOnlinePurchaser ? 'ส่วนงานจัดซื้อออนไลน์' : 'ควบคุมงานฝ่ายผลิต & QC'}
             </span>
           </div>
         </div>
         {onItemClick && (
           <button 
             onClick={onCloseMobile}
-            className="md:hidden p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+            className="md:hidden p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
             aria-label="Close menu"
           >
             <X className="w-5 h-5" />
@@ -86,9 +86,9 @@ export default function Sidebar({
       </div>
 
       {/* ── Navigation Links ── */}
-      <nav className="space-y-1 flex-1 overflow-y-auto pr-1 custom-scrollbar">
-        <div className="px-2 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-          {isOnlinePurchaser ? 'เมนูจัดซื้อ' : 'เมนูหลัก'}
+      <nav className="space-y-1.5 flex-1 overflow-y-auto pr-1 custom-scrollbar">
+        <div className="px-3 pb-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+          {isOnlinePurchaser ? 'เมนูจัดซื้อ (Purchasing)' : 'เมนูหลัก (Main Menu)'}
         </div>
         {menuItems.filter(item => item.visible).map(item => {
           const Icon = item.icon;
@@ -100,20 +100,22 @@ export default function Sidebar({
                 setActiveView(item.id);
                 if (onItemClick) onItemClick();
               }}
-              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl font-semibold text-xs sm:text-[13px] transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer border ${
                 isActive
-                  ? isOnlinePurchaser 
-                    ? 'bg-violet-600 text-white shadow-md shadow-violet-500/25 font-bold translate-x-0.5'
-                    : 'bg-indigo-600 text-white shadow-md shadow-indigo-500/25 font-bold translate-x-0.5'
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white hover:translate-x-0.5'
+                  ? 'bg-indigo-600 text-white font-bold border-indigo-500 shadow-md shadow-indigo-600/25'
+                  : 'text-slate-400 border-transparent hover:bg-slate-800/80 hover:text-slate-100'
               }`}
             >
-              <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="flex items-center gap-3 overflow-hidden">
                 <Icon className={`w-4.5 h-4.5 shrink-0 transition-colors ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                <span className="truncate">{item.label}</span>
+                <span className={`truncate ${isActive ? 'font-bold text-white' : 'font-medium'}`}>{item.label}</span>
               </div>
               {item.badge && (
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isActive ? 'bg-white text-violet-600' : 'bg-rose-500 text-white shadow-sm shadow-rose-500/30'} animate-pulse-slow`}>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  isActive 
+                    ? 'bg-white/20 text-white' 
+                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                } animate-pulse-slow`}>
                   {item.badge}
                 </span>
               )}
@@ -123,17 +125,17 @@ export default function Sidebar({
       </nav>
 
       {/* Footer info */}
-      <div className="mt-auto pt-3 border-t border-slate-800/60">
+      <div className="mt-auto pt-4 border-t border-slate-800/80">
         {!isOnlinePurchaser && !currentRole.canViewBudget && (
-          <div className="p-2.5 bg-slate-800/40 rounded-xl border border-slate-700/30 text-[11px] text-slate-400 flex items-start gap-2">
-            <ShieldAlert className="w-3.5 h-3.5 text-amber-500/80 shrink-0 mt-0.5" />
-            <span className="leading-snug">สิทธิ์ Supervisor ไม่เห็นงบประมาณ</span>
+          <div className="p-3 bg-slate-800/60 rounded-xl border border-slate-700/60 text-[11px] text-slate-400 flex items-start gap-2.5">
+            <ShieldAlert className="w-4 h-4 text-slate-400 shrink-0" />
+            <span className="leading-relaxed">สิทธิ์ส่วนงานนี้ ไม่สามารถเข้าถึงข้อมูลงบประมาณได้</span>
           </div>
         )}
         {isOnlinePurchaser && (
-          <div className="p-2.5 bg-violet-950/40 rounded-xl border border-violet-800/30 text-[11px] text-violet-300 flex items-start gap-2">
-            <ShoppingBag className="w-3.5 h-3.5 text-violet-400 shrink-0 mt-0.5" />
-            <span className="leading-snug">ฝ่ายจัดซื้อออนไลน์</span>
+          <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700 text-[11px] text-slate-300 flex items-start gap-2.5">
+            <ShoppingBag className="w-4 h-4 text-slate-400 shrink-0" />
+            <span className="leading-relaxed">ระบบสำหรับการจัดซื้อช่องทางออนไลน์</span>
           </div>
         )}
       </div>
@@ -143,7 +145,7 @@ export default function Sidebar({
   return (
     <>
       {/* ── Desktop Sidebar (Fixed Left) ── */}
-      <aside className="w-60 bg-slate-900 border-r border-slate-800 shrink-0 h-screen fixed left-0 top-0 flex-col p-3.5 no-print z-40 hidden md:flex shadow-2xl shadow-slate-900/50">
+      <aside className="w-64 bg-slate-900 border-r border-slate-800 shrink-0 h-screen fixed left-0 top-0 flex flex-col p-4 no-print z-40 hidden md:flex text-slate-200">
         {renderNavContent()}
       </aside>
 
@@ -152,12 +154,12 @@ export default function Sidebar({
         <div className="fixed inset-0 z-50 md:hidden flex no-print animate-fade-in">
           {/* Backdrop Overlay */}
           <div 
-            className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity"
             onClick={onCloseMobile}
           />
 
           {/* Drawer Container */}
-          <aside className="relative w-72 max-w-[85vw] bg-slate-900 h-full flex flex-col p-4 shadow-2xl z-10 animate-slide-in-left border-r border-slate-800">
+          <aside className="relative w-[280px] max-w-[85vw] bg-slate-900 border-r border-slate-800 h-full flex flex-col p-5 shadow-2xl z-10 animate-slide-in-left text-slate-200">
             {renderNavContent(onCloseMobile)}
           </aside>
         </div>

@@ -35,13 +35,13 @@ export default function LowStockTable({ products, onQuickPR }) {
         <div className="overflow-x-auto overflow-y-auto max-h-[400px] custom-scrollbar relative">
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead>
-              <tr className="bg-slate-50/80 text-slate-500 text-xs font-semibold uppercase tracking-wider border-b border-slate-100">
-                <th className="py-4 pl-6">รหัสสินค้า</th>
-                <th className="py-4">ชื่อสินค้า</th>
-                <th className="py-4">ฝ่าย</th>
-                <th className="py-4 text-right">คงเหลือจริง</th>
-                <th className="py-4 text-right">จุดสั่งซื้อ (ROP)</th>
-                <th className="py-4 text-center pr-6">ดำเนินการ</th>
+              <tr className="border-b border-slate-200">
+                <th className="impeccable-table-th pl-6">รหัสสินค้า</th>
+                <th className="impeccable-table-th">ชื่อสินค้า</th>
+                <th className="impeccable-table-th">ฝ่าย</th>
+                <th className="impeccable-table-th text-right">คงเหลือจริง</th>
+                <th className="impeccable-table-th text-right">จุดสั่งซื้อ (ROP)</th>
+                <th className="impeccable-table-th text-center pr-6">ดำเนินการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

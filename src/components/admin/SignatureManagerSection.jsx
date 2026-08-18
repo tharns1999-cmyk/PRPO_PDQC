@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { storageService } from '../../services/storageService';
+import { modalService } from '../../services/modalService';
 import { PenTool, CheckCircle, AlertTriangle, Upload, Trash2, Plus, RefreshCw, ShieldCheck, X } from 'lucide-react';
 
 const APPROVER_ROLES = [
@@ -25,7 +26,7 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('กรุณาเลือกไฟล์รูปภาพ (PNG, JPG, SVG)');
+      modalService.warning('กรุณาเลือกไฟล์รูปภาพ (PNG, JPG, SVG)');
       return;
     }
 
@@ -38,7 +39,7 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
 
   const handleSaveSignature = () => {
     if (!selectedRole || !uploadPreview) {
-      alert('กรุณาเลือกรูปภาพลายเซ็น');
+      modalService.warning('กรุณาเลือกรูปภาพลายเซ็น');
       return;
     }
 
@@ -49,16 +50,25 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
     });
 
     refreshSignatures();
+    modalService.success('บันทึกสำเร็จ', `บันทึกภาพลายเซ็นสำหรับ ${selectedRole.name} เรียบร้อยแล้ว`);
     setSelectedRole(null);
     setUploadPreview('');
     if (onRefresh) onRefresh();
-    alert(`บันทึกภาพลายเซ็นสำหรับ ${selectedRole.name} เรียบร้อยแล้ว`);
   };
 
-  const handleDeleteSignature = (roleId, roleName) => {
-    if (!window.confirm(`ยืนยันการลบลายเซ็นของ ${roleName}? (เมื่อลบแล้ว ระบบจะบล็อกไม่อนุญาตให้ผู้ใช้ท่านนี้อนุมัติจนกว่าจะตั้งค่าใหม่)`)) return;
+  const handleDeleteSignature = async (roleId, roleName) => {
+    const confirmed = await modalService.confirm({
+      title: 'ยืนยันการลบลายเซ็น',
+      message: `ยืนยันการลบลายเซ็นของ ${roleName} หรือไม่?\n(เมื่อลบแล้ว ระบบจะบล็อกไม่อนุญาตให้ผู้ใช้ท่านนี้อนุมัติจนกว่าจะตั้งค่าใหม่)`,
+      type: 'error',
+      confirmText: 'ลบลายเซ็น',
+      cancelText: 'ยกเลิก'
+    });
+    if (!confirmed) return;
+
     storageService.deleteSignatureForRole(roleId);
     refreshSignatures();
+    modalService.success('ลบลายเซ็นสำเร็จ', `ลบลายเซ็นของ ${roleName} เรียบร้อยแล้ว`);
     if (onRefresh) onRefresh();
   };
 

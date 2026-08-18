@@ -4,6 +4,7 @@ import { PR_STATUS } from '../../config/constants';
 import { apiService } from '../../services/apiService';
 import { storageService } from '../../services/storageService';
 import { workflowEngine } from '../../services/workflowEngine';
+import { modalService } from '../../services/modalService';
 import { 
   ExternalLink, History, ShieldCheck, CheckCircle2, XCircle, 
   Trash2, Send, Edit3, Save, RotateCcw, AlertTriangle, Layers, 
@@ -62,7 +63,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
 
   const handleSaveItemsEdit = async () => {
     if (!editReason.trim()) {
-      alert('กรุณาระบุเหตุผลการแก้ไขรายการสินค้า');
+      modalService.warning('กรุณาระบุเหตุผลการแก้ไขรายการสินค้า');
       return;
     }
     setIsSavingItems(true);
@@ -71,9 +72,9 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
       setIsEditingItems(false);
       setEditReason('');
       onRefresh();
-      alert('บันทึกการแก้ไขรายการสินค้าเรียบร้อย');
+      modalService.success('บันทึกสำเร็จ', 'บันทึกการแก้ไขรายการสินค้าเรียบร้อย');
     } catch (err) {
-      alert('เกิดข้อผิดพลาด: ' + err.message);
+      modalService.error('เกิดข้อผิดพลาด', err.message);
     } finally {
       setIsSavingItems(false);
     }
@@ -94,30 +95,38 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
       onClose();
       onRefresh();
     } catch (err) {
-      alert('เกิดข้อผิดพลาด: ' + err.message);
+      modalService.error('เกิดข้อผิดพลาด', err.message);
     }
   };
 
   const requestSignature = (actionText, nextStatus, isSubmit = false, isReject = false) => {
     if (isReject && !actionNote.trim()) {
-      alert('กรุณาระบุเหตุผลการปฏิเสธ / ส่งกลับ ในช่องหมายเหตุด้านล่าง');
+      modalService.warning('กรุณาระบุเหตุผลการปฏิเสธ / ส่งกลับ ในช่องหมายเหตุด้านล่าง');
       return;
     }
     setSigModalConfig({ actionText, nextStatus, isSubmit, isReject });
   };
 
   const handleCancelPR = async () => {
-    const reason = prompt('กรุณาระบุเหตุผลในการยกเลิกใบขอซื้อ (PR):');
+    const reason = await modalService.prompt({
+      title: 'ยกเลิกใบขอซื้อ (PR)',
+      message: `กรุณาระบุเหตุผลในการยกเลิกใบขอซื้อเลขที่ ${selectedPR.prNo}:`,
+      placeholder: 'ระบุเหตุผลในการยกเลิก...',
+      required: true,
+      confirmText: 'ยืนยันยกเลิก PR',
+      cancelText: 'ปิด',
+      type: 'danger'
+    });
     if (!reason || !reason.trim()) return;
 
     setIsCancelling(true);
     try {
       await apiService.cancelPR(selectedPR.id, currentRole, reason.trim());
-      alert('ยกเลิกใบขอซื้อเรียบร้อยแล้ว');
+      await modalService.success('ยกเลิกสำเร็จ', `ยกเลิกใบขอซื้อ ${selectedPR.prNo} เรียบร้อยแล้ว`);
       if (onRefresh) onRefresh();
       onClose();
     } catch (err) {
-      alert('เกิดข้อผิดพลาด: ' + err.message);
+      modalService.error('เกิดข้อผิดพลาดในการยกเลิก', err.message);
     } finally {
       setIsCancelling(false);
     }
@@ -136,10 +145,10 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
 
   return createPortal(
     <div className="fixed inset-0 glass-backdrop z-[60] flex items-center justify-center p-3 sm:p-4 print:hidden animate-fade-in">
-      <div className="modal-content w-full max-w-4xl max-h-[92vh] bg-white rounded-3xl shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col text-slate-800 animate-zoom-in">
+      <div className="modal-content w-full max-w-4xl max-h-[92vh] bg-white rounded-2xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col text-slate-800 animate-zoom-in">
         
         {/* ── Header (Clean Executive Ribbon) ── */}
-        <div className="flex-shrink-0 border-b border-slate-100 p-5 sm:p-6 bg-slate-50/50">
+        <div className="flex-shrink-0 border-b border-slate-200 p-5 sm:p-6 bg-slate-50/80">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-2 flex-1 min-w-0">
               <div className="flex items-center gap-3 flex-wrap">
@@ -196,7 +205,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
         </div>
 
         {/* ── Content Body (Scrollable) ── */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 custom-scrollbar bg-slate-50/30">
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 custom-scrollbar bg-slate-100/40">
           
           {/* Split PO Banner */}
           {relatedPOs.length > 0 && (
@@ -370,13 +379,13 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100/60 text-slate-500 font-bold border-b border-slate-100">
+                <thead className="shadow-xs">
                   <tr>
-                    <th className="p-3 pl-4">รหัสสินค้า</th>
-                    <th className="p-3">ชื่อสินค้า / สเปก</th>
-                    <th className="p-3 text-center">จำนวนขอซื้อ</th>
-                    <th className="p-3 text-right">ราคา/หน่วย (฿)</th>
-                    <th className="p-3 text-right pr-4">รวมเงิน (฿)</th>
+                    <th className="impeccable-table-th pl-4">รหัสสินค้า</th>
+                    <th className="impeccable-table-th">ชื่อสินค้า / สเปก</th>
+                    <th className="impeccable-table-th text-center">จำนวนขอซื้อ</th>
+                    <th className="impeccable-table-th text-right">ราคา/หน่วย (฿)</th>
+                    <th className="impeccable-table-th text-right pr-4">รวมเงิน (฿)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -388,8 +397,8 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                     const sQty = item.stockQty ?? (pQty * rate);
 
                     return (
-                      <tr key={idx} className={`hover:bg-slate-50/60 transition-colors ${isEditingItems ? 'bg-amber-50/20' : ''}`}>
-                        <td className="p-3 pl-4 font-mono font-bold text-slate-500 text-[11px]">{item.code || '-'}</td>
+                      <tr key={idx} className={`table-row-impeccable border-b border-slate-50 last:border-0 ${isEditingItems ? 'bg-amber-50/20 hover:bg-amber-50/50' : ''}`}>
+                        <td className="p-3 pl-4 font-mono font-bold text-slate-500 text-[11px] whitespace-nowrap">{item.code || '-'}</td>
                         <td className="p-3">
                           <div className="font-bold text-slate-800 text-xs">{item.name}</div>
                           {isEditingItems ? (
@@ -420,7 +429,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                             )
                           )}
                         </td>
-                        <td className="p-3 text-center">
+                        <td className="p-3 text-center whitespace-nowrap">
                           {isEditingItems ? (
                             <div className="flex items-center justify-center gap-1">
                               <input
@@ -445,7 +454,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                             </div>
                           )}
                         </td>
-                        <td className="p-3 text-right">
+                        <td className="p-3 text-right whitespace-nowrap">
                           {isEditingItems ? (
                             <div className="flex items-center justify-end gap-1">
                               <input
@@ -461,7 +470,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                             <span className="font-mono text-slate-700">฿{Number(item.price || 0).toLocaleString()}</span>
                           )}
                         </td>
-                        <td className="p-3 text-right font-mono font-bold text-slate-900 pr-4">
+                        <td className="p-3 text-right font-mono font-bold text-slate-900 pr-4 whitespace-nowrap">
                           ฿{(Number(item.total) || ((Number(item.purchaseQty ?? item.qty) || 1) * (Number(item.price) || 0))).toLocaleString()}
                         </td>
                       </tr>

@@ -7,6 +7,7 @@ import Navbar from './components/common/Navbar';
 import LoginView from './components/auth/LoginView';
 import PRDetailsModal from './components/pr/PRDetailsModal';
 import PODetailsModal from './components/po/PODetailsModal';
+import FeedbackModal from './components/common/FeedbackModal';
 
 import DashboardView from './views/DashboardView';
 import MyWorkView from './views/MyWorkView';
@@ -112,7 +113,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-100 font-sans text-slate-800">
+    <div className="min-h-screen flex bg-[#f1f5f9] font-sans text-slate-900">
       {/* Fixed Sidebar Menu (Desktop) & Overlay Drawer (Mobile) */}
       <Sidebar
         activeView={activeView}
@@ -128,7 +129,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 md:ml-60 transition-all duration-300">
+      <div className="flex-1 flex flex-col min-w-0 md:ml-64 transition-all duration-300">
         
         {/* Top Navbar with Notifications & Verified User Profile */}
         <Navbar
@@ -269,6 +270,9 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Global In-App Feedback & Alert Modal System */}
+      <FeedbackModal />
     </div>
   );
 }

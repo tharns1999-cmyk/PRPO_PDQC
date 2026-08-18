@@ -17,7 +17,7 @@ export default function Navbar({
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   return (
-    <header className="bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-30 no-print">
+    <header className="bg-white border-b border-slate-200/90 sticky top-0 z-30 no-print shadow-2xs">
       <div className="w-full px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         
         {/* Mobile Menu Button & System Title */}

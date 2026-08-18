@@ -389,9 +389,6 @@ export const initialVendors = [
     address: '77/8 หมู่ 3 ถ.เศรษฐกิจ 1 ต.คลองมะเดื่อ อ.กระทุ่มแบน จ.สมุทรสาคร 74110'
   }
 ];
-
-// ─── INITIAL PR WORKFLOW RECORDS ─────────────────────────────────────────────
-// Set to empty array for fresh testing without mock PRs/POs
 export const initialPRs = [];
 
 export const initialPOs = [];

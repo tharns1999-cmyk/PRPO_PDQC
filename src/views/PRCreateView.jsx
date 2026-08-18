@@ -8,6 +8,7 @@ import {
 import { PR_SOURCE, PURCHASE_CHANNEL, MEMO_THRESHOLD, DEPARTMENTS } from '../config/constants';
 import FileUploader from '../components/common/FileUploader';
 import SearchableSelect from '../components/common/SearchableSelect';
+import { modalService } from '../services/modalService';
 
 export default function PRCreateView({ products = [], currentRole, onNavigate, onRefresh, preselectedProduct, clearPreselectedProduct }) {
   // Determine effective department (locked for PD/QC users, selectable for ALL)
@@ -173,19 +174,19 @@ export default function PRCreateView({ products = [], currentRole, onNavigate, o
         }
         return !item.productId || Number(item.qty) <= 0;
       })) {
-        return alert('กรุณาระบุข้อมูลรายการสินค้าและจำนวนที่ถูกต้อง');
+        return modalService.warning('กรุณาระบุข้อมูลรายการสินค้าและจำนวนที่ถูกต้อง');
       }
 
       if (isOnline && !requiresMemo && !onlineLink.trim()) {
-        return alert('กรุณาระบุ Online Link (Shopee/Lazada) สำหรับการสั่งซื้อออนไลน์');
+        return modalService.warning('กรุณาระบุ Online Link (Shopee/Lazada) สำหรับการสั่งซื้อออนไลน์');
       }
       
       if (requiresMemo) {
-        if (quotationFiles.length === 0) return alert('กรุณาแนบไฟล์ Quotation เนื่องจากยอดรวมเกิน 20,000 บาท');
-        if (imageFiles.length === 0) return alert('กรุณาแนบรูปภาพสินค้า เนื่องจากยอดรวมเกิน 20,000 บาท');
+        if (quotationFiles.length === 0) return modalService.warning('กรุณาแนบไฟล์ Quotation เนื่องจากยอดรวมเกิน 20,000 บาท');
+        if (imageFiles.length === 0) return modalService.warning('กรุณาแนบรูปภาพสินค้า เนื่องจากยอดรวมเกิน 20,000 บาท');
         
         if (!memoData.subject.trim() || !memoData.purpose.trim() || !memoData.background.trim()) {
-          return alert('กรุณากรอกข้อมูล MEMO ให้ครบถ้วน');
+          return modalService.warning('กรุณากรอกข้อมูล MEMO ให้ครบถ้วน');
         }
       }
     }
@@ -289,7 +290,7 @@ export default function PRCreateView({ products = [], currentRole, onNavigate, o
       onRefresh();
       onNavigate('pr-list');
     } catch (err) {
-      alert('เกิดข้อผิดพลาดในการสร้าง PR: ' + err.message);
+      modalService.error('เกิดข้อผิดพลาดในการสร้าง PR', err.message);
     }
   };
 
@@ -333,8 +334,8 @@ export default function PRCreateView({ products = [], currentRole, onNavigate, o
       </div>
 
       {/* ── Main Form Container ── */}
-      <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
-        <form className="divide-y divide-slate-100">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <form className="divide-y divide-slate-200/80">
           
           {/* ── SECTION 1: ข้อมูลเบื้องต้น ── */}
           <div className="p-6 md:p-8 space-y-6">
@@ -481,7 +482,7 @@ export default function PRCreateView({ products = [], currentRole, onNavigate, o
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
               
               {/* Desktop Column Header */}
-              <div className="hidden md:grid grid-cols-12 gap-3 px-5 py-3 bg-slate-100/80 text-[11px] font-bold text-slate-600 uppercase tracking-wider items-center border-b border-slate-200">
+              <div className="hidden md:grid grid-cols-12 gap-3 px-5 py-3 bg-white text-[11px] font-bold text-slate-500 uppercase tracking-wider items-center border-b border-slate-100 shadow-xs">
                 <div className="col-span-5 flex items-center gap-2">
                   <span className="w-7 text-center">#</span>
                   <span>รายการสินค้า / สเปก (Item Name & Code)</span>
@@ -506,7 +507,7 @@ export default function PRCreateView({ products = [], currentRole, onNavigate, o
                 return (
                   <div 
                     key={idx} 
-                    className="p-4 sm:p-5 md:py-3 md:px-5 hover:bg-slate-50/90 transition-colors space-y-2"
+                    className="p-4 sm:p-5 md:py-3 md:px-5 hover:bg-slate-50/50 transition-colors space-y-2 border-b border-slate-50 last:border-0"
                   >
                     {/* Primary Input Row: 100% Identical 44px Height & Baseline Alignment */}
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
@@ -925,7 +926,7 @@ export default function PRCreateView({ products = [], currentRole, onNavigate, o
           )}
 
           {/* ── Footer Actions ── */}
-          <div className="p-6 md:p-8 bg-slate-50 flex items-center justify-between gap-4 flex-wrap">
+          <div className="p-6 md:p-8 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-4 flex-wrap">
             <button
               type="button"
               onClick={() => {

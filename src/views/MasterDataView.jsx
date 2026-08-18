@@ -4,6 +4,7 @@ import ProductCRUDModal from '../components/admin/ProductCRUDModal';
 import VendorCRUDModal from '../components/admin/VendorCRUDModal';
 import SignatureManagerSection from '../components/admin/SignatureManagerSection';
 import { storageService } from '../services/storageService';
+import { modalService } from '../services/modalService';
 
 export default function MasterDataView({ products, vendors, currentRole, onRefresh }) {
   const [activeTab, setActiveTab] = useState('products');
@@ -69,19 +70,35 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
     );
   }
 
-  const handleDeleteProduct = (prod) => {
+  const handleDeleteProduct = async (prod) => {
     if (!currentRole.canDeleteMaster) return;
-    if (!window.confirm(`ยืนยันการลบสินค้า "${prod.name}" ออกจากระบบ?`)) return;
+    const confirmed = await modalService.confirm({
+      title: 'ยืนยันการลบสินค้า',
+      message: `ต้องการลบรายการสินค้า "${prod.name}" (${prod.code}) ออกจากระบบหรือไม่?`,
+      type: 'error',
+      confirmText: 'ลบสินค้า',
+      cancelText: 'ยกเลิก'
+    });
+    if (!confirmed) return;
     const prods = storageService.getProducts().filter(p => p.id !== prod.id);
     storageService.saveProducts(prods);
+    modalService.success('ลบสินค้าสำเร็จ', `ลบ "${prod.name}" เรียบร้อยแล้ว`);
     onRefresh();
   };
 
-  const handleDeleteVendor = (vendor) => {
+  const handleDeleteVendor = async (vendor) => {
     if (!currentRole.canDeleteMaster) return;
-    if (!window.confirm(`ยืนยันการลบผู้ขาย "${vendor.name}" ออกจากระบบ?`)) return;
+    const confirmed = await modalService.confirm({
+      title: 'ยืนยันการลบผู้ขาย',
+      message: `ต้องการลบข้อมูลผู้จัดจำหน่าย "${vendor.name}" ออกจากระบบหรือไม่?`,
+      type: 'error',
+      confirmText: 'ลบผู้ขาย',
+      cancelText: 'ยกเลิก'
+    });
+    if (!confirmed) return;
     const vends = storageService.getVendors().filter(v => v.id !== vendor.id);
     storageService.saveVendors(vends);
+    modalService.success('ลบผู้ขายสำเร็จ', `ลบ "${vendor.name}" เรียบร้อยแล้ว`);
     onRefresh();
   };
 
@@ -219,16 +236,16 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
           <div className="impeccable-card overflow-hidden">
             <div className="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar relative">
               <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs border-b border-slate-200">
-                  <tr className="text-slate-700 font-bold text-xs uppercase tracking-wider">
-                    <th className="p-4 pl-6 bg-slate-100">รหัส</th>
-                    <th className="p-4 bg-slate-100">ชื่อสินค้า</th>
-                    <th className="p-4 bg-slate-100">แผนก</th>
-                    <th className="p-4 bg-slate-100">หน่วยนับ</th>
-                    <th className="p-4 text-right bg-slate-100">ราคา/หน่วย</th>
-                    <th className="p-4 text-right bg-slate-100">ROP</th>
-                    <th className="p-4 text-right bg-slate-100">Lead Time</th>
-                    <th className="p-4 text-center pr-6 bg-slate-100">การกระทำ</th>
+                <thead className="sticky top-0 z-20 shadow-xs">
+                  <tr>
+                    <th className="impeccable-table-th pl-6">รหัส</th>
+                    <th className="impeccable-table-th">ชื่อสินค้า</th>
+                    <th className="impeccable-table-th">แผนก</th>
+                    <th className="impeccable-table-th">หน่วยนับ</th>
+                    <th className="impeccable-table-th text-right">ราคา/หน่วย</th>
+                    <th className="impeccable-table-th text-right">ROP</th>
+                    <th className="impeccable-table-th text-right">Lead Time</th>
+                    <th className="impeccable-table-th text-center pr-6">การกระทำ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100/80">
@@ -238,11 +255,11 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
                     const rate = Number(p.conversionRate) > 0 ? Number(p.conversionRate) : 1;
 
                     return (
-                      <tr key={p.id} className="hover:bg-slate-50/80 transition-colors group">
-                        <td className="p-4 pl-6 font-mono font-medium text-slate-600">{p.code}</td>
-                        <td className="p-4 font-semibold text-slate-800">{p.name}</td>
-                        <td className="p-4">{deptBadge(p.category)}</td>
-                        <td className="p-4 text-slate-600">
+                      <tr key={p.id} className="table-row-impeccable group border-b border-slate-50 last:border-0">
+                        <td className="p-4 pl-6 font-mono font-medium text-slate-600 whitespace-nowrap">{p.code}</td>
+                        <td className="p-4 font-semibold text-slate-800 whitespace-nowrap">{p.name}</td>
+                        <td className="p-4 whitespace-nowrap">{deptBadge(p.category)}</td>
+                        <td className="p-4 text-slate-600 whitespace-nowrap">
                           <span className="font-semibold text-slate-800">{pUnit}</span>
                           {rate > 1 && (
                             <span className="block text-[11px] text-indigo-600 font-mono mt-0.5">
@@ -250,10 +267,10 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
                             </span>
                           )}
                         </td>
-                        <td className="p-4 text-right font-semibold text-slate-700">฿{p.price?.toLocaleString()} / {pUnit}</td>
-                        <td className="p-4 text-right font-medium text-slate-500">{p.reorderPoint} {sUnit}</td>
-                        <td className="p-4 text-right text-slate-500">{p.leadTimeDays || 7} วัน</td>
-                        <td className="p-4 pr-6 text-center">
+                        <td className="p-4 text-right font-semibold text-slate-700 whitespace-nowrap">฿{p.price?.toLocaleString()} / {pUnit}</td>
+                        <td className="p-4 text-right font-medium text-slate-500 whitespace-nowrap">{p.reorderPoint} {sUnit}</td>
+                        <td className="p-4 text-right text-slate-500 whitespace-nowrap">{p.leadTimeDays || 7} วัน</td>
+                        <td className="p-4 pr-6 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => { setEditProd(p); setShowProdModal(true); }}
@@ -331,25 +348,25 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
           <div className="impeccable-card overflow-hidden">
             <div className="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar relative">
               <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs border-b border-slate-200">
-                  <tr className="text-slate-700 font-bold text-xs uppercase tracking-wider">
-                    <th className="p-4 pl-6 bg-slate-100">รหัส</th>
-                    <th className="p-4 bg-slate-100">ชื่อผู้ขาย / บริษัท</th>
-                    <th className="p-4 bg-slate-100">แผนก</th>
-                    <th className="p-4 bg-slate-100">ผู้ติดต่อ</th>
-                    <th className="p-4 bg-slate-100">เบอร์โทร</th>
-                    <th className="p-4 text-center pr-6 bg-slate-100">การกระทำ</th>
+                <thead className="sticky top-0 z-20 shadow-xs">
+                  <tr>
+                    <th className="impeccable-table-th pl-6">รหัส</th>
+                    <th className="impeccable-table-th">ชื่อผู้ขาย / บริษัท</th>
+                    <th className="impeccable-table-th">แผนก</th>
+                    <th className="impeccable-table-th">ผู้ติดต่อ</th>
+                    <th className="impeccable-table-th">เบอร์โทร</th>
+                    <th className="impeccable-table-th text-center pr-6">การกระทำ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100/80">
                   {filteredVendors.map(v => (
-                    <tr key={v.id} className="hover:bg-slate-50/80 transition-colors group">
-                      <td className="p-4 pl-6 font-mono font-medium text-slate-600">{v.code}</td>
-                      <td className="p-4 font-semibold text-slate-800">{v.name}</td>
-                      <td className="p-4">{deptBadge(v.department || 'BOTH')}</td>
-                      <td className="p-4 text-slate-600">{v.contactPerson}</td>
-                      <td className="p-4 font-mono text-slate-600">{v.phone}</td>
-                      <td className="p-4 pr-6 text-center">
+                    <tr key={v.id} className="table-row-impeccable group border-b border-slate-50 last:border-0">
+                      <td className="p-4 pl-6 font-mono font-medium text-slate-600 whitespace-nowrap">{v.code}</td>
+                      <td className="p-4 font-semibold text-slate-800 whitespace-nowrap">{v.name}</td>
+                      <td className="p-4 whitespace-nowrap">{deptBadge(v.department || 'BOTH')}</td>
+                      <td className="p-4 text-slate-600 whitespace-nowrap">{v.contactPerson}</td>
+                      <td className="p-4 font-mono text-slate-600 whitespace-nowrap">{v.phone}</td>
+                      <td className="p-4 pr-6 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => { setEditVendor(v); setShowVendorModal(true); }}

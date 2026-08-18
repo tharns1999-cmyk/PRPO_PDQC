@@ -160,8 +160,8 @@ export const ROLES = {
     canCreatePR: true,
     canSubmitPR: true,
     canDeleteOwnDraft: true,
-    canReceiveGoods: true,
-    canCloseOwnPO: true,
+    canReceiveGoods: false,
+    canCloseOwnPO: false,
     canManageMaster: true,
     canDeleteMaster: false,
     canViewAllDepts: true,
@@ -181,8 +181,8 @@ export const ROLES = {
     canCreatePR: true,
     canSubmitPR: true,
     canDeleteOwnDraft: true,
-    canReceiveGoods: true,
-    canCloseOwnPO: true,
+    canReceiveGoods: false,
+    canCloseOwnPO: false,
     canManageMaster: true,
     canDeleteMaster: false,
     canViewAllDepts: true,
@@ -206,7 +206,7 @@ export const USER_LEVELS = {
 
 /**
  * Resolve permissions dynamically based on user Level (Hierarchical Inheritance)
- * Level สูงกว่าจะได้สิทธิ์ของ Level ต่ำกว่าทั้งหมดเสมอ
+ * Level สูงกว่าจะได้สิทธิ์ของ Level ต่ำกว่าทั้งหมดเสมอ (ยกเว้น canReceiveGoods ที่เป็นงานของ Level 1 ประจำแผนกเท่านั้น)
  */
 export function resolveUserPermissions(user) {
   if (!user) return ROLES.REQUESTER;
@@ -226,8 +226,8 @@ export function resolveUserPermissions(user) {
     canCreatePR: level >= 1,
     canSubmitPR: level >= 1,
     canDeleteOwnDraft: level >= 1,
-    canReceiveGoods: level >= 1,
-    canCloseOwnPO: level >= 1,
+    canReceiveGoods: level === 1 || level >= 99,
+    canCloseOwnPO: level === 1 || level >= 99,
     canManageMaster: level >= 1,
 
     // ─── LEVEL 2+ PERMISSIONS (หัวหน้างาน / ผู้ช่วยผู้จัดการ) ───

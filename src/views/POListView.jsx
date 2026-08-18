@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { PO_STATUS, PURCHASE_CHANNEL } from '../config/constants';
 import { workflowEngine } from '../services/workflowEngine';
-import { ShoppingBag, FileText, Search, X, DollarSign, PackageCheck, AlertTriangle, Truck, ShoppingCart, Building2 } from 'lucide-react';
+import { ShoppingBag, FileText, Search, X, DollarSign, PackageCheck, AlertTriangle, Truck, ShoppingCart, Building2, Store } from 'lucide-react';
 import PODetailsModal from '../components/po/PODetailsModal';
 import EmptyState from '../components/common/EmptyState';
 
@@ -123,55 +123,55 @@ export default function POListView({ pos, currentRole, onRefresh }) {
 
       {/* Insight Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="impeccable-card p-5 sm:p-6 bg-white border border-slate-200/90 hover:border-emerald-300 transition-all flex flex-col justify-between">
+        <div className="impeccable-card p-5 sm:p-6 bg-white hover:border-emerald-300 transition-all flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">ยอดสั่งซื้อตามตัวกรอง</p>
-              <h3 className="text-2xl font-black text-slate-800 mt-1.5 font-mono tracking-tight">
+              <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">ยอดสั่งซื้อตามตัวกรอง</p>
+              <h3 className="text-2xl font-black text-slate-900 mt-1.5 font-mono tracking-tight">
                 ฿{metrics.totalAmount.toLocaleString()}
               </h3>
             </div>
-            <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+            <div className="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200">
               <DollarSign className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+          <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-xs">
             <span className="text-slate-400 font-medium">เอกสารทั้งหมด</span>
-            <span className="text-emerald-700 font-bold">{metrics.totalCount} ฉบับ</span>
+            <span className="text-slate-700 font-bold">{metrics.totalCount} ฉบับ</span>
           </div>
         </div>
 
-        <div className="impeccable-card p-5 sm:p-6 bg-white border border-slate-200/90 hover:border-blue-300 transition-all flex flex-col justify-between">
+        <div className="impeccable-card p-5 sm:p-6 bg-white hover:border-blue-200 transition-all flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">มูลค่ารอรับเข้าคลัง</p>
+              <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">มูลค่ารอรับเข้าคลัง</p>
               <h3 className="text-2xl font-black text-blue-700 mt-1.5 font-mono tracking-tight">
                 ฿{metrics.pendingAmount.toLocaleString()}
               </h3>
             </div>
-            <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl border border-blue-100">
+            <div className="p-2.5 bg-blue-50 text-blue-700 rounded-xl border border-blue-200">
               <PackageCheck className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+          <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-xs">
             <span className="text-slate-400 font-medium">รอตรวจรับเข้าสต็อก</span>
             <span className="text-blue-700 font-bold">{metrics.pendingCount} ฉบับ</span>
           </div>
         </div>
 
-        <div className="impeccable-card p-5 sm:p-6 bg-white border border-slate-200/90 hover:border-amber-300 transition-all flex flex-col justify-between">
+        <div className="impeccable-card p-5 sm:p-6 bg-white hover:border-amber-200 transition-all flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">กำหนดส่งเร่งด่วน / เกินกำหนด</p>
+              <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">กำหนดส่งเร่งด่วน / เกินกำหนด</p>
               <h3 className="text-2xl font-black text-amber-700 mt-1.5 font-mono tracking-tight">
                 {metrics.urgentCount} <span className="text-xs font-semibold text-slate-400 font-sans">ฉบับ</span>
               </h3>
             </div>
-            <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl border border-amber-100">
+            <div className="p-2.5 bg-amber-50 text-amber-700 rounded-xl border border-amber-200">
               <Truck className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+          <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-xs">
             <span className="text-slate-400 font-medium">การติดตาม</span>
             <span className="text-amber-700 font-bold">จาก Supplier</span>
           </div>
@@ -179,66 +179,68 @@ export default function POListView({ pos, currentRole, onRefresh }) {
       </div>
 
       {/* Control Bar: Filters & Search */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-slate-200 shadow-xs">
         {/* Quick Status Buttons */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-50 rounded-xl overflow-x-auto custom-scrollbar">
+        <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar pb-1 lg:pb-0">
           <button 
             onClick={() => setFilterStatus('ALL')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'ALL' ? 'bg-white text-slate-800 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'ALL' ? 'bg-slate-900 text-white shadow-md shadow-slate-900/10' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
           >
             ทั้งหมด
           </button>
           <button 
             onClick={() => setFilterStatus('PENDING')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'PENDING' ? 'bg-white text-emerald-700 shadow-sm border border-emerald-100' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'PENDING' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
           >
             รอรับของ (ซื้อเอง)
           </button>
           <button 
             onClick={() => setFilterStatus('IN_PROGRESS_ONLINE')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'IN_PROGRESS_ONLINE' ? 'bg-white text-violet-700 shadow-sm border border-violet-100' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'IN_PROGRESS_ONLINE' ? 'bg-violet-600 text-white shadow-md shadow-violet-600/20' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
           >
             รอดำเนินการ Online
           </button>
           <button 
             onClick={() => setFilterStatus('CLOSED')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'CLOSED' ? 'bg-white text-slate-800 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'CLOSED' ? 'bg-slate-900 text-white shadow-md shadow-slate-900/10' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
           >
             ปิดงานแล้ว
           </button>
           <button 
             onClick={() => setFilterStatus('CANCELLED')}
-            className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'CANCELLED' ? 'bg-white text-rose-700 shadow-sm border border-rose-200' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${filterStatus === 'CANCELLED' ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
           >
             ยกเลิกแล้ว
           </button>
         </div>
 
         {/* Right Section: Dept Filter & Search Input */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           {currentRole.canViewAllDepts && (
-            <select
-              value={deptFilter}
-              onChange={e => setDeptFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl px-3 py-2 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all cursor-pointer"
-            >
-              <option value="ALL">ทุกแผนก</option>
-              <option value="PD">ฝ่ายผลิต (PD)</option>
-              <option value="QC">ควบคุมคุณภาพ (QC)</option>
-              <option value="HR">HR & Admin (HR)</option>
-              <option value="ACCT">ฝ่ายบัญชี (ACCT)</option>
-              <option value="LAB">Microbiology Lab (LAB)</option>
-            </select>
+            <div className="relative min-w-[140px]">
+              <select
+                value={deptFilter}
+                onChange={e => setDeptFilter(e.target.value)}
+                className="impeccable-input cursor-pointer"
+              >
+                <option value="ALL">ทุกแผนก</option>
+                <option value="PD">ฝ่ายผลิต (PD)</option>
+                <option value="QC">ควบคุมคุณภาพ (QC)</option>
+                <option value="HR">HR & Admin (HR)</option>
+                <option value="ACCT">ฝ่ายบัญชี (ACCT)</option>
+                <option value="LAB">Micro Lab (LAB)</option>
+              </select>
+            </div>
           )}
 
-          <div className="relative flex-1 md:w-64">
+          <div className="relative flex-1 sm:w-64 min-w-[200px]">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="ค้นหาเลข PO, ผู้ขาย, PR..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
+              className="impeccable-input pl-9 pr-8"
             />
             {searchQuery && (
               <button 
@@ -254,22 +256,23 @@ export default function POListView({ pos, currentRole, onRefresh }) {
 
       {/* PO Table */}
       <div className="impeccable-card overflow-hidden">
-        <div className="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar relative">
-          <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs border-b border-slate-200">
-              <tr className="text-slate-700 font-bold text-xs uppercase tracking-wider">
-                <th className="p-4 pl-7 bg-slate-100">เลขที่ PO / อ้างอิง</th>
-                <th className="p-4 bg-slate-100">ผู้จำหน่าย (Vendor)</th>
-                <th className="p-4 bg-slate-100">ช่องทาง</th>
-                <th className="p-4 bg-slate-100">กำหนดส่ง</th>
-                <th className="p-4 text-center bg-slate-100">สถานะ</th>
-                <th className="p-4 text-center pr-7 bg-slate-100">การกระทำ</th>
+        <div className="overflow-x-auto overflow-y-auto max-h-[550px] custom-scrollbar relative">
+          <table className="w-full text-left text-sm min-w-[900px]">
+            <thead className="sticky top-0 z-20 shadow-xs">
+              <tr>
+                <th className="impeccable-table-th pl-6">เลขที่ PO / อ้างอิง</th>
+                <th className="impeccable-table-th w-1/3 min-w-[220px]">รายการสินค้า (Products / Items)</th>
+                <th className="impeccable-table-th">ช่องทาง</th>
+                <th className="impeccable-table-th">กำหนดส่ง</th>
+                <th className="impeccable-table-th text-right">ยอดเงินรวม</th>
+                <th className="impeccable-table-th text-center">สถานะ</th>
+                <th className="impeccable-table-th text-center pr-6">การกระทำ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100/80">
               {filteredPOs.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="p-0">
+                  <td colSpan="7" className="p-0">
                     <EmptyState 
                       title="ไม่พบข้อมูลใบสั่งซื้อ" 
                       description="ลองเปลี่ยนตัวกรอง ค้นหาด้วยคำอื่น หรือกดล้างการค้นหา"
@@ -286,16 +289,41 @@ export default function POListView({ pos, currentRole, onRefresh }) {
                   const urgency = getDeliveryUrgency(po.deliveryDate, po.status);
                   
                   return (
-                    <tr key={po.id} className="hover:bg-slate-50/80 transition-colors group">
-                      <td className="p-5 pl-7">
-                        <div className="font-mono font-medium text-slate-600">{po.poNo}</div>
-                        <div className="text-xs text-slate-400 mt-0.5">PR: {po.prNo}</div>
+                    <tr key={po.id} className="table-row-impeccable group border-b border-slate-50 last:border-0">
+                      <td className="p-4 pl-6 whitespace-nowrap">
+                        <div className="font-mono font-bold text-slate-900">{po.poNo}</div>
+                        <div className="text-[11px] text-slate-500 font-mono mt-0.5">PR: <span className="font-semibold">{po.prNo}</span></div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">{po.issueDate}</div>
                       </td>
-                      <td className="p-5">
-                        <div className="font-semibold text-slate-800">{po.vendorName}</div>
+                      <td className="p-4 whitespace-nowrap">
+                        <div className="font-semibold text-slate-900 text-sm leading-snug">
+                          {po.items && po.items.length > 0 ? (
+                            <div>
+                              {po.items.length === 1 ? (
+                                <span>
+                                  {po.items[0].name}{' '}
+                                  <span className="font-mono text-xs text-slate-500 font-normal">
+                                    (x{Number((po.items[0].orderedQty ?? po.items[0].purchaseQty ?? po.items[0].qty) || 0).toLocaleString()} {po.items[0].purchaseUnit || po.items[0].unit || 'ชิ้น'})
+                                  </span>
+                                </span>
+                              ) : (
+                                <span>
+                                  {po.items.map(i => i.name).join(', ')}
+                                  <span className="ml-1.5 text-xs text-indigo-600 font-medium">({po.items.length} รายการ)</span>
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">ไม่ระบุสินค้า</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500 flex items-center gap-1.5 mt-1 font-medium">
+                          <Store className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>ผู้ขาย: <strong className="text-slate-700">{po.vendorName}</strong></span>
+                        </div>
                       </td>
-                      <td className="p-5">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-1 rounded w-max">
+                      <td className="p-4 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-100 px-2 py-1 rounded-md w-max">
                           {po.purchaseChannel === 'ONLINE' ? (
                             <ShoppingCart className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                           ) : (
@@ -304,37 +332,36 @@ export default function POListView({ pos, currentRole, onRefresh }) {
                           <span>{channel.label}</span>
                         </div>
                       </td>
-                      <td className="p-5">
-                        <div className="font-semibold text-slate-800">{po.deliveryDate}</div>
+                      <td className="p-4 whitespace-nowrap">
+                        <div className="font-semibold text-slate-900 text-[13px] font-mono">{po.deliveryDate || 'ตามระบุ'}</div>
                         {urgency && (
-                          <span className={`inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] border ${urgency.color}`}>
+                          <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold border ${urgency.color}`}>
                             {urgency.label}
                           </span>
                         )}
                       </td>
-                      <td className="p-5 text-center">
+                      <td className="p-4 text-right font-mono font-bold text-slate-900 text-[13px] whitespace-nowrap">
+                        ฿{(po.grandTotal || po.totalAmount || po.subtotal || 0).toLocaleString()}
+                      </td>
+                      <td className="p-4 text-center whitespace-nowrap">
                         {getStatusBadge(po.status)}
                       </td>
-                      <td className="p-5 pr-7 text-center">
+                      <td className="p-4 pr-6 text-center whitespace-nowrap">
                         {canClose ? (
                           <button 
-                            onClick={() => {
-                              if(window.confirm('ยืนยันรับสินค้าและปิด PO นี้? สินค้าจะถูกนำเข้า Stock โดยอัตโนมัติ')) {
-                                apiService.closePO(po.id, currentRole).then(() => onRefresh()).catch(err => alert(err.message));
-                              }
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                            onClick={() => setSelectedPO(po)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-bold transition-all border shadow-xs cursor-pointer bg-slate-900 text-white border-slate-900 hover:bg-slate-800"
                           >
                             <PackageCheck className="w-4 h-4" />
-                            รับของ/ปิด PO
+                            <span>ตรวจรับสินค้า</span>
                           </button>
                         ) : (
                           <button 
                             onClick={() => setSelectedPO(po)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all border bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-700"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-semibold transition-all border shadow-xs cursor-pointer bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-900"
                           >
-                            <FileText className="w-4 h-4" />
-                            รายละเอียด
+                            <FileText className="w-4 h-4 text-slate-400" />
+                            <span>รายละเอียด</span>
                           </button>
                         )}
                       </td>

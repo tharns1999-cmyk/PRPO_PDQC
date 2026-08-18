@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { notificationService, NOTIFICATION_TYPES } from '../../services/notificationService';
+import { modalService } from '../../services/modalService';
 import { 
   Bell, X, CheckCheck, Trash2, Smartphone, ExternalLink, 
   FileText, ShieldCheck, CheckCircle2, XCircle, ShoppingBag, PackageCheck, AlertTriangle, ArrowDownRight, Clock, Flame, Info
@@ -44,8 +45,15 @@ export default function NotificationDrawer({ isOpen, onClose, currentRole, onNav
     if (onRefresh) onRefresh();
   };
 
-  const handleClearAll = () => {
-    if (window.confirm('ต้องการล้างประวัติการแจ้งเตือนทั้งหมดหรือไม่?')) {
+  const handleClearAll = async () => {
+    const confirmed = await modalService.confirm({
+      title: 'ล้างการแจ้งเตือน',
+      message: 'ต้องการล้างประวัติการแจ้งเตือนทั้งหมดในระบบหรือไม่?',
+      type: 'warning',
+      confirmText: 'ล้างทั้งหมด',
+      cancelText: 'ยกเลิก'
+    });
+    if (confirmed) {
       notificationService.clearAll();
       if (onRefresh) onRefresh();
     }

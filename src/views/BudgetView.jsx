@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { DEPARTMENTS, PR_STATUS, PO_STATUS } from '../config/constants';
 import { apiService } from '../services/apiService';
+import { modalService } from '../services/modalService';
 import { 
   Wallet, ShieldAlert, PieChart, TrendingUp, AlertCircle, 
   Building2, CheckCircle2, BarChart3, History, DollarSign,
@@ -24,7 +25,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
       setEditingBudget(null);
       if (onRefresh) onRefresh();
     } catch (e) {
-      alert('Error saving budget');
+      modalService.error('เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกงบประมาณได้: ' + e.message);
     }
   };
 

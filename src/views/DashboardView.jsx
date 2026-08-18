@@ -68,9 +68,9 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
         
         {/* ── CARD 1: Recent PRs ── */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs flex flex-col justify-between overflow-hidden transition-all hover:shadow-md">
+        <div className="impeccable-card bg-white flex flex-col justify-between overflow-hidden transition-all">
           {/* Header */}
-          <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between gap-3 bg-slate-50/50">
+          <div className="p-4 sm:p-5 border-b border-slate-200/80 flex items-center justify-between gap-3 bg-slate-50/60">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100 shadow-2xs">
                 <FileText className="w-5 h-5" />
@@ -177,7 +177,7 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
 
           {/* Footer Summary */}
           {recentPRs.length > 0 && (
-            <div className="p-3.5 sm:px-6 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <div className="p-4 sm:px-5 bg-slate-50/80 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-500 font-medium">
               <span>รวม {recentPRs.length} รายการล่าสุด</span>
               <span className="font-mono font-bold text-slate-700">
                 ยอดรวม ฿{recentPRTotal.toLocaleString()}
@@ -187,9 +187,9 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
         </div>
 
         {/* ── CARD 2: Recent POs ── */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs flex flex-col justify-between overflow-hidden transition-all hover:shadow-md">
+        <div className="impeccable-card bg-white flex flex-col justify-between overflow-hidden transition-all">
           {/* Header */}
-          <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between gap-3 bg-slate-50/50">
+          <div className="p-4 sm:p-5 border-b border-slate-200/80 flex items-center justify-between gap-3 bg-slate-50/60">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 shadow-2xs">
                 <ShoppingCart className="w-5 h-5" />
@@ -298,7 +298,7 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
 
           {/* Footer Summary */}
           {recentPOs.length > 0 && (
-            <div className="p-3.5 sm:px-6 bg-slate-50/70 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <div className="p-4 sm:px-5 bg-slate-50/80 border-t border-slate-200/80 flex items-center justify-between text-[11px] text-slate-500 font-medium">
               <span>รวม {recentPOs.length} รายการล่าสุด</span>
               <span className="font-mono font-bold text-slate-700">
                 ยอดรวม ฿{recentPOTotal.toLocaleString()}

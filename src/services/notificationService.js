@@ -1,5 +1,5 @@
 // Notification Service (In-App Local Caching & Event-Driven LINE Flex Message Generator)
-import { lineService } from './lineService';
+import { lineService } from './lineService.js';
 
 const NOTIFICATIONS_STORAGE_KEY = 'prpo_in_app_notifications';
 

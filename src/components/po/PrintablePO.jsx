@@ -69,23 +69,37 @@ export default function PrintablePO({ po }) {
           ))}
 
           {/* Totals */}
-          <tr>
-            <td colSpan="4" rowSpan="3" className="border border-black p-4 align-top">
-              <span className="font-semibold text-sm">หมายเหตุ (Remarks):</span>
-              <p className="text-sm mt-1">1. โปรดระบุเลขที่ใบสั่งซื้อ (PO No.) ในเอกสารใบกำกับภาษีทุกครั้ง</p>
-              <p className="text-sm">2. กรณีส่งมอบล่าช้ากว่ากำหนด บริษัทขอสงวนสิทธิ์ในการปรับ</p>
-            </td>
-            <td className="border border-black p-4 text-right font-bold text-sm">รวมเป็นเงิน<br/>(Sub Total)</td>
-            <td className="border border-black p-4 text-right font-bold">{(po.subtotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-          </tr>
-          <tr>
-            <td className="border border-black p-4 text-right font-bold text-sm">ภาษีมูลค่าเพิ่ม<br/>(VAT 7%)</td>
-            <td className="border border-black p-4 text-right font-bold">{(po.vat || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-          </tr>
-          <tr>
-            <td className="border border-black p-4 text-right font-bold text-sm bg-gray-100">ยอดเงินสุทธิ<br/>(Grand Total)</td>
-            <td className="border border-black p-4 text-right font-bold text-sm bg-gray-100">{(po.grandTotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-          </tr>
+          {po.vat > 0 ? (
+            <>
+              <tr>
+                <td colSpan="4" rowSpan="3" className="border border-black p-4 align-top">
+                  <span className="font-semibold text-sm">หมายเหตุ (Remarks):</span>
+                  <p className="text-sm mt-1">1. โปรดระบุเลขที่ใบสั่งซื้อ (PO No.) ในเอกสารใบกำกับภาษีทุกครั้ง</p>
+                  <p className="text-sm">2. กรณีส่งมอบล่าช้ากว่ากำหนด บริษัทขอสงวนสิทธิ์ในการปรับ</p>
+                </td>
+                <td className="border border-black p-4 text-right font-bold text-sm">รวมเป็นเงิน<br/>(Sub Total)</td>
+                <td className="border border-black p-4 text-right font-bold">{(po.subtotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+              </tr>
+              <tr>
+                <td className="border border-black p-4 text-right font-bold text-sm">ภาษีมูลค่าเพิ่ม<br/>(VAT 7%)</td>
+                <td className="border border-black p-4 text-right font-bold">{(po.vat || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+              </tr>
+              <tr>
+                <td className="border border-black p-4 text-right font-bold text-sm bg-gray-100">ยอดเงินสุทธิ<br/>(Grand Total)</td>
+                <td className="border border-black p-4 text-right font-bold text-sm bg-gray-100">{(po.grandTotal || po.totalAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+              </tr>
+            </>
+          ) : (
+            <tr>
+              <td colSpan="4" className="border border-black p-4 align-top">
+                <span className="font-semibold text-sm">หมายเหตุ (Remarks):</span>
+                <p className="text-sm mt-1">1. โปรดระบุเลขที่ใบสั่งซื้อ (PO No.) ในเอกสารใบกำกับภาษีทุกครั้ง</p>
+                <p className="text-sm">2. กรณีส่งมอบล่าช้ากว่ากำหนด บริษัทขอสงวนสิทธิ์ในการปรับ</p>
+              </td>
+              <td className="border border-black p-4 text-right font-bold text-sm bg-gray-100">ยอดเงินสุทธิ<br/>(Grand Total)</td>
+              <td className="border border-black p-4 text-right font-bold text-sm bg-gray-100">{(po.grandTotal || po.totalAmount || po.subtotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+            </tr>
+          )}
         </tbody>
       </table>
 

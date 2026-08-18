@@ -4,6 +4,7 @@ import StockMovementTable from '../components/stock/StockMovementTable';
 import ManualStockInModal from '../components/stock/ManualStockInModal';
 import EmptyState from '../components/common/EmptyState';
 import { storageService } from '../services/storageService';
+import { modalService } from '../services/modalService';
 
 export default function StockCardView({ products, stockLogs, currentRole, onQuickPR, onRefresh }) {
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -80,13 +81,21 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
     });
   }, [products, stockLogs, currentRole]);
 
-  const handleApplyROP = (product, suggestedROP) => {
-    if (!window.confirm(`ปรับ ROP ของ "${product.name}" เป็น ${suggestedROP} ${product.unit}?`)) return;
+  const handleApplyROP = async (product, suggestedROP) => {
+    const confirmed = await modalService.confirm({
+      title: 'ยืนยันปรับจุดสั่งซื้อ (ROP)',
+      message: `ต้องการปรับจุดสั่งซื้อ (Reorder Point) ของ "${product.name}" เป็น ${suggestedROP} ${product.unit} หรือไม่?`,
+      confirmText: 'ยืนยันการปรับ',
+      cancelText: 'ยกเลิก'
+    });
+    if (!confirmed) return;
+
     const allProducts = storageService.getProducts();
     const idx = allProducts.findIndex(p => p.id === product.id);
     if (idx !== -1) {
       allProducts[idx].reorderPoint = suggestedROP;
       storageService.saveProducts(allProducts);
+      modalService.success('ปรับ ROP เรียบร้อย', `ปรับ ROP ของ "${product.name}" เป็น ${suggestedROP} ${product.unit} สำเร็จ`);
       onRefresh();
     }
   };
@@ -256,16 +265,16 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
           <div className="impeccable-card overflow-hidden">
             <div className="overflow-x-auto overflow-y-auto max-h-[520px] custom-scrollbar relative">
               <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs border-b border-slate-200">
-                  <tr className="text-slate-700 font-bold text-xs uppercase tracking-wider">
-                    <th className="p-4 pl-6 bg-slate-100">รหัสสินค้า</th>
-                    <th className="p-4 bg-slate-100">ชื่อสินค้า</th>
-                    <th className="p-4 bg-slate-100">หมวด</th>
-                    <th className="p-4 bg-slate-100">ตำแหน่งจัดเก็บ</th>
-                    <th className="p-4 text-right bg-slate-100">คงเหลือปัจจุบัน</th>
-                    <th className="p-4 text-right bg-slate-100">จุดเตือน (ROP)</th>
-                    <th className="p-4 text-center bg-slate-100">สถานะ</th>
-                    <th className="p-4 text-center pr-6 bg-slate-100">การกระทำ</th>
+                <thead className="sticky top-0 z-20 shadow-xs">
+                  <tr>
+                    <th className="impeccable-table-th pl-6">รหัสสินค้า</th>
+                    <th className="impeccable-table-th w-1/3">ชื่อสินค้า</th>
+                    <th className="impeccable-table-th">หมวด</th>
+                    <th className="impeccable-table-th">ตำแหน่งจัดเก็บ</th>
+                    <th className="impeccable-table-th text-right">คงเหลือปัจจุบัน</th>
+                    <th className="impeccable-table-th text-right">จุดเตือน (ROP)</th>
+                    <th className="impeccable-table-th text-center">สถานะ</th>
+                    <th className="impeccable-table-th text-center pr-6">การกระทำ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100/80">
@@ -289,14 +298,14 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
                       return (
                         <tr 
                           key={prod.id} 
-                          className={`transition-colors group ${
+                          className={`table-row-impeccable group border-b border-slate-50 last:border-0 ${
                             isLow 
-                              ? 'bg-amber-50/80 hover:bg-amber-100/90 border-l-4 border-l-amber-500' 
-                              : 'hover:bg-slate-50/80'
+                              ? 'bg-amber-50/50 hover:bg-amber-50 border-l-4 border-l-amber-500' 
+                              : ''
                           }`}
                         >
-                          <td className="p-4 pl-6 font-mono font-bold text-slate-700">{prod.code}</td>
-                          <td className="p-4">
+                          <td className="p-4 pl-6 font-mono font-bold text-slate-700 whitespace-nowrap">{prod.code}</td>
+                          <td className="p-4 whitespace-nowrap">
                             <div className="font-semibold text-slate-800 flex items-center gap-2">
                               <span>{prod.name}</span>
                               {isLow && (
@@ -311,13 +320,13 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
                               </div>
                             )}
                           </td>
-                          <td className="p-4">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${prod.category === 'PD' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
+                          <td className="p-4 whitespace-nowrap">
+                            <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${prod.category === 'PD' ? 'bg-slate-100 text-slate-600' : 'bg-slate-100 text-slate-600'}`}>
                               {prod.category}
                             </span>
                           </td>
-                          <td className="p-4 text-slate-500 font-mono text-sm">{prod.location}</td>
-                          <td className={`p-4 text-right font-bold ${isLow ? 'text-amber-800 font-mono font-black text-base' : 'text-slate-700'}`}>
+                          <td className="p-4 text-slate-500 font-mono text-[13px] whitespace-nowrap">{prod.location}</td>
+                          <td className={`p-4 text-right font-bold whitespace-nowrap ${isLow ? 'text-amber-800 font-mono font-black text-base' : 'text-slate-700'}`}>
                             <div>
                               {Number(prod.stockBalance || 0).toLocaleString()} <span className="font-medium text-slate-500 text-xs">{sUnit}</span>
                             </div>
@@ -327,23 +336,23 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
                               </div>
                             )}
                           </td>
-                          <td className="p-4 text-right font-medium text-slate-500">
-                            {Number(prod.reorderPoint || 0).toLocaleString()} <span className="text-xs">{sUnit}</span>
+                          <td className="p-4 text-right font-medium text-slate-500 whitespace-nowrap">
+                            {Number(prod.reorderPoint || 0).toLocaleString()} <span className="text-[11px]">{sUnit}</span>
                           </td>
-                          <td className="p-4 text-center">
+                          <td className="p-4 text-center whitespace-nowrap">
                             {isLow ? (
                               <span className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full text-xs font-bold border border-amber-300 shadow-2xs">
                                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
                                 สต็อกต่ำ (ถึงจุด ROP)
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-semibold border border-emerald-100">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                ปกติ
+                              <span className="inline-flex items-center gap-1.5 bg-slate-50 text-emerald-700 px-2.5 py-1 rounded-full text-[11px] font-bold border border-slate-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 opacity-80"></span>
+                                สต็อกปกติ
                               </span>
                             )}
                           </td>
-                          <td className="p-4 pr-6 text-center">
+                          <td className="p-4 pr-6 text-center whitespace-nowrap">
                             <div className="flex items-center justify-center gap-2">
                               <button
                                 onClick={() => setSelectedProduct(prod)}
@@ -392,39 +401,39 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
           <div className="impeccable-card overflow-hidden">
             <div className="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar relative">
               <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs border-b border-slate-200">
-                  <tr className="text-slate-700 font-bold text-xs uppercase tracking-wider">
-                    <th className="p-4 pl-6 bg-slate-100">รหัส / ชื่อสินค้า</th>
-                    <th className="p-4 text-right bg-slate-100">คงเหลือ</th>
-                    <th className="p-4 text-right bg-slate-100">เบิก 30 วัน</th>
-                    <th className="p-4 text-right bg-slate-100">ใช้เฉลี่ย/วัน</th>
-                    <th className="p-4 text-right bg-slate-100">Lead Time</th>
-                    <th className="p-4 text-right bg-slate-100">ROP ปัจจุบัน</th>
-                    <th className="p-4 text-right bg-slate-100">ROP แนะนำ</th>
-                    <th className="p-4 text-center bg-slate-100">สถานะ ROP</th>
-                    <th className="p-4 text-center pr-6 bg-slate-100">ปรับ ROP</th>
+                <thead className="sticky top-0 z-20 shadow-xs">
+                  <tr>
+                    <th className="impeccable-table-th pl-6">รหัส / ชื่อสินค้า</th>
+                    <th className="impeccable-table-th text-right">คงเหลือ</th>
+                    <th className="impeccable-table-th text-right">เบิก 30 วัน</th>
+                    <th className="impeccable-table-th text-right">ใช้เฉลี่ย/วัน</th>
+                    <th className="impeccable-table-th text-right">Lead Time</th>
+                    <th className="impeccable-table-th text-right">ROP ปัจจุบัน</th>
+                    <th className="impeccable-table-th text-right">ROP แนะนำ</th>
+                    <th className="impeccable-table-th text-center">สถานะ ROP</th>
+                    <th className="impeccable-table-th text-center pr-6">ปรับ ROP</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100/80">
                   {ropAnalytics.map(item => (
-                    <tr key={item.id} className={`hover:bg-slate-50/80 transition-colors ${item.isRopUnderSuggested ? 'bg-amber-50/30' : ''}`}>
-                      <td className="p-4 pl-6">
+                    <tr key={item.id} className={`table-row-impeccable border-b border-slate-50 last:border-0 ${item.isRopUnderSuggested ? 'bg-amber-50/30 hover:bg-amber-50/80' : ''}`}>
+                      <td className="p-4 pl-6 whitespace-nowrap">
                         <div className="font-mono font-medium text-slate-500 text-xs">{item.code}</div>
                         <div className="font-semibold text-slate-800 mt-0.5">{item.name}</div>
                       </td>
-                      <td className="p-4 text-right font-semibold text-slate-700">
-                        {item.stockBalance} <span className="text-xs text-slate-400">{item.unit}</span>
+                      <td className="p-4 text-right font-semibold text-slate-700 whitespace-nowrap">
+                        {item.stockBalance} <span className="text-[11px] text-slate-400">{item.unit}</span>
                       </td>
-                      <td className="p-4 text-right text-slate-600">{item.totalOut30Days} {item.unit}</td>
-                      <td className="p-4 text-right text-slate-600">{item.avgDailyUsage} {item.unit}</td>
-                      <td className="p-4 text-right text-slate-500">{item.leadTimeDays || 7} วัน</td>
-                      <td className="p-4 text-right font-bold text-slate-700">{item.reorderPoint}</td>
-                      <td className="p-4 text-right">
+                      <td className="p-4 text-right text-slate-600 whitespace-nowrap">{item.totalOut30Days} {item.unit}</td>
+                      <td className="p-4 text-right text-slate-600 whitespace-nowrap">{item.avgDailyUsage} {item.unit}</td>
+                      <td className="p-4 text-right text-slate-500 whitespace-nowrap">{item.leadTimeDays || 7} วัน</td>
+                      <td className="p-4 text-right font-bold text-slate-700 whitespace-nowrap">{item.reorderPoint}</td>
+                      <td className="p-4 text-right whitespace-nowrap">
                         <span className={`font-bold text-sm ${item.suggestedROP > 0 ? (item.isRopUnderSuggested ? 'text-amber-600' : 'text-emerald-600') : 'text-slate-400'}`}>
                           {item.suggestedROP > 0 ? item.suggestedROP : 'N/A'}
                         </span>
                       </td>
-                      <td className="p-4 text-center">
+                      <td className="p-4 text-center whitespace-nowrap">
                         {item.suggestedROP === 0 ? (
                           <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">ยังไม่มีข้อมูล</span>
                         ) : item.isRopUnderSuggested ? (
@@ -439,7 +448,7 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
                           </span>
                         )}
                       </td>
-                      <td className="p-4 pr-6 text-center">
+                      <td className="p-4 pr-6 text-center whitespace-nowrap">
                         {item.isRopUnderSuggested && (
                           <button
                             onClick={() => handleApplyROP(item, item.suggestedROP)}

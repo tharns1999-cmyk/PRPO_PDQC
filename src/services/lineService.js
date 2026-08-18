@@ -1,5 +1,5 @@
 // LINE Authentication & LIFF Integration Service
-import { ROLES, STORAGE_KEYS } from '../config/constants';
+import { ROLES, STORAGE_KEYS } from '../config/constants.js';
 
 const LINE_PROFILE_KEY = 'prpo_line_profile';
 const LINE_USERS_MAPPING_KEY = 'prpo_line_user_mappings';

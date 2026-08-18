@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiService } from '../../services/apiService';
+import { modalService } from '../../services/modalService';
 import { 
   Store, X, Building2, Phone, User, FileText, 
   MapPin, Hash, Check, Sparkles 
@@ -28,10 +29,11 @@ export default function VendorCRUDModal({ editVendor, currentRole, onClose, onRe
       };
 
       await apiService.saveVendor(vendorObj);
+      modalService.success('บันทึกผู้ขายเรียบร้อย', `บันทึกข้อมูลผู้ขาย "${vendorObj.name}" สำเร็จ`);
       onClose();
       onRefresh();
     } catch (err) {
-      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + err.message);
+      modalService.error('เกิดข้อผิดพลาดในการบันทึกข้อมูล', err.message);
     } finally {
       setIsSaving(false);
     }
@@ -40,26 +42,26 @@ export default function VendorCRUDModal({ editVendor, currentRole, onClose, onRe
   const dept = editVendor?.department || lockedDept || 'BOTH';
 
   return createPortal(
-    <div className="fixed inset-0 glass-backdrop z-[70] flex items-center justify-center p-3 sm:p-4 print:hidden animate-fade-in">
-      <div className="modal-content w-full max-w-xl max-h-[92vh] bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-zoom-in text-slate-800">
+    <div className="fixed inset-0 glass-backdrop z-[70] flex items-center justify-center p-4 sm:p-5 print:hidden animate-fade-in">
+      <div className="modal-content w-full max-w-2xl max-h-[90vh] bg-white rounded-3xl shadow-2xl shadow-slate-900/10 border border-slate-200/60 overflow-hidden flex flex-col animate-zoom-in text-slate-800">
         
         {/* ── Header ── */}
-        <div className="flex-shrink-0 px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 font-bold shadow-inner shrink-0">
-              <Store className="w-6 h-6 text-indigo-400" />
+        <div className="flex-shrink-0 px-6 sm:px-8 py-5 border-b border-slate-100 bg-white flex items-center justify-between">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-700 shrink-0 shadow-sm">
+              <Store className="w-6 h-6" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-lg font-bold text-white tracking-tight">
-                  {editVendor ? 'แก้ไขข้อมูลผู้ขาย (Edit Supplier/Vendor)' : 'เพิ่มผู้ขายใหม่ (Add New Vendor)'}
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <h3 className="text-xl font-semibold text-slate-900 tracking-tight">
+                  {editVendor ? 'แก้ไขข้อมูลผู้ขาย' : 'เพิ่มผู้ขายใหม่'}
                 </h3>
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-300 border-emerald-500/30">
-                  {dept === 'BOTH' ? 'ทุกแผนก (BOTH)' : `เฉพาะแผนก ${dept}`}
+                <span className="text-[10px] font-semibold px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 border border-slate-200/60 uppercase tracking-wider">
+                  {dept === 'BOTH' ? 'ใช้ร่วมกันทุกแผนก' : `แผนก ${dept}`}
                 </span>
               </div>
-              <p className="text-xs text-indigo-200/80 mt-0.5 font-medium truncate">
-                {editVendor ? `รหัสผู้ขาย: ${editVendor.code} • ${editVendor.name}` : 'กำหนดข้อมูลคู่ค้า, รายละเอียดผู้ติดต่อ และที่อยู่ออกใบสั่งซื้อ'}
+              <p className="text-sm text-slate-500 mt-1 truncate">
+                {editVendor ? `รหัสคู่ค้า: ${editVendor.code} • ${editVendor.name}` : 'กำหนดข้อมูลรายละเอียดคู่ค้าและที่อยู่สำหรับออกใบสั่งซื้อ'}
               </p>
             </div>
           </div>
@@ -67,21 +69,21 @@ export default function VendorCRUDModal({ editVendor, currentRole, onClose, onRe
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-white/10 transition-colors cursor-pointer shrink-0 ml-2"
+            className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer shrink-0 ml-4 border border-transparent hover:border-slate-200"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* ── Form Content ── */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/50">
-          <form id="vendor-form" onSubmit={handleSaveVendor} className="space-y-6 text-sm">
+        <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 space-y-8 custom-scrollbar bg-white">
+          <form id="vendor-form" onSubmit={handleSaveVendor} className="space-y-8 text-sm">
             
             {/* Section 1: ข้อมูลบริษัท & แผนก */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-              <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 uppercase tracking-wider pb-2 border-b border-slate-100">
-                <Building2 className="w-4 h-4 text-indigo-600" />
-                <span>1. ข้อมูลบริษัทคู่ค้า (Company Details)</span>
+            <div className="space-y-5">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 pb-3 border-b border-slate-100">
+                <Building2 className="w-4 h-4 text-slate-400" />
+                <span>ข้อมูลบริษัทคู่ค้า (Company Details)</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -104,12 +106,12 @@ export default function VendorCRUDModal({ editVendor, currentRole, onClose, onRe
                 </div>
 
                 <div>
-                  <label className="impeccable-label">
+                  <label className="impeccable-label mb-1.5 block text-slate-600">
                     แผนกที่ใช้งาน (Department Scope) <span className="text-rose-500">*</span>
                   </label>
                   {lockedDept ? (
-                    <div className={`w-full border rounded-xl px-4 py-2.5 text-sm font-bold flex items-center gap-2 ${
-                      lockedDept === 'PD' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-amber-50 border-amber-200 text-amber-700'
+                    <div className={`w-full border rounded-xl px-4 py-2.5 text-sm font-semibold flex items-center gap-2 ${
+                      lockedDept === 'PD' ? 'bg-blue-50/50 border-blue-100 text-blue-700' : 'bg-amber-50/50 border-amber-100 text-amber-700'
                     }`}>
                       <Building2 className="w-4 h-4 shrink-0" />
                       <span>{lockedDept} ({lockedDept === 'PD' ? 'ฝ่ายผลิต' : 'ฝ่ายควบคุมคุณภาพ'})</span>
@@ -171,10 +173,10 @@ export default function VendorCRUDModal({ editVendor, currentRole, onClose, onRe
             </div>
 
             {/* Section 2: ข้อมูลติดต่อ & ที่อยู่ */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
-              <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 uppercase tracking-wider pb-2 border-b border-slate-100">
-                <Phone className="w-4 h-4 text-indigo-600" />
-                <span>2. ข้อมูลผู้ติดต่อและสถานที่ (Contact & Address)</span>
+            <div className="space-y-5">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 pb-3 border-b border-slate-100">
+                <Phone className="w-4 h-4 text-slate-400" />
+                <span>ข้อมูลติดต่อและสถานที่ (Contact & Address)</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -235,15 +237,15 @@ export default function VendorCRUDModal({ editVendor, currentRole, onClose, onRe
         </div>
 
         {/* ── Footer ── */}
-        <div className="flex-shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-white shadow-xs">
-          <span className="text-xs text-slate-400 font-medium">
-            <span className="text-rose-500">*</span> ฟิลด์ที่จำเป็นต้องกรอก
+        <div className="flex-shrink-0 flex items-center justify-between gap-4 px-6 sm:px-8 py-5 border-t border-slate-100 bg-slate-50/50">
+          <span className="text-xs text-slate-500 font-medium hidden sm:inline-block">
+            <span className="text-rose-500">*</span> จำเป็นต้องระบุข้อมูล
           </span>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+              className="px-5 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 rounded-xl transition-all cursor-pointer shadow-xs"
             >
               ยกเลิก
             </button>
@@ -251,10 +253,19 @@ export default function VendorCRUDModal({ editVendor, currentRole, onClose, onRe
               type="submit"
               form="vendor-form"
               disabled={isSaving}
-              className="px-6 py-2.5 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-600/30 transition-all transform active:scale-[0.98] disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+              className="px-6 py-2.5 text-sm font-semibold bg-slate-900 hover:bg-slate-800 text-white rounded-xl shadow-md shadow-slate-900/20 transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 flex items-center gap-2 cursor-pointer border border-slate-800"
             >
-              <Check className="w-4 h-4" />
-              <span>{isSaving ? 'กำลังบันทึก...' : (editVendor ? 'บันทึกการแก้ไข' : 'บันทึกผู้ขายใหม่')}</span>
+              {isSaving ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <span>กำลังบันทึก...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>{editVendor ? 'บันทึกการแก้ไข' : 'เพิ่มผู้ขายใหม่'}</span>
+                </>
+              )}
             </button>
           </div>
         </div>

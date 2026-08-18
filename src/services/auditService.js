@@ -1,4 +1,4 @@
-import { STORAGE_KEYS } from '../config/constants';
+import { STORAGE_KEYS } from '../config/constants.js';
 
 /**
  * Audit Service for tracking all system actions, document status changes, 

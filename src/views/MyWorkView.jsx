@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { workflowEngine } from '../services/workflowEngine';
 import { PR_STATUS, PO_STATUS } from '../config/constants';
-import { AlertCircle, Clock, CheckCircle2, ArrowRight, FileText, ShoppingBag, Loader2, Sparkles, ShieldCheck } from 'lucide-react';
+import { AlertCircle, Clock, CheckCircle2, ArrowRight, FileText, ShoppingBag, Loader2, Sparkles, ShieldCheck, Building2, Store } from 'lucide-react';
 import EmptyState from '../components/common/EmptyState';
 import PRDetailsModal from '../components/pr/PRDetailsModal';
 import PODetailsModal from '../components/po/PODetailsModal';
@@ -41,45 +41,41 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
     const isAsstMgr = userLevel === 2 && !isOnlinePurchaser;
 
     // ─── PR Status ที่หมายความว่า "task ผ่านมือ role นี้ไปแล้ว" ───
-    // ถ้า PR อยู่ใน statuses เหล่านี้ แสดงว่า role นั้นๆ ดำเนินการเสร็จแล้ว
-    // และตอนนี้รอ downstream (คนถัดไปใน workflow) ทำงาน
+    // เมื่อ PR ออก PO แล้ว (PO_ISSUED / APPROVED) ถือว่าจบกระบวนการ PR แล้ว (ย้ายไปเสร็จสิ้นแล้ว)
+    // เหลือเฉพาะขั้นตอนที่ PR กำลังอยู่ระหว่างการตรวจสอบ (SUBMITTED / REVIEWED) เท่านั้นที่อยู่ใน "รอผู้อื่น"
     const waitingStatusesFor = {
-      // Plant Manager: task ของตัวเองคือ REVIEWED → ถ้าผ่านไปเป็น APPROVED/PO_ISSUED/IN_PROGRESS_ONLINE แล้วรอ downstream
-      plantMgr: ['APPROVED', 'PO_ISSUED', 'IN_PROGRESS_ONLINE'],
-      // Asst. Mgr: task ของตัวเองคือ SUBMITTED/REJECTED_TO_L2 → ถ้าผ่านไปเป็น REVIEWED+ แล้วรอ Plant Mgr
-      asstMgr: ['REVIEWED', 'APPROVED', 'PO_ISSUED', 'IN_PROGRESS_ONLINE'],
-      // Requester: task ของตัวเองคือ DRAFT/REJECTED_TO_DRAFT → ถ้า submit ไปแล้ว รออีก 2 ชั้น
-      requester: ['SUBMITTED', 'REJECTED_TO_L2', 'REVIEWED', 'APPROVED', 'PO_ISSUED', 'IN_PROGRESS_ONLINE'],
-      // Online Purchaser: task คือ IN_PROGRESS_ONLINE (PO) → ถ้า ordered ไปแล้วรอ department รับของ
-      onlinePurchaser: ['ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'],
+      // Plant Manager: ไม่อยู่ใน waiting ของ PR (เมื่อ approve แล้ว PR เสร็จสิ้น)
+      plantMgr: [],
+      // Asst. Mgr: รอผู้อื่น = PR ที่ตัวเอง review ผ่านไปแล้ว และกำลังรอ Plant Mgr (REVIEWED)
+      asstMgr: ['REVIEWED'],
+      // Requester: รอผู้อื่น = PR ที่ส่งไปแล้วและกำลังรอ Asst Mgr หรือ Plant Mgr อนุมัติ (SUBMITTED, REJECTED_TO_L2, REVIEWED)
+      requester: ['SUBMITTED', 'REJECTED_TO_L2', 'REVIEWED'],
+      // Online Purchaser: ไม่มีส่วนใน PR flow โดยตรง
+      onlinePurchaser: [],
     };
 
     // Process PRs
     prs.forEach(pr => {
-      const canAction = pr.status !== 'CLOSED' && pr.status !== 'CANCELLED' && workflowEngine.canAction(currentRole, pr);
-      const isDone = pr.status === 'CLOSED' || pr.status === 'CANCELLED';
+      // PR ถือว่าเสร็จสิ้นเมื่อออก PO แล้ว (PO_ISSUED / APPROVED) หรือ ปิด/ยกเลิก (CLOSED / CANCELLED)
+      const isDone = ['PO_ISSUED', 'APPROVED', 'CLOSED', 'CANCELLED'].includes(pr.status);
+      const canAction = !isDone && workflowEngine.canAction(currentRole, pr);
       const actedOn = hasDirectlyActedOn(pr);
 
       // ─── ตรรกะ "รอผู้อื่นดำเนินการ" สำหรับ PR ───
-      // เงื่อนไข: doc ผ่านมือตัวเอง (actedOn) หรือเป็น Admin/high-level ที่มองเห็น
-      // AND status อยู่ "หลัง" จุดที่ตัวเองดำเนินการแล้ว
       let isWaiting = false;
       if (!canAction && !isDone) {
         if (isAdmin) {
-          // Admin เห็น doc ที่ยังไม่เสร็จทุกใบ
+          // Admin เห็น PR ที่ยังไม่เสร็จ
           isWaiting = true;
         } else if (isPlantMgr) {
-          // Plant Manager: รอผู้อื่น = PR ที่ตัวเองอนุมัติไปแล้ว (status หลัง APPROVED)
-          // ต้องมี actedOn (ตัวเองเคย approve หรือ reject ใน log) หรือ PR อยู่ใน scope ที่ตัวเองเคย action ไปแล้ว
-          isWaiting = actedOn && waitingStatusesFor.plantMgr.includes(pr.status);
+          isWaiting = false;
         } else if (isAsstMgr) {
-          // Asst. Mgr: รอผู้อื่น = PR ที่ตัวเอง review ผ่านไปแล้ว (status หลัง REVIEWED)
+          // Asst. Mgr: รอผู้อื่น = PR ที่ตัวเอง review แล้ว และกำลังรอ Plant Mgr
           isWaiting = actedOn && waitingStatusesFor.asstMgr.includes(pr.status);
         } else if (isOnlinePurchaser) {
-          // Online Purchaser ไม่มีส่วนใน PR flow โดยตรง
           isWaiting = false;
         } else {
-          // Requester (level 1): รอผู้อื่น = PR ที่ตัวเองสร้างและ submit ไปแล้ว
+          // Requester (level 1): รอผู้อื่น = PR ที่ตัวเองสร้างและ submit ไปแล้ว (ยังไม่อนุมัติ)
           isWaiting = actedOn && waitingStatusesFor.requester.includes(pr.status);
         }
       }
@@ -145,37 +141,46 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
           isWaiting = true;
         } else if (isOnlinePurchaser) {
           // Online Purchaser: รอผู้อื่น = PO ที่ตัวเองสั่งซื้อแล้ว รอ Requester รับของ
-          // (ORDERED_PENDING_DELIVERY, IN_DELIVERY, PARTIAL → รอ dept รับ)
           isWaiting = actedOnPO && waitingStatusesFor.onlinePurchaser.includes(po.status);
-        } else if (isPlantMgr) {
-          // Plant Manager: รอผู้อื่น = PO ที่ตัวเอง approve PR มาแล้ว ตอนนี้รอ downstream
-          // actedOnPO = true เพราะ Plant Mgr อยู่ใน PO activityLog (สร้าง PO จาก PR approval)
-          isWaiting = actedOnPO && [
-            'ISSUED', 'IN_PROGRESS_ONLINE', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'
-          ].includes(po.status);
-        } else if (isAsstMgr) {
-          // Asst. Manager: อยู่ใน PR activityLog (review) แต่ไม่อยู่ใน PO activityLog
-          // ใช้ isLinkedToOwnPR เพื่อ trace กลับไปที่ PR ที่ตัวเอง review แล้ว
-          isWaiting = isLinkedToOwnPR(po) && [
-            'ISSUED', 'IN_PROGRESS_ONLINE', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'
-          ].includes(po.status);
+        } else if (isPlantMgr || isAsstMgr) {
+          // ─── Plant Manager & Asst Manager ไม่เห็น PO ใน waiting เลย ───
+          // PO เป็นงานของ Requester (รับของ) และ Online Purchaser (สั่งซื้อ) เท่านั้น
+          // ผู้บริหารดู PO ได้จากหน้า PO List โดยตรง
+          isWaiting = false;
         } else {
-          // Requester (level 1):
-          // SELF purchase: ISSUED → canAction = true (ไปซื้อและรับของ) → ไม่มาถึงบรรทัดนี้
-          // ONLINE purchase: IN_PROGRESS_ONLINE → canAction = false → รอผู้อื่น (Online Purchaser กำลังสั่งซื้อ)
-          // ONLINE purchase: ORDERED_PENDING_DELIVERY → canAction = true (รับของ) → ไม่มาถึงบรรทัดนี้
-          isWaiting = isOwnerOfPO && po.status === 'IN_PROGRESS_ONLINE';
+          // Requester / Supervisor:
+          // SELF purchase: ISSUED → canAction = true → เข้า Action Required
+          // ONLINE purchase: IN_PROGRESS_ONLINE → รอ Online Purchaser สั่งซื้อ → แสดงใน Waiting
+          // ONLINE purchase: ORDERED_PENDING_DELIVERY → canAction = true → เข้า Action Required
+          const isDeptMember = currentRole?.department === 'ALL' || currentRole?.department === po.department;
+          isWaiting = (isOwnerOfPO || isDeptMember) && po.status === 'IN_PROGRESS_ONLINE';
         }
       }
+
+      const poSubtitle = (() => {
+        if (po.status === 'ISSUED') return '📦 รอดำเนินการ: ตรวจรับสินค้าเข้าคลัง';
+        if (po.status === 'ORDERED_PENDING_DELIVERY') return '🚚 สินค้ากำลังจัดส่ง: รอตรวจรับของ';
+        if (po.status === 'PARTIAL') return '⚠️ รับของบางส่วนแล้ว: ยังมียอดค้างส่ง';
+        if (po.status === 'IN_PROGRESS_ONLINE') return '🛒 รอจัดซื้อออนไลน์ดำเนินการ';
+        return null;
+      })();
+
+      const productTitle = po.items && po.items.length > 0
+        ? (po.items.length === 1 
+            ? `${po.items[0].name} (x${Number((po.items[0].orderedQty ?? po.items[0].purchaseQty ?? po.items[0].qty) || 0).toLocaleString()} ${po.items[0].purchaseUnit || po.items[0].unit || 'ชิ้น'})`
+            : `${po.items.map(i => i.name).join(', ')} (${po.items.length} รายการ)`)
+        : `ใบสั่งซื้อ: ${po.vendorName}`;
 
       const taskItem = {
         id: po.id,
         type: 'PO',
         docNo: po.poNo,
         date: po.issueDate,
-        title: `ใบสั่งซื้อ: ${po.vendorName}`,
+        title: productTitle,
+        vendorName: po.vendorName,
+        subtitle: poSubtitle,
         status: po.status,
-        amount: po.grandTotal,
+        amount: po.grandTotal || po.totalAmount || po.subtotal || 0,
         raw: po,
         statusInfo: PO_STATUS[po.status]
       };
@@ -235,15 +240,15 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
           onClick={() => setActiveTab('action')}
           className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all whitespace-nowrap ${
             activeTab === 'action'
-              ? 'bg-white text-rose-600 shadow-md ring-1 ring-rose-100'
-              : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/80'
+              ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'
           }`}
         >
           <AlertCircle className={`w-4 h-4 ${activeTab === 'action' ? 'animate-bounce-slight' : ''}`} />
           ต้องดำเนินการ
           {tasks.action.length > 0 && (
             <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-              activeTab === 'action' ? 'bg-rose-100 text-rose-700' : 'bg-slate-300 text-slate-700'
+              activeTab === 'action' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-600'
             }`}>
               {tasks.action.length}
             </span>
@@ -254,15 +259,15 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
           onClick={() => setActiveTab('waiting')}
           className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all whitespace-nowrap ${
             activeTab === 'waiting'
-              ? 'bg-white text-indigo-600 shadow-md ring-1 ring-indigo-100'
-              : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/80'
+              ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'
           }`}
         >
           <Loader2 className={`w-4 h-4 ${activeTab === 'waiting' ? 'animate-spin-slow' : ''}`} />
           รอผู้อื่นดำเนินการ
           {tasks.waiting.length > 0 && (
             <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-              activeTab === 'waiting' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-300 text-slate-700'
+              activeTab === 'waiting' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-600'
             }`}>
               {tasks.waiting.length}
             </span>
@@ -273,8 +278,8 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
           onClick={() => setActiveTab('completed')}
           className={`flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all whitespace-nowrap ${
             activeTab === 'completed'
-              ? 'bg-white text-emerald-600 shadow-md ring-1 ring-emerald-100'
-              : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/80'
+              ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200'
+              : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'
           }`}
         >
           <CheckCircle2 className="w-4 h-4" />
@@ -283,7 +288,7 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
       </div>
 
       {/* Task List Content */}
-      <div className="impeccable-card min-h-[400px] p-4 bg-slate-50/50">
+      <div className="impeccable-card min-h-[400px] p-5 sm:p-6 bg-slate-50/60 border border-slate-200">
         {activeTasks.length === 0 ? (
           <div className="h-[300px] flex items-center justify-center">
             {activeTab === 'action' && (
@@ -314,53 +319,91 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
               const isPR = task.type === 'PR';
               const Icon = isPR ? FileText : ShoppingBag;
               
+              // Distinguish Themes
+              const themeColor = isPR 
+                ? 'indigo' 
+                : 'emerald';
+                
+              const activeBorderClass = activeTab === 'action' 
+                ? (isPR ? 'border-indigo-400 shadow-indigo-100/50' : 'border-emerald-400 shadow-emerald-100/50')
+                : 'border-slate-200';
+
               return (
                 <div 
                   key={`${task.type}-${task.id}`} 
                   onClick={() => handleTaskClick(task)}
-                  className="group bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-indigo-300 transition-all duration-300 cursor-pointer flex flex-col relative overflow-hidden"
+                  className={`group bg-white border ${activeBorderClass} rounded-xl p-5 shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col relative overflow-hidden`}
                 >
-                  {/* Glowing Top Border */}
                   <div className={`absolute top-0 left-0 w-full h-1 ${
-                    activeTab === 'action' ? 'bg-gradient-to-r from-rose-400 to-rose-500' :
-                    activeTab === 'waiting' ? 'bg-gradient-to-r from-indigo-400 to-indigo-500' :
-                    'bg-gradient-to-r from-emerald-400 to-emerald-500'
+                    activeTab === 'action' ? (isPR ? 'bg-indigo-600' : 'bg-emerald-600') :
+                    activeTab === 'waiting' ? 'bg-amber-400' :
+                    'bg-slate-300'
                   }`}></div>
 
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`p-2 rounded-xl ${
-                        isPR ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2.5 rounded-xl ${
+                        isPR ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200' : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
                       }`}>
-                        <Icon className="w-4 h-4" />
+                        <Icon className="w-5 h-5" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs font-bold text-slate-800">{task.docNo}</span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-slate-100 text-slate-600">
-                            {task.type}
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                            isPR ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          }`}>
+                            {isPR ? 'ใบขอซื้อ (PR)' : 'ใบสั่งซื้อ (PO)'}
                           </span>
+                          <span className="font-mono text-xs font-bold text-slate-700">{task.docNo}</span>
                         </div>
-                        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-1 font-medium">
                           <Clock className="w-3 h-3" /> {task.date}
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="flex-1 mb-2">
+                    <p className={`text-[13px] font-bold leading-relaxed line-clamp-2 ${isPR ? 'text-indigo-950' : 'text-emerald-950'}`}>
+                      {task.title}
+                    </p>
                     
+                    {isPR && task.raw?.department && (
+                      <p className="text-[11px] text-indigo-600/80 mt-1.5 flex items-center gap-1 font-medium">
+                        <Building2 className="w-3.5 h-3.5" /> แผนก: {task.raw.department}
+                      </p>
+                    )}
+
+                    {!isPR && task.vendorName && (
+                      <p className="text-[11px] text-emerald-700/80 mt-1.5 flex items-center gap-1 font-medium truncate">
+                        <Store className="w-3.5 h-3.5 shrink-0" /> {task.vendorName}
+                      </p>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center justify-between mb-3">
                     <span className={`inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold border ${task.statusInfo?.color}`}>
                       {task.statusInfo?.label}
                     </span>
-                  </div>
-
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-slate-700 leading-snug line-clamp-2">
-                      {task.title}
-                    </p>
+                    
+                    {task.subtitle && (
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-md truncate max-w-[130px] ${
+                        task.status === 'ISSUED' ? 'bg-teal-50 text-teal-700' :
+                        task.status === 'ORDERED_PENDING_DELIVERY' ? 'bg-blue-50 text-blue-700' :
+                        task.status === 'PARTIAL' ? 'bg-amber-50 text-amber-700' :
+                        task.status === 'IN_PROGRESS_ONLINE' ? 'bg-purple-50 text-purple-700' :
+                        'bg-slate-100 text-slate-600'
+                      }`} title={task.subtitle}>
+                        {task.subtitle}
+                      </span>
+                    )}
                   </div>
                   
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <div className={`mt-auto pt-3 border-t flex items-center justify-between ${
+                    isPR ? 'border-indigo-50' : 'border-emerald-50'
+                  }`}>
                     {currentRole.canViewBudget ? (
-                      <span className="text-xs font-black text-slate-800">
+                      <span className="text-xs font-black text-slate-700">
                         ฿{task.amount?.toLocaleString() || 0}
                       </span>
                     ) : (
@@ -369,8 +412,7 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
                     
                     <span className={`text-[11px] font-bold flex items-center gap-1 transition-colors ${
                       activeTab === 'action' ? 'text-rose-600 group-hover:text-rose-700' :
-                      activeTab === 'waiting' ? 'text-indigo-600 group-hover:text-indigo-700' :
-                      'text-emerald-600 group-hover:text-emerald-700'
+                      (isPR ? 'text-indigo-600 group-hover:text-indigo-700' : 'text-emerald-600 group-hover:text-emerald-700')
                     }`}>
                       {activeTab === 'action' ? 'อนุมัติ / ดำเนินการ' : 'ดูรายละเอียด'} <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                     </span>

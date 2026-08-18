@@ -110,9 +110,21 @@ export const apiService = {
     return workflowEngine.closePO(poId, user, note);
   },
 
+  // Partial or Full goods receiving — handles PARTIAL → CLOSED transitions
+  async receiveGoods(poId, receivingItems, user, note = '') {
+    return workflowEngine.receiveGoods(poId, receivingItems, user, note);
+  },
+
   async receiveAllGoods(poId, user, note = '') {
-    // Current implementation uses closePO directly for receiveAllGoods
-    return workflowEngine.closePO(poId, user, note);
+    // Convenience wrapper: build receivingItems from all remaining quantities
+    const pos = await this.getPOs();
+    const po = pos.find(p => p.id === poId);
+    if (!po) throw new Error('PO not found');
+    const receivingItems = po.items.map(item => ({
+      productId: item.productId,
+      receivedThisTime: Number(item.orderedQty ?? item.purchaseQty ?? item.qty) - (Number(item.receivedQty) || 0)
+    }));
+    return workflowEngine.receiveGoods(poId, receivingItems, user, note);
   },
 
   // --- Quick Issue Stock (เบิกจ่าย) ---

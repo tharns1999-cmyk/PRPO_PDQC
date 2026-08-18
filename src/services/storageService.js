@@ -1,7 +1,7 @@
-import { STORAGE_KEYS, ROLES } from '../config/constants';
-import { initialProducts, initialVendors, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData';
+import { STORAGE_KEYS, ROLES } from '../config/constants.js';
+import { initialProducts, initialVendors, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
 
-const DATA_VERSION = 'prpo_clean_v1';
+const DATA_VERSION = 'prpo_clean_v4';
 
 export const storageService = {
   // Initialize storage if empty or version mismatch
@@ -126,16 +126,33 @@ export const storageService = {
 
     let needsSave = false;
     const migrated = filtered.map(po => {
-      let itemsMigrated = false;
-      const items = (po.items || []).map(item => {
-        if (!item.purchaseUnit || !item.stockUnit || item.purchaseQty === undefined || item.stockQty === undefined) {
-          itemsMigrated = true;
+      let poUpdated = false;
+      let items = po.items || [];
+
+      // If PO has legacy VAT, reset it so it matches PR exactly
+      let vat = po.vat;
+      let grandTotal = po.grandTotal;
+      if (vat > 0) {
+        vat = 0;
+        grandTotal = po.subtotal || po.totalAmount || grandTotal;
+        poUpdated = true;
+        needsSave = true;
+      }
+
+      items = items.map(item => {
+        const needsUnitMigration = !item.purchaseUnit || !item.stockUnit || item.purchaseQty === undefined || item.stockQty === undefined;
+        const needsQtyMigration = item.orderedQty === undefined || item.remainingQty === undefined;
+
+        if (needsUnitMigration || needsQtyMigration) {
+          poUpdated = true;
           needsSave = true;
           const pQty = Number(item.purchaseQty ?? item.qty) || 1;
           const rate = Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1;
           const sQty = Number(item.stockQty) || (pQty * rate);
           const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
           const sUnit = item.stockUnit || item.unit || 'ชิ้น';
+          const orderedQty = item.orderedQty ?? pQty;
+          const receivedQty = Number(item.receivedQty) || 0;
           return {
             ...item,
             purchaseQty: pQty,
@@ -145,12 +162,15 @@ export const storageService = {
             stockUnit: sUnit,
             unit: pUnit,
             conversionRate: rate,
-            receivedStockQty: item.receivedStockQty ?? (Number(item.receivedQty || 0) * rate)
+            orderedQty,
+            receivedQty,
+            remainingQty: item.remainingQty ?? (orderedQty - receivedQty),
+            receivedStockQty: item.receivedStockQty ?? (receivedQty * rate)
           };
         }
         return item;
       });
-      return itemsMigrated ? { ...po, items } : po;
+      return poUpdated ? { ...po, vat, grandTotal, items } : po;
     });
 
     if (needsSave) {
