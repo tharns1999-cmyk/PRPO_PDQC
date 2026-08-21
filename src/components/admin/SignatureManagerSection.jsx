@@ -17,6 +17,20 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
   const [uploadPreview, setUploadPreview] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
+  const isAdmin = currentRole?.id === 'ADMIN' || currentRole?.roleId === 'ADMIN' || Number(currentRole?.level) >= 99;
+
+  if (!isAdmin) {
+    return (
+      <div className="w-full my-8 text-center p-8 bg-white rounded-3xl border border-slate-200/80 shadow-xs space-y-2">
+        <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl w-12 h-12 mx-auto flex items-center justify-center border border-amber-200">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <h4 className="text-sm font-bold text-slate-800">เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น</h4>
+        <p className="text-xs text-slate-500">สิทธิ์การตั้งค่าและจัดการลายเซ็นอิเล็กทรอนิกส์ของผู้อนุมัติ ถูกจำกัดไว้เฉพาะบัญชี Admin เท่านั้น</p>
+      </div>
+    );
+  }
+
   const refreshSignatures = () => {
     setSignatures(storageService.getSignatures());
   };

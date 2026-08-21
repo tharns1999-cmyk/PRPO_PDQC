@@ -5,6 +5,10 @@ import { auditService } from './auditService.js';
 
 export const workflowEngine = {
   
+  canActionPO(role, po) {
+    return this.canAction(role, po);
+  },
+
   canAction(role, doc) {
     if (!role || !doc) return false;
 
@@ -1402,7 +1406,7 @@ export const workflowEngine = {
 
       const probInfo = problematicItems[poItem.productId];
       const isProb = Boolean(probInfo?.isProblematic);
-      const claimedQty = isProb ? Math.max(1, Number(probInfo.claimedQty) || (pQty - (alreadyReceived + thisReceive)) || 1) : 0;
+      const claimedQty = isProb ? (Number(probInfo?.claimedQty) > 0 ? Number(probInfo.claimedQty) : (thisReceive > 0 ? thisReceive : Math.max(1, pQty - (alreadyReceived + thisReceive)))) : 0;
       const rawReason = probInfo?.reason || 'DAMAGED';
       const reasonLabel = REASON_LABELS[rawReason] || rawReason;
       const defectNote = (probInfo?.description || probInfo?.defectReason || '').trim();
@@ -1423,26 +1427,42 @@ export const workflowEngine = {
 
         if (prod) {
           const currentBal = Number(prod.stockBalance) || 0;
-          const newBal = currentBal + stockReceive;
-          prod.stockBalance = newBal;
+          if (!isProb) {
+            const newBal = currentBal + stockReceive;
+            prod.stockBalance = newBal;
 
-          const logNote = rate > 1
-            ? `รับสินค้า ${thisReceive} ${pUnit} (= ${stockReceive} ${sUnit}) จาก PO ${po.poNo}`
-            : `รับสินค้า ${thisReceive} ${sUnit} จาก PO ${po.poNo}`;
+            const logNote = rate > 1
+              ? `รับสินค้า ${thisReceive} ${pUnit} (= ${stockReceive} ${sUnit}) จาก PO ${po.poNo}`
+              : `รับสินค้า ${thisReceive} ${sUnit} จาก PO ${po.poNo}`;
 
-          stockLogs.unshift({
-            id: `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-            date: timestamp,
-            productId: poItem.productId,
-            productCode: poItem.code,
-            type: 'IN',
-            docNo: po.poNo,
-            qty: stockReceive,
-            unit: sUnit,
-            balance: newBal,
-            user: `${user.name} (${user.title})`,
-            note: note || logNote
-          });
+            stockLogs.unshift({
+              id: `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+              date: timestamp,
+              productId: poItem.productId,
+              productCode: poItem.code,
+              type: 'IN',
+              docNo: po.poNo,
+              qty: stockReceive,
+              unit: sUnit,
+              balance: newBal,
+              user: `${user.name} (${user.title})`,
+              note: note || logNote
+            });
+          } else {
+            stockLogs.unshift({
+              id: `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+              date: timestamp,
+              productId: poItem.productId,
+              productCode: poItem.code,
+              type: 'IN_NG',
+              docNo: po.poNo,
+              qty: stockReceive,
+              unit: sUnit,
+              balance: currentBal,
+              user: `${user.name} (${user.title})`,
+              note: `[สินค้าชำรุด/NG] ${defectNote || reasonLabel}`
+            });
+          }
         }
 
         receivedSummaryParts.push(`${poItem.name}: ${thisReceive} ${pUnit}`);

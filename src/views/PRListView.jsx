@@ -14,7 +14,7 @@ const PR_TABS = [
   { id: 'REJECTED', label: 'ไม่อนุมัติ / ยกเลิก', filter: pr => ['REJECTED', 'CANCELLED'].includes(pr.status) },
 ];
 
-export default function PRListView({ prs, currentRole, onRefresh, onNavigate, onEditPR }) {
+export default function PRListView({ prs = [], currentRole, onRefresh, onNavigate, onEditPR }) {
   const [selectedPR, setSelectedPR] = useState(null);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [deptFilter, setDeptFilter] = useState(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
@@ -22,7 +22,7 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate, on
 
   // Department-based access check
   const accessiblePRs = useMemo(() => {
-    return prs.filter(pr => {
+    return (prs || []).filter(pr => {
       if (currentRole.canViewAllDepts || currentRole.id === 'ADMIN') return true;
       return pr.department === currentRole.department;
     });
@@ -261,7 +261,9 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate, on
               ) : (
                 filteredPRs.map(pr => {
                   const canAction = workflowEngine.canAction(currentRole, pr);
-                  const channel = PURCHASE_CHANNEL[pr.purchaseChannel] || PURCHASE_CHANNEL.SELF;
+                  const channel = PURCHASE_CHANNEL[pr.purchaseChannel] || PURCHASE_CHANNEL.SELF || { label: 'ซื้อเอง' };
+                  const statusConf = PR_STATUS[pr.status] || { label: pr.status || 'ไม่ระบุสถานะ', color: 'bg-slate-100 text-slate-700 border-slate-200' };
+                  const itemsList = pr.items || [];
                   const isEditable = (pr.status === 'DRAFT' || pr.status === 'REJECTED_TO_DRAFT') && 
                     (currentRole.id === 'ADMIN' || currentRole.canCreatePR || workflowEngine.canAction(currentRole, pr));
                   
@@ -286,9 +288,9 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate, on
                         </div>
                       </td>
                       <td className="p-4 text-slate-600">
-                        <div className="font-semibold text-slate-900 whitespace-nowrap font-mono">{pr.items.length} รายการ</div>
+                        <div className="font-semibold text-slate-900 whitespace-nowrap font-mono">{itemsList.length} รายการ</div>
                         <div className="text-xs text-slate-500 truncate max-w-[240px]">
-                          {pr.items.map(i => i.name).join(', ')}
+                          {itemsList.map(i => i?.name || '').filter(Boolean).join(', ') || '-'}
                         </div>
                       </td>
                       <td className="p-4 whitespace-nowrap">
@@ -302,12 +304,12 @@ export default function PRListView({ prs, currentRole, onRefresh, onNavigate, on
                         </div>
                       </td>
                       <td className="p-4 text-right font-bold font-mono text-slate-900 tabular-nums whitespace-nowrap text-sm">
-                        ฿{pr.totalAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ฿{(pr.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                       <td className="p-4 text-center whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-2xs ${PR_STATUS[pr.status]?.color}`}>
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-2xs ${statusConf.color}`}>
                           <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80"></span>
-                          {PR_STATUS[pr.status]?.label}
+                          {statusConf.label}
                         </span>
                       </td>
                       <td className="p-4 pr-6 text-center whitespace-nowrap">

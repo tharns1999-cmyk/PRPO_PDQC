@@ -91,11 +91,14 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
 
   // Department and Category Filtered Products
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      const matchesDept = currentRole.canViewAllDepts || p.category === currentRole.department;
-      const matchesCat = categoryFilter === 'ALL' || p.category === categoryFilter;
-      return matchesDept && matchesCat;
-    });
+    return products
+      .filter(p => {
+        const pCat = p.category || p.department || 'PD';
+        const matchesDept = currentRole.canViewAllDepts || pCat === currentRole.department;
+        const matchesCat = categoryFilter === 'ALL' || pCat === categoryFilter;
+        return matchesDept && matchesCat;
+      })
+      .sort((a, b) => (a.code || '').localeCompare(b.code || ''));
   }, [products, currentRole, categoryFilter]);
 
   // Transform to SearchableSelect options
@@ -107,13 +110,14 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
       const dualText = rate > 1 
         ? ` • (≈ ${((p.stockBalance || 0) / rate).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1')} ${pUnit})` 
         : '';
+      const pCat = p.category || p.department || 'PD';
       return {
         value: p.id,
         label: p.name,
         code: p.code,
-        subLabel: `คงเหลือ: ${Number(p.stockBalance || 0).toLocaleString()} ${sUnit}${dualText} • ที่เก็บ: ${p.location || 'คลังหลัก'} • ROP: ${p.reorderPoint} ${sUnit}`,
-        badge: p.category === 'PD' ? 'ฝ่ายผลิต' : 'ฝ่าย QC',
-        keywords: `${p.code} ${p.name} ${p.location} ${sUnit} ${pUnit}`
+        subLabel: `คงเหลือ: ${Number(p.stockBalance || 0).toLocaleString()} ${sUnit}${dualText} • ROP: ${Number(p.reorderPoint || 0).toLocaleString()} ${sUnit}`,
+        badge: pCat === 'PD' ? 'ฝ่ายผลิต' : 'ฝ่าย QC',
+        keywords: `${p.code} ${p.name} ${sUnit} ${pUnit} ${pCat}`
       };
     });
   }, [filteredProducts]);
@@ -125,7 +129,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
     }
   }, [filteredProducts, selectedProdId]);
 
-  const selectedProduct = products.find(p => p.id === selectedProdId);
+  const selectedProduct = filteredProducts.find(p => p.id === selectedProdId) || products.find(p => p.id === selectedProdId);
 
   // Post-issue balance calculation & ROP Warning logic
   const currentBalance = Number(selectedProduct?.stockBalance || 0);
@@ -307,7 +311,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
       const pCode = log.productCode || log.productId || 'UNKNOWN';
       const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
       const pName = prod?.name || pCode;
-      const pUnit = log.unit || prod?.stockUnit || prod?.unit || 'ชิ้น';
+      const pUnit = prod?.stockUnit || prod?.unit || log.unit || 'ชิ้น';
       const dept = prod?.category || 'PD';
 
       if (!unitMap[unitName].items[pCode]) {
@@ -341,7 +345,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
       const code = log.productCode || 'UNKNOWN';
       const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
       const name = prod?.name || code;
-      const unit = log.unit || prod?.stockUnit || prod?.unit || 'ชิ้น';
+      const unit = prod?.stockUnit || prod?.unit || log.unit || 'ชิ้น';
       const dept = prod?.category || 'PD';
 
       if (!productMap[code]) {
@@ -862,7 +866,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
 
                       <div className="text-right shrink-0">
                         <span className="font-mono font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200/80 text-xs">
-                          -{log.qty} {log.unit || 'ชิ้น'}
+                          -{log.qty} {products.find(p => p.id === log.productId || p.code === log.productCode)?.stockUnit || products.find(p => p.id === log.productId || p.code === log.productCode)?.unit || log.unit || 'ชิ้น'}
                         </span>
                         <span className="block text-[10px] text-slate-400 mt-1 font-mono">คงเหลือ: {log.balance}</span>
                       </div>
@@ -1471,7 +1475,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                             </span>
                           </td>
                           <td className="py-3 px-4 text-right font-mono font-bold text-rose-600 text-sm whitespace-nowrap">
-                            -{log.qty} <span className="text-xs font-normal text-slate-400 font-sans">{log.unit || 'ชิ้น'}</span>
+                            -{log.qty} <span className="text-xs font-normal text-slate-400 font-sans">{prod?.stockUnit || prod?.unit || log.unit || 'ชิ้น'}</span>
                           </td>
                           <td className="py-3 px-4 text-right font-mono font-semibold text-slate-700">
                             {log.balance}

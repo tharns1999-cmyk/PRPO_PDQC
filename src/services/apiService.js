@@ -170,11 +170,15 @@ export const apiService = {
       }
     }
 
+    const cat = product.category || product.department || 'PD';
+    product.category = cat;
+    product.department = cat;
+
     if (product.id) {
       const idx = products.findIndex(p => p.id === product.id);
-      if (idx !== -1) products[idx] = product;
+      if (idx !== -1) products[idx] = { ...products[idx], ...product };
     } else {
-      product.id = `PROD-${product.category}-${Date.now()}`;
+      product.id = `PROD-${cat}-${Date.now()}`;
       products.push(product);
     }
     storageService.saveProducts(products);

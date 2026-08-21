@@ -433,11 +433,11 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
       <div className="hidden print:block">
         <PrintablePO po={selectedPO} />
       </div>
-      <div className="fixed inset-0 glass-backdrop z-[60] flex items-center justify-center p-3 sm:p-4 print:hidden animate-fade-in">
-        <div className="modal-content w-full max-w-4xl max-h-[92vh] bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col text-slate-800 animate-zoom-in">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden">
+        <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in">
           
-          {/* ── Header (Clean Executive Ribbon & 4-Column Metadata Grid) ── */}
-          <div className="flex-shrink-0 border-b border-slate-100 p-4 sm:p-6 bg-white">
+          {/* ── 1. Fixed Header (Sticky Top / Non-scrollable) ── */}
+          <div className="shrink-0 px-6 py-4 border-b border-slate-100 bg-white flex flex-col gap-3 sticky top-0 z-20">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-3 flex-1 min-w-0">
                 <div className="flex items-center gap-2.5 flex-wrap">
@@ -1601,8 +1601,8 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
 
           </div>
 
-          {/* ── Fixed Sticky Footer Actions Bar ── */}
-          <div className="flex-shrink-0 border-t border-slate-200/90 bg-white p-3.5 sm:px-6 rounded-b-2xl shadow-xs space-y-2.5">
+          {/* ── 3. Sticky Action Footer (Non-scrollable) ── */}
+          <div className="shrink-0 px-6 py-4 bg-slate-50/80 border-t border-slate-100 space-y-2.5 sticky bottom-0 z-20">
             
             {/* Online Purchaser Guidance Banner */}
             {isOnlinePurchaser && selectedPO.status !== 'CLOSED' && selectedPO.status !== 'CANCELLED' && (

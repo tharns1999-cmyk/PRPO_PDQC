@@ -60,7 +60,9 @@ export default function PRCreateView({
 
   // Filter products by the active department
   const availableProducts = useMemo(() => {
-    return products.filter(p => p.category === department);
+    return products
+      .filter(p => (p.category || p.department) === department)
+      .sort((a, b) => (a.code || '').localeCompare(b.code || ''));
   }, [products, department]);
 
   // Transform available products into searchable options
@@ -69,14 +71,14 @@ export default function PRCreateView({
       const pUnit = p.purchaseUnit || p.unit || 'ชิ้น';
       const sUnit = p.stockUnit || p.unit || 'ชิ้น';
       const rate = Number(p.conversionRate) > 0 ? Number(p.conversionRate) : 1;
-      const unitText = rate > 1 ? `${pUnit} (1:${rate} ${sUnit})` : pUnit;
+      const pCat = p.category || p.department || 'PD';
       return {
         value: p.id,
         label: p.name,
         code: p.code,
-        subLabel: `฿${p.price?.toLocaleString()} / ${pUnit} • คงเหลือ: ${p.stockBalance || 0} ${sUnit} • ROP: ${p.reorderPoint} ${sUnit}`,
-        badge: p.category === 'PD' ? 'ฝ่ายผลิต' : 'ฝ่าย QC',
-        keywords: `${p.code} ${p.name} ${pUnit} ${sUnit}`
+        subLabel: `฿${Number(p.price || 0).toLocaleString()} / ${pUnit} • คงเหลือ: ${Number(p.stockBalance || 0).toLocaleString()} ${sUnit} • ROP: ${Number(p.reorderPoint || 0).toLocaleString()} ${sUnit}`,
+        badge: pCat === 'PD' ? 'ฝ่ายผลิต' : 'ฝ่าย QC',
+        keywords: `${p.code} ${p.name} ${pUnit} ${sUnit} ${pCat}`
       };
     });
   }, [availableProducts]);

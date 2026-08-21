@@ -1,7 +1,7 @@
 import { STORAGE_KEYS, ROLES } from '../config/constants.js';
 import { initialProducts, initialVendors, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
 
-const DATA_VERSION = 'prpo_mock_v7';
+const DATA_VERSION = 'prpo_clean_v12';
 
 export const storageService = {
   // Initialize storage if empty or version mismatch
@@ -12,18 +12,27 @@ export const storageService = {
     }
   },
 
-  // Reset data to initial defaults
+  // Reset data to initial defaults (Clearing mock PR/PO/Logs, Preserving Master Data)
   resetData() {
     localStorage.setItem('prpo_data_version', DATA_VERSION);
     localStorage.setItem(STORAGE_KEYS.CURRENT_ROLE, JSON.stringify(ROLES.REQUESTER_PD));
     localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(initialProducts));
     localStorage.setItem(STORAGE_KEYS.VENDORS, JSON.stringify(initialVendors));
-    localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify(initialPRs));
-    localStorage.setItem(STORAGE_KEYS.POS, JSON.stringify(initialPOs));
-    localStorage.setItem(STORAGE_KEYS.STOCK_LOGS, JSON.stringify(initialStockLogs));
-    localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(initialBudgets));
-    localStorage.setItem(STORAGE_KEYS.PR_COUNTERS, JSON.stringify(initialCounters));
-    console.log('[StorageService] Mock data reset to default successfully.');
+    localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.POS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.STOCK_LOGS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify({
+      PD: { monthlyBudget: 250000, spent: 0, pending: 0, variance: 0 },
+      QC: { monthlyBudget: 150000, spent: 0, pending: 0, variance: 0 }
+    }));
+    localStorage.setItem(STORAGE_KEYS.PR_COUNTERS, JSON.stringify({
+      PD: { PR: 0, PO: 0 },
+      QC: { PR: 0, PO: 0 }
+    }));
+    localStorage.setItem('prpo_budget_transactions', JSON.stringify([]));
+    localStorage.setItem('prpo_audit_logs', JSON.stringify([]));
+    localStorage.setItem('prpo_notifications', JSON.stringify([]));
+    console.log('[StorageService] Operational mock data cleared. Master data preserved.');
   },
 
   // Role
@@ -42,19 +51,37 @@ export const storageService = {
     
     let needsSave = false;
     const migrated = products.map(p => {
-      if (!p.purchaseUnit || !p.stockUnit || p.conversionRate === undefined) {
+      let item = { ...p };
+      const cat = item.category || item.department || 'PD';
+      if (!item.category || !item.department || item.category !== cat || item.department !== cat) {
         needsSave = true;
-        const fallbackUnit = p.unit || 'ชิ้น';
-        const rate = Number(p.conversionRate) > 0 ? Number(p.conversionRate) : 1;
-        return {
-          ...p,
-          purchaseUnit: p.purchaseUnit || fallbackUnit,
-          stockUnit: p.stockUnit || fallbackUnit,
+        item.category = cat;
+        item.department = cat;
+      }
+      // Migrate legacy 'คู่' unit to 'ชิ้น'
+      if (item.stockUnit === 'คู่' || item.unit === 'คู่' || item.code === 'PD-GLV-NBR') {
+        if (item.stockUnit === 'คู่' || item.unit === 'คู่') {
+          needsSave = true;
+          item.stockUnit = 'ชิ้น';
+          item.unit = 'ชิ้น';
+          if (item.purchaseUnit === 'กล่อง (100 ชิ้น)' && (item.conversionRate === 50 || item.conversionRate === 1)) {
+            item.conversionRate = 100;
+          }
+        }
+      }
+      if (!item.purchaseUnit || !item.stockUnit || item.conversionRate === undefined) {
+        needsSave = true;
+        const fallbackUnit = item.unit || 'ชิ้น';
+        const rate = Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1;
+        item = {
+          ...item,
+          purchaseUnit: item.purchaseUnit || fallbackUnit,
+          stockUnit: item.stockUnit || fallbackUnit,
           conversionRate: rate,
-          unit: p.stockUnit || fallbackUnit
+          unit: item.stockUnit || fallbackUnit
         };
       }
-      return p;
+      return item;
     });
 
     if (needsSave) {

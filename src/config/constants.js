@@ -229,6 +229,7 @@ export function resolveUserPermissions(user) {
     canReceiveGoods: level === 1 || level >= 99,
     canCloseOwnPO: level === 1 || level >= 99,
     canManageMaster: level >= 1,
+    canDeleteMaster: level >= 1,
 
     // ─── LEVEL 2+ PERMISSIONS (หัวหน้างาน / ผู้ช่วยผู้จัดการ) ───
     canReview: level >= 2,
@@ -239,9 +240,6 @@ export function resolveUserPermissions(user) {
     // ─── LEVEL 3+ PERMISSIONS (ผู้จัดการ / ผู้อนุมัติขั้นสุดท้าย) ───
     canFinalApprove: level >= 3,
     canSetBudget: level >= 3,
-
-    // ─── LEVEL 99 PERMISSIONS (System Admin) ───
-    canDeleteMaster: level >= 99,
 
     // ─── SPECIAL TASK PERMISSIONS ───
     canOnlinePurchase: isOnline || level >= 99,

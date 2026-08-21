@@ -15,16 +15,24 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
   const [showManualIn, setShowManualIn] = useState(false);
   const [showAdjustStock, setShowAdjustStock] = useState(false);
 
+  const viewableProducts = useMemo(() => {
+    return products.filter(p => {
+      const pCat = p.category || p.department || 'PD';
+      return currentRole.canViewAllDepts || pCat === currentRole.department;
+    });
+  }, [products, currentRole]);
+
   // Filter & Priority Sort
   const sortedAndFilteredProducts = useMemo(() => {
-    return products
+    return viewableProducts
       .filter(p => {
-        const matchesCat = categoryFilter === 'ALL' || p.category === categoryFilter;
-        const matchesSearch = !searchQuery.trim() || 
-          p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-          p.code.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesDept = currentRole.canViewAllDepts || p.category === currentRole.department;
-        return matchesCat && matchesSearch && matchesDept;
+        const pCat = p.category || p.department || 'PD';
+        const matchesCat = categoryFilter === 'ALL' || pCat === categoryFilter;
+        const q = searchQuery.trim().toLowerCase();
+        const matchesSearch = !q || 
+          (p.name && p.name.toLowerCase().includes(q)) || 
+          (p.code && p.code.toLowerCase().includes(q));
+        return matchesCat && matchesSearch;
       })
       .sort((a, b) => {
         const aLow = a.stockBalance <= a.reorderPoint ? 1 : 0;
@@ -33,17 +41,14 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
         const aRatio = a.reorderPoint > 0 ? (a.stockBalance / a.reorderPoint) : 999;
         const bRatio = b.reorderPoint > 0 ? (b.stockBalance / b.reorderPoint) : 999;
         if (aRatio !== bRatio) return aRatio - bRatio;
-        return a.code.localeCompare(b.code);
+        return (a.code || '').localeCompare(b.code || '');
       });
-  }, [products, categoryFilter, searchQuery, currentRole]);
+  }, [viewableProducts, categoryFilter, searchQuery]);
 
   // Count of items requiring reorder
   const lowStockCount = useMemo(() => {
-    return products.filter(p => 
-      (currentRole.canViewAllDepts || p.category === currentRole.department) && 
-      p.stockBalance <= p.reorderPoint
-    ).length;
-  }, [products, currentRole]);
+    return viewableProducts.filter(p => p.stockBalance <= p.reorderPoint).length;
+  }, [viewableProducts]);
 
   // ROP Analytics Computation
   const ropAnalytics = useMemo(() => {
@@ -150,7 +155,7 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
               }`}
             >
               <Warehouse className="w-4 h-4 text-indigo-600" />
-              <span>รายการสต็อก ({products.length})</span>
+              <span>รายการสต็อก ({sortedAndFilteredProducts.length})</span>
             </button>
             <button
               onClick={() => setActiveTab('rop-analysis')}

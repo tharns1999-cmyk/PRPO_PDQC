@@ -145,11 +145,11 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   const isOverBudget = apiService.isOverBudget(selectedPR.department, calculatedTotal);
 
   return createPortal(
-    <div className="fixed inset-0 glass-backdrop z-[60] flex items-center justify-center p-3 sm:p-4 print:hidden animate-fade-in">
-      <div className="modal-content w-full max-w-4xl max-h-[92vh] bg-white rounded-2xl shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col text-slate-800 animate-zoom-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden">
+      <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in">
         
-        {/* ── 1. Sticky Modal Header ── */}
-        <div className="flex-shrink-0 border-b border-slate-200/80 p-4 sm:px-6 bg-white sticky top-0 z-10 flex items-center justify-between gap-3">
+        {/* ── 1. Fixed Header (Sticky Top / Non-scrollable) ── */}
+        <div className="shrink-0 px-6 py-4 border-b border-slate-100 bg-white flex items-center justify-between gap-4 sticky top-0 z-20">
           <div className="flex items-center gap-2.5 flex-wrap">
             <span className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-slate-900">
               {selectedPR.prNo}
@@ -630,8 +630,8 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
 
         </div>
 
-        {/* ── 5. Sticky Bottom Action Bar (Decision Controls) ── */}
-        <div className="flex-shrink-0 border-t border-slate-200/80 bg-slate-50/90 p-4 sm:px-6 rounded-b-2xl space-y-3 sticky bottom-0 z-10">
+        {/* ── 5. Sticky Action Footer (Non-scrollable) ── */}
+        <div className="shrink-0 px-6 py-4 bg-slate-50/80 border-t border-slate-100 space-y-3 sticky bottom-0 z-20">
           
           {/* Action note field (Shown for Approvers/Reviewers when actionable) */}
           {(['SUBMITTED', 'REVIEWED', 'REJECTED_TO_L2'].includes(selectedPR.status)) && 

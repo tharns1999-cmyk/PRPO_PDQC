@@ -8,7 +8,8 @@ import {
   MapPin, Hash, Check, Sparkles, AlertTriangle 
 } from 'lucide-react';
 
-export default function VendorCRUDModal({ editVendor, vendors = [], currentRole, onClose, onRefresh }) {
+export default function VendorCRUDModal({ editVendor: propEditVendor, vendor, vendors = [], currentRole, onClose, onRefresh }) {
+  const editVendor = propEditVendor || vendor;
   const isSupervisor = !currentRole.canViewAllDepts;
   const lockedDept = isSupervisor ? currentRole.department : null;
   const [vendorCode, setVendorCode] = useState(editVendor?.code || '');
@@ -58,26 +59,26 @@ export default function VendorCRUDModal({ editVendor, vendors = [], currentRole,
   const dept = editVendor?.department || lockedDept || 'BOTH';
 
   return createPortal(
-    <div className="fixed inset-0 glass-backdrop z-[70] flex items-center justify-center p-2 print:hidden animate-fade-in">
-      <div className="modal-content w-full max-w-2xl max-h-[90vh] bg-white rounded-sm shadow-md border-2 border-slate-300 ring-1 ring-black/10 overflow-hidden flex flex-col animate-zoom-in text-slate-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden">
+      <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in">
         
-        {/* ── Header ── */}
-        <div className="flex-shrink-0 px-6 sm:px-8 py-5 border-b border-slate-300 bg-white flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-12 h-12 rounded-sm bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 shrink-0 shadow-2xs">
-              <Store className="w-6 h-6" />
+        {/* ── 1. Fixed Header (Sticky Top / Non-scrollable) ── */}
+        <div className="shrink-0 px-6 py-4 border-b border-slate-100 bg-white flex items-center justify-between gap-4 sticky top-0 z-20">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100/80 flex items-center justify-center shadow-2xs shrink-0">
+              <Store className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h3 className="text-xl font-bold text-slate-900 tracking-tight">
-                  {editVendor ? 'แก้ไขข้อมูลผู้ขาย' : 'เพิ่มผู้ขายใหม่'}
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-bold text-slate-900 text-base tracking-tight">
+                  {editVendor ? 'แก้ไขข้อมูลผู้จัดจำหน่าย / คู่ค้า' : 'เพิ่มผู้จัดจำหน่ายใหม่'}
                 </h3>
-                <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-slate-200/80 text-slate-700 border border-slate-300 uppercase tracking-wider">
+                <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                   {dept === 'BOTH' ? 'ใช้ร่วมกันทุกแผนก' : `แผนก ${dept}`}
                 </span>
               </div>
-              <p className="text-sm text-slate-500 mt-1 truncate">
-                {editVendor ? `รหัสคู่ค้า: ${editVendor.code} • ${editVendor.name}` : 'กำหนดข้อมูลรายละเอียดคู่ค้าและที่อยู่สำหรับออกใบสั่งซื้อ'}
+              <p className="text-xs text-slate-500 font-normal truncate mt-0.5">
+                {editVendor ? `รหัสคู่ค้า: ${editVendor.code} • ${editVendor.name}` : 'กำหนดข้อมูลรายละเอียดคู่ค้า ผู้ติดต่อ และที่อยู่สำหรับออก PO'}
               </p>
             </div>
           </div>
@@ -85,33 +86,33 @@ export default function VendorCRUDModal({ editVendor, vendors = [], currentRole,
           <button
             type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 p-2 rounded-sm hover:bg-white hover:shadow-xs transition-colors cursor-pointer shrink-0 ml-4 border border-transparent hover:border-slate-200"
+            aria-label="Close modal"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* ── Form Content ── */}
-        <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 space-y-6 custom-scrollbar bg-[#f8fafc]">
-          <form id="vendor-form" onSubmit={handleSaveVendor} className="space-y-6 text-sm">
+        {/* ── 2. Scrollable Content Body (Flex-1 / Dynamic Height) ── */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5 min-h-0 custom-scrollbar bg-slate-50/30">
+          <form id="vendor-form" onSubmit={handleSaveVendor} className="space-y-5">
             
-            {/* Section 1: ข้อมูลบริษัท & แผนก */}
-            <div className="bg-white p-3 sm:p-4 rounded-sm border border-slate-300 shadow-xs space-y-4">
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-900 pb-3 border-b border-slate-200">
+            {/* Section 1: ข้อมูลบริษัท & รหัสคู่ค้า */}
+            <div className="bg-slate-50/70 border border-slate-200/60 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider pb-2 border-b border-slate-200/60">
                 <Building2 className="w-4 h-4 text-indigo-600" />
-                <span>ข้อมูลบริษัทคู่ค้า (Company Details)</span>
+                <span>1. ข้อมูลบริษัทคู่ค้า (Company Details)</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="impeccable-label">
-                      รหัสผู้ขาย (Vendor Code) <span className="text-rose-500 font-bold">*</span>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold text-slate-700">
+                      รหัสผู้ขาย (Vendor Code) <span className="text-rose-500">*</span>
                     </label>
                     {isCodeDuplicate && (
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 border border-rose-200 animate-pulse flex items-center gap-1">
-                        <AlertTriangle className="w-3 h-3 text-rose-600" />
-                        <span>รหัสซ้ำ!</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse">
+                        <AlertTriangle className="w-3 h-3 text-rose-500" /> รหัสซ้ำ!
                       </span>
                     )}
                   </div>
@@ -125,31 +126,25 @@ export default function VendorCRUDModal({ editVendor, vendors = [], currentRole,
                       onChange={e => setVendorCode(e.target.value)}
                       placeholder="เช่น VND-TH-001"
                       required
-                      className={`impeccable-input pl-10 font-mono font-bold uppercase tracking-wider ${
+                      className={`w-full h-11 pl-10 pr-3 bg-white border rounded-xl text-xs font-mono font-bold uppercase tracking-wide placeholder:font-normal placeholder:text-slate-400 focus:outline-none transition-all ${
                         isCodeDuplicate 
-                          ? 'border-rose-400 text-rose-900 bg-rose-50/40 ring-2 ring-rose-500/20 focus:border-rose-500' 
-                          : 'text-indigo-950'
+                          ? 'border-rose-400 text-rose-900 bg-rose-50/30 focus:ring-2 focus:ring-rose-500/20' 
+                          : 'border-slate-200 text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500'
                       }`}
                     />
                   </div>
-                  {isCodeDuplicate ? (
-                    <p className="text-xs text-rose-600 font-bold mt-1.5 flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                      <span>รหัสผู้ขายนี้มีในระบบแล้ว กรุณาระบุรหัสอื่น</span>
-                    </p>
-                  ) : null}
                 </div>
 
                 <div>
-                  <label className="impeccable-label mb-1.5 block text-slate-700 font-bold">
-                    แผนกที่ใช้งาน (Department Scope) <span className="text-rose-500 font-bold">*</span>
+                  <label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                    ขอบเขตแผนกที่ใช้ร่วม (Department Scope) <span className="text-rose-500">*</span>
                   </label>
                   {lockedDept ? (
-                    <div className={`w-full border rounded-sm px-3 py-1.5 text-sm font-bold flex items-center gap-2 ${
-                      lockedDept === 'PD' ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-amber-50 border-amber-200 text-amber-800'
+                    <div className={`h-11 border rounded-xl px-3.5 text-xs font-bold flex items-center gap-2 ${
+                      lockedDept === 'PD' ? 'bg-blue-50/80 border-blue-200 text-blue-800' : 'bg-amber-50/80 border-amber-200 text-amber-800'
                     }`}>
                       <Building2 className="w-4 h-4 shrink-0" />
-                      <span>{lockedDept} ({lockedDept === 'PD' ? 'ฝ่ายผลิต' : 'ฝ่ายควบคุมคุณภาพ'})</span>
+                      <span>{lockedDept === 'PD' ? 'เฉพาะฝ่ายผลิต (PD)' : 'เฉพาะฝ่าย QC (QC)'}</span>
                     </div>
                   ) : (
                     <div className="relative">
@@ -159,65 +154,56 @@ export default function VendorCRUDModal({ editVendor, vendors = [], currentRole,
                       <select
                         name="department"
                         defaultValue={editVendor?.department || 'BOTH'}
-                        className="impeccable-input pl-10 font-bold text-slate-800"
+                        className="w-full h-11 pl-10 pr-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
                       >
-                        <option value="BOTH">ใช้ร่วมกันทุกแผนก (PD & QC - BOTH)</option>
-                        <option value="PD">เฉพาะฝ่ายผลิต (PD Only)</option>
-                        <option value="QC">เฉพาะฝ่ายควบคุมคุณภาพ (QC Only)</option>
+                        <option value="BOTH">ใช้ร่วมกันทุกแผนก (BOTH)</option>
+                        <option value="PD">เฉพาะฝ่ายผลิต (Production - PD)</option>
+                        <option value="QC">เฉพาะฝ่าย QC (Quality Control - QC)</option>
                       </select>
                     </div>
                   )}
                 </div>
               </div>
 
+              {/* Vendor Company Name */}
               <div>
-                <label className="impeccable-label">
-                  ชื่อบริษัท / ผู้ขาย (Vendor / Supplier Name) <span className="text-rose-500 font-bold">*</span>
+                <label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                  ชื่อบริษัท / ร้านค้าผู้จำหน่าย <span className="text-rose-500">*</span>
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <Store className="w-4 h-4" />
-                  </div>
-                  <input
-                    name="name"
-                    defaultValue={editVendor?.name}
-                    placeholder="เช่น บริษัท สยามอินดัสเตรียล ซัพพลาย แอนด์ เซอร์วิส จำกัด"
-                    required
-                    className="impeccable-input pl-10 font-bold text-slate-900"
-                  />
-                </div>
+                <input
+                  name="name"
+                  defaultValue={editVendor?.name}
+                  placeholder="เช่น บริษัท วัสดุอุตสาหกรรมไทย จำกัด"
+                  required
+                  className="w-full h-11 px-3.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                />
               </div>
 
+              {/* Tax ID */}
               <div>
-                <label className="impeccable-label">
-                  เลขประจำตัวผู้เสียภาษี 13 หลัก (Tax ID)
+                <label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                  เลขประจำตัวผู้เสียภาษี (Tax ID)
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                    <FileText className="w-4 h-4" />
-                  </div>
-                  <input
-                    name="taxId"
-                    defaultValue={editVendor?.taxId}
-                    placeholder="0105558012341"
-                    maxLength="13"
-                    className="impeccable-input pl-10 font-mono font-medium"
-                  />
-                </div>
+                <input
+                  name="taxId"
+                  defaultValue={editVendor?.taxId}
+                  placeholder="เช่น 0105562012345 (ถ้ามี)"
+                  className="w-full h-11 px-3.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                />
               </div>
             </div>
 
-            {/* Section 2: ข้อมูลติดต่อ & ที่อยู่ */}
-            <div className="bg-white p-3 sm:p-4 rounded-sm border border-slate-300 shadow-xs space-y-4">
-              <div className="flex items-center gap-2 text-sm font-bold text-slate-900 pb-3 border-b border-slate-200">
-                <Phone className="w-4 h-4 text-indigo-600" />
-                <span>ข้อมูลติดต่อและสถานที่ (Contact & Address)</span>
+            {/* Section 2: ผู้ติดต่อ & ที่อยู่ */}
+            <div className="bg-slate-50/70 border border-slate-200/60 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wider pb-2 border-b border-slate-200/60">
+                <User className="w-4 h-4 text-indigo-600" />
+                <span>2. ข้อมูลการติดต่อ & ที่อยู่ (Contact & Billing Address)</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="impeccable-label">
-                    ชื่อผู้ติดต่อ (Contact Person)
+                  <label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                    ชื่อผู้ติดต่อหลัก (Contact Person)
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -226,14 +212,14 @@ export default function VendorCRUDModal({ editVendor, vendors = [], currentRole,
                     <input
                       name="contactPerson"
                       defaultValue={editVendor?.contactPerson}
-                      placeholder="คุณธนากร สมบูรณ์"
-                      className="impeccable-input pl-10 font-medium"
+                      placeholder="เช่น คุณสมศักดิ์ (ฝ่ายขาย)"
+                      className="w-full h-11 pl-10 pr-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="impeccable-label">
+                  <label className="text-xs font-semibold text-slate-700 mb-1.5 block">
                     เบอร์โทรศัพท์ (Phone Number)
                   </label>
                   <div className="relative">
@@ -243,44 +229,41 @@ export default function VendorCRUDModal({ editVendor, vendors = [], currentRole,
                     <input
                       name="phone"
                       defaultValue={editVendor?.phone}
-                      placeholder="02-345-6789 หรือ 081-xxx-xxxx"
-                      className="impeccable-input pl-10 font-mono font-medium"
+                      placeholder="เช่น 02-123-4567 หรือ 081-999-8888"
+                      className="w-full h-11 pl-10 pr-3 bg-white border border-slate-200 rounded-xl text-xs font-mono font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                     />
                   </div>
                 </div>
               </div>
 
+              {/* Address */}
               <div>
-                <label className="impeccable-label">
-                  ที่อยู่สำหรับออกเอกสารใบสั่งซื้อ (Billing & Delivery Address)
+                <label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+                  ที่อยู่สำหรับออกเอกสารสั่งซื้อ & ส่งสินค้า
                 </label>
-                <div className="relative">
-                  <div className="absolute top-3 left-3.5 pointer-events-none text-slate-400">
-                    <MapPin className="w-4 h-4" />
-                  </div>
-                  <textarea
-                    name="address"
-                    rows="3"
-                    defaultValue={editVendor?.address}
-                    placeholder="เลขที่ อาคาร ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด รหัสไปรษณีย์"
-                    className="impeccable-input pl-10 font-medium leading-relaxed resize-none"
-                  />
-                </div>
+                <textarea
+                  name="address"
+                  rows="3"
+                  defaultValue={editVendor?.address}
+                  placeholder="เลขที่ อาคาร ถนน ตำบล/แขวง อำเภอ/เขต จังหวัด รหัสไปรษณีย์"
+                  className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none"
+                />
               </div>
             </div>
+
           </form>
         </div>
 
-        {/* ── Footer ── */}
-        <div className="flex-shrink-0 flex items-center justify-between gap-2 px-6 sm:px-8 py-4 sm:py-5 border-t border-slate-300 bg-white shadow-xs">
-          <span className="text-xs text-slate-500 font-medium hidden sm:inline-block">
+        {/* ── 3. Sticky Action Footer (Non-scrollable) ── */}
+        <div className="shrink-0 px-6 py-4 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-3 sticky bottom-0 z-20">
+          <span className="text-xs text-slate-500 font-medium">
             <span className="text-rose-500 font-bold">*</span> จำเป็นต้องระบุข้อมูล
           </span>
-          <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 text-sm font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-sm transition-all cursor-pointer shadow-2xs"
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 text-xs font-bold transition-all cursor-pointer"
             >
               ยกเลิก
             </button>
@@ -288,22 +271,14 @@ export default function VendorCRUDModal({ editVendor, vendors = [], currentRole,
               type="submit"
               form="vendor-form"
               disabled={isSaving || isCodeDuplicate}
-              className="px-6 py-2.5 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-sm shadow-md shadow-indigo-600/30 transition-all transform active:scale-[0.98] disabled:opacity-50 flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSaving ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>กำลังบันทึก...</span>
-                </>
-              ) : (
-                <>
-                  <Check className="w-5 h-5" />
-                  <span>{editVendor ? 'บันทึกการแก้ไข' : 'เพิ่มผู้ขายใหม่'}</span>
-                </>
-              )}
+              <Check className="w-4 h-4" />
+              <span>{isSaving ? 'กำลังบันทึก...' : (editVendor ? 'บันทึกการแก้ไข' : 'เพิ่มผู้ขายใหม่')}</span>
             </button>
           </div>
         </div>
+
       </div>
     </div>,
     document.body

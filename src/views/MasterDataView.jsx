@@ -21,6 +21,8 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
 
   const canSeeAll = currentRole?.canViewAllDepts;
   const myDept = currentRole?.department;
+  const isAdmin = currentRole?.id === 'ADMIN' || currentRole?.roleId === 'ADMIN' || Number(currentRole?.level) >= 99;
+  const canDeleteMaster = currentRole?.canDeleteMaster || currentRole?.canManageMaster || isAdmin;
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
@@ -70,7 +72,7 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
   }
 
   const handleDeleteProduct = async (prod) => {
-    if (!currentRole.canDeleteMaster) return;
+    if (!canDeleteMaster) return;
     const confirmed = await modalService.confirm({
       title: 'ยืนยันการลบสินค้า',
       message: `ต้องการลบรายการสินค้า "${prod.name}" (${prod.code}) ออกจากระบบหรือไม่?`,
@@ -86,7 +88,7 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
   };
 
   const handleDeleteVendor = async (vendor) => {
-    if (!currentRole.canDeleteMaster) return;
+    if (!canDeleteMaster) return;
     const confirmed = await modalService.confirm({
       title: 'ยืนยันการลบผู้ขาย',
       message: `ต้องการลบข้อมูลผู้จัดจำหน่าย "${vendor.name}" ออกจากระบบหรือไม่?`,
@@ -187,17 +189,19 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
           <Store className="w-4 h-4 text-emerald-600" />
           <span>รายชื่อผู้ขาย / ร้านค้า ({filteredVendors.length})</span>
         </button>
-        <button
-          onClick={() => setActiveTab('signatures')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'signatures'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <PenTool className="w-4 h-4 text-amber-600" />
-          <span>จัดการลายเซ็นอิเล็กทรอนิกส์</span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('signatures')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'signatures'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <PenTool className="w-4 h-4 text-amber-600" />
+            <span>จัดการลายเซ็นอิเล็กทรอนิกส์</span>
+          </button>
+        )}
       </div>
 
       {/* Tab 1: Products */}
@@ -274,7 +278,7 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
-                          {currentRole.canDeleteMaster && (
+                          {canDeleteMaster && (
                             <button
                               onClick={() => handleDeleteProduct(p)}
                               className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
@@ -360,7 +364,7 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
-                          {currentRole.canDeleteMaster && (
+                          {canDeleteMaster && (
                             <button
                               onClick={() => handleDeleteVendor(v)}
                               className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
@@ -380,15 +384,18 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
         </div>
       )}
 
-      {/* Tab 3: Signatures */}
-      {activeTab === 'signatures' && (
+      {/* Tab 3: Signatures (Admin Only) */}
+      {activeTab === 'signatures' && isAdmin && (
         <SignatureManagerSection currentRole={currentRole} onRefresh={onRefresh} />
       )}
 
       {/* Modals */}
       {showProdModal && (
         <ProductCRUDModal
+          editProd={editProd}
           product={editProd}
+          products={products}
+          vendors={vendors}
           currentRole={currentRole}
           onClose={() => { setShowProdModal(false); setEditProd(null); }}
           onRefresh={onRefresh}
@@ -397,7 +404,9 @@ export default function MasterDataView({ products, vendors, currentRole, onRefre
 
       {showVendorModal && (
         <VendorCRUDModal
+          editVendor={editVendor}
           vendor={editVendor}
+          vendors={vendors}
           currentRole={currentRole}
           onClose={() => { setShowVendorModal(false); setEditVendor(null); }}
           onRefresh={onRefresh}

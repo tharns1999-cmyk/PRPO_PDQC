@@ -5,7 +5,7 @@ import { ShoppingBag, FileText, Search, X, DollarSign, PackageCheck, AlertTriang
 import PODetailsModal from '../components/po/PODetailsModal';
 import EmptyState from '../components/common/EmptyState';
 
-export default function POListView({ pos, currentRole, onRefresh }) {
+export default function POListView({ pos = [], currentRole, onRefresh }) {
   const [selectedPO, setSelectedPO] = useState(null);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [deptFilter, setDeptFilter] = useState(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
@@ -230,8 +230,8 @@ export default function POListView({ pos, currentRole, onRefresh }) {
                 </tr>
               ) : (
                 filteredPOs.map(po => {
-                  const channel = PURCHASE_CHANNEL[po.purchaseChannel] || PURCHASE_CHANNEL.SELF;
-                  const canAction = workflowEngine.canActionPO(currentRole, po);
+                  const channel = PURCHASE_CHANNEL[po.purchaseChannel] || PURCHASE_CHANNEL.SELF || { label: 'ซื้อเอง' };
+                  const canAction = workflowEngine.canAction ? workflowEngine.canAction(currentRole, po) : false;
 
                   return (
                     <tr key={po.id} className="group hover:bg-slate-50/80 transition-colors">
