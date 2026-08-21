@@ -85,5 +85,23 @@ describe('Scenario 2: PR Lifecycle & Workflow Transitions', () => {
 
     // Requester can now action and edit again
     expect(workflowEngine.canAction(ROLES.REQUESTER_PD, rejectedPR)).toBe(true);
+
+    // Requester edits and resubmits the PR with adjusted quantity
+    const updatedPR = await workflowEngine.updatePR(rejectedPR.id, {
+      department: 'PD',
+      source: 'FACTORY',
+      purchaseChannel: 'SELF',
+      requiredDate: '2026-09-05',
+      items: [{ productId: 'P1', code: 'P01', name: 'Item', qty: 5, price: 1000 }],
+      note: 'ปรับลดจำนวนเหลือ 5 ชิ้นตามคำแนะนำ'
+    }, ROLES.REQUESTER_PD, false);
+
+    expect(updatedPR.status).toBe('SUBMITTED');
+    expect(updatedPR.items[0].purchaseQty).toBe(5);
+    expect(updatedPR.totalAmount).toBe(5000);
+    expect(updatedPR.activityLog.some(l => l.action.includes('PR Resubmitted') || l.action.includes('แก้ไขและส่งใบ PR ใหม่'))).toBe(true);
+
+    // Asst Manager can now review the resubmitted PR
+    expect(workflowEngine.canAction(ROLES.ASST_MANAGER, updatedPR)).toBe(true);
   });
 });

@@ -65,6 +65,10 @@ export const apiService = {
     return workflowEngine.createPR(prData, user, isDraft);
   },
 
+  async updatePR(prId, prData, user, isDraft = false) {
+    return workflowEngine.updatePR(prId, prData, user, isDraft);
+  },
+
   async submitPR(prId, user, memoData = null) {
     return workflowEngine.submitPR(prId, user, memoData);
   },
@@ -94,8 +98,24 @@ export const apiService = {
   },
 
   // --- PO & Receive Goods Operations ---
-  async assignVendorToPO(poId, vendorId, vendorName, user) {
-    return workflowEngine.assignVendorToPO(poId, vendorId, vendorName, user);
+  async assignVendor(poId, vendorId, customVendorName, user) {
+    return workflowEngine.assignVendor(poId, vendorId, customVendorName, user);
+  },
+
+  // Generic claim filing — supports both ONLINE and SELF-BUY channels
+  async fileClaim(poId, claimData, user) {
+    return workflowEngine.fileClaim(poId, claimData, user);
+  },
+  async fileOnlineClaim(poId, claimData, user) {
+    return workflowEngine.fileClaim(poId, claimData, user);
+  },
+
+  // Generic claim resolution — supports both ONLINE and SELF-BUY channels
+  async resolveClaim(poId, resolution, user) {
+    return workflowEngine.resolveClaim(poId, resolution, user);
+  },
+  async resolveOnlineClaim(poId, resolution, user) {
+    return workflowEngine.resolveClaim(poId, resolution, user);
   },
 
   async updatePOStatus(poId, nextStatus, user, note = '') {
@@ -111,11 +131,11 @@ export const apiService = {
   },
 
   // Partial or Full goods receiving — handles PARTIAL → CLOSED transitions
-  async receiveGoods(poId, receivingItems, user, note = '') {
-    return workflowEngine.receiveGoods(poId, receivingItems, user, note);
+  async receiveGoods(poId, receivingItems, user, note = '', options = {}) {
+    return workflowEngine.receiveGoods(poId, receivingItems, user, note, options);
   },
 
-  async receiveAllGoods(poId, user, note = '') {
+  async receiveAllGoods(poId, user, note = '', options = {}) {
     // Convenience wrapper: build receivingItems from all remaining quantities
     const pos = await this.getPOs();
     const po = pos.find(p => p.id === poId);
@@ -124,18 +144,32 @@ export const apiService = {
       productId: item.productId,
       receivedThisTime: Number(item.orderedQty ?? item.purchaseQty ?? item.qty) - (Number(item.receivedQty) || 0)
     }));
-    return workflowEngine.receiveGoods(poId, receivingItems, user, note);
+    return workflowEngine.receiveGoods(poId, receivingItems, user, note, options);
+  },
+
+  // Short-Close PO (ปิด PO ก่อนกำหนดเมื่อได้ของไม่ครบและไม่รอของแล้ว)
+  async shortClosePO(poId, reason, user) {
+    return workflowEngine.shortClosePO(poId, reason, user);
   },
 
   // --- Quick Issue Stock (เบิกจ่าย) ---
-  async quickIssueStock(productId, issueQty, user, note = '') {
-    return workflowEngine.quickIssueStock(productId, issueQty, user, note);
+  async quickIssueStock(productId, issueQty, user, note = '', issueUnit = '') {
+    return workflowEngine.quickIssueStock(productId, issueQty, user, note, issueUnit);
   },
 
   // --- Master Data CRUD ---
   async saveProduct(product, user = null) {
     const products = storageService.getProducts();
     const isUpdate = Boolean(product.id);
+    const targetCode = (product.code || '').trim().toUpperCase();
+
+    if (targetCode) {
+      const isDuplicate = products.some(p => p.id !== product.id && (p.code || '').trim().toUpperCase() === targetCode);
+      if (isDuplicate) {
+        throw new Error(`รหัสสินค้า "${targetCode}" มีอยู่ในระบบแล้ว กรุณาระบุรหัสสินค้าอื่น`);
+      }
+    }
+
     if (product.id) {
       const idx = products.findIndex(p => p.id === product.id);
       if (idx !== -1) products[idx] = product;
@@ -160,6 +194,15 @@ export const apiService = {
   async saveVendor(vendor, user = null) {
     const vendors = storageService.getVendors();
     const isUpdate = Boolean(vendor.id);
+    const targetCode = (vendor.code || '').trim().toUpperCase();
+
+    if (targetCode) {
+      const isDuplicate = vendors.some(v => v.id !== vendor.id && (v.code || '').trim().toUpperCase() === targetCode);
+      if (isDuplicate) {
+        throw new Error(`รหัสผู้ขาย "${targetCode}" มีอยู่ในระบบแล้ว กรุณาระบุรหัสผู้ขายอื่น`);
+      }
+    }
+
     if (vendor.id) {
       const idx = vendors.findIndex(v => v.id === vendor.id);
       if (idx !== -1) vendors[idx] = vendor;

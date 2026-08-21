@@ -75,7 +75,7 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
   return (
     <div className="space-y-6">
       {/* Overview Info Banner */}
-      <div className="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-4 flex items-start gap-3">
+      <div className="bg-indigo-50/70 border border-indigo-200 rounded-sm p-4 flex items-start gap-1.5">
         <ShieldCheck className="w-6 h-6 text-indigo-600 shrink-0 mt-0.5" />
         <div className="text-xs text-indigo-950 leading-relaxed">
           <h4 className="font-bold text-sm text-indigo-900 mb-0.5">ระบบควบคุมลายเซ็นอิเล็กทรอนิกส์ (E-Signature Policy)</h4>
@@ -86,13 +86,13 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
       </div>
 
       {/* Grid of Approver Roles */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         {APPROVER_ROLES.map(role => {
           const sig = signatures[role.id];
           const hasSig = Boolean(sig && sig.signatureUrl);
 
           return (
-            <div key={role.id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4">
+            <div key={role.id} className="bg-white border border-slate-200 rounded-sm p-5 shadow-xs flex flex-col justify-between space-y-4">
               <div>
                 <div className="flex items-start justify-between">
                   <div>
@@ -108,7 +108,7 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
                 </div>
 
                 {/* Signature Preview Box */}
-                <div className="mt-3 bg-slate-50 border border-slate-200 border-dashed rounded-xl p-3 h-24 flex items-center justify-center overflow-hidden">
+                <div className="mt-3 bg-white border border-slate-200 border-dashed rounded-sm p-3 h-24 flex items-center justify-center overflow-hidden">
                   {hasSig ? (
                     <img 
                       src={sig.signatureUrl} 
@@ -131,7 +131,7 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
                   <button
                     type="button"
                     onClick={() => handleDeleteSignature(role.id, role.name)}
-                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                    className="p-2 text-rose-500 hover:bg-rose-50 rounded-sm text-xs font-semibold transition-colors cursor-pointer"
                     title="ลบลายเซ็น (เพื่อทดสอบ Block Approve)"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -143,7 +143,7 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
                     setSelectedRole(role);
                     setUploadPreview(sig?.signatureUrl || '');
                   }}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-sm text-xs font-bold transition-all cursor-pointer"
                 >
                   <Upload className="w-3.5 h-3.5" />
                   {hasSig ? 'เปลี่ยนลายเซ็น' : 'อัปโหลดลายเซ็น'}
@@ -157,10 +157,10 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
       {/* Upload Signature Modal */}
       {selectedRole && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-zoom-in border border-slate-200 p-6 space-y-4">
+          <div className="bg-white rounded-sm w-full max-w-md overflow-hidden shadow-md animate-zoom-in border border-slate-200 p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-bold text-slate-800 text-base">ตั้งค่าลายเซ็น: {selectedRole.name}</h3>
-              <button onClick={() => setSelectedRole(null)} className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer" title="ปิด">
+              <button onClick={() => setSelectedRole(null)} className="text-slate-400 hover:text-slate-600 p-1.5 rounded-sm hover:bg-slate-100 transition-colors cursor-pointer" title="ปิด">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -171,11 +171,11 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
                 type="file" 
                 accept="image/*" 
                 onChange={handleFileUpload} 
-                className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
+                className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-sm file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
               />
 
               {uploadPreview && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-center">
+                <div className="bg-white border border-slate-200 rounded-sm p-4 text-center">
                   <span className="text-[11px] font-semibold text-slate-400 block mb-2">ภาพตัวอย่าง (Preview)</span>
                   <div className="h-24 flex items-center justify-center">
                     <img src={uploadPreview} alt="Signature Preview" className="max-h-20 max-w-full object-contain" />
@@ -188,7 +188,7 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
               <button
                 type="button"
                 onClick={() => setSelectedRole(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-sm"
               >
                 ยกเลิก
               </button>
@@ -196,7 +196,7 @@ export default function SignatureManagerSection({ currentRole, onRefresh }) {
                 type="button"
                 disabled={!uploadPreview}
                 onClick={handleSaveSignature}
-                className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-xl shadow-md transition-all cursor-pointer"
+                className="px-5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-sm shadow-md transition-all cursor-pointer"
               >
                 บันทึกภาพลายเซ็น
               </button>

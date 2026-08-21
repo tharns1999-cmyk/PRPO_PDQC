@@ -57,11 +57,11 @@ export default function LoginView({ onLoginSuccess }) {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-indigo-950/30 rounded-full blur-[120px] pointer-events-none" />
       
       {/* Main Container */}
-      <div className="w-full max-w-2xl bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative z-10 animate-zoom-in">
+      <div className="w-full max-w-2xl bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-sm p-6 sm:p-8 shadow-md relative z-10 animate-zoom-in">
         
         {/* Header & Logo */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-500 to-indigo-600 text-white shadow-lg shadow-indigo-500/30 mb-3 ring-4 ring-indigo-500/10">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-sm bg-gradient-to-tr from-indigo-500 to-indigo-600 text-white shadow-sm shadow-indigo-500/30 mb-3 ring-4 ring-indigo-500/10">
             <Factory className="w-7 h-7" />
           </div>
           <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
@@ -79,11 +79,11 @@ export default function LoginView({ onLoginSuccess }) {
         </div>
 
         {/* Mode Selector Tabs */}
-        <div className="flex bg-slate-950/80 p-1.5 rounded-2xl border border-slate-800 mb-6">
+        <div className="flex bg-slate-950/80 p-1.5 rounded-sm border border-slate-800 mb-6">
           <button
             type="button"
             onClick={() => { setActiveTab('position'); setErrorMsg(''); }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+            className={`flex-1 py-2.5 text-xs font-bold rounded-sm transition-all flex items-center justify-center gap-2 ${
               activeTab === 'position'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
                 : 'text-slate-400 hover:text-slate-200'
@@ -95,7 +95,7 @@ export default function LoginView({ onLoginSuccess }) {
           <button
             type="button"
             onClick={() => { setActiveTab('credentials'); setErrorMsg(''); }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+            className={`flex-1 py-2.5 text-xs font-bold rounded-sm transition-all flex items-center justify-center gap-2 ${
               activeTab === 'credentials'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
                 : 'text-slate-400 hover:text-slate-200'
@@ -108,7 +108,7 @@ export default function LoginView({ onLoginSuccess }) {
 
         {/* Error Alert */}
         {errorMsg && (
-          <div className="mb-5 p-3.5 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded-2xl text-xs font-semibold flex items-center gap-2.5 animate-shake">
+          <div className="mb-5 p-3.5 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded-sm text-xs font-semibold flex items-center gap-2.5 animate-shake">
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{errorMsg}</span>
           </div>
@@ -139,9 +139,9 @@ export default function LoginView({ onLoginSuccess }) {
                     type="button"
                     disabled={loading}
                     onClick={() => handleQuickLogin(acc)}
-                    className="p-3.5 rounded-2xl bg-slate-950/60 hover:bg-indigo-950/40 border border-slate-800 hover:border-indigo-600/60 transition-all text-left group flex items-start justify-between relative overflow-hidden cursor-pointer hover:shadow-lg hover:shadow-indigo-950/50 active:scale-[0.98] disabled:opacity-50"
+                    className="p-3.5 rounded-sm bg-slate-950/60 hover:bg-indigo-950/40 border border-slate-800 hover:border-indigo-600/60 transition-all text-left group flex items-start justify-between relative overflow-hidden cursor-pointer hover:shadow-sm hover:shadow-indigo-950/50 active:scale-[0.98] disabled:opacity-50"
                   >
-                    <div className="flex items-start gap-3 min-w-0">
+                    <div className="flex items-start gap-1.5 min-w-0">
                       <img
                         src={acc.pictureUrl}
                         alt={acc.name}
@@ -165,7 +165,7 @@ export default function LoginView({ onLoginSuccess }) {
                       </div>
                     </div>
 
-                    <div className="shrink-0 p-1.5 rounded-xl bg-slate-900 group-hover:bg-indigo-600 text-slate-400 group-hover:text-white transition-colors ml-2 mt-1">
+                    <div className="shrink-0 p-1.5 rounded-sm bg-slate-900 group-hover:bg-indigo-600 text-slate-400 group-hover:text-white transition-colors ml-2 mt-1">
                       <ChevronRight className="w-4 h-4" />
                     </div>
                   </button>
@@ -192,7 +192,7 @@ export default function LoginView({ onLoginSuccess }) {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="เช่น wichai.pd, somying.qc, somchai.am, nat.on, prasert.pm, admin"
-                  className="w-full bg-slate-950/80 border border-slate-700 text-slate-100 text-sm rounded-xl pl-10 pr-4 py-3 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium placeholder:text-slate-600"
+                  className="w-full bg-slate-950/80 border border-slate-700 text-slate-100 text-sm rounded-sm pl-10 pr-4 py-3 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium placeholder:text-slate-600"
                   autoComplete="username"
                   autoFocus
                 />
@@ -213,7 +213,7 @@ export default function LoginView({ onLoginSuccess }) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="password123 (หรือ admin123 สำหรับแอดมิน)"
-                  className="w-full bg-slate-950/80 border border-slate-700 text-slate-100 text-sm rounded-xl pl-10 pr-11 py-3 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium placeholder:text-slate-600"
+                  className="w-full bg-slate-950/80 border border-slate-700 text-slate-100 text-sm rounded-sm pl-10 pr-11 py-3 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium placeholder:text-slate-600"
                   autoComplete="current-password"
                 />
                 <button
@@ -231,7 +231,7 @@ export default function LoginView({ onLoginSuccess }) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-600/30 transition-all transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 text-sm mt-2 cursor-pointer"
+              className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold py-3.5 px-4 rounded-sm shadow-sm shadow-indigo-600/30 transition-all transform active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 text-sm mt-2 cursor-pointer"
             >
               {loading ? (
                 <span>กำลังเข้าสู่ระบบ...</span>
@@ -243,7 +243,7 @@ export default function LoginView({ onLoginSuccess }) {
               )}
             </button>
 
-            <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex items-start gap-1.5">
+            <div className="p-3 bg-slate-950/60 rounded-sm border border-slate-800 text-[11px] text-slate-400 flex items-start gap-1.5">
               <Lightbulb className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
               <span><span className="font-semibold text-slate-300">รหัสผ่านเริ่มต้น:</span> บัญชีทั่วไปใช้ <code className="font-mono text-indigo-400 font-bold">password123</code> และบัญชี admin ใช้ <code className="font-mono text-indigo-400 font-bold">admin123</code></span>
             </div>

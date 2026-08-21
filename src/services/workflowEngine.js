@@ -110,6 +110,203 @@ export const workflowEngine = {
     return this.canAction(role, pr);
   },
 
+  // ─── Unified User Tasks & Workspace Task Aggregator (Single Source of Truth) ───
+  getUserTasks(currentRole, prs = [], pos = []) {
+    if (!currentRole) {
+      return {
+        action: [],
+        waiting: [],
+        completed: [],
+        counts: { prCount: 0, poCount: 0, onlineCount: 0, total: 0 }
+      };
+    }
+
+    const actionRequired = [];
+    const waiting = [];
+    const completed = [];
+
+    const userLevel = Number(currentRole?.level || 1);
+    const isAdmin = currentRole?.id === 'ADMIN' || currentRole?.roleId === 'ADMIN' || userLevel >= 99;
+    const isOnlinePurchaser = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER' || currentRole?.positionKey === 'ONLINE_PURCHASER' || (currentRole?.canOnlinePurchase && userLevel < 99);
+    const isPlantMgr = userLevel >= 3 || currentRole?.canFinalApprove;
+    const isAsstMgr = userLevel === 2 && !isOnlinePurchaser;
+
+    const hasDirectlyActedOn = (doc) => {
+      if (!doc || !currentRole) return false;
+      const names = [currentRole.name, currentRole.employeeName, currentRole.displayName, currentRole.username].filter(Boolean);
+
+      if (names.includes(doc.requestedBy) || names.includes(doc.applicantName1)) return true;
+
+      if (doc.activityLog?.some(log =>
+        names.includes(log.user) ||
+        (currentRole.title && log.role === currentRole.title)
+      )) return true;
+
+      return false;
+    };
+
+    const waitingStatusesFor = {
+      plantMgr: [],
+      asstMgr: ['REVIEWED'],
+      requester: ['SUBMITTED', 'REJECTED_TO_L2', 'REVIEWED'],
+      onlinePurchaser: ['ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'],
+    };
+
+    let prActionCount = 0;
+    let poActionCount = 0;
+    let onlineActionCount = 0;
+
+    // 1. Process PRs
+    prs.forEach(pr => {
+      const isDone = ['PO_ISSUED', 'APPROVED', 'CLOSED', 'CANCELLED'].includes(pr.status);
+      const canAction = !isDone && this.canAction(currentRole, pr);
+      const actedOn = hasDirectlyActedOn(pr);
+
+      let isWaiting = false;
+      if (!canAction && !isDone) {
+        if (isAdmin) {
+          isWaiting = true;
+        } else if (isPlantMgr) {
+          isWaiting = false;
+        } else if (isAsstMgr) {
+          isWaiting = actedOn && waitingStatusesFor.asstMgr.includes(pr.status);
+        } else if (isOnlinePurchaser) {
+          isWaiting = false;
+        } else {
+          isWaiting = actedOn && waitingStatusesFor.requester.includes(pr.status);
+        }
+      }
+
+      const taskItem = {
+        id: pr.id,
+        type: 'PR',
+        docNo: pr.prNo,
+        date: pr.requestedDate,
+        title: pr.items?.map(i => i.name).join(', ') || 'ใบขอซื้อ',
+        status: pr.status,
+        amount: pr.totalAmount,
+        raw: pr,
+        statusInfo: PR_STATUS[pr.status]
+      };
+
+      if (canAction) {
+        actionRequired.push(taskItem);
+        prActionCount++;
+      } else if (isWaiting) {
+        waiting.push(taskItem);
+      } else if (isDone && actedOn) {
+        completed.push(taskItem);
+      }
+    });
+
+    // 2. Helper for PO PR link
+    const isLinkedToOwnPR = (po) => {
+      if (!po.prId && !po.prNo) return false;
+      return prs.some(pr =>
+        (pr.id === po.prId || pr.prNo === po.prNo) && hasDirectlyActedOn(pr)
+      );
+    };
+
+    // 3. Process POs
+    pos.forEach(po => {
+      const isClaim = ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(po.status);
+      const isDone = po.status === 'CLOSED' || po.status === 'CANCELLED' || po.status === 'RECEIVED';
+      const canAction = !isDone && this.canAction(currentRole, po);
+      const actedOnPO = hasDirectlyActedOn(po);
+      const isOwnerOfPO = actedOnPO || isLinkedToOwnPR(po);
+
+      let isWaiting = false;
+      if (!canAction && !isDone && !isClaim) {
+        if (isAdmin) {
+          isWaiting = true;
+        } else if (isOnlinePurchaser) {
+          isWaiting = actedOnPO && waitingStatusesFor.onlinePurchaser.includes(po.status);
+        } else if (isPlantMgr || isAsstMgr) {
+          isWaiting = false;
+        } else {
+          const isDeptMember = currentRole?.department === 'ALL' || currentRole?.department === po.department;
+          isWaiting = (isOwnerOfPO || isDeptMember) && po.status === 'IN_PROGRESS_ONLINE';
+        }
+      }
+
+      let isClaimAction = false;
+      if (isClaim && !isDone) {
+        if (isAdmin) {
+          isClaimAction = true;
+        } else if (po.purchaseChannel === 'SELF') {
+          const isDeptMember = currentRole?.department === 'ALL' || currentRole?.department === po.department;
+          isClaimAction = (isOwnerOfPO || isDeptMember) && !isOnlinePurchaser;
+        } else if (po.purchaseChannel === 'ONLINE' && isOnlinePurchaser) {
+          isClaimAction = true;
+        }
+      }
+
+      if (po.purchaseChannel === 'ONLINE' && !isDone) {
+        if (po.status === 'IN_PROGRESS_ONLINE' || isClaim) {
+          onlineActionCount++;
+        }
+      }
+
+      const poSubtitle = (() => {
+        if (po.status === 'ISSUED') return '📦 รอดำเนินการ: ตรวจรับสินค้าเข้าคลัง';
+        if (po.status === 'ORDERED_PENDING_DELIVERY') return '🚚 สินค้ากำลังจัดส่ง: รอตรวจรับของ';
+        if (po.status === 'PARTIAL') return '⚠️ รับของบางส่วนแล้ว: ยังมียอดค้างส่ง';
+        if (po.status === 'IN_PROGRESS_ONLINE') return '🛒 รอจัดซื้อออนไลน์ดำเนินการ';
+        if (po.status === 'CLAIM_REPORTED') return '🚨 แจ้งปัญหาแล้ว: รอดำเนินการแก้ไข';
+        if (po.status === 'CLAIM_IN_PROGRESS') return '🔄 อยู่ระหว่างแก้ไขเคลม';
+        return null;
+      })();
+
+      const productTitle = po.items && po.items.length > 0
+        ? (po.items.length === 1 
+            ? `${po.items[0].name} (x${Number((po.items[0].orderedQty ?? po.items[0].purchaseQty ?? po.items[0].qty) || 0).toLocaleString()} ${po.items[0].purchaseUnit || po.items[0].unit || 'ชิ้น'})`
+            : `${po.items.map(i => i.name).join(', ')} (${po.items.length} รายการ)`)
+        : `ใบสั่งซื้อ: ${po.vendorName}`;
+
+      const taskItem = {
+        id: po.id,
+        type: 'PO',
+        docNo: po.poNo,
+        date: po.issueDate,
+        title: productTitle,
+        vendorName: po.vendorName,
+        subtitle: poSubtitle,
+        status: po.status,
+        amount: po.grandTotal || po.totalAmount || po.subtotal || 0,
+        raw: po,
+        statusInfo: PO_STATUS[po.status]
+      };
+
+      if (canAction) {
+        actionRequired.push(taskItem);
+        if (!isOnlinePurchaser) poActionCount++;
+      } else if (isClaimAction) {
+        if (!isOnlinePurchaser) {
+          actionRequired.push({ ...taskItem, isClaim: true });
+          poActionCount++;
+        }
+      } else if (isWaiting) {
+        waiting.push(taskItem);
+      } else if (isDone && isOwnerOfPO) {
+        completed.push(taskItem);
+      }
+    });
+
+    const sortByDate = (a, b) => new Date(b.date) - new Date(a.date);
+
+    return {
+      action: actionRequired.sort(sortByDate),
+      waiting: waiting.sort(sortByDate),
+      completed: completed.sort(sortByDate).slice(0, 50),
+      counts: {
+        prCount: prActionCount,
+        poCount: poActionCount,
+        onlineCount: onlineActionCount,
+        total: isOnlinePurchaser ? onlineActionCount : actionRequired.length
+      }
+    };
+  },
+
   // Edit PR items by Approver (Level 2+) before approval
   async editPRItems(prId, updatedItems, user, editReason = '') {
     const prs = storageService.getPRs();
@@ -177,13 +374,6 @@ export const workflowEngine = {
     let actionLabel = 'ส่งกลับให้ผู้ขอซื้อแก้ไข (Rejected to Draft)';
     let targetRoles = [pr.department === 'PD' ? 'REQUESTER_PD' : 'REQUESTER_QC', 'ADMIN'];
     let notiTitle = 'ใบขอซื้อ (PR) ถูกส่งกลับให้แก้ไข';
-
-    if (user.level >= 3 || pr.status === 'REVIEWED') {
-      nextStatus = 'REJECTED_TO_L2';
-      actionLabel = 'ส่งกลับ Level 2 ตรวจสอบใหม่ (Rejected to L2)';
-      targetRoles = ['ASST_MANAGER', 'ADMIN'];
-      notiTitle = 'ใบขอซื้อ (PR) ถูกส่งกลับจาก Level 3 มายัง Level 2';
-    }
 
     pr.status = nextStatus;
     pr.activityLog.push({
@@ -517,12 +707,40 @@ export const workflowEngine = {
       }
     });
 
+    // ── Apply refundCredits (CLOSE_WITH_REFUND budget restores) ──
+    // These lower actualSpent so the remaining budget increases correctly
+    Object.keys(DEPARTMENTS).forEach(dept => {
+      const deptBudget = budgets[dept];
+      if (!deptBudget?.refundCredits) return;
+
+      // Apply current-month refund to currentSummary
+      const currentCredit = deptBudget.refundCredits[targetMonth] || 0;
+      if (currentCredit > 0) {
+        currentSummary[dept].actualSpent = Math.max(
+          0,
+          Math.round((currentSummary[dept].actualSpent - currentCredit) * 100) / 100
+        );
+      }
+
+      // Apply historical refunds to trend data
+      Object.keys(deptBudget.refundCredits).forEach(month => {
+        const credit = deptBudget.refundCredits[month];
+        if (credit > 0 && trends[month] && trends[month][dept]) {
+          trends[month][dept].actualSpent = Math.max(
+            0,
+            Math.round((trends[month][dept].actualSpent - credit) * 100) / 100
+          );
+        }
+      });
+    });
+
     return {
       current: currentSummary,
       trends: trends,
       targetMonth: targetMonth
     };
   },
+
 
   isOverBudget(department, amount) {
     const summary = this.calculateBudgetSummary().current;
@@ -576,7 +794,11 @@ export const workflowEngine = {
       const sQty = Number(item.stockQty) || (pQty * rate);
       const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
       const sUnit = item.stockUnit || item.unit || 'ชิ้น';
-      const price = Number(item.price) || 0;
+      const price = parseFloat(item.price) || 0;
+      const discountPercent = parseFloat(item.discountPercent) || 0;
+      const discountAmount = parseFloat(item.discountAmount) || (discountPercent > 0 ? (price * pQty * (discountPercent / 100)) : 0);
+      const rowTotal = Math.max(0, (price * pQty) - discountAmount);
+
       return {
         ...item,
         purchaseQty: pQty,
@@ -587,33 +809,98 @@ export const workflowEngine = {
         unit: pUnit,
         conversionRate: rate,
         price,
-        total: price * pQty
+        discountPercent,
+        discountAmount,
+        total: rowTotal,
+        source: item.source === 'OFFICE' ? 'OFFICE' : 'FACTORY'
       };
     });
 
+    const isSelfChannel = prData.purchaseChannel === 'SELF';
+    const subtotal = formattedItems.reduce((sum, item) => sum + (item.purchaseQty * item.price), 0);
+    const itemDiscountTotal = formattedItems.reduce((sum, item) => sum + (parseFloat(item.discountAmount) || 0), 0);
+    const netAfterItemDiscount = Math.max(0, subtotal - itemDiscountTotal);
+
+    let financials = null;
+    let totalAmount = subtotal;
+
+    if (isSelfChannel && (prData.financials || prData.vatMode)) {
+      const fin = prData.financials || {};
+      const combinedDiscountType = fin.combinedDiscountType || prData.combinedDiscountType || 'percent';
+      const combinedDiscountValue = parseFloat(fin.combinedDiscountValue ?? prData.combinedDiscountValue) || 0;
+      const combinedDiscountAmount = combinedDiscountType === 'percent'
+        ? (netAfterItemDiscount * (combinedDiscountValue / 100))
+        : combinedDiscountValue;
+      const totalDiscount = itemDiscountTotal + combinedDiscountAmount;
+      const netAfterAllDiscount = Math.max(0, subtotal - totalDiscount);
+
+      const vatMode = fin.vatMode || prData.vatMode || 'AFTER_DISCOUNT';
+      const vatBase = vatMode === 'BEFORE_DISCOUNT' ? subtotal : netAfterAllDiscount;
+      const vatAmount = vatMode === 'NONE' ? 0 : (parseFloat((vatBase * 0.07).toFixed(2)) || 0);
+      const roundingAdj = parseFloat(fin.roundingAdj ?? prData.roundingAdj) || 0;
+      const shippingCost = parseFloat(fin.shippingCost ?? prData.shippingCost) || 0;
+
+      const grandTotal = vatMode === 'BEFORE_DISCOUNT'
+        ? parseFloat((subtotal + vatAmount - totalDiscount + roundingAdj + shippingCost).toFixed(2))
+        : parseFloat((netAfterAllDiscount + vatAmount + roundingAdj + shippingCost).toFixed(2));
+
+      financials = {
+        subtotal,
+        itemDiscountTotal,
+        combinedDiscountType,
+        combinedDiscountValue,
+        combinedDiscountAmount,
+        totalDiscount,
+        vatMode,
+        vatAmount,
+        roundingAdj,
+        shippingCost,
+        grandTotal
+      };
+      totalAmount = grandTotal;
+    } else {
+      financials = {
+        subtotal,
+        itemDiscountTotal,
+        combinedDiscountType: 'fixed',
+        combinedDiscountValue: 0,
+        combinedDiscountAmount: 0,
+        totalDiscount: itemDiscountTotal,
+        vatMode: 'NONE',
+        vatAmount: 0,
+        roundingAdj: 0,
+        shippingCost: 0,
+        grandTotal: prData.totalAmount !== undefined ? prData.totalAmount : Math.max(0, subtotal - itemDiscountTotal)
+      };
+      totalAmount = financials.grandTotal;
+    }
+
     const newPR = {
-      id: `PR-${Date.now()}`,
+      id: `PR-${Date.now()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`,
       prNo,
       department: prData.department,
-      source: prData.source,
-      purchaseChannel: prData.purchaseChannel,
-      requestedBy: user.name,
-      requestedDate: new Date().toISOString().split('T')[0],
-      requiredDate: prData.requiredDate,
-      status: status,
+      source: prData.source || 'FACTORY',
+      purchaseChannel: prData.purchaseChannel || 'SELF',
       specUrl: prData.specUrl || '',
       attachments: prData.attachments || [],
-      items: formattedItems,
-      totalAmount: formattedItems.reduce((sum, item) => sum + (item.purchaseQty * item.price), 0),
       note: prData.note || '',
+      items: formattedItems,
+      financials,
+      totalAmount,
+      status,
+      requestedBy: user.name,
+      requestedByRole: user.title,
+      requestedDept: user.department,
+      createdAt: timestamp,
+      updatedAt: timestamp,
       memo: prData.memo || null,
       activityLog: [
         {
-          action: isDraft ? 'บันทึกแบบร่าง (Draft)' : 'สร้างและเปิดใบ PR',
+          action: isDraft ? 'สร้างแบบร่าง PR (Draft Created)' : 'สร้างและยื่นส่ง PR (PR Submitted)',
           user: user.name,
           role: user.title,
           timestamp,
-          note: isDraft ? 'บันทึกเป็นแบบร่าง' : 'เปิดใบขอซื้อใหม่ส่งเข้าสู่ระบบ'
+          note: isDraft ? 'บันทึกแบบร่าง' : 'ยื่นเสนอขอซื้อเข้าสู่ระบบ'
         }
       ]
     };
@@ -631,6 +918,155 @@ export const workflowEngine = {
     });
 
     return newPR;
+  },
+
+  // Update & Resubmit existing Draft/Returned PR
+  async updatePR(prId, prData, user, isDraft = false) {
+    const prs = storageService.getPRs();
+    const pr = prs.find(p => p.id === prId);
+    if (!pr) throw new Error('ไม่พบเอกสาร PR ในระบบ');
+
+    const formattedItems = (prData.items || []).map(item => {
+      const pQty = Number(item.purchaseQty ?? item.qty) || 1;
+      const rate = Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1;
+      const sQty = Number(item.stockQty) || (pQty * rate);
+      const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
+      const sUnit = item.stockUnit || item.unit || 'ชิ้น';
+      const price = parseFloat(item.price) || 0;
+      const discountPercent = parseFloat(item.discountPercent) || 0;
+      const discountAmount = parseFloat(item.discountAmount) || (discountPercent > 0 ? (price * pQty * (discountPercent / 100)) : 0);
+      const rowTotal = Math.max(0, (price * pQty) - discountAmount);
+
+      return {
+        ...item,
+        purchaseQty: pQty,
+        stockQty: sQty,
+        qty: pQty,
+        purchaseUnit: pUnit,
+        stockUnit: sUnit,
+        unit: pUnit,
+        conversionRate: rate,
+        price,
+        discountPercent,
+        discountAmount,
+        total: rowTotal,
+        source: item.source === 'OFFICE' ? 'OFFICE' : 'FACTORY'
+      };
+    });
+
+    const isSelfChannel = (prData.purchaseChannel || pr.purchaseChannel) === 'SELF';
+    const subtotal = formattedItems.reduce((sum, item) => sum + (item.purchaseQty * item.price), 0);
+    const itemDiscountTotal = formattedItems.reduce((sum, item) => sum + (parseFloat(item.discountAmount) || 0), 0);
+    const netAfterItemDiscount = Math.max(0, subtotal - itemDiscountTotal);
+
+    let financials = null;
+    let newTotal = subtotal;
+
+    if (isSelfChannel && (prData.financials || prData.vatMode)) {
+      const fin = prData.financials || {};
+      const combinedDiscountType = fin.combinedDiscountType || prData.combinedDiscountType || 'percent';
+      const combinedDiscountValue = parseFloat(fin.combinedDiscountValue ?? prData.combinedDiscountValue) || 0;
+      const combinedDiscountAmount = combinedDiscountType === 'percent'
+        ? (netAfterItemDiscount * (combinedDiscountValue / 100))
+        : combinedDiscountValue;
+      const totalDiscount = itemDiscountTotal + combinedDiscountAmount;
+      const netAfterAllDiscount = Math.max(0, subtotal - totalDiscount);
+
+      const vatMode = fin.vatMode || prData.vatMode || 'AFTER_DISCOUNT';
+      const vatBase = vatMode === 'BEFORE_DISCOUNT' ? subtotal : netAfterAllDiscount;
+      const vatAmount = vatMode === 'NONE' ? 0 : (parseFloat((vatBase * 0.07).toFixed(2)) || 0);
+      const roundingAdj = parseFloat(fin.roundingAdj ?? prData.roundingAdj) || 0;
+      const shippingCost = parseFloat(fin.shippingCost ?? prData.shippingCost) || 0;
+
+      const grandTotal = vatMode === 'BEFORE_DISCOUNT'
+        ? parseFloat((subtotal + vatAmount - totalDiscount + roundingAdj + shippingCost).toFixed(2))
+        : parseFloat((netAfterAllDiscount + vatAmount + roundingAdj + shippingCost).toFixed(2));
+
+      financials = {
+        subtotal,
+        itemDiscountTotal,
+        combinedDiscountType,
+        combinedDiscountValue,
+        combinedDiscountAmount,
+        totalDiscount,
+        vatMode,
+        vatAmount,
+        roundingAdj,
+        shippingCost,
+        grandTotal
+      };
+      newTotal = grandTotal;
+    } else {
+      financials = {
+        subtotal,
+        itemDiscountTotal,
+        combinedDiscountType: 'fixed',
+        combinedDiscountValue: 0,
+        combinedDiscountAmount: 0,
+        totalDiscount: itemDiscountTotal,
+        vatMode: 'NONE',
+        vatAmount: 0,
+        roundingAdj: 0,
+        shippingCost: 0,
+        grandTotal: prData.totalAmount !== undefined ? prData.totalAmount : Math.max(0, subtotal - itemDiscountTotal)
+      };
+      newTotal = financials.grandTotal;
+    }
+
+    const timestamp = new Date().toLocaleString('th-TH');
+    const draftFlag = isDraft || Boolean(prData.isDraft);
+    const nextStatus = draftFlag ? 'DRAFT' : 'SUBMITTED';
+
+    pr.department = prData.department || pr.department;
+    pr.source = prData.source || pr.source;
+    pr.purchaseChannel = prData.purchaseChannel || pr.purchaseChannel;
+    pr.specUrl = prData.specUrl || '';
+    pr.attachments = prData.attachments || [];
+    pr.items = formattedItems;
+    pr.financials = financials;
+    pr.totalAmount = newTotal;
+    pr.note = prData.note || '';
+    if (prData.memo !== undefined) pr.memo = prData.memo;
+    pr.status = nextStatus;
+
+    if (!Array.isArray(pr.activityLog)) pr.activityLog = [];
+    pr.activityLog.push({
+      action: draftFlag ? 'แก้ไขและบันทึกแบบร่าง (Draft Updated)' : 'แก้ไขและส่งใบ PR ใหม่ (PR Resubmitted)',
+      user: user.name,
+      role: user.title,
+      timestamp,
+      note: draftFlag 
+        ? 'ผู้ขอซื้อแก้ไขข้อมูลและบันทึกแบบร่าง' 
+        : `ผู้ขอซื้อแก้ไขข้อมูลและยื่นส่งใหม่อีกครั้ง (ยอดรวม ฿${newTotal.toLocaleString()})`
+    });
+
+    storageService.savePRs(prs);
+
+    auditService.logAction({
+      action: draftFlag ? 'PR_DRAFT_UPDATED' : 'PR_RESUBMITTED',
+      actor: user,
+      department: pr.department,
+      docNo: pr.prNo,
+      docType: 'PR',
+      details: `${draftFlag ? 'แก้ไขแบบร่าง' : 'แก้ไขและยื่นส่งใหม่'} PR เลขที่ ${pr.prNo} ยอดรวม ฿${newTotal.toLocaleString()}`
+    });
+
+    if (!draftFlag) {
+      notificationService.dispatch({
+        type: 'PR_SUBMITTED',
+        title: 'มีการยื่นส่งใบขอซื้อ (PR) ที่แก้ไขใหม่',
+        message: `ใบขอซื้อเลขที่ ${pr.prNo} (${pr.department}) ยอดเงิน ฿${newTotal.toLocaleString()} ได้รับการแก้ไขและส่งใหม่ รอตรวจสอบ`,
+        docNo: pr.prNo,
+        refDocType: 'PR',
+        refDocId: pr.id,
+        department: pr.department,
+        targetRoles: ['ASST_MANAGER', 'ADMIN'],
+        amount: newTotal,
+        actor: user.name
+      });
+    }
+
+    return pr;
   },
   
   // Submit existing Draft/Rejected PR
@@ -663,7 +1099,7 @@ export const workflowEngine = {
       details: `ส่งใบขอซื้อเลขที่ ${pr.prNo} ยอดเงิน ฿${(pr.totalAmount || 0).toLocaleString()} เข้าสู่ระบบเพื่อตรวจสอบ`
     });
 
-    // Dispatch In-App & LINE Notification
+    // Dispatch In-App Notification
     notificationService.dispatch({
       type: 'PR_SUBMITTED',
       title: 'มีคำขอซื้อใหม่รอการตรวจสอบ (Review Level 1)',
@@ -712,7 +1148,7 @@ export const workflowEngine = {
 
     storageService.savePRs(prs);
 
-    // Dispatch In-App & LINE Notification for Review / Reject
+    // Dispatch In-App Notification for Review / Reject
     if (nextStatus === 'REVIEWED') {
       notificationService.dispatch({
         type: 'PR_REVIEWED',
@@ -771,8 +1207,53 @@ export const workflowEngine = {
       const poNo = isSplit ? `${basePoNo}-${splitCount}` : basePoNo;
       
       const subtotal = items.reduce((sum, item) => sum + (item.price * (item.purchaseQty ?? item.qty)), 0);
-      const vat = 0;
-      const grandTotal = subtotal;
+      const itemDiscountTotal = items.reduce((sum, item) => sum + (parseFloat(item.discountAmount) || 0), 0);
+      
+      let vat = 0;
+      let grandTotal = subtotal;
+      let financials = null;
+
+      if (pr.purchaseChannel === 'SELF') {
+        const prFin = pr.financials || {};
+        const combinedDiscountAmount = parseFloat(prFin.combinedDiscountAmount) || 0;
+        const totalDiscount = itemDiscountTotal + (isSplit ? (combinedDiscountAmount / Object.keys(groups).length) : combinedDiscountAmount);
+        const vatMode = prFin.vatMode || 'AFTER_DISCOUNT';
+        const vatAmount = parseFloat(prFin.vatAmount) || 0;
+        const roundingAdj = parseFloat(prFin.roundingAdj) || 0;
+        const shippingCost = parseFloat(prFin.shippingCost) || 0;
+        
+        vat = vatAmount;
+        grandTotal = prFin.grandTotal ? (isSplit ? (subtotal - totalDiscount + (vat / Object.keys(groups).length) + (shippingCost / Object.keys(groups).length)) : prFin.grandTotal) : (subtotal - totalDiscount + vat + roundingAdj + shippingCost);
+
+        financials = {
+          subtotal,
+          itemDiscountTotal,
+          combinedDiscountType: prFin.combinedDiscountType || 'percent',
+          combinedDiscountValue: prFin.combinedDiscountValue || 0,
+          combinedDiscountAmount: isSplit ? (combinedDiscountAmount / Object.keys(groups).length) : combinedDiscountAmount,
+          totalDiscount,
+          vatMode,
+          vatAmount: isSplit ? (vatAmount / Object.keys(groups).length) : vatAmount,
+          roundingAdj: isSplit ? 0 : roundingAdj,
+          shippingCost: isSplit ? (shippingCost / Object.keys(groups).length) : shippingCost,
+          grandTotal
+        };
+      } else {
+        grandTotal = subtotal;
+        financials = {
+          subtotal,
+          itemDiscountTotal: 0,
+          combinedDiscountType: 'fixed',
+          combinedDiscountValue: 0,
+          combinedDiscountAmount: 0,
+          totalDiscount: 0,
+          vatMode: 'NONE',
+          vatAmount: 0,
+          roundingAdj: 0,
+          shippingCost: 0,
+          grandTotal: subtotal
+        };
+      }
 
       const poStatus = pr.purchaseChannel === 'ONLINE' ? 'IN_PROGRESS_ONLINE' : 'ISSUED';
       
@@ -798,7 +1279,6 @@ export const workflowEngine = {
         onlineLink: pr.onlineLink || null,
         specUrl: pr.specUrl || null,
         issueDate: new Date().toISOString().split('T')[0],
-        deliveryDate: pr.requiredDate,
         status: poStatus,
         items: items.map(item => {
           const pQty = Number(item.purchaseQty ?? item.qty) || 0;
@@ -807,10 +1287,15 @@ export const workflowEngine = {
             orderedQty: pQty,
             receivedQty: 0,
             receivedStockQty: 0,
+            receivedNgQty: 0,
             remainingQty: pQty,
-            actUnitPrice: null
+            actUnitPrice: null,
+            source: item.source || 'FACTORY',
+            discountPercent: parseFloat(item.discountPercent) || 0,
+            discountAmount: parseFloat(item.discountAmount) || 0
           };
         }),
+        financials,
         subtotal,
         vat,
         grandTotal,
@@ -873,8 +1358,8 @@ export const workflowEngine = {
 
   // ─── Partial / Full Goods Receiving ──────────────────────────────────────────
   // receivingItems: Array of { productId, receivedThisTime (in purchaseQty units) }
-  // If all items are fully received → CLOSED. Else → PARTIAL.
-  async receiveGoods(poId, receivingItems, user, note = '') {
+  // options: { problematicItems, grAttachments }
+  async receiveGoods(poId, receivingItems, user, note = '', options = {}) {
     const pos = storageService.getPOs();
     const products = storageService.getProducts();
     const stockLogs = storageService.getStockLogs();
@@ -889,128 +1374,393 @@ export const workflowEngine = {
     receivingItems.forEach(r => { receiveMap[r.productId] = Number(r.receivedThisTime) || 0; });
 
     let allFullyReceived = true;
+    let hasAnyClaim = false;
     const receivedSummaryParts = [];
+    const problematicSummaryParts = [];
+    const claimItemList = [];
+
+    const problematicItems = options?.problematicItems || {};
+    const receivingLocations = options?.receivingLocations || {};
+    const grAttachments = options?.grAttachments || [];
+
+    const REASON_LABELS = {
+      'SHORT_SHIPMENT': 'ได้รับสินค้าไม่ครบ (ขาดส่ง)',
+      'DAMAGED': 'สินค้าชำรุด / เสียหาย',
+      'WRONG_SPEC': 'สินค้าไม่ตรงสเปก / ส่งผิดรุ่น',
+      'OTHER': 'อื่นๆ (ตามรายละเอียด)'
+    };
 
     po.items.forEach(poItem => {
       const pQty = Number(poItem.orderedQty ?? poItem.purchaseQty ?? poItem.qty) || 0;
       const alreadyReceived = Number(poItem.receivedQty) || 0;
-      const remaining = pQty - alreadyReceived;
+      const remaining = Math.max(0, pQty - alreadyReceived);
       const thisReceive = Math.min(receiveMap[poItem.productId] ?? 0, remaining);
 
-      if (thisReceive <= 0) {
-        if (alreadyReceived < pQty) allFullyReceived = false;
-        return;
+      if (receivingLocations[poItem.productId]) {
+        poItem.receivingLocation = receivingLocations[poItem.productId];
       }
 
+      const probInfo = problematicItems[poItem.productId];
+      const isProb = Boolean(probInfo?.isProblematic);
+      const claimedQty = isProb ? Math.max(1, Number(probInfo.claimedQty) || (pQty - (alreadyReceived + thisReceive)) || 1) : 0;
+      const rawReason = probInfo?.reason || 'DAMAGED';
+      const reasonLabel = REASON_LABELS[rawReason] || rawReason;
+      const defectNote = (probInfo?.description || probInfo?.defectReason || '').trim();
+
       const rate = Number(poItem.conversionRate) > 0 ? Number(poItem.conversionRate) : 1;
-      const stockReceive = thisReceive * rate;
-
-      poItem.receivedQty = alreadyReceived + thisReceive;
-      poItem.receivedStockQty = (Number(poItem.receivedStockQty) || 0) + stockReceive;
-      poItem.remainingQty = pQty - poItem.receivedQty;
-      poItem.orderedQty = pQty;
-
-      if (poItem.receivedQty < pQty) allFullyReceived = false;
-
-      // Update product stock balance
       const prodIndex = products.findIndex(p => p.id === poItem.productId);
-      if (prodIndex !== -1) {
-        const prod = products[prodIndex];
-        const currentBal = Number(prod.stockBalance) || 0;
-        const newBal = currentBal + stockReceive;
-        prod.stockBalance = newBal;
+      const prod = prodIndex !== -1 ? products[prodIndex] : null;
+      const sUnit = prod?.stockUnit || prod?.unit || poItem.stockUnit || poItem.unit || 'ชิ้น';
+      const pUnit = prod?.purchaseUnit || prod?.unit || poItem.purchaseUnit || sUnit;
 
-        const sUnit = prod.stockUnit || prod.unit || 'ชิ้น';
-        const pUnit = prod.purchaseUnit || prod.unit || sUnit;
-        const logNote = rate > 1
-          ? `รับสินค้า ${thisReceive} ${pUnit} (= ${stockReceive} ${sUnit}) จาก PO ${po.poNo}`
-          : `รับสินค้า ${thisReceive} ${sUnit} จาก PO ${po.poNo}`;
+      // 1. Process Normal (Good) Receipt if quantity > 0
+      if (thisReceive > 0) {
+        const stockReceive = thisReceive * rate;
+        poItem.receivedQty = alreadyReceived + thisReceive;
+        poItem.receivedStockQty = (Number(poItem.receivedStockQty) || 0) + stockReceive;
+        poItem.orderedQty = pQty;
+        poItem.remainingQty = Math.max(0, pQty - poItem.receivedQty);
+
+        if (prod) {
+          const currentBal = Number(prod.stockBalance) || 0;
+          const newBal = currentBal + stockReceive;
+          prod.stockBalance = newBal;
+
+          const logNote = rate > 1
+            ? `รับสินค้า ${thisReceive} ${pUnit} (= ${stockReceive} ${sUnit}) จาก PO ${po.poNo}`
+            : `รับสินค้า ${thisReceive} ${sUnit} จาก PO ${po.poNo}`;
+
+          stockLogs.unshift({
+            id: `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+            date: timestamp,
+            productId: poItem.productId,
+            productCode: poItem.code,
+            type: 'IN',
+            docNo: po.poNo,
+            qty: stockReceive,
+            unit: sUnit,
+            balance: newBal,
+            user: `${user.name} (${user.title})`,
+            note: note || logNote
+          });
+        }
+
+        receivedSummaryParts.push(`${poItem.name}: ${thisReceive} ${pUnit}`);
+      }
+
+      // 2. Process Problematic / Claimed Items
+      if (isProb) {
+        hasAnyClaim = true;
+        allFullyReceived = false;
+
+        const claimedStockQty = claimedQty * rate;
+        poItem.hasDefect = true;
+        poItem.claimedQty = (Number(poItem.claimedQty) || 0) + claimedQty;
+        poItem.receivedNgQty = (Number(poItem.receivedNgQty) || 0) + claimedStockQty;
+        poItem.defectReason = defectNote || reasonLabel;
+        poItem.defectNote = defectNote || reasonLabel;
+
+        po.ngItems = po.ngItems || [];
+        po.ngItems.push({
+          productId: poItem.productId,
+          productCode: poItem.code,
+          name: poItem.name,
+          qty: claimedStockQty,
+          unit: sUnit,
+          defectNote: defectNote || reasonLabel,
+          defectReason: defectNote || reasonLabel,
+          reason: rawReason,
+          date: timestamp
+        });
 
         stockLogs.unshift({
           id: `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
           date: timestamp,
           productId: poItem.productId,
           productCode: poItem.code,
-          type: 'IN',
+          type: 'NG',
           docNo: po.poNo,
-          qty: stockReceive,
+          qty: claimedStockQty,
           unit: sUnit,
-          balance: newBal,
+          balance: prod ? prod.stockBalance : 0,
           user: `${user.name} (${user.title})`,
-          note: note || logNote
+          note: `[สินค้ามีปัญหา/เคลม (${reasonLabel})] ${defectNote || '-'} (PO ${po.poNo})`
         });
 
-        receivedSummaryParts.push(`${poItem.name}: ${thisReceive} ${pUnit}`);
+        claimItemList.push({
+          productId: poItem.productId,
+          code: poItem.code,
+          name: poItem.name,
+          orderedQty: pQty,
+          receivedQty: thisReceive,
+          claimedQty: claimedQty,
+          purchaseUnit: pUnit,
+          stockUnit: sUnit,
+          reason: rawReason,
+          reasonLabel: reasonLabel,
+          description: defectNote || reasonLabel,
+          photo: probInfo.photo || null
+        });
+
+        problematicSummaryParts.push(`${poItem.name}: มีปัญหา ${claimedQty} ${pUnit} (${reasonLabel}${defectNote ? ` - ${defectNote}` : ''})`);
+      } else {
+        if (poItem.receivedQty < pQty) {
+          allFullyReceived = false;
+        }
       }
     });
 
-    po.status = allFullyReceived ? 'CLOSED' : 'PARTIAL';
-    const summaryNote = receivedSummaryParts.length > 0
-      ? `รับของในรอบนี้: ${receivedSummaryParts.join(', ')}${note ? ` — ${note}` : ''}`
-      : note || 'รับสินค้าบางส่วน';
+    // Save GR Attachments
+    if (Array.isArray(grAttachments) && grAttachments.length > 0) {
+      po.grAttachments = [...(po.grAttachments || []), ...grAttachments];
+    }
 
-    po.activityLog.push({
-      action: allFullyReceived ? 'รับสินค้าครบและปิด PO (Goods Received – Closed)' : 'รับสินค้าบางส่วน (Partial Receiving)',
-      user: user.name,
-      role: user.title,
-      timestamp,
-      note: summaryNote
-    });
+    const channel = po.purchaseChannel === 'ONLINE' ? 'ONLINE' : 'SELF-BUY';
+    const requesterRole = po.department === 'PD' ? 'REQUESTER_PD' : 'REQUESTER_QC';
 
-    auditService.logAction({
-      action: allFullyReceived ? 'GOODS_RECEIVED_PO_CLOSED' : 'GOODS_RECEIVED_PARTIAL',
-      actor: user,
-      department: po.department,
-      docNo: po.poNo,
-      docType: 'PO',
-      details: `${allFullyReceived ? 'ตรวจรับสินค้าครบและปิด PO' : 'ตรวจรับสินค้าบางส่วน'} ${po.poNo}: ${summaryNote}`
-    });
+    // ─── Status Assignment Logic ───
+    if (hasAnyClaim) {
+      // If ANY item has a claim/problem -> PO MUST BE CLAIM_REPORTED (NEVER CLOSED)
+      po.status = 'CLAIM_REPORTED';
 
-    // If fully closed, also close parent PR
-    if (allFullyReceived) {
-      const pr = prs.find(p => p.id === po.prId);
-      if (pr) {
-        pr.status = 'CLOSED';
-        pr.activityLog.push({
-          action: 'ปิดเอกสาร (Closed)',
-          user: user.name,
-          role: user.title,
-          timestamp,
-          note: `PO ${po.poNo} รับสินค้าครบแล้ว ปิดใบ PR อัตโนมัติ`
-        });
-      }
-      storageService.savePRs(prs);
+      const reasons = Array.from(new Set(claimItemList.map(c => c.reasonLabel).filter(Boolean)));
+      const mainReason = reasons.join(', ') || 'พบสินค้ามีปัญหาจากการตรวจรับ';
+      const descSummary = claimItemList.map(c => `${c.name}: มีปัญหา ${c.claimedQty} ${c.purchaseUnit} (${c.description || c.reasonLabel})`).join('; ');
 
-      notificationService.dispatch({
-        type: 'GOODS_RECEIVED',
-        title: 'รับสินค้าครบแล้ว — ปิด PO เรียบร้อย (+IN)',
-        message: `PO ${po.poNo} รับสินค้าครบทุกรายการแล้ว สต็อกการ์ดถูกอัปเดตเรียบร้อย`,
-        docNo: po.poNo,
-        refDocType: 'PO',
-        refDocId: po.id,
-        department: po.department,
-        targetRoles: [po.department === 'PD' ? 'REQUESTER_PD' : 'REQUESTER_QC', 'ADMIN', 'ASST_MANAGER'],
-        amount: po.grandTotal,
-        actor: user.name
+      po.claimDetails = {
+        reportedAt: new Date().toISOString(),
+        reportedBy: user.name,
+        reportedById: user.id || user.roleId || '',
+        channel,
+        reason: mainReason,
+        description: descSummary,
+        items: claimItemList
+      };
+
+      po.claimData = {
+        reason: mainReason,
+        description: descSummary,
+        channel,
+        reportedBy: user.name,
+        reportedById: user.id || user.roleId || '',
+        reportedAt: timestamp,
+        claimDetails: po.claimDetails
+      };
+
+      const parts = [];
+      if (receivedSummaryParts.length > 0) parts.push(`รับปกติเข้าสต็อก: ${receivedSummaryParts.join(', ')}`);
+      if (problematicSummaryParts.length > 0) parts.push(`ส่งเรื่องเคลม: ${problematicSummaryParts.join(', ')}`);
+      const summaryNote = parts.join(' | ') + (note ? ` (หมายเหตุ: ${note})` : '');
+
+      po.activityLog.push({
+        action: `[${channel} CLAIM] ตรวจรับสินค้าพร้อมแจ้งเคลม`,
+        user: user.name,
+        role: user.title,
+        timestamp,
+        note: summaryNote,
+        type: 'PO_CLAIM',
+        channel
       });
+
+      auditService.logAction({
+        action: 'GOODS_RECEIVED_CLAIM_REPORTED',
+        actor: user,
+        department: po.department,
+        docNo: po.poNo,
+        docType: 'PO',
+        details: `ตรวจรับสินค้าและแจ้งเคลม PO ${po.poNo}: ${summaryNote}`
+      });
+
+      // Dispatch Claim Notification
+      if (channel === 'ONLINE') {
+        notificationService.dispatch({
+          type: 'PO_CLAIM',
+          title: '🚨 สินค้าออนไลน์มีปัญหาจากการตรวจรับ (รอเคลม)',
+          message: `PO ${po.poNo} (PR ${po.prNo}) ตรวจรับแล้วพบปัญหา: ${descSummary} — รอคุณนัทติดต่อร้านค้าเพื่อดำเนินการ`,
+          docNo: po.poNo,
+          refDocType: 'PO',
+          refDocId: po.id,
+          department: po.department,
+          targetRoles: ['ONLINE_PURCHASER', 'ADMIN'],
+          amount: po.grandTotal,
+          actor: user.name
+        });
+      } else {
+        notificationService.dispatch({
+          type: 'SELF_CLAIM',
+          title: '🚨 สินค้ามีปัญหาจากการตรวจรับ (จัดซื้อทั่วไป)',
+          message: `PO ${po.poNo} (PR ${po.prNo}) ตรวจรับแล้วพบปัญหา: ${descSummary} — โปรดดำเนินการแก้ไขผ่านหน้า "งานของฉัน"`,
+          docNo: po.poNo,
+          refDocType: 'PO',
+          refDocId: po.id,
+          department: po.department,
+          targetRoles: [requesterRole, 'ASST_MANAGER', 'ADMIN'],
+          amount: po.grandTotal,
+          actor: user.name
+        });
+      }
+
     } else {
-      notificationService.dispatch({
-        type: 'GOODS_PARTIAL',
-        title: '⚠️ รับสินค้าบางส่วน — ยังมียอดค้างอยู่',
-        message: `PO ${po.poNo} รับสินค้าบางส่วนแล้ว (${summaryNote}) ยังมีรายการที่รอรับอยู่`,
-        docNo: po.poNo,
-        refDocType: 'PO',
-        refDocId: po.id,
-        department: po.department,
-        targetRoles: [po.department === 'PD' ? 'REQUESTER_PD' : 'REQUESTER_QC', 'ADMIN'],
-        amount: po.grandTotal,
-        actor: user.name
+      // Normal Goods Receiving (No Claims)
+      po.status = allFullyReceived ? 'CLOSED' : 'PARTIAL';
+      const parts = [];
+      if (receivedSummaryParts.length > 0) parts.push(`รับปกติ: ${receivedSummaryParts.join(', ')}`);
+      const summaryNote = parts.length > 0 ? `${parts.join(' | ')}${note ? ` — ${note}` : ''}` : (note || 'รับสินค้าบางส่วน');
+
+      po.activityLog.push({
+        action: allFullyReceived ? 'รับสินค้าครบและปิด PO (Goods Received – Closed)' : 'รับสินค้าบางส่วน (Partial Receiving)',
+        user: user.name,
+        role: user.title,
+        timestamp,
+        note: summaryNote
       });
+
+      auditService.logAction({
+        action: allFullyReceived ? 'GOODS_RECEIVED_PO_CLOSED' : 'GOODS_RECEIVED_PARTIAL',
+        actor: user,
+        department: po.department,
+        docNo: po.poNo,
+        docType: 'PO',
+        details: `${allFullyReceived ? 'ตรวจรับสินค้าครบและปิด PO' : 'ตรวจรับสินค้าบางส่วน'} ${po.poNo}: ${summaryNote}`
+      });
+
+      let notifyRoles = [requesterRole, 'ADMIN'];
+      if (po.purchaseChannel === 'ONLINE') notifyRoles.push('ONLINE_PURCHASER');
+
+      if (allFullyReceived) {
+        const pr = prs.find(p => p.id === po.prId);
+        if (pr) {
+          pr.status = 'CLOSED';
+          pr.activityLog.push({
+            action: 'ปิดเอกสาร (Closed)',
+            user: user.name,
+            role: user.title,
+            timestamp,
+            note: `PO ${po.poNo} รับสินค้าครบแล้ว ปิดใบ PR อัตโนมัติ`
+          });
+          storageService.savePRs(prs);
+        }
+
+        notificationService.dispatch({
+          type: 'GOODS_RECEIVED',
+          title: 'รับสินค้าครบแล้ว — ปิด PO เรียบร้อย (+IN)',
+          message: `PO ${po.poNo} รับสินค้าครบทุกรายการแล้ว สต็อกการ์ดถูกอัปเดตเรียบร้อย`,
+          docNo: po.poNo,
+          refDocType: 'PO',
+          refDocId: po.id,
+          department: po.department,
+          targetRoles: [...notifyRoles, 'ASST_MANAGER'],
+          amount: po.grandTotal,
+          actor: user.name
+        });
+      } else {
+        notificationService.dispatch({
+          type: 'GOODS_PARTIAL',
+          title: '⚠️ รับสินค้าบางส่วน — ยังมียอดค้างอยู่',
+          message: `PO ${po.poNo} รับสินค้าบางส่วนแล้ว (${summaryNote}) ยังมีรายการที่รอรับอยู่`,
+          docNo: po.poNo,
+          refDocType: 'PO',
+          refDocId: po.id,
+          department: po.department,
+          targetRoles: notifyRoles,
+          amount: po.grandTotal,
+          actor: user.name
+        });
+      }
     }
 
     storageService.savePOs(pos);
     storageService.saveProducts(products);
     storageService.saveStockLogs(stockLogs);
+
+    return po;
+  },
+
+  // ─── Short-Close PO (ปิด PO ก่อนกำหนดเมื่อได้ของไม่ครบและไม่รอของแล้ว) ──────
+  async shortClosePO(poId, reason, user) {
+    if (!reason || !reason.trim()) {
+      throw new Error('กรุณาระบุเหตุผลในการปิด PO ก่อนกำหนด');
+    }
+
+    const pos = storageService.getPOs();
+    const prs = storageService.getPRs();
+    const timestamp = new Date().toLocaleString('th-TH');
+
+    const po = pos.find(p => p.id === poId);
+    if (!po) throw new Error('ไม่พบเอกสาร PO ในระบบ');
+    if (['CLOSED', 'CANCELLED'].includes(po.status)) {
+      throw new Error('PO นี้ถูกปิดหรือยกเลิกไปแล้ว');
+    }
+
+    po.status = 'CLOSED';
+    po.closedEarly = true;
+    po.shortCloseReason = reason.trim();
+    po.closedBy = user.name;
+    po.closedDate = timestamp;
+
+    const unfulfilledSummary = (po.items || [])
+      .map(it => {
+        const ordered = Number(it.orderedQty ?? it.purchaseQty ?? it.qty) || 0;
+        const received = Number(it.receivedQty) || 0;
+        const remaining = Math.max(0, ordered - received);
+        return remaining > 0 ? `${it.name}: ขาด ${remaining} ${it.purchaseUnit || it.unit || 'ชิ้น'}` : null;
+      })
+      .filter(Boolean)
+      .join(', ');
+
+    const noteMsg = `ปิด PO ก่อนกำหนด (ของไม่ครบ/ไม่รอของแล้ว): ${reason.trim()}${unfulfilledSummary ? ` [ยอดที่ยังไม่ได้รับ: ${unfulfilledSummary}]` : ''}`;
+
+    po.activityLog.push({
+      action: 'ปิด PO ก่อนกำหนด (Short-Close PO)',
+      user: user.name,
+      role: user.title,
+      timestamp,
+      note: noteMsg
+    });
+
+    storageService.savePOs(pos);
+
+    if (po.prId) {
+      const pr = prs.find(p => p.id === po.prId);
+      if (pr) {
+        pr.activityLog.push({
+          action: 'ใบสั่งซื้อถูกปิดก่อนกำหนด (PO Short-Closed)',
+          user: user.name,
+          role: user.title,
+          timestamp,
+          note: noteMsg
+        });
+
+        const siblingPOs = pos.filter(p => p.prId === pr.id);
+        const allSiblingClosed = siblingPOs.every(p => ['CLOSED', 'CANCELLED'].includes(p.status));
+        if (allSiblingClosed) {
+          pr.status = 'CLOSED';
+        }
+        storageService.savePRs(prs);
+      }
+    }
+
+    auditService.logAction({
+      action: 'PO_SHORT_CLOSED',
+      actor: user,
+      department: po.department,
+      docNo: po.poNo,
+      docType: 'PO',
+      details: `ปิด PO ${po.poNo} ก่อนกำหนด: ${reason.trim()}`
+    });
+
+    notificationService.dispatch({
+      type: 'PO_SHORT_CLOSED',
+      title: '🔒 ใบสั่งซื้อ (PO) ถูกปิดก่อนกำหนด (Short-Close)',
+      message: `ใบสั่งซื้อ ${po.poNo} (PR ${po.prNo}) ถูกปิดโดย ${user.name}: ${reason.trim()}`,
+      docNo: po.poNo,
+      refDocType: 'PO',
+      refDocId: po.id,
+      department: po.department,
+      targetRoles: [po.department === 'PD' ? 'REQUESTER_PD' : 'REQUESTER_QC', 'ADMIN', 'ASST_MANAGER'],
+      amount: po.grandTotal,
+      actor: user.name
+    });
 
     return po;
   },
@@ -1068,6 +1818,246 @@ export const workflowEngine = {
 
     storageService.savePOs(pos);
     return po;
+  },
+
+  // ─── Generic Claim Filing (supports ONLINE & SELF-BUY channels) ───────────
+  async fileClaim(poId, claimData, user) {
+    const pos = storageService.getPOs();
+    const po = pos.find(p => p.id === poId);
+    if (!po) throw new Error('ไม่พบใบสั่งซื้อ');
+
+    const channel = po.purchaseChannel === 'ONLINE' ? 'ONLINE' : 'SELF-BUY';
+    const timestamp = new Date().toLocaleString('th-TH');
+
+    po.status = 'CLAIM_REPORTED';
+    po.claimData = {
+      ...claimData,
+      reportedBy: user.name,
+      reportedById: user.id || user.roleId || user.positionKey || '',
+      reportedAt: timestamp,
+      channel
+    };
+
+    // Channel-tagged audit log
+    po.activityLog.push({
+      action: channel === 'ONLINE'
+        ? '[ONLINE CLAIM] แจ้งปัญหาสินค้าสั่งซื้อออนไลน์'
+        : '[SELF-BUY CLAIM] แจ้งปัญหาสินค้าจัดซื้อทั่วไป',
+      date: timestamp,
+      timestamp,
+      user: user.name,
+      userId: user.id || user.roleId || '',
+      role: user.title,
+      note: `[${channel} CLAIM] แจ้งปัญหา: ${claimData.reason} | ${claimData.description} โดย ${user.name}`,
+      type: 'PO_CLAIM',
+      channel
+    });
+
+    storageService.savePOs(pos);
+
+    if (channel === 'ONLINE') {
+      // ONLINE: notify the Online Purchaser (คุณนัท)
+      notificationService.dispatch({
+        type: 'PO_CLAIM',
+        title: '🚨 แจ้งปัญหา / เคลมสินค้าออนไลน์',
+        message: `มีรายการแจ้งปัญหาสำหรับ PO ${po.poNo} จาก ${user.name} — กรุณาตรวจสอบและติดต่อร้านค้า`,
+        docNo: po.poNo,
+        refDocType: 'PO',
+        refDocId: po.id,
+        department: po.department,
+        targetRoles: ['ONLINE_PURCHASER', 'ADMIN'],
+        amount: po.grandTotal,
+        actor: user.name
+      });
+    } else {
+      // SELF-BUY: notify the requester's department + Asst. Manager
+      const requesterRole = po.department === 'PD' ? 'REQUESTER_PD' : 'REQUESTER_QC';
+      notificationService.dispatch({
+        type: 'SELF_CLAIM',
+        title: '🚨 แจ้งปัญหาสินค้า (จัดซื้อทั่วไป)',
+        message: `PO ${po.poNo} มีรายการแจ้งปัญหา: "${claimData.reason}" — โปรดดำเนินการผ่านหน้า "งานของฉัน"`,
+        docNo: po.poNo,
+        refDocType: 'PO',
+        refDocId: po.id,
+        department: po.department,
+        targetRoles: [requesterRole, 'ASST_MANAGER', 'ADMIN'],
+        amount: po.grandTotal,
+        actor: user.name
+      });
+    }
+
+    return po;
+  },
+
+  // Backward-compat alias
+  async fileOnlineClaim(poId, claimData, user) {
+    return this.fileClaim(poId, claimData, user);
+  },
+
+  // ─── Generic Claim Resolution (supports ONLINE & SELF-BUY channels) ────────
+  async resolveClaim(poId, resolution, user) {
+    const pos = storageService.getPOs();
+    const po = pos.find(p => p.id === poId);
+    if (!po) throw new Error('ไม่พบใบสั่งซื้อ');
+
+    const channel = po.purchaseChannel === 'ONLINE' ? 'ONLINE' : 'SELF-BUY';
+    po.claimRound = (po.claimRound || 0) + 1;
+    po.claimHistory = po.claimHistory || [];
+    
+    const timestamp = new Date().toLocaleString('th-TH');
+    
+    // Save history entry
+    po.claimHistory.push({
+      round: po.claimRound,
+      reportData: po.claimData,
+      resolution: resolution,
+      resolvedBy: user.name,
+      resolvedById: user.id || user.roleId || '',
+      resolvedAt: timestamp,
+      channel
+    });
+
+    let actionLabel = 'ดำเนินการเคลม (Resolution)';
+    let noteMsg = '';
+    
+    const requesterRole = po.department === 'PD' ? 'REQUESTER_PD' : 'REQUESTER_QC';
+
+    if (resolution.type === 'RESEND') {
+      po.status = 'ORDERED_PENDING_DELIVERY';
+      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: RESEND — จัดซื้อใหม่/ส่งสินค้าทดแทน (รอบที่ ${po.claimRound}), คาดรับวันที่: ${resolution.expectedDate || '-'} — ${resolution.note} โดย ${user.name}`;
+      
+      if (channel === 'ONLINE') {
+        // ONLINE RESEND: notify Requester to wait for re-delivery
+        notificationService.dispatch({
+          type: 'PO_CLAIM_RESEND',
+          title: '🔄 ร้านค้าจัดส่งสินค้ามาให้ใหม่ (เคลม)',
+          message: `PO ${po.poNo}: ร้านค้ากำลังส่งสินค้ามาใหม่ (รอบที่ ${po.claimRound}) คาดรับวันที่ ${resolution.expectedDate || '-'} โปรดเตรียมตรวจรับ`,
+          docNo: po.poNo,
+          refDocType: 'PO',
+          refDocId: po.id,
+          department: po.department,
+          targetRoles: [requesterRole, 'ADMIN', 'ASST_MANAGER'],
+          amount: po.grandTotal,
+          actor: user.name
+        });
+      } else {
+        // SELF-BUY RESEND: notify same requester that they need to re-purchase
+        notificationService.dispatch({
+          type: 'PO_CLAIM_RESEND',
+          title: '🔄 ต้องจัดซื้อสินค้าทดแทน (Self-buy Claim)',
+          message: `PO ${po.poNo}: กรุณาดำเนินการจัดซื้อสินค้าทดแทน (รอบที่ ${po.claimRound}) ตามผลการเคลม คาดรับวันที่ ${resolution.expectedDate || '-'}`,
+          docNo: po.poNo,
+          refDocType: 'PO',
+          refDocId: po.id,
+          department: po.department,
+          targetRoles: [requesterRole, 'ADMIN', 'ASST_MANAGER'],
+          amount: po.grandTotal,
+          actor: user.name
+        });
+      }
+
+    } else if (resolution.type === 'CLOSE_WITH_REFUND') {
+      po.status = 'CLOSED';
+
+      // ── Budget Restore: คืนงบประมาณกลับฝ่ายต้นทาง ──
+      const refundAmt = Math.round((Number(resolution.refundAmount) || 0) * 100) / 100;
+      if (refundAmt > 0) {
+        const budgets = storageService.getBudgets();
+        const dept = po.department;
+
+        // Determine which budget month the PO belongs to
+        const poDate = po.issueDate || po.createdAt || new Date().toISOString();
+        const poMonth = typeof poDate === 'string' && poDate.length >= 7 ? poDate.substring(0, 7) : `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+
+        // Initialise dept budget if missing
+        if (!budgets[dept]) budgets[dept] = { monthlyBudget: 0, history: {}, transactions: [] };
+
+        // Lower actualSpent by refundAmt (clamped to 0 to avoid negative)
+        // We track this via a negative-spend transaction so calculateBudgetSummary picks it up automatically
+        // by storing a special "refund PO" with negative grandTotal keyed to the same month.
+        // Since calculateBudgetSummary sums grandTotal for CLOSED POs, we instead persist the refund
+        // as a dedicated credit adjustment on the budget record so the summary reflects it.
+        if (!budgets[dept].refundCredits) budgets[dept].refundCredits = {};
+        budgets[dept].refundCredits[poMonth] = Math.round(
+          ((budgets[dept].refundCredits[poMonth] || 0) + refundAmt) * 100
+        ) / 100;
+
+        storageService.saveBudgets(budgets);
+
+        // ── Persist Budget Transaction Log ──
+        storageService.appendBudgetTransaction({
+          type: 'RESTORE',
+          transactionType: 'BUDGET_RESTORED_CLAIM_REFUND',
+          dept,
+          budgetMonth: poMonth,
+          amount: refundAmt,
+          refId: po.poNo,
+          poId: po.id,
+          note: `ได้เงินคืนจากการเคลมสินค้า (PO: ${po.poNo}) — ${resolution.note || '-'}`,
+          date: new Date().toISOString(),
+          resolvedBy: user.name
+        });
+      }
+
+      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: CLOSE_WITH_REFUND — ได้รับเงินคืน ฿${refundAmt.toLocaleString()} ปิดเคสแล้ว | ${resolution.note} โดย ${user.name}`;
+    } else if (resolution.type === 'CLOSE_NO_ACTION') {
+      po.status = 'CLOSED';
+      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: CLOSE_NO_ACTION — ปิดเคสโดยไม่ดำเนินการต่อ | ${resolution.note} โดย ${user.name}`;
+    }
+
+    po.activityLog.push({
+      action: actionLabel,
+      user: user.name,
+      userId: user.id || user.roleId || '',
+      role: user.title,
+      timestamp,
+      note: noteMsg,
+      type: 'CLAIM_RESOLUTION',
+      channel
+    });
+
+    // Handle closing PR if PO is now closed
+    if (['CLOSE_WITH_REFUND', 'CLOSE_NO_ACTION'].includes(resolution.type) && po.prId) {
+      const prs = storageService.getPRs();
+      const pr = prs.find(p => p.id === po.prId);
+      if (pr) {
+        pr.activityLog.push({
+          action: 'ใบสั่งซื้อถูกปิดหลังจากเคลม (PO Closed Post-Claim)',
+          user: user.name,
+          role: user.title,
+          timestamp,
+          note: `PO ${po.poNo} (${channel}) ปิดหลังแจ้งปัญหา: ${noteMsg}`
+        });
+        const siblingPOs = pos.filter(p => p.prId === pr.id);
+        const allSiblingClosed = siblingPOs.every(p => ['CLOSED', 'CANCELLED'].includes(p.status));
+        if (allSiblingClosed) {
+          pr.status = 'CLOSED';
+        }
+        storageService.savePRs(prs);
+      }
+      
+      notificationService.dispatch({
+        type: 'PO_CLAIM_CLOSED',
+        title: '🔒 ใบสั่งซื้อ (PO) ถูกปิดหลังเคลมปัญหา',
+        message: `PO ${po.poNo} (${channel}): ${noteMsg}`,
+        docNo: po.poNo,
+        refDocType: 'PO',
+        refDocId: po.id,
+        department: po.department,
+        targetRoles: [requesterRole, 'ADMIN', 'ASST_MANAGER'],
+        amount: po.grandTotal,
+        actor: user.name
+      });
+    }
+
+    po.claimData = null; // Clear active claim data
+    storageService.savePOs(pos);
+    return po;
+  },
+
+  // Backward-compat alias
+  async resolveOnlineClaim(poId, resolution, user) {
+    return this.resolveClaim(poId, resolution, user);
   },
 
   // Update PO Status
@@ -1202,7 +2192,7 @@ export const workflowEngine = {
   },
 
   // --- Quick Issue Stock (เบิกจ่าย) ---
-  async quickIssueStock(productId, issueQty, user, note = '') {
+  async quickIssueStock(productId, issueQty, user, note = '', issueUnit = '') {
     const products = storageService.getProducts();
     const stockLogs = storageService.getStockLogs();
     const timestamp = new Date().toLocaleString('th-TH');
@@ -1227,12 +2217,15 @@ export const workflowEngine = {
       date: timestamp,
       productId: product.id,
       productCode: product.code,
+      productName: product.name,
+      department: product.category,
       type: 'OUT',
       docNo: logNo,
       qty: numIssueQty,
       unit: sUnit,
       balance: newBal,
       user: `${user.name} (${user.title})`,
+      issueUnit: issueUnit || '',
       note: note || `เบิกสินค้าไปใช้งาน`
     });
 

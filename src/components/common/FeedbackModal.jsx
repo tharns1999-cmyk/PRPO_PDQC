@@ -55,7 +55,6 @@ export default function FeedbackModal() {
         }
       } else if (e.key === 'Enter' && !e.shiftKey) {
         if (modalState.mode === 'prompt') {
-          // If prompt has input, submit
           if (e.target.tagName !== 'TEXTAREA') {
             e.preventDefault();
             handlePromptSubmit();
@@ -85,35 +84,31 @@ export default function FeedbackModal() {
       case 'success':
         return {
           icon: CheckCircle2,
-          iconBg: 'bg-gradient-to-tr from-emerald-500 to-teal-400 text-white shadow-emerald-500/30',
-          badgeText: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-          confirmBtn: 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-emerald-600/25',
+          iconBg: 'bg-emerald-50 text-emerald-600 border border-emerald-200',
+          confirmBtn: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm',
           defaultTitle: 'ดำเนินการสำเร็จ'
         };
       case 'error':
       case 'danger':
         return {
           icon: AlertOctagon,
-          iconBg: 'bg-gradient-to-tr from-rose-500 to-red-600 text-white shadow-rose-500/30',
-          badgeText: 'text-rose-700 bg-rose-50 border-rose-200',
-          confirmBtn: 'bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white shadow-rose-600/25',
+          iconBg: 'bg-rose-50 text-rose-600 border border-rose-200',
+          confirmBtn: 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm',
           defaultTitle: 'เกิดข้อผิดพลาด'
         };
       case 'warning':
         return {
           icon: AlertTriangle,
-          iconBg: 'bg-gradient-to-tr from-amber-500 to-orange-500 text-white shadow-amber-500/30',
-          badgeText: 'text-amber-700 bg-amber-50 border-amber-200',
-          confirmBtn: 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white shadow-amber-600/25',
+          iconBg: 'bg-amber-50 text-amber-600 border border-amber-200',
+          confirmBtn: 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm',
           defaultTitle: 'ข้อควรระวัง / แจ้งเตือน'
         };
       case 'info':
       default:
         return {
           icon: modalState.mode === 'prompt' ? MessageSquareQuote : Info,
-          iconBg: 'bg-gradient-to-tr from-indigo-500 to-indigo-600 text-white shadow-indigo-500/30',
-          badgeText: 'text-indigo-700 bg-indigo-50 border-indigo-200',
-          confirmBtn: 'bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white shadow-indigo-600/25',
+          iconBg: 'bg-indigo-50 text-indigo-600 border border-indigo-200',
+          confirmBtn: 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm',
           defaultTitle: modalState.mode === 'prompt' ? 'ระบุรายละเอียด' : 'ข้อมูลระบบ'
         };
     }
@@ -126,7 +121,7 @@ export default function FeedbackModal() {
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
       {/* Blurred Backdrop */}
       <div 
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-md transition-opacity"
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
         onClick={() => {
           if (modalState.mode === 'confirm' || modalState.mode === 'prompt') {
             modalState.onCancel();
@@ -137,19 +132,11 @@ export default function FeedbackModal() {
       />
 
       {/* Modal Card */}
-      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl border border-slate-200/60 overflow-hidden transform transition-all animate-zoom-in z-10">
-        {/* Subtle Top Accent Border */}
-        <div className={`h-1.5 w-full ${
-          modalState.type === 'success' ? 'bg-gradient-to-r from-emerald-400 to-teal-500' :
-          modalState.type === 'error' ? 'bg-gradient-to-r from-rose-500 to-red-600' :
-          modalState.type === 'warning' ? 'bg-gradient-to-r from-amber-400 to-orange-500' :
-          'bg-gradient-to-r from-indigo-500 to-purple-500'
-        }`} />
-
+      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-xl border border-slate-200/90 overflow-hidden transform transition-all animate-zoom-in z-10">
         <div className="p-6 sm:p-7">
           {/* Header Area */}
-          <div className="flex items-start gap-4">
-            <div className={`p-3 rounded-2xl shadow-lg shrink-0 ${variant.iconBg}`}>
+          <div className="flex items-start gap-3.5">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs ${variant.iconBg}`}>
               <IconComponent className="w-6 h-6" />
             </div>
 
@@ -166,7 +153,7 @@ export default function FeedbackModal() {
                       modalState.onClose();
                     }
                   }}
-                  className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
                   aria-label="Close"
                 >
                   <X className="w-5 h-5" />
@@ -174,13 +161,13 @@ export default function FeedbackModal() {
               </div>
 
               {/* Message Body */}
-              <div className="mt-2.5 text-slate-600 text-sm leading-relaxed whitespace-pre-line">
+              <div className="mt-2 text-slate-600 text-sm leading-relaxed whitespace-pre-line font-normal">
                 {modalState.message}
               </div>
             </div>
           </div>
 
-          {/* Prompt Input Form (When Mode is 'prompt') */}
+          {/* Prompt Input Form */}
           {modalState.mode === 'prompt' && (
             <div className="mt-5 space-y-2">
               <div className="relative">
@@ -193,10 +180,10 @@ export default function FeedbackModal() {
                   }}
                   placeholder={modalState.placeholder}
                   rows={modalState.rows || 3}
-                  className={`w-full px-4 py-3 rounded-2xl border bg-slate-50/50 text-slate-900 text-sm focus:bg-white focus:outline-none focus:ring-2 transition-all resize-none ${
+                  className={`w-full px-4 py-3 rounded-2xl border bg-slate-50 text-slate-900 text-sm focus:bg-white focus:outline-none focus:ring-2 transition-all resize-none ${
                     inputError 
                       ? 'border-rose-400 focus:ring-rose-400 focus:border-rose-400' 
-                      : 'border-slate-200 focus:ring-indigo-500 focus:border-indigo-500'
+                      : 'border-slate-200 focus:ring-indigo-500/20 focus:border-indigo-500'
                   }`}
                 />
               </div>
@@ -210,12 +197,12 @@ export default function FeedbackModal() {
           )}
 
           {/* Action Buttons */}
-          <div className="mt-7 flex items-center justify-end gap-3">
+          <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
             {(modalState.mode === 'confirm' || modalState.mode === 'prompt') && (
               <button
                 type="button"
                 onClick={modalState.onCancel}
-                className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-sm font-semibold transition-all shadow-2xs hover:shadow-xs cursor-pointer"
+                className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-semibold transition-all shadow-2xs cursor-pointer"
               >
                 {modalState.cancelText || 'ยกเลิก'}
               </button>
@@ -231,7 +218,7 @@ export default function FeedbackModal() {
                   modalState.onConfirm();
                 }
               }}
-              className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all shadow-md hover:shadow-lg active:scale-[0.98] flex items-center gap-2 cursor-pointer ${variant.confirmBtn}`}
+              className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm active:scale-[0.99] flex items-center gap-2 cursor-pointer ${variant.confirmBtn}`}
             >
               <span>{modalState.confirmText || 'ตกลง'}</span>
               <ArrowRight className="w-4 h-4 opacity-80" />

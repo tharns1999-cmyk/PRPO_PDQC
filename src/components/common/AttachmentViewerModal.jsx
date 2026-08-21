@@ -28,13 +28,13 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
       onClick={onClose}
     >
       <div 
-        className="bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden text-white animate-scale-up"
+        className="bg-slate-900 border border-slate-700/80 rounded-sm shadow-md w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden text-white animate-scale-up"
         onClick={e => e.stopPropagation()}
       >
         {/* Modal Top Header Bar */}
-        <div className="px-6 py-4 bg-slate-800/90 border-b border-slate-700/80 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400 shrink-0">
+        <div className="px-6 py-4 bg-slate-800/90 border-b border-slate-700/80 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="w-10 h-10 rounded-sm bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400 shrink-0">
               {isImage ? <ImageIcon className="w-5 h-5" /> : isOnlineUrl ? <Globe className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
             </div>
             <div className="min-w-0">
@@ -51,11 +51,11 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
           {/* Controls */}
           <div className="flex items-center gap-2">
             {isImage && (
-              <div className="hidden sm:flex items-center gap-1 bg-slate-700/60 p-1 rounded-xl border border-slate-600">
+              <div className="hidden sm:flex items-center gap-1 bg-slate-700/60 p-1 rounded-sm border border-slate-600">
                 <button
                   type="button"
                   onClick={handleZoomOut}
-                  className="p-1.5 hover:bg-slate-600 rounded-lg transition-colors text-slate-300 hover:text-white"
+                  className="p-1.5 hover:bg-slate-600 rounded-sm transition-colors text-slate-300 hover:text-white"
                   title="ย่อขนาด (Zoom Out)"
                 >
                   <ZoomOut className="w-4 h-4" />
@@ -64,7 +64,7 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
                 <button
                   type="button"
                   onClick={handleZoomIn}
-                  className="p-1.5 hover:bg-slate-600 rounded-lg transition-colors text-slate-300 hover:text-white"
+                  className="p-1.5 hover:bg-slate-600 rounded-sm transition-colors text-slate-300 hover:text-white"
                   title="ขยายขนาด (Zoom In)"
                 >
                   <ZoomIn className="w-4 h-4" />
@@ -72,7 +72,7 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
                 <button
                   type="button"
                   onClick={handleRotate}
-                  className="p-1.5 hover:bg-slate-600 rounded-lg transition-colors text-slate-300 hover:text-white ml-1"
+                  className="p-1.5 hover:bg-slate-600 rounded-sm transition-colors text-slate-300 hover:text-white ml-1"
                   title="หมุน 90 องศา (Rotate)"
                 >
                   <RotateCw className="w-4 h-4" />
@@ -80,7 +80,7 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="px-2 py-1 hover:bg-slate-600 rounded-lg transition-colors text-[11px] font-semibold text-slate-300 hover:text-white"
+                  className="px-2 py-1 hover:bg-slate-600 rounded-sm transition-colors text-[11px] font-semibold text-slate-300 hover:text-white"
                 >
                   รีเซ็ต
                 </button>
@@ -93,7 +93,7 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
                 target="_blank"
                 rel="noopener noreferrer"
                 download={!isOnlineUrl ? fileName : undefined}
-                className="p-2 hover:bg-slate-700 bg-slate-800 border border-slate-600 rounded-xl transition-colors text-slate-300 hover:text-white"
+                className="p-2 hover:bg-slate-700 bg-slate-800 border border-slate-600 rounded-sm transition-colors text-slate-300 hover:text-white"
                 title={isOnlineUrl ? "เปิดลิงก์ในแท็บใหม่" : "ดาวน์โหลดไฟล์"}
               >
                 {isOnlineUrl ? <ExternalLink className="w-4.5 h-4.5" /> : <Download className="w-4.5 h-4.5" />}
@@ -103,7 +103,7 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
             <button
               type="button"
               onClick={onClose}
-              className="p-2 hover:bg-rose-500/20 hover:text-rose-400 bg-slate-800 border border-slate-600 rounded-xl transition-colors text-slate-400"
+              className="p-2 hover:bg-rose-500/20 hover:text-rose-400 bg-slate-800 border border-slate-600 rounded-sm transition-colors text-slate-400"
               title="ปิดหน้าต่าง (Close)"
             >
               <X className="w-5 h-5" />
@@ -122,12 +122,12 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
                   transform: `scale(${zoom}) rotate(${rotation}deg)`,
                   transition: 'transform 0.2s ease-in-out'
                 }}
-                className="max-h-[60vh] max-w-full object-contain rounded-xl shadow-2xl select-none"
+                className="max-h-[60vh] max-w-full object-contain rounded-sm shadow-md select-none"
               />
             </div>
           ) : isPdf ? (
-            <div className="w-full h-[60vh] flex flex-col items-center justify-center bg-slate-900/90 rounded-2xl border border-slate-700 p-6 text-center space-y-4">
-              <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <div className="w-full h-[60vh] flex flex-col items-center justify-center bg-slate-900/90 rounded-sm border border-slate-700 p-6 text-center space-y-4">
+              <div className="w-16 h-16 rounded-sm bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
                 <FileText className="w-8 h-8" />
               </div>
               <div>
@@ -136,12 +136,12 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
                   เอกสาร Quotation / PDF พร้อมสำหรับการตรวจสอบและพิมพ์
                 </p>
               </div>
-              <div className="flex items-center gap-3 pt-2">
+              <div className="flex items-center gap-1.5 pt-2">
                 <a
                   href={targetUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition-all cursor-pointer"
+                  className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-sm shadow-sm shadow-indigo-600/30 flex items-center gap-2 transition-all cursor-pointer"
                 >
                   <ExternalLink className="w-4 h-4" />
                   เปิดดูเอกสาร PDF เต็มหน้าจอ
@@ -149,13 +149,13 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
               </div>
             </div>
           ) : isOnlineUrl ? (
-            <div className="w-full max-w-md bg-slate-800/90 border border-slate-700 rounded-3xl p-6 text-center space-y-5 shadow-2xl">
-              <div className="w-16 h-16 rounded-2xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-purple-400 mx-auto">
+            <div className="w-full max-w-md bg-slate-800/90 border border-slate-700 rounded-sm p-6 text-center space-y-5 shadow-md">
+              <div className="w-16 h-16 rounded-sm bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-purple-400 mx-auto">
                 <Globe className="w-8 h-8" />
               </div>
               <div className="space-y-1.5">
                 <h4 className="font-bold text-base text-white">ลิงก์สั่งซื้อสินค้าออนไลน์</h4>
-                <p className="text-xs text-purple-300 font-mono break-all bg-slate-900/80 p-3 rounded-xl border border-slate-700/60">
+                <p className="text-xs text-purple-300 font-mono break-all bg-slate-900/80 p-3 rounded-sm border border-slate-700/60">
                   {targetUrl}
                 </p>
               </div>
@@ -163,7 +163,7 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
                 href={targetUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm rounded-2xl shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm rounded-sm shadow-sm shadow-purple-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 <ExternalLink className="w-4 h-4" />
                 เปิดหน้าเว็บร้านค้าภายนอก (Shopee / Lazada)
@@ -178,7 +178,7 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
                   href={targetUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl border border-slate-600 transition-colors"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-sm border border-slate-600 transition-colors"
                 >
                   <ExternalLink className="w-4 h-4" /> เปิดไฟล์
                 </a>
@@ -196,7 +196,7 @@ export default function AttachmentViewerModal({ file, url, title, onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl transition-colors"
+            className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-sm transition-colors"
           >
             ปิด
           </button>

@@ -1,5 +1,4 @@
-// Notification Service (In-App Local Caching & Event-Driven LINE Flex Message Generator)
-import { lineService } from './lineService.js';
+// Notification Service (In-App Local Caching)
 
 const NOTIFICATIONS_STORAGE_KEY = 'prpo_in_app_notifications';
 
@@ -91,7 +90,40 @@ export const NOTIFICATION_TYPES = {
     icon: 'ArrowDownRight',
     colorHex: '#475569',
     priority: 'INFO'
+  },
+  PO_CLAIM: {
+    id: 'PO_CLAIM',
+    label: 'แจ้งปัญหา / เคลมสินค้า',
+    badgeColor: 'bg-rose-100 text-rose-800 border-rose-200',
+    icon: 'AlertOctagon',
+    colorHex: '#DC2626',
+    priority: 'URGENT'
+  },
+  SELF_CLAIM: {
+    id: 'SELF_CLAIM',
+    label: 'แจ้งปัญหาสินค้า (จัดซื้อทั่วไป)',
+    badgeColor: 'bg-rose-100 text-rose-800 border-rose-200',
+    icon: 'AlertTriangle',
+    colorHex: '#E11D48',
+    priority: 'URGENT'
+  },
+  PO_CLAIM_RESEND: {
+    id: 'PO_CLAIM_RESEND',
+    label: 'ส่งสินค้าทดแทน / จัดซื้อใหม่ (Claim Resend)',
+    badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
+    icon: 'RefreshCw',
+    colorHex: '#2563EB',
+    priority: 'URGENT'
+  },
+  PO_CLAIM_CLOSED: {
+    id: 'PO_CLAIM_CLOSED',
+    label: 'ปิดเคสหลังแจ้งปัญหา (Claim Closed)',
+    badgeColor: 'bg-slate-100 text-slate-700 border-slate-200',
+    icon: 'Lock',
+    colorHex: '#64748B',
+    priority: 'INFO'
   }
+
 };
 
 export const notificationService = {
@@ -191,7 +223,7 @@ export const notificationService = {
     this.saveAll([]);
   },
 
-  // Dispatch an In-App Notification & Build LINE Flex Message
+  // Dispatch an In-App Notification
   dispatch({
     type,
     title,
@@ -227,17 +259,7 @@ export const notificationService = {
       actor,
       timestamp: new Date().toISOString(),
       timeFormatted: new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }),
-      isRead: false,
-      flexMessagePayload: this.buildLineFlexMessage({
-        type,
-        typeInfo,
-        title,
-        message,
-        docNo,
-        department,
-        amount,
-        actor
-      })
+      isRead: false
     };
 
     all.unshift(newNoti);
@@ -245,158 +267,7 @@ export const notificationService = {
     const trimmed = all.slice(0, 100);
     this.saveAll(trimmed);
 
-    console.log('[NotificationService] In-App Notification created & LINE Flex ready:', newNoti);
+    console.log('[NotificationService] In-App Notification created:', newNoti);
     return newNoti;
-  },
-
-  // Build a standard LINE Flex Message structure (compatible with LINE Messaging API)
-  buildLineFlexMessage({ type, typeInfo, title, message, docNo, department, amount, actor }) {
-    const headerColor = typeInfo.colorHex || '#4F46E5';
-
-    return {
-      type: 'flex',
-      altText: `🔔 [PR/PO System] ${title}: ${docNo || ''}`,
-      contents: {
-        type: 'bubble',
-        size: 'mega',
-        header: {
-          type: 'box',
-          layout: 'vertical',
-          backgroundColor: headerColor,
-          paddingAll: '16px',
-          contents: [
-            {
-              type: 'text',
-              text: '🏭 PR/PO & STOCK ALERT',
-              weight: 'bold',
-              color: '#FFFFFF',
-              size: 'xxs',
-              letterSpacing: '1px'
-            },
-            {
-              type: 'text',
-              text: title,
-              weight: 'bold',
-              color: '#FFFFFF',
-              size: 'lg',
-              wrap: true,
-              margin: 'sm'
-            }
-          ]
-        },
-        body: {
-          type: 'box',
-          layout: 'vertical',
-          spacing: 'md',
-          paddingAll: '18px',
-          contents: [
-            {
-              type: 'box',
-              layout: 'horizontal',
-              contents: [
-                {
-                  type: 'text',
-                  text: 'เอกสาร/รายการ:',
-                  size: 'sm',
-                  color: '#64748B',
-                  flex: 4
-                },
-                {
-                  type: 'text',
-                  text: docNo || '-',
-                  size: 'sm',
-                  weight: 'bold',
-                  color: '#0F172A',
-                  flex: 6,
-                  align: 'end'
-                }
-              ]
-            },
-            {
-              type: 'box',
-              layout: 'horizontal',
-              contents: [
-                {
-                  type: 'text',
-                  text: 'ฝ่าย/แผนก:',
-                  size: 'sm',
-                  color: '#64748B',
-                  flex: 4
-                },
-                {
-                  type: 'text',
-                  text: department || 'ALL',
-                  size: 'sm',
-                  weight: 'bold',
-                  color: '#0F172A',
-                  flex: 6,
-                  align: 'end'
-                }
-              ]
-            },
-            amount !== null && amount !== undefined ? {
-              type: 'box',
-              layout: 'horizontal',
-              contents: [
-                {
-                  type: 'text',
-                  text: 'ยอดเงินสุทธิ:',
-                  size: 'sm',
-                  color: '#64748B',
-                  flex: 4
-                },
-                {
-                  type: 'text',
-                  text: `฿${Number(amount).toLocaleString()}`,
-                  size: 'md',
-                  weight: 'bold',
-                  color: '#2563EB',
-                  flex: 6,
-                  align: 'end'
-                }
-              ]
-            } : { type: 'filler' },
-            {
-              type: 'separator',
-              margin: 'md',
-              color: '#E2E8F0'
-            },
-            {
-              type: 'text',
-              text: message,
-              size: 'xs',
-              color: '#334155',
-              wrap: true,
-              margin: 'md'
-            },
-            {
-              type: 'text',
-              text: `ดำเนินการโดย: ${actor || 'ระบบอัตโนมัติ'} • ${new Date().toLocaleString('th-TH')}`,
-              size: 'xxs',
-              color: '#94A3B8',
-              margin: 'sm'
-            }
-          ]
-        },
-        footer: {
-          type: 'box',
-          layout: 'vertical',
-          spacing: 'sm',
-          contents: [
-            {
-              type: 'button',
-              style: 'primary',
-              color: headerColor,
-              height: 'sm',
-              action: {
-                type: 'uri',
-                label: 'เปิดดูในระบบ (Open App)',
-                uri: 'https://liff.line.me/your-liff-id'
-              }
-            }
-          ]
-        }
-      }
-    };
   }
 };

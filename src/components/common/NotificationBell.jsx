@@ -8,7 +8,7 @@ export default function NotificationBell({ currentRole, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="relative p-2 text-slate-600 hover:text-indigo-600 hover:bg-slate-100/80 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 active:scale-95 group"
+      className="relative p-2 text-slate-600 hover:text-indigo-600 hover:bg-slate-100/80 rounded-sm transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 active:scale-95 group"
       title={`การแจ้งเตือน (${unreadCount} รายการใหม่)`}
     >
       <Bell className="w-5 h-5 transition-transform group-hover:rotate-12" />

@@ -49,7 +49,7 @@ export default function SearchableSelect({
     const rect = triggerRef.current.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    const dropdownEstimatedHeight = 280;
+    const dropdownEstimatedHeight = 290;
     const openUpward = spaceBelow < dropdownEstimatedHeight && spaceAbove > spaceBelow;
 
     // Minimum width is trigger width or 320px for clear readability
@@ -181,28 +181,28 @@ export default function SearchableSelect({
         disabled={disabled}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         onKeyDown={handleKeyDown}
-        className={`w-full h-[44px] min-h-[44px] flex items-center justify-between text-left border rounded-xl px-3.5 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 ${
+        className={`w-full h-[38px] min-h-[38px] flex items-center justify-between text-left border rounded-xl px-3.5 text-xs sm:text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer ${
           disabled
             ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
             : isOpen
-              ? 'bg-white border-indigo-500 ring-2 ring-indigo-500/20 shadow-sm'
-              : 'bg-white border-slate-300 hover:border-slate-400 text-slate-800 shadow-xs'
+              ? 'bg-white border-indigo-500 ring-2 ring-indigo-500/20 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800 shadow-2xs'
         } ${buttonClassName}`}
       >
         <div className="flex-1 min-w-0 pr-2 overflow-hidden">
           {selectedOption ? (
             <div className="flex items-center gap-2 min-w-0">
               {selectedOption.code && (
-                <span className="font-mono font-bold text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200 shrink-0">
+                <span className="font-mono font-semibold text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200/80 shrink-0">
                   {selectedOption.code}
                 </span>
               )}
-              <span className="font-semibold text-slate-800 truncate block text-sm">
+              <span className="font-semibold text-slate-900 truncate block text-xs sm:text-sm">
                 {selectedOption.label}
               </span>
             </div>
           ) : (
-            <span className="text-slate-400 font-medium truncate block">
+            <span className="text-slate-400 font-medium truncate block text-xs">
               {placeholder}
             </span>
           )}
@@ -215,7 +215,7 @@ export default function SearchableSelect({
         />
       </button>
 
-      {/* Dropdown Popup rendered in Portal on document.body (Never clipped by overflow-hidden) */}
+      {/* Dropdown Popup rendered in Portal on document.body */}
       {isOpen && createPortal(
         <div
           ref={dropdownRef}
@@ -227,12 +227,12 @@ export default function SearchableSelect({
             bottom: dropdownCoords.openUpward ? `${window.innerHeight - dropdownCoords.top}px` : 'auto',
             zIndex: 99999
           }}
-          className="bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden animate-zoom-in text-slate-800"
+          className="bg-white rounded-2xl border border-slate-200/90 shadow-xl overflow-hidden animate-zoom-in text-slate-800"
         >
           {/* Search Box */}
-          <div className="p-2.5 border-b border-slate-100 bg-slate-50/90">
+          <div className="p-2.5 border-b border-slate-100 bg-slate-50/70">
             <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 ref={searchInputRef}
                 type="text"
@@ -243,7 +243,7 @@ export default function SearchableSelect({
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder={searchPlaceholder}
-                className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder:text-slate-400"
+                className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-8 py-2 text-xs font-medium focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder:text-slate-400 shadow-2xs"
               />
               {searchTerm && (
                 <button
@@ -252,7 +252,7 @@ export default function SearchableSelect({
                     setSearchTerm('');
                     searchInputRef.current?.focus();
                   }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -263,7 +263,7 @@ export default function SearchableSelect({
           {/* Options List */}
           <div
             ref={listRef}
-            className="max-h-64 overflow-y-auto p-1.5 space-y-1 custom-scrollbar text-xs"
+            className="max-h-72 overflow-y-auto p-1.5 space-y-1 custom-scrollbar text-xs"
           >
             {filteredOptions.length > 0 ? (
               filteredOptions.map((opt, idx) => {
@@ -275,24 +275,24 @@ export default function SearchableSelect({
                     key={opt.value}
                     onClick={() => handleSelect(opt)}
                     onMouseEnter={() => setHighlightedIndex(idx)}
-                    className={`px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-center justify-between gap-2 ${
+                    className={`px-3 py-2 rounded-xl cursor-pointer transition-all flex items-center justify-between gap-2 ${
                       isSelected
-                        ? 'bg-indigo-50 text-indigo-950 font-bold border border-indigo-200/80'
+                        ? 'bg-indigo-50 text-indigo-950 font-semibold border border-indigo-200/80 shadow-2xs'
                         : isHighlighted
                           ? 'bg-slate-100 text-slate-900 font-medium'
                           : 'text-slate-700 hover:bg-slate-50'
                     } ${opt.disabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         {opt.code && (
-                          <span className="font-mono font-bold text-[11px] text-slate-700 bg-slate-200/70 px-1.5 py-0.5 rounded shrink-0">
+                          <span className="font-mono font-semibold text-[11px] text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200/80 shrink-0">
                             {opt.code}
                           </span>
                         )}
-                        <span className="font-bold text-slate-800 truncate">{opt.label}</span>
+                        <span className="font-semibold text-slate-900 truncate text-xs">{opt.label}</span>
                         {opt.badge && (
-                          <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded border bg-indigo-100 text-indigo-800 border-indigo-200 shrink-0">
+                          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded border bg-indigo-50 text-indigo-700 border-indigo-100 shrink-0">
                             {opt.badge}
                           </span>
                         )}
@@ -305,7 +305,7 @@ export default function SearchableSelect({
                     </div>
 
                     {isSelected && (
-                      <Check className="w-4 h-4 text-indigo-600 shrink-0 ml-1.5" />
+                      <Check className="w-4 h-4 text-indigo-600 shrink-0 ml-2" />
                     )}
                   </div>
                 );
@@ -318,9 +318,9 @@ export default function SearchableSelect({
           </div>
 
           {/* Footer count indicator */}
-          <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-400 flex items-center justify-between">
+          <div className="px-3 py-1.5 bg-slate-50/60 border-t border-slate-100 text-[11px] text-slate-400 flex items-center justify-between">
             <span>แสดง {filteredOptions.length} รายการ</span>
-            <span className="text-slate-400">ใช้ปุ่มลูกศร ↑ ↓ เพื่อเลือก</span>
+            <span>ลูกศร ↑ ↓ เพื่อเลือก</span>
           </div>
         </div>,
         document.body

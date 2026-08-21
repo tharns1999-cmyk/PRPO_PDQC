@@ -3,7 +3,7 @@ import './setup.js';
 import { ROLES } from '../src/config/constants';
 import { notificationService } from '../src/services/notificationService';
 
-describe('Scenario 6: In-App Notifications & LINE Flex Message Payload Validation', () => {
+describe('Scenario 6: In-App Notifications Validation', () => {
   beforeEach(() => {
     notificationService.clearAll();
   });
@@ -63,30 +63,5 @@ describe('Scenario 6: In-App Notifications & LINE Flex Message Payload Validatio
 
     notificationService.markAsRead(noti.id);
     expect(notificationService.getUnreadCount(ROLES.PLANT_MANAGER)).toBe(0);
-  });
-
-  it('LINE Flex Message Payload follows LINE Messaging API standards', () => {
-    const noti = notificationService.dispatch({
-      type: 'PR_APPROVED',
-      title: 'PR ได้รับการอนุมัติ & ออก PO เรียบร้อย',
-      message: 'สร้าง PO เลขที่ PO-PD-202608-001',
-      docNo: 'PO-PD-202608-001',
-      department: 'PD',
-      amount: 5350,
-      actor: 'คุณประเสริฐ (Plant Mgr)'
-    });
-
-    const flex = noti.flexMessagePayload;
-    expect(flex).toBeDefined();
-    expect(flex.type).toBe('flex');
-    expect(flex.altText).toContain('PR ได้รับการอนุมัติ');
-
-    const bubble = flex.contents;
-    expect(bubble.type).toBe('bubble');
-    expect(bubble.header).toBeDefined();
-    expect(bubble.header.backgroundColor).toBe('#059669'); // Green for approved
-    expect(bubble.body).toBeDefined();
-    expect(bubble.footer).toBeDefined();
-    expect(bubble.footer.contents[0].action.type).toBe('uri');
   });
 });

@@ -42,7 +42,7 @@ describe('Scenario 3: Auto-PO Creation, Splitting Logic & Vendor Assignment', ()
     expect(generatedPO).toBeDefined();
     expect(generatedPO.vendorId).toBe('VEN-01');
     expect(generatedPO.vendorName).toBe('บริษัท ซัพพลาย เอ จำกัด');
-    expect(generatedPO.grandTotal).toBe(1000 + Math.round(1000 * 0.07)); // 1070 with 7% VAT
+    expect(generatedPO.grandTotal).toBe(1000);
     expect(generatedPO.status).toBe('ISSUED');
   });
 

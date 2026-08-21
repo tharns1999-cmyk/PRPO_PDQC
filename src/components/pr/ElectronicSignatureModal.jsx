@@ -10,48 +10,53 @@ export default function ElectronicSignatureModal({ isOpen, user, actionText, onC
   const hasSignature = Boolean(signatureData && signatureData.signatureUrl);
 
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-zoom-in border border-slate-200">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center glass-backdrop p-4 animate-fade-in">
+      <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden shadow-xl animate-zoom-in border border-slate-200">
         
         {/* Header */}
-        <div className="bg-slate-50 border-b border-slate-100 p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-indigo-700">
-            <PenTool className="w-5 h-5" />
-            <h3 className="font-bold">ลงลายเซ็นอิเล็กทรอนิกส์ (E-Signature)</h3>
+        <div className="bg-white border-b border-slate-100 p-4 sm:p-5 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 text-indigo-700">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+              <PenTool className="w-4 h-4" />
+            </div>
+            <h3 className="font-bold text-sm sm:text-base text-slate-800">ลงลายเซ็นอิเล็กทรอนิกส์ (E-Signature)</h3>
           </div>
-          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600">
+          <button 
+            onClick={onCancel} 
+            className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
-          <p className="text-sm text-slate-600">
-            คุณกำลังดำเนินการ: <span className="font-bold text-slate-800">{actionText}</span>
+        <div className="p-5 sm:p-6 space-y-4 bg-slate-50/50">
+          <p className="text-xs sm:text-sm text-slate-600 font-medium">
+            คุณกำลังดำเนินการ: <strong className="font-semibold text-slate-800">{actionText}</strong>
           </p>
 
           {/* If Signature exists: Show Signature image & details */}
           {hasSignature ? (
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 border-dashed text-center space-y-2">
+            <div className="bg-white p-4 rounded-xl border border-slate-200/90 text-center space-y-2 shadow-2xs">
               <div className="flex justify-center items-center h-20 overflow-hidden my-1">
                 <img
                   src={signatureData.signatureUrl}
                   alt={`Signature of ${user.name}`}
-                  className="max-h-16 max-w-full object-contain filter drop-shadow-sm"
+                  className="max-h-16 max-w-full object-contain filter drop-shadow-xs"
                 />
               </div>
-              <div className="h-px w-3/4 bg-slate-300 mx-auto"></div>
-              <p className="text-xs font-bold text-slate-700 uppercase">{user.name}</p>
-              <p className="text-[11px] text-slate-500">{user.title}</p>
-              <p className="text-[10px] text-slate-400 font-mono">Timestamp: {new Date().toLocaleString('th-TH')}</p>
+              <div className="h-px w-3/4 bg-slate-100 mx-auto"></div>
+              <p className="text-xs sm:text-sm font-bold text-slate-800 uppercase">{user.name}</p>
+              <p className="text-xs text-slate-500 font-medium">{user.title}</p>
+              <p className="text-[11px] text-slate-400 font-mono">Timestamp: {new Date().toLocaleString('th-TH')}</p>
             </div>
           ) : (
             /* If NO Signature exists: Show Blocking Alert */
-            <div className="bg-rose-50 border-2 border-rose-300 rounded-xl p-4 text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-sm">
-                <Lock className="w-6 h-6" />
+            <div className="bg-rose-50/80 border border-rose-200 rounded-xl p-4 text-center space-y-2.5 shadow-2xs">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-2xs">
+                <Lock className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="font-bold text-rose-800 text-base flex items-center justify-center gap-1.5">
+                <h4 className="font-semibold text-rose-800 text-sm flex items-center justify-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                   <span>ไม่อนุญาตให้อนุมัติ (ไม่มีลายเซ็นในระบบ)</span>
                 </h4>
@@ -64,9 +69,9 @@ export default function ElectronicSignatureModal({ isOpen, user, actionText, onC
           )}
 
           {hasSignature && (
-            <div className="flex items-start gap-2 bg-indigo-50 p-3 rounded-lg border border-indigo-200 text-indigo-900 text-xs mt-4">
+            <div className="flex items-start gap-2.5 bg-indigo-50/70 p-3 rounded-xl border border-indigo-100 text-indigo-950 text-xs shadow-2xs">
               <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-indigo-600" />
-              <p>
+              <p className="leading-relaxed font-medium">
                 การกดยืนยันถือเป็นการลงลายเซ็นอิเล็กทรอนิกส์และมีผลผูกพันตามระเบียบจัดซื้อของบริษัท
               </p>
             </div>
@@ -74,10 +79,10 @@ export default function ElectronicSignatureModal({ isOpen, user, actionText, onC
         </div>
 
         {/* Modal Actions */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+        <div className="p-4 sm:px-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-2">
           <button 
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+            className="bg-white border border-slate-300/80 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium shadow-xs transition-all cursor-pointer"
           >
             {hasSignature ? 'ยกเลิก' : 'ปิด'}
           </button>
@@ -85,7 +90,7 @@ export default function ElectronicSignatureModal({ isOpen, user, actionText, onC
           {hasSignature && (
             <button 
               onClick={onConfirm}
-              className="px-5 py-2 text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-500/30 transition-all cursor-pointer"
+              className="px-4 py-2 text-xs sm:text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl shadow-xs transition-all cursor-pointer"
             >
               ยืนยันและลงนาม
             </button>

@@ -7,23 +7,6 @@
 
 @layer base {
   body {
-    @apply bg-slate-100 text-slate-800 antialiased min-h-screen font-sans;
+    @apply bg-[#F8FAFC] text-slate-900 antialiased min-h-screen font-sans;
   }
 }
-
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 10px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-

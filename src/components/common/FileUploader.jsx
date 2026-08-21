@@ -89,10 +89,10 @@ export default function FileUploader({
         onDragLeave={handleDrag}
         onDragOver={handleDrag}
         onDrop={handleDrop}
-        className={`relative border-2 border-dashed rounded-2xl p-6 transition-all duration-300 flex flex-col items-center justify-center text-center cursor-pointer overflow-hidden group
+        className={`relative border-2 border-dashed rounded-sm p-6 transition-all duration-300 flex flex-col items-center justify-center text-center cursor-pointer overflow-hidden group
           ${isDragging 
             ? 'border-indigo-500 bg-indigo-50 shadow-inner' 
-            : 'border-slate-300 bg-slate-50/50 hover:bg-slate-50 hover:border-indigo-300'
+            : 'border-slate-300 bg-white/50 hover:bg-white hover:border-indigo-300'
           }`}
       >
         <input 
@@ -117,15 +117,15 @@ export default function FileUploader({
 
       {/* Preview Gallery */}
       {files.length > 0 && (
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 animate-fade-in-up">
+        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1.5 animate-fade-in-up">
           {files.map(f => (
-            <div key={f.id} className="relative group rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+            <div key={f.id} className="relative group rounded-sm border border-slate-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow">
               {f.isImage ? (
                 <div className="aspect-square bg-slate-100 w-full">
                   <img src={f.previewUrl} alt={f.name} className="w-full h-full object-cover" />
                 </div>
               ) : (
-                <div className="aspect-square bg-slate-50 flex flex-col items-center justify-center p-3 text-center">
+                <div className="aspect-square bg-white flex flex-col items-center justify-center p-3 text-center">
                   <FileIcon className="w-8 h-8 text-indigo-400 mb-2" />
                   <span className="text-[10px] font-bold text-slate-600 line-clamp-2 w-full break-all">{f.name}</span>
                 </div>
@@ -135,7 +135,7 @@ export default function FileUploader({
               <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
                 <button 
                   onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
-                  className="self-end p-1.5 bg-rose-500 text-white rounded-full hover:bg-rose-600 shadow-lg transform hover:scale-110 transition-all"
+                  className="self-end p-1.5 bg-rose-500 text-white rounded-full hover:bg-rose-600 shadow-sm transform hover:scale-110 transition-all"
                   title="ลบไฟล์"
                 >
                   <X className="w-3.5 h-3.5" />

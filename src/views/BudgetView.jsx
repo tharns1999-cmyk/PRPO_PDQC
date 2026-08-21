@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { DEPARTMENTS, PR_STATUS, PO_STATUS } from '../config/constants';
 import { apiService } from '../services/apiService';
+import { storageService } from '../services/storageService';
 import { modalService } from '../services/modalService';
 import { 
   Wallet, ShieldAlert, PieChart, TrendingUp, AlertCircle, 
@@ -17,6 +18,9 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
   const [selectedDept, setSelectedDept] = useState(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
   const [editingBudget, setEditingBudget] = useState(null);
   const [editValue, setEditValue] = useState('');
+
+  // Load budget transaction log (refund entries)
+  const budgetTransactions = useMemo(() => storageService.getBudgetTransactions(), [pos, prs]);
 
   const handleEditSave = async (dept) => {
     if (!editValue || isNaN(editValue)) return;
@@ -102,12 +106,12 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
 
   if (!currentRole?.canViewBudget) {
     return (
-      <div className="w-full my-12 text-center p-8 bg-white rounded-2xl border border-slate-200 shadow-xl space-y-4 animate-fade-in-up">
-        <div className="p-4 bg-rose-100 text-rose-600 rounded-full w-16 h-16 mx-auto flex items-center justify-center">
+      <div className="w-full my-12 text-center p-8 bg-white rounded-3xl border border-slate-200/80 shadow-sm space-y-4 animate-fade-in">
+        <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl w-16 h-16 mx-auto flex items-center justify-center border border-rose-100">
           <ShieldAlert className="w-8 h-8" />
         </div>
         <h3 className="text-lg font-bold text-slate-900">สิทธิ์การเข้าถึงถูกจำกัด (Access Restricted)</h3>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-slate-500 max-w-md mx-auto">
           บทบาท <b>{currentRole?.title}</b> ไม่ได้รับอนุญาตให้ดูข้อมูลการเงินและงบประมาณประจำเดือน
         </p>
       </div>
@@ -115,21 +119,23 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
   }
 
   return (
-    <div className="w-full space-y-6 animate-fade-in-up">
+    <div className="w-full space-y-6 animate-fade-in pb-10">
       {/* Header & Filter */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
-            <Wallet className="w-6 h-6 text-emerald-600" />
-            ระบบควบคุมงบประมาณ (Budget Dashboard)
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2.5 tracking-tight">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shadow-2xs">
+              <Wallet className="w-5 h-5" />
+            </div>
+            <span>ระบบควบคุมงบประมาณ (Budget Management)</span>
           </h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-normal">
             ติดตามและวิเคราะห์การใช้งบประมาณรายแผนกแบบ Real-time
           </p>
         </div>
         {currentRole.canViewAllDepts && (
           <select
-            className="input-impeccable py-2 text-sm w-48 font-semibold text-slate-700"
+            className="w-full sm:w-56 bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer shadow-2xs"
             value={selectedDept}
             onChange={(e) => setSelectedDept(e.target.value)}
           >
@@ -142,299 +148,256 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
       </div>
 
       {/* Tabs */}
-      <div className="flex space-x-1 bg-slate-100 p-1.5 rounded-xl w-fit overflow-x-auto custom-scrollbar">
+      <div className="flex gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-2xs overflow-x-auto custom-scrollbar">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'overview' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'overview'
+              ? 'bg-white text-slate-900 shadow-xs font-bold'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
         >
-          <PieChart className="w-4 h-4" /> ภาพรวมเดือนปัจจุบัน
+          <BarChart3 className="w-4 h-4 text-emerald-600" />
+          <span>ภาพรวมงบประมาณรายเดือน</span>
         </button>
         <button
-          onClick={() => setActiveTab('analytics')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'analytics' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+          onClick={() => setActiveTab('trends')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'trends'
+              ? 'bg-white text-slate-900 shadow-xs font-bold'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
         >
-          <BarChart3 className="w-4 h-4" /> วิเคราะห์แนวโน้ม (Analytics)
+          <TrendingUp className="w-4 h-4 text-indigo-600" />
+          <span>แนวโน้มการใช้งาน (Trends & Analytics)</span>
         </button>
         <button
           onClick={() => setActiveTab('history')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'history' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'history'
+              ? 'bg-white text-slate-900 shadow-xs font-bold'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
         >
-          <History className="w-4 h-4" /> ประวัติรายการ (History)
+          <History className="w-4 h-4 text-slate-500" />
+          <span>ประวัติการปรับปรุง & คืนงบ</span>
+          {budgetTransactions.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              {budgetTransactions.length}
+            </span>
+          )}
         </button>
       </div>
 
-      {/* Content */}
-      <div className="mt-6">
-        {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {deptsToShow.map(dept => {
-              const data = currentMonthSummary[dept] || { allocated: 0, actualSpent: 0, committed: 0 };
-              const totalUsed = data.actualSpent + data.committed;
-              const remaining = data.allocated - totalUsed;
-              const usedPct = data.allocated > 0 ? Math.round((totalUsed / data.allocated) * 100) : 0;
-              const actualPct = data.allocated > 0 ? Math.round((data.actualSpent / data.allocated) * 100) : 0;
-              const commitPct = data.allocated > 0 ? Math.round((data.committed / data.allocated) * 100) : 0;
+      {/* Tab 1: Overview Department Cards */}
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {deptsToShow.map(dept => {
+            const data = currentMonthSummary[dept] || { allocated: 0, actualSpent: 0, committed: 0, remaining: 0, percentage: 0 };
+            const isEditing = editingBudget === dept;
+            const isCritical = data.percentage >= 90;
+            const isWarning = data.percentage >= 75 && data.percentage < 90;
 
-              let statusColor = 'emerald';
-              if (usedPct >= 100) statusColor = 'rose';
-              else if (usedPct >= 80) statusColor = 'amber';
-
-              return (
-                <div key={dept} className={`impeccable-card p-6 bg-white space-y-5 border-t-4 border-t-${statusColor}-500 relative overflow-hidden group`}>
-                  <div className={`absolute top-0 right-0 w-32 h-32 bg-${statusColor}-50 rounded-bl-full -z-10 group-hover:scale-110 transition-transform duration-500`}></div>
-                  
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className={`text-[11px] font-bold bg-${statusColor}-100 text-${statusColor}-800 px-2.5 py-1 rounded-md`}>
-                        {DEPARTMENTS[dept]?.name || dept} ({dept})
-                      </span>
-                      
-                      {editingBudget === dept ? (
-                        <div className="flex items-center gap-2 mt-3">
-                          <span className="text-slate-500 font-bold">฿</span>
-                          <input 
-                            type="number"
-                            className="input-impeccable py-1.5 px-3 text-lg font-bold w-32"
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            autoFocus
-                          />
-                          <button onClick={() => handleEditSave(dept)} className="p-2 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 rounded-lg">
-                            <Save className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setEditingBudget(null)} className="p-2 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-3 mt-2 group/edit">
-                          <h3 className="text-2xl font-black text-slate-900">
-                            ฿{data.allocated.toLocaleString()} <span className="text-sm font-normal text-slate-500">/ เดือน</span>
-                          </h3>
-                          {canEditBudget && (
-                            <button 
-                              onClick={() => { setEditingBudget(dept); setEditValue(data.allocated); }}
-                              className="opacity-0 group-hover/edit:opacity-100 p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-all"
-                              title="แก้ไขงบประมาณ"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 text-sm">
-                    <div className="flex justify-between items-center p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                      <span className="text-slate-600 font-medium flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-slate-800"></div>
-                        ใช้จ่ายจริง (Actual Spent):
-                      </span>
-                      <span className="font-bold text-slate-900">฿{data.actualSpent.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                      <span className="text-slate-600 font-medium flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-indigo-400"></div>
-                        ภาระผูกพัน (Committed/Pending):
-                      </span>
-                      <span className="font-bold text-indigo-600">฿{data.committed.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-800 font-bold border-t border-slate-200 pt-3 text-sm">
-                      <span>งบประมาณคงเหลือ (Remaining):</span>
-                      <span className={remaining < 0 ? 'text-rose-600 font-black' : 'text-emerald-600'}>
-                        ฿{remaining.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Health Badge & Progress */}
-                  <div>
-                    <div className="flex justify-between text-xs text-slate-500 mb-2 font-medium">
-                      <span>อัตราการใช้วงเงินสะสม</span>
-                      <span className={`font-bold text-${statusColor}-600`}>{usedPct}%</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden flex shadow-inner">
-                      <div className="bg-slate-800 h-3 transition-all duration-1000" style={{ width: `${Math.min(actualPct, 100)}%` }} title={`Actual: ${actualPct}%`} />
-                      <div className="bg-indigo-400 h-3 transition-all duration-1000" style={{ width: `${Math.min(commitPct, 100 - actualPct)}%` }} title={`Committed: ${commitPct}%`} />
-                    </div>
-
-                    {usedPct >= 100 ? (
-                      <div className="mt-4 flex items-start gap-2 text-xs text-rose-700 bg-rose-50 p-3 rounded-xl border border-rose-200 font-medium">
-                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-bold">คำเตือน: ใช้งบประมาณเกินวงเงิน</p>
-                          <p className="text-rose-600/80 mt-0.5">กรุณาตรวจสอบรายการสั่งซื้อ หรือขออนุมัติเพิ่มวงเงิน</p>
-                        </div>
+            return (
+              <div key={dept} className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between space-y-4">
+                <div>
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700">
+                        <Building2 className="w-4 h-4" />
                       </div>
-                    ) : usedPct >= 80 ? (
-                      <div className="mt-4 flex items-start gap-2 text-xs text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200 font-medium">
-                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-bold">เฝ้าระวัง: ใช้งบประมาณเกิน 80% แล้ว</p>
-                          <p className="text-amber-700/80 mt-0.5">ควรพิจารณาสั่งซื้อเฉพาะรายการที่จำเป็นเร่งด่วน</p>
-                        </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-slate-900">{DEPARTMENTS[dept]?.name || dept}</h4>
+                        <span className="text-[11px] text-slate-400 font-mono">({dept})</span>
                       </div>
-                    ) : (
-                      <div className="mt-4 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 p-3 rounded-xl border border-emerald-100 font-medium">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>สถานะงบประมาณปกติ อยู่ในกรอบวงเงิน</span>
-                      </div>
+                    </div>
+                    {canEditBudget && !isEditing && (
+                      <button 
+                        onClick={() => { setEditingBudget(dept); setEditValue(data.allocated); }}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                        title="แก้ไขงบประมาณ"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
                     )}
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
 
-        {activeTab === 'analytics' && (
-          <div className="space-y-6 animate-fade-in-up">
-            {/* YTD Scorecards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="impeccable-card p-6 bg-gradient-to-br from-indigo-600 to-indigo-800 text-white shadow-lg shadow-indigo-600/20">
-                <p className="text-indigo-200 font-medium mb-1">งบประมาณสะสม (YTD Allocated)</p>
-                <h3 className="text-4xl font-bold font-mono">฿{analyticsData.ytd.allocated.toLocaleString()}</h3>
-              </div>
-              <div className="impeccable-card p-6 bg-gradient-to-br from-slate-800 to-slate-900 text-white shadow-lg shadow-slate-900/20">
-                <p className="text-slate-400 font-medium mb-1">ใช้จ่ายสะสม (YTD Spent & Committed)</p>
-                <h3 className="text-4xl font-bold font-mono text-emerald-400">฿{analyticsData.ytd.spent.toLocaleString()}</h3>
-                <div className="mt-3 text-sm text-slate-300 font-medium flex items-center gap-2">
-                  <div className="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden flex-1">
-                    <div className="bg-emerald-400 h-full" style={{ width: `${Math.min((analyticsData.ytd.spent / (analyticsData.ytd.allocated || 1)) * 100, 100)}%` }}></div>
-                  </div>
-                  <span>{analyticsData.ytd.allocated > 0 ? Math.round((analyticsData.ytd.spent / analyticsData.ytd.allocated) * 100) : 0}% ของงบสะสม</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              {/* Trend Chart */}
-              <div className="impeccable-card p-6 bg-white xl:col-span-2 shadow-sm">
-                <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-indigo-600" /> แนวโน้มการใช้งบประมาณ (MoM Trend)
-                </h3>
-                <div className="w-full h-[320px]">
-                  <ResponsiveContainer width="100%" height={320}>
-                    <ComposedChart data={analyticsData.trendData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b', fontWeight: 600 }} dy={10} />
-                      <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(val) => `฿${(val/1000)}k`} />
-                      <RechartsTooltip 
-                        formatter={(value) => `฿${value.toLocaleString()}`}
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)', fontWeight: 600 }}
-                        cursor={{fill: '#f8fafc'}}
-                      />
-                      <Legend wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontWeight: 600 }} />
-                      <Bar yAxisId="left" dataKey="actualSpent" name="จ่ายจริง (Actual)" stackId="a" fill="#1e293b" radius={[0, 0, 4, 4]} barSize={40} />
-                      <Bar yAxisId="left" dataKey="committed" name="ผูกพัน (Committed)" stackId="a" fill="#818cf8" radius={[4, 4, 0, 0]} barSize={40} />
-                      <Line yAxisId="left" type="monotone" dataKey="allocated" name="งบประมาณ (Allocated)" stroke="#10b981" strokeWidth={3} dot={{ r: 5, strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 7 }} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Category Donut Chart */}
-              <div className="impeccable-card p-6 bg-white shadow-sm">
-                <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
-                  <PieChart className="w-5 h-5 text-rose-500" /> สัดส่วนยอดซื้อตามสินค้า (Top 5)
-                </h3>
-                {analyticsData.categoryData.length > 0 ? (
-                  <div className="w-full h-[320px] flex flex-col justify-center">
-                    <ResponsiveContainer width="100%" height={240}>
-                      <RechartsPieChart>
-                        <Pie
-                          data={analyticsData.categoryData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={65}
-                          outerRadius={95}
-                          paddingAngle={4}
-                          dataKey="value"
-                          stroke="none"
-                        >
-                          {analyticsData.categoryData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={['#1e293b', '#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#94a3b8'][index % 6]} />
-                          ))}
-                        </Pie>
-                        <RechartsTooltip 
-                          formatter={(value) => `฿${value.toLocaleString()}`}
-                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 600 }}
+                  {isEditing ? (
+                    <div className="mt-4 p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                      <label className="text-[11px] font-bold text-slate-600">แก้ไขงบประมาณที่จัดสรร (฿)</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-slate-900"
                         />
-                      </RechartsPieChart>
-                    </ResponsiveContainer>
-                    <div className="mt-4 space-y-2 px-2 max-h-24 overflow-y-auto custom-scrollbar">
-                      {analyticsData.categoryData.map((item, idx) => (
-                        <div key={idx} className="flex justify-between items-center text-xs">
-                          <div className="flex items-center gap-2 truncate pr-2">
-                            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{backgroundColor: ['#1e293b', '#6366f1', '#f43f5e', '#10b981', '#f59e0b', '#94a3b8'][idx % 6]}}></div>
-                            <span className="truncate text-slate-700 font-medium" title={item.name}>{item.name}</span>
-                          </div>
-                          <span className="font-bold text-slate-900 shrink-0">฿{(item.value/1000).toFixed(1)}k</span>
-                        </div>
-                      ))}
+                        <button
+                          onClick={() => handleEditSave(dept)}
+                          className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl cursor-pointer"
+                        >
+                          <Save className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setEditingBudget(null)}
+                          className="p-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="h-[320px] flex items-center justify-center text-slate-400 text-sm">ไม่มีข้อมูลการสั่งซื้อ</div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+                  ) : (
+                    <div className="mt-4 space-y-3">
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                          <span className="text-slate-400 text-[10px] block">งบที่ได้รับจัดสรร</span>
+                          <span className="text-base font-black text-slate-900 font-mono mt-0.5 block tabular-nums">
+                            ฿{data.allocated.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className={`p-3 rounded-2xl border ${
+                          data.remaining < 0 ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'
+                        }`}>
+                          <span className={`text-[10px] block ${data.remaining < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                            {data.remaining < 0 ? 'เกินงบประมาณ' : 'งบคงเหลือ'}
+                          </span>
+                          <span className={`text-base font-black font-mono mt-0.5 block tabular-nums ${
+                            data.remaining < 0 ? 'text-rose-700' : 'text-emerald-800'
+                          }`}>
+                            ฿{Math.abs(data.remaining).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
 
-        {activeTab === 'history' && (
-          <div className="impeccable-card bg-white overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                <History className="w-5 h-5 text-slate-500" /> ประวัติการใช้จ่าย (PR & PO)
-              </h3>
-            </div>
-            <div className="overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar relative">
-              <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 z-10 bg-white shadow-sm text-slate-500 font-semibold border-b border-slate-200">
-                  <tr>
-                    <th className="p-4 pl-6">วันที่</th>
-                    <th className="p-4">ประเภท/เลขที่</th>
-                    <th className="p-4">แผนก</th>
-                    <th className="p-4">รายการ</th>
-                    <th className="p-4 text-right">ยอดเงิน</th>
-                    <th className="p-4 text-center pr-6">สถานะผูกพัน</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {[
-                    ...pos.filter(p => DEPARTMENTS[p.department] && (selectedDept === 'ALL' || p.department === selectedDept)).map(p => ({ ...p, type: 'PO', date: p.issueDate || 'N/A', amount: p.grandTotal })),
-                    ...prs.filter(p => DEPARTMENTS[p.department] && (selectedDept === 'ALL' || p.department === selectedDept) && ['SUBMITTED', 'REVIEWED', 'APPROVED'].includes(p.status)).map(p => ({ ...p, type: 'PR', date: p.requestedDate || 'N/A', amount: p.totalAmount }))
-                  ].sort((a, b) => new Date(b.date) - new Date(a.date)).map((doc, idx) => (
-                    <tr key={`${doc.type}-${doc.id}-${idx}`} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-4 pl-6 text-slate-600">{doc.date}</td>
-                      <td className="p-4">
-                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold mr-2 ${doc.type === 'PO' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                          {doc.type}
-                        </span>
-                        <span className="font-mono font-medium">{doc.type === 'PO' ? doc.poNo : doc.prNo}</span>
-                      </td>
-                      <td className="p-4">{doc.department}</td>
-                      <td className="p-4 text-slate-600 truncate max-w-[200px]">
-                        {doc.items?.[0]?.name} {doc.items?.length > 1 ? `และอื่นๆ (+${doc.items.length - 1})` : ''}
-                      </td>
-                      <td className="p-4 text-right font-semibold text-slate-700">฿{doc.amount?.toLocaleString()}</td>
-                      <td className="p-4 text-center pr-6">
-                        {doc.type === 'PO' && ['CLOSED', 'RECEIVED'].includes(doc.status) ? (
-                          <span className="px-2.5 py-1 bg-slate-800 text-white rounded-full text-[10px] font-bold">จ่ายจริง (Actual)</span>
-                        ) : (
-                          <span className="px-2.5 py-1 bg-indigo-100 text-indigo-700 rounded-full text-[10px] font-bold">ผูกพัน (Committed)</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      <div className="space-y-1.5 pt-2">
+                        <div className="flex justify-between text-xs font-medium">
+                          <span className="text-slate-500">อัตราการใช้งบรวม</span>
+                          <span className={`font-mono font-bold ${
+                            isCritical ? 'text-rose-600' : isWarning ? 'text-amber-600' : 'text-emerald-700'
+                          }`}>
+                            {data.percentage}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-300 ${
+                              isCritical ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500'
+                            }`}
+                            style={{ width: `${Math.min(data.percentage, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 text-xs text-slate-500 flex items-center justify-between">
+                  <span>ใช้จริง: ฿{(data.actualSpent || 0).toLocaleString()}</span>
+                  <span>ผูกพัน: ฿{(data.committed || 0).toLocaleString()}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Tab 2: Trends Charts */}
+      {activeTab === 'trends' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm">
+            <h4 className="font-bold text-slate-900 text-sm mb-4">แนวโน้มการใช้งบประมาณรายเดือน (MoM Spending)</h4>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={analyticsData.trendData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="month" stroke="#94a3b8" fontSize={11} />
+                  <YAxis stroke="#94a3b8" fontSize={11} tickFormatter={v => `฿${(v/1000).toFixed(0)}k`} />
+                  <RechartsTooltip formatter={v => `฿${Number(v).toLocaleString()}`} />
+                  <Legend />
+                  <Bar dataKey="actualSpent" name="ใช้จ่ายจริง" fill="#4F46E5" radius={[6, 6, 0, 0]} />
+                  <Line type="monotone" dataKey="allocated" name="งบประมาณจัดสรร" stroke="#10B981" strokeWidth={2} dot={{ r: 3 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
           </div>
-        )}
-      </div>
+
+          <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm">
+            <h4 className="font-bold text-slate-900 text-sm mb-4">สัดส่วนค่าใช้จ่ายตามรายการสินค้า (Top Spending Items)</h4>
+            <div className="h-72 flex items-center justify-center">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsPieChart>
+                  <Pie
+                    data={analyticsData.categoryData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={4}
+                    dataKey="value"
+                  >
+                    {analyticsData.categoryData.map((entry, index) => {
+                      const colors = ['#4F46E5', '#10B981', '#F59E0B', '#3B82F6', '#8B5CF6', '#94A3B8'];
+                      return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />;
+                    })}
+                  </Pie>
+                  <RechartsTooltip formatter={v => `฿${Number(v).toLocaleString()}`} />
+                  <Legend />
+                </RechartsPieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 3: History & Refund Logs */}
+      {activeTab === 'history' && (
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div className="p-5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+            <h4 className="font-bold text-slate-900 text-sm">ประวัติการปรับปรุงงบประมาณ & การคืนเงินงบประมาณ</h4>
+            <span className="text-xs text-slate-500 font-mono">ทั้งหมด {budgetTransactions.length} รายการ</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead className="bg-slate-50 text-slate-500 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="py-3.5 pl-6">วัน-เวลา</th>
+                  <th className="py-3.5 px-4">ประเภทรายการ</th>
+                  <th className="py-3.5 px-4">แผนก</th>
+                  <th className="py-3.5 px-4 text-right">จำนวนเงิน</th>
+                  <th className="py-3.5 px-4">อ้างอิงเอกสาร</th>
+                  <th className="py-3.5 pr-6">หมายเหตุ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {budgetTransactions.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="p-8 text-center text-slate-400">
+                      ยังไม่มีประวัติการปรับปรุงงบประมาณหรือการคืนเงิน
+                    </td>
+                  </tr>
+                ) : (
+                  budgetTransactions.map(tx => (
+                    <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3.5 pl-6 whitespace-nowrap text-slate-500 font-mono text-xs">{tx.date}</td>
+                      <td className="py-3.5 px-4">
+                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {tx.type === 'REFUND_CREDIT' ? 'คืนงบประมาณ (Refund)' : tx.type}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 font-semibold text-slate-800">ฝ่าย {tx.dept}</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-700 tabular-nums">
+                        +฿{tx.amount?.toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-4 font-mono text-xs text-indigo-600">{tx.refId || '-'}</td>
+                      <td className="py-3.5 pr-6 text-xs text-slate-600">{tx.note || '-'}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

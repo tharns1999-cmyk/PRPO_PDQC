@@ -12,34 +12,37 @@ export default function NotificationDropdown({ prs, pos, currentRole, onNavigate
       notifs.push({ id, title, desc, time, type, docType, docId, rawTime: new Date(time).getTime() });
     };
 
-    // 1. Action Required (High Priority)
-    prs.forEach(pr => {
-      if (pr.status !== 'CLOSED' && pr.status !== 'CANCELLED' && workflowEngine.canAction(currentRole, pr)) {
-        addNotif(
-          `act-pr-${pr.id}`,
-          'รอการอนุมัติด่วน',
-          `ใบขอซื้อ ${pr.prNo} กำลังรอคุณตรวจสอบ`,
-          pr.requestedDate,
-          'action',
-          'PR',
-          pr.id
-        );
-      }
-    });
+    // 1. Action Required (High Priority) from unified task aggregator
+    const userTasks = workflowEngine.getUserTasks(currentRole, prs, pos);
+    userTasks.action.forEach(task => {
+      let title = 'รอการดำเนินการ';
+      let desc = `${task.docNo} กำลังรอคุณดำเนินการ`;
 
-    pos.forEach(po => {
-      const isDone = po.status === 'CLOSED' || po.status === 'CANCELLED' || po.status === 'RECEIVED';
-      if (!isDone && workflowEngine.canAction(currentRole, po)) {
-        addNotif(
-          `act-po-${po.id}`,
-          po.status === 'IN_PROGRESS_ONLINE' ? 'งานสั่งซื้อออนไลน์' : 'รอรับสินค้า / ดำเนินการ',
-          po.status === 'IN_PROGRESS_ONLINE' ? `ใบสั่งซื้อออนไลน์ ${po.poNo} รอคุณดำเนินการสั่งซื้อ` : `ใบสั่งซื้อ ${po.poNo} รอรับสินค้าเข้าคลัง`,
-          po.issueDate || po.deliveryDate || new Date().toISOString(),
-          'action',
-          'PO',
-          po.id
-        );
+      if (task.type === 'PR') {
+        title = 'รอการอนุมัติด่วน (PR)';
+        desc = `ใบขอซื้อ ${task.docNo} กำลังรอคุณตรวจสอบและอนุมัติ`;
+      } else if (task.type === 'PO') {
+        if (task.isClaim || ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(task.status)) {
+          title = '🚨 เคสสินค้ามีปัญหา (เคลม)';
+          desc = `ใบสั่งซื้อ ${task.docNo} มีรายงานสินค้ามีปัญหา รอคุณจัดการเคส`;
+        } else if (task.status === 'IN_PROGRESS_ONLINE') {
+          title = '🛒 งานสั่งซื้อออนไลน์';
+          desc = `ใบสั่งซื้อออนไลน์ ${task.docNo} รอคุณดำเนินการสั่งซื้อ`;
+        } else {
+          title = '📦 รอตรวจรับสินค้าเข้าคลัง';
+          desc = `ใบสั่งซื้อ ${task.docNo} รอตรวจรับของเข้าคลัง`;
+        }
       }
+
+      addNotif(
+        `act-${task.type.toLowerCase()}-${task.id}`,
+        title,
+        desc,
+        task.date || new Date().toISOString(),
+        'action',
+        task.type,
+        task.id
+      );
     });
 
     // 2. Activity Updates for My Requests
@@ -96,7 +99,7 @@ export default function NotificationDropdown({ prs, pos, currentRole, onNavigate
   }, [prs, pos, currentRole]);
 
   return (
-    <div className="absolute top-14 left-0 w-80 bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl shadow-black/50 z-50 overflow-hidden animate-fade-in-up">
+    <div className="absolute top-14 left-0 w-80 bg-slate-900 border border-slate-700/80 rounded-sm shadow-md shadow-black/50 z-50 overflow-hidden animate-fade-in-up">
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-800/50">
         <div className="flex items-center gap-2">
           <Bell className="w-4 h-4 text-indigo-400" />
@@ -136,7 +139,7 @@ export default function NotificationDropdown({ prs, pos, currentRole, onNavigate
                   onNavigate(notif.docType === 'PR' ? 'pr-list' : 'po-list');
                   onClose();
                 }}
-                className="flex gap-3 p-3 rounded-xl hover:bg-slate-800 cursor-pointer transition-colors group"
+                className="flex gap-1.5 p-3 rounded-sm hover:bg-slate-800 cursor-pointer transition-colors group"
               >
                 <div className={`p-2 rounded-full shrink-0 h-fit ${iconColor}`}>
                   <Icon className="w-4 h-4" />
@@ -164,7 +167,7 @@ export default function NotificationDropdown({ prs, pos, currentRole, onNavigate
         <div className="p-2 border-t border-slate-800 bg-slate-900">
           <button 
             onClick={() => { onNavigate('my-workspace'); onClose(); }}
-            className="w-full py-2 text-xs font-bold text-indigo-400 hover:text-indigo-300 hover:bg-slate-800 rounded-lg transition-colors"
+            className="w-full py-2 text-xs font-bold text-indigo-400 hover:text-indigo-300 hover:bg-slate-800 rounded-sm transition-colors"
           >
             ไปที่พื้นที่ทำงานของฉัน
           </button>

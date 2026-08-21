@@ -39,6 +39,7 @@ export default function App() {
   const [budgetSummary, setBudgetSummary] = useState(null);
   
   const [preselectedProduct, setPreselectedProduct] = useState(null);
+  const [editingPR, setEditingPR] = useState(null);
   const [selectedPRForModal, setSelectedPRForModal] = useState(null);
   const [selectedPOForModal, setSelectedPOForModal] = useState(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -84,8 +85,24 @@ export default function App() {
   };
 
   const handleQuickPR = (product) => {
+    setEditingPR(null);
     setPreselectedProduct(product);
     setActiveView('pr-create');
+  };
+
+  const handleEditPR = (pr) => {
+    setSelectedPRForModal(null);
+    setPreselectedProduct(null);
+    setEditingPR(pr);
+    setActiveView('pr-create');
+  };
+
+  const handleNavigate = (view) => {
+    if (view !== 'pr-create') {
+      setEditingPR(null);
+      setPreselectedProduct(null);
+    }
+    setActiveView(view);
   };
 
   // Deep linking handler from Notifications
@@ -113,12 +130,12 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#f1f5f9] font-sans text-slate-900">
+    <div className="min-h-screen flex bg-slate-50 font-sans text-slate-900">
       {/* Fixed Sidebar Menu (Desktop) & Overlay Drawer (Mobile) */}
       <Sidebar
         activeView={activeView}
         setActiveView={(view) => {
-          setActiveView(view);
+          handleNavigate(view);
           setIsMobileSidebarOpen(false);
         }}
         currentRole={currentRole}
@@ -134,7 +151,7 @@ export default function App() {
         {/* Top Navbar with Notifications & Verified User Profile */}
         <Navbar
           currentRole={currentRole}
-          onNavigate={setActiveView}
+          onNavigate={handleNavigate}
           onOpenPR={handleOpenPRById}
           onOpenPO={handleOpenPOById}
           onLogout={handleLogout}
@@ -151,7 +168,7 @@ export default function App() {
               products={products}
               budgetSummary={budgetSummary?.current}
               currentRole={currentRole}
-              onNavigate={setActiveView}
+              onNavigate={handleNavigate}
               onQuickPR={handleQuickPR}
               onOpenPR={handleOpenPRById}
               onOpenPO={handleOpenPOById}
@@ -165,8 +182,9 @@ export default function App() {
               products={products}
               vendors={vendors}
               currentRole={currentRole}
-              onNavigate={setActiveView}
+              onNavigate={handleNavigate}
               onRefresh={refreshData}
+              onEditPR={handleEditPR}
             />
           )}
 
@@ -175,7 +193,8 @@ export default function App() {
               prs={prs}
               currentRole={currentRole}
               onRefresh={refreshData}
-              onNavigate={setActiveView}
+              onNavigate={handleNavigate}
+              onEditPR={handleEditPR}
             />
           )}
 
@@ -183,10 +202,12 @@ export default function App() {
             <PRCreateView
               products={products}
               currentRole={currentRole}
-              onNavigate={setActiveView}
+              onNavigate={handleNavigate}
               onRefresh={refreshData}
               preselectedProduct={preselectedProduct}
               clearPreselectedProduct={() => setPreselectedProduct(null)}
+              editingPR={editingPR}
+              clearEditingPR={() => setEditingPR(null)}
             />
           )}
 
@@ -256,6 +277,7 @@ export default function App() {
           onRefresh={() => {
             refreshData();
           }}
+          onEditPR={handleEditPR}
         />
       )}
 

@@ -1,7 +1,7 @@
 import { STORAGE_KEYS, ROLES } from '../config/constants.js';
 import { initialProducts, initialVendors, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
 
-const DATA_VERSION = 'prpo_clean_v4';
+const DATA_VERSION = 'prpo_mock_v7';
 
 export const storageService = {
   // Initialize storage if empty or version mismatch
@@ -204,7 +204,21 @@ export const storageService = {
     localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(budgets));
   },
 
-  // PR Counters (for generating PR No.)
+  // Budget Transaction Log (Refund / Restore entries)
+  getBudgetTransactions() {
+    const data = localStorage.getItem(STORAGE_KEYS.BUDGET_TRANSACTIONS);
+    return data ? JSON.parse(data) : [];
+  },
+  saveBudgetTransactions(transactions) {
+    localStorage.setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, JSON.stringify(transactions));
+  },
+  appendBudgetTransaction(tx) {
+    const existing = this.getBudgetTransactions();
+    existing.unshift({ ...tx, id: `BTX-${Date.now()}` }); // prepend newest first
+    localStorage.setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, JSON.stringify(existing));
+  },
+
+
   getPRCounters() {
     const data = localStorage.getItem(STORAGE_KEYS.PR_COUNTERS);
     return data ? JSON.parse(data) : initialCounters;

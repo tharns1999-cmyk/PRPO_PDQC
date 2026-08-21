@@ -281,6 +281,8 @@ export const PO_STATUS = {
   RECEIVED:                 { id: 'RECEIVED',                 label: 'รับสินค้าเข้าคลังแล้ว',         color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   CANCELLED:                { id: 'CANCELLED',                label: 'ยกเลิก',                        color: 'bg-rose-50 text-rose-700 border-rose-200' },
   CLOSED:                   { id: 'CLOSED',                   label: 'เสร็จสิ้น (Closed)',            color: 'bg-teal-50 text-teal-700 border-teal-200' },
+  CLAIM_REPORTED:           { id: 'CLAIM_REPORTED',           label: '🚨 แจ้งปัญหา / เคลมสินค้า',      color: 'bg-rose-100 text-rose-800 border-rose-300 font-bold' },
+  CLAIM_IN_PROGRESS:        { id: 'CLAIM_IN_PROGRESS',        label: '⏳ กำลังดำเนินการเคลม/คืน',       color: 'bg-amber-100 text-amber-800 border-amber-300 font-bold' },
 };
 
 // ─── MEMO ─────────────────────────────────────────────────────────────────────
@@ -318,6 +320,23 @@ export const VENDOR_DEPARTMENTS = {
   BOTH: { id: 'BOTH', label: 'ใช้ร่วมกันทุกแผนก (BOTH)' },
 };
 
+// ─── QUICK ISSUE LOCATIONS / UNITS ──────────────────────────────────────────
+export const ISSUE_LOCATIONS = [
+  'ห้อง K1',
+  'ห้อง K2',
+  'ห้องผลไม้',
+  'ห้องแพ็ค',
+  'ออฟฟิศ',
+];
+
+export const ISSUE_LOCATION_CONFIG = {
+  'ห้อง K1':   { id: 'ห้อง K1',   label: 'ห้อง K1',   color: 'bg-blue-50 text-blue-700 border-blue-200/80',    badgeBg: 'bg-blue-100 text-blue-800',    dot: 'bg-blue-500' },
+  'ห้อง K2':   { id: 'ห้อง K2',   label: 'ห้อง K2',   color: 'bg-violet-50 text-violet-700 border-violet-200/80', badgeBg: 'bg-violet-100 text-violet-800', dot: 'bg-violet-500' },
+  'ห้องผลไม้': { id: 'ห้องผลไม้', label: 'ห้องผลไม้', color: 'bg-emerald-50 text-emerald-700 border-emerald-200/80', badgeBg: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-500' },
+  'ห้องแพ็ค':  { id: 'ห้องแพ็ค',  label: 'ห้องแพ็ค',  color: 'bg-amber-50 text-amber-700 border-amber-200/80',   badgeBg: 'bg-amber-100 text-amber-800',   dot: 'bg-amber-500' },
+  'ออฟฟิศ':    { id: 'ออฟฟิศ',    label: 'ออฟฟิศ',    color: 'bg-slate-100 text-slate-700 border-slate-200/80',  badgeBg: 'bg-slate-200 text-slate-800',  dot: 'bg-slate-500' },
+};
+
 // ─── STOCK IN REASONS ─────────────────────────────────────────────────────────
 export const STOCK_IN_REASONS = [
   'สต็อกตั้งต้น (Opening Stock)',
@@ -330,14 +349,15 @@ export const STOCK_IN_REASONS = [
 
 // ─── STORAGE KEYS ─────────────────────────────────────────────────────────────
 export const STORAGE_KEYS = {
-  CURRENT_ROLE: 'prpo_current_role',
-  PRODUCTS:     'prpo_products_data',
-  VENDORS:      'prpo_vendors_data',
-  PRS:          'prpo_prs_data',
-  POS:          'prpo_pos_data',
-  STOCK_LOGS:   'prpo_stock_logs',
-  BUDGETS:      'prpo_budgets_data',
-  PR_COUNTERS:  'prpo_pr_counters',  // { "HR": 1, "PD": 2, ... }
-  SIGNATURES:   'prpo_signatures',   // { [roleId/userId]: { signatureUrl, name, updatedAt } }
-  AUDIT_LOGS:   'prpo_audit_logs',   // [ { id, timestamp, action, actorName, docNo, details, ... } ]
+  CURRENT_ROLE:        'prpo_current_role',
+  PRODUCTS:            'prpo_products_data',
+  VENDORS:             'prpo_vendors_data',
+  PRS:                 'prpo_prs_data',
+  POS:                 'prpo_pos_data',
+  STOCK_LOGS:          'prpo_stock_logs',
+  BUDGETS:             'prpo_budgets_data',
+  BUDGET_TRANSACTIONS: 'prpo_budget_transactions', // [ { id, type, dept, amount, refId, note, date } ]
+  PR_COUNTERS:         'prpo_pr_counters',          // { "HR": 1, "PD": 2, ... }
+  SIGNATURES:          'prpo_signatures',           // { [roleId/userId]: { signatureUrl, name, updatedAt } }
+  AUDIT_LOGS:          'prpo_audit_logs',           // [ { id, timestamp, action, actorName, docNo, details, ... } ]
 };

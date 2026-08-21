@@ -21,7 +21,7 @@ export default function PrintablePO({ po }) {
           <h2 className="text-xl font-bold uppercase tracking-widest text-gray-600 mb-2">Purchase Order</h2>
           <p className="font-bold text-lg">{po.poNo}</p>
           <p className="text-sm mt-1">วันที่ (Date): {po.issueDate}</p>
-          <p className="text-sm">กำหนดส่ง (Delivery): {po.deliveryDate}</p>
+
         </div>
       </div>
 
@@ -104,7 +104,7 @@ export default function PrintablePO({ po }) {
       </table>
 
       {/* Signatures */}
-      <div className="grid grid-cols-3 gap-4 mt-12 text-center">
+      <div className="grid grid-cols-3 gap-2 mt-12 text-center">
         <div>
           <div className="border-b border-black w-3/4 mx-auto mb-2 h-10"></div>
           <p className="font-semibold">ผู้จัดทำ (Prepared By)</p>

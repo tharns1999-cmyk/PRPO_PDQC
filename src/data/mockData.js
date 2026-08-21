@@ -16,7 +16,6 @@ export const initialProducts = [
     stockBalance: 2400,
     reorderPoint: 1000,
     leadTimeDays: 5,
-    location: 'PD Warehouse Zone A-01',
     supplierId: null
   },
   {
@@ -32,7 +31,6 @@ export const initialProducts = [
     stockBalance: 25,
     reorderPoint: 10,
     leadTimeDays: 3,
-    location: 'PD Tool Room B-03',
     supplierId: null
   },
   {
@@ -48,7 +46,6 @@ export const initialProducts = [
     stockBalance: 6,
     reorderPoint: 8,
     leadTimeDays: 7,
-    location: 'PD Spare Parts Rack C-02',
     supplierId: null
   },
   {
@@ -64,7 +61,6 @@ export const initialProducts = [
     stockBalance: 2000,
     reorderPoint: 750,
     leadTimeDays: 3,
-    location: 'PD Safety Storage D-01',
     supplierId: null
   },
   {
@@ -80,7 +76,6 @@ export const initialProducts = [
     stockBalance: 360,
     reorderPoint: 120,
     leadTimeDays: 4,
-    location: 'PD Chemical Store Zone E',
     supplierId: null
   },
   {
@@ -96,7 +91,6 @@ export const initialProducts = [
     stockBalance: 30,
     reorderPoint: 12,
     leadTimeDays: 5,
-    location: 'PD Spare Parts Rack C-05',
     supplierId: null
   },
   {
@@ -112,7 +106,6 @@ export const initialProducts = [
     stockBalance: 20,
     reorderPoint: 8,
     leadTimeDays: 3,
-    location: 'PD Packing Station Zone F',
     supplierId: null
   },
   {
@@ -128,7 +121,6 @@ export const initialProducts = [
     stockBalance: 60,
     reorderPoint: 25,
     leadTimeDays: 2,
-    location: 'PD Packing Station Zone F',
     supplierId: null
   },
   {
@@ -144,7 +136,6 @@ export const initialProducts = [
     stockBalance: 22,
     reorderPoint: 10,
     leadTimeDays: 5,
-    location: 'PD Tool Room B-01',
     supplierId: null
   },
   {
@@ -160,7 +151,6 @@ export const initialProducts = [
     stockBalance: 700,
     reorderPoint: 300,
     leadTimeDays: 3,
-    location: 'PD Safety Storage D-02',
     supplierId: null
   },
 
@@ -178,7 +168,6 @@ export const initialProducts = [
     stockBalance: 8,
     reorderPoint: 4,
     leadTimeDays: 5,
-    location: 'QC Lab Cabinet L-01',
     supplierId: null
   },
   {
@@ -194,7 +183,6 @@ export const initialProducts = [
     stockBalance: 6,
     reorderPoint: 3,
     leadTimeDays: 5,
-    location: 'QC Lab Cabinet L-01',
     supplierId: null
   },
   {
@@ -210,7 +198,6 @@ export const initialProducts = [
     stockBalance: 15000,
     reorderPoint: 5000,
     leadTimeDays: 4,
-    location: 'QC Consumable Shelf K-02',
     supplierId: null
   },
   {
@@ -226,7 +213,6 @@ export const initialProducts = [
     stockBalance: 1200,
     reorderPoint: 400,
     leadTimeDays: 7,
-    location: 'QC Consumable Shelf K-03',
     supplierId: null
   },
   {
@@ -242,7 +228,6 @@ export const initialProducts = [
     stockBalance: 2500,
     reorderPoint: 1000,
     leadTimeDays: 10,
-    location: 'QC Microbiology Refrigerator M-01',
     supplierId: null
   },
   {
@@ -258,7 +243,6 @@ export const initialProducts = [
     stockBalance: 400,
     reorderPoint: 150,
     leadTimeDays: 7,
-    location: 'QC Inspection Room I-02',
     supplierId: null
   },
   {
@@ -274,7 +258,6 @@ export const initialProducts = [
     stockBalance: 4,
     reorderPoint: 2,
     leadTimeDays: 14,
-    location: 'QC Calibration Cabinet C-01',
     supplierId: null
   },
   {
@@ -290,7 +273,6 @@ export const initialProducts = [
     stockBalance: 25,
     reorderPoint: 10,
     leadTimeDays: 3,
-    location: 'QC Glassware Rack G-01',
     supplierId: null
   },
   {
@@ -306,7 +288,6 @@ export const initialProducts = [
     stockBalance: 25,
     reorderPoint: 10,
     leadTimeDays: 4,
-    location: 'QC Flammable Safety Cabinet F-01',
     supplierId: null
   },
   {
@@ -322,7 +303,6 @@ export const initialProducts = [
     stockBalance: 14000,
     reorderPoint: 5600,
     leadTimeDays: 2,
-    location: 'QC Consumable Shelf K-01',
     supplierId: null
   }
 ];
@@ -389,19 +369,914 @@ export const initialVendors = [
     address: '77/8 หมู่ 3 ถ.เศรษฐกิจ 1 ต.คลองมะเดื่อ อ.กระทุ่มแบน จ.สมุทรสาคร 74110'
   }
 ];
-export const initialPRs = [];
+export const initialPRs = [
+  // ─── Scenario 1: PD Single Item - Large Quantity (Self-buy / Direct Vendor) ───
+  {
+    id: 'PR-202608-PD001',
+    prNo: 'PR001/2026',
+    department: 'PD',
+    requestedBy: 'คุณวิชัย (PD)',
+    requesterId: 'REQUESTER_PD',
+    requestedDate: '2026-08-20',
+    urgency: 'NORMAL',
+    purchaseChannel: 'SELF',
+    onlineLink: null,
+    purpose: 'สั่งซื้อหน้ากาก N95 สำรองใช้งานในไลน์การผลิต 1,000 ชิ้น (50 กล่อง)',
+    status: 'PO_ISSUED',
+    totalAmount: 24000,
+    grandTotal: 24000,
+    items: [
+      {
+        productId: 'PROD-PD-010',
+        code: 'PD-MSK-N95',
+        name: 'หน้ากากป้องกันฝุ่นละอองและละอองสารเคมี N95',
+        category: 'PD',
+        purchaseQty: 50,
+        stockQty: 1000,
+        qty: 50,
+        purchaseUnit: 'กล่อง (20 ชิ้น)',
+        stockUnit: 'ชิ้น',
+        unit: 'กล่อง (20 ชิ้น)',
+        conversionRate: 20,
+        price: 480,
+        unitPrice: 480,
+        estimatedPrice: 480,
+        lineTotal: 24000
+      }
+    ],
+    activityLog: [
+      {
+        action: 'สร้างใบขอซื้อ (Draft PR)',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '20/8/2569 09:00:00',
+        note: 'สร้างคำขอซื้อหน้ากาก N95'
+      },
+      {
+        action: 'ส่งพิจารณา (Submit)',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '20/8/2569 09:15:00',
+        note: 'ส่ง PR เข้าสู่ระบบเพื่อพิจารณา'
+      },
+      {
+        action: 'ตรวจสอบแล้ว (Level 1 - Asst Mgr)',
+        user: 'คุณสมชาย (Asst. Mgr)',
+        role: 'Assistant Manager',
+        timestamp: '20/8/2569 10:00:00',
+        note: 'ตรวจสอบรายการและงบประมาณแล้ว อนุมัติผ่าน'
+      },
+      {
+        action: 'อนุมัติ (Final Approval - Plant Mgr)',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '20/8/2569 10:30:00',
+        note: 'อนุมัติการสั่งซื้อ ออก PO อัตโนมัติ'
+      }
+    ]
+  },
 
-export const initialPOs = [];
-export const initialStockLogs = [];
+  // ─── Scenario 2: PD Multi-Item (2 Items) - High Value & Large Quantity (Self-buy) ───
+  {
+    id: 'PR-202608-PD002',
+    prNo: 'PR002/2026',
+    department: 'PD',
+    requestedBy: 'คุณวิชัย (PD)',
+    requesterId: 'REQUESTER_PD',
+    requestedDate: '2026-08-20',
+    urgency: 'URGENT',
+    purchaseChannel: 'SELF',
+    onlineLink: null,
+    purpose: 'สั่งซื้อน้ำมันไฮดรอลิกสำหรับซ่อมบำรุงเครื่องจักรรอบใหญ่ และน้ำยาทำความสะอาดคราบน้ำมัน',
+    status: 'PO_ISSUED',
+    totalAmount: 91000,
+    grandTotal: 91000,
+    items: [
+      {
+        productId: 'PROD-PD-001',
+        code: 'PD-OIL-068',
+        name: 'น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)',
+        category: 'PD',
+        purchaseQty: 5,
+        stockQty: 1000,
+        qty: 5,
+        purchaseUnit: 'ถัง (200L)',
+        stockUnit: 'ลิตร',
+        unit: 'ถัง (200L)',
+        conversionRate: 200,
+        price: 14500,
+        unitPrice: 14500,
+        estimatedPrice: 14500,
+        lineTotal: 72500
+      },
+      {
+        productId: 'PROD-PD-005',
+        code: 'PD-CLN-IND',
+        name: 'น้ำยาทำความสะอาดคราบน้ำมันเครื่องจักร (Heavy Duty Degreaser Cleaner)',
+        category: 'PD',
+        purchaseQty: 10,
+        stockQty: 200,
+        qty: 10,
+        purchaseUnit: 'แกลลอน (20L)',
+        stockUnit: 'ลิตร',
+        unit: 'แกลลอน (20L)',
+        conversionRate: 20,
+        price: 1850,
+        unitPrice: 1850,
+        estimatedPrice: 1850,
+        lineTotal: 18500
+      }
+    ],
+    activityLog: [
+      {
+        action: 'สร้างใบขอซื้อ (Draft PR)',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '20/8/2569 09:30:00',
+        note: 'สร้างคำขอซื้อน้ำมันไฮดรอลิกและน้ำยาทำความสะอาด'
+      },
+      {
+        action: 'ส่งพิจารณา (Submit)',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '20/8/2569 09:45:00',
+        note: 'ส่ง PR ด่วน'
+      },
+      {
+        action: 'ตรวจสอบแล้ว (Level 1 - Asst Mgr)',
+        user: 'คุณสมชาย (Asst. Mgr)',
+        role: 'Assistant Manager',
+        timestamp: '20/8/2569 10:15:00',
+        note: 'ตรวจสอบรายการเร่งด่วน อนุมัติผ่าน'
+      },
+      {
+        action: 'อนุมัติ (Final Approval - Plant Mgr)',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '20/8/2569 10:45:00',
+        note: 'อนุมัติการจัดซื้อ ออก PO อัตโนมัติ'
+      }
+    ]
+  },
+
+  // ─── Scenario 3: PD Single Item - Online Purchase (Shopee - Ordered & In Delivery) ───
+  {
+    id: 'PR-202608-PD003',
+    prNo: 'PR003/2026',
+    department: 'PD',
+    requestedBy: 'คุณวิชัย (PD)',
+    requesterId: 'REQUESTER_PD',
+    requestedDate: '2026-08-20',
+    urgency: 'NORMAL',
+    purchaseChannel: 'ONLINE',
+    onlineLink: 'https://shopee.co.th/product/12345/timing-belt-380-5m',
+    purpose: 'สั่งซื้อสายพานไทม์มิ่งอะไหล่สำรองเครื่องแพ็คกิ้ง จาก Shopee',
+    status: 'IN_PROGRESS_ONLINE',
+    totalAmount: 12400,
+    grandTotal: 12400,
+    items: [
+      {
+        productId: 'PROD-PD-003',
+        code: 'PD-BLT-380',
+        name: 'สายพานลำเลียงทนความร้อน (Timing Belt 380-5M-15)',
+        category: 'PD',
+        purchaseQty: 20,
+        stockQty: 20,
+        qty: 20,
+        purchaseUnit: 'เส้น',
+        stockUnit: 'เส้น',
+        unit: 'เส้น',
+        conversionRate: 1,
+        price: 620,
+        unitPrice: 620,
+        estimatedPrice: 620,
+        lineTotal: 12400
+      }
+    ],
+    activityLog: [
+      {
+        action: 'สร้างใบขอซื้อ (Draft PR)',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '20/8/2569 10:00:00',
+        note: 'สร้างคำขอซื้อสายพานออนไลน์'
+      },
+      {
+        action: 'ส่งพิจารณา (Submit)',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '20/8/2569 10:10:00',
+        note: 'ส่ง PR ออนไลน์'
+      },
+      {
+        action: 'ตรวจสอบแล้ว (Level 1 - Asst Mgr)',
+        user: 'คุณสมชาย (Asst. Mgr)',
+        role: 'Assistant Manager',
+        timestamp: '20/8/2569 10:30:00',
+        note: 'อนุมัติผ่าน'
+      },
+      {
+        action: 'อนุมัติ (Final Approval - Plant Mgr)',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '20/8/2569 11:00:00',
+        note: 'อนุมัติการสั่งซื้อออนไลน์ ส่งต่อให้คุณนัท'
+      }
+    ]
+  },
+
+  // ─── Scenario 4: QC Multi-Item (3 Items) - Online Purchase (Lazada - Ordered & In Delivery) ───
+  {
+    id: 'PR-202608-QC001',
+    prNo: 'PR004/2026',
+    department: 'QC',
+    requestedBy: 'คุณสมหญิง (QC)',
+    requesterId: 'REQUESTER_QC',
+    requestedDate: '2026-08-20',
+    urgency: 'NORMAL',
+    purchaseChannel: 'ONLINE',
+    onlineLink: 'https://lazada.co.th/sciencelab-official-store',
+    purpose: 'สั่งซื้ออุปกรณ์และวัสดุสิ้นเปลืองสำหรับห้องแล็บ QC จาก Lazada',
+    status: 'IN_PROGRESS_ONLINE',
+    totalAmount: 20425,
+    grandTotal: 20425,
+    items: [
+      {
+        productId: 'PROD-QC-003',
+        code: 'QC-PPT-100',
+        name: 'ทิปปิเปตไมโครสีขาว (Micropipette Tips 100-1000 uL, DNase/RNase Free)',
+        category: 'QC',
+        purchaseQty: 10,
+        stockQty: 10000,
+        qty: 10,
+        purchaseUnit: 'กล่อง (1000 ชิ้น)',
+        stockUnit: 'ชิ้น',
+        unit: 'กล่อง (1000 ชิ้น)',
+        conversionRate: 1000,
+        price: 1200,
+        unitPrice: 1200,
+        estimatedPrice: 1200,
+        lineTotal: 12000
+      },
+      {
+        productId: 'PROD-QC-010',
+        code: 'QC-WIP-KIM',
+        name: 'กระดาษเช็ดเลนส์และเครื่องมือวิทยาศาสตร์ไร้ขุย (Kimwipes Delicate Task Wipers)',
+        category: 'QC',
+        purchaseQty: 25,
+        stockQty: 7000,
+        qty: 25,
+        purchaseUnit: 'กล่อง (280 แผ่น)',
+        stockUnit: 'แผ่น',
+        unit: 'กล่อง (280 แผ่น)',
+        conversionRate: 280,
+        price: 145,
+        unitPrice: 145,
+        estimatedPrice: 145,
+        lineTotal: 3625
+      },
+      {
+        productId: 'PROD-QC-008',
+        code: 'QC-BEA-250',
+        name: 'บีกเกอร์แก้วโบโรซิลิเกตทนความร้อน (Glass Beaker Borosilicate 250ml)',
+        category: 'QC',
+        purchaseQty: 30,
+        stockQty: 30,
+        qty: 30,
+        purchaseUnit: 'ชิ้น',
+        stockUnit: 'ชิ้น',
+        unit: 'ชิ้น',
+        conversionRate: 1,
+        price: 160,
+        unitPrice: 160,
+        estimatedPrice: 160,
+        lineTotal: 4800
+      }
+    ],
+    activityLog: [
+      {
+        action: 'สร้างใบขอซื้อ (Draft PR)',
+        user: 'คุณสมหญิง (QC)',
+        role: 'Requester (QC)',
+        timestamp: '20/8/2569 10:15:00',
+        note: 'สร้างคำขอซื้ออุปกรณ์แล็บ QC 3 รายการ'
+      },
+      {
+        action: 'ส่งพิจารณา (Submit)',
+        user: 'คุณสมหญิง (QC)',
+        role: 'Requester (QC)',
+        timestamp: '20/8/2569 10:25:00',
+        note: 'ส่ง PR เข้าสู่ระบบ'
+      },
+      {
+        action: 'ตรวจสอบแล้ว (Level 1 - Asst Mgr)',
+        user: 'คุณสมชาย (Asst. Mgr)',
+        role: 'Assistant Manager',
+        timestamp: '20/8/2569 11:00:00',
+        note: 'ตรวจสอบรายการแล็บแล้ว อนุมัติผ่าน'
+      },
+      {
+        action: 'อนุมัติ (Final Approval - Plant Mgr)',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '20/8/2569 11:30:00',
+        note: 'อนุมัติ PR ส่งให้ฝ่ายจัดซื้อออนไลน์'
+      }
+    ]
+  },
+
+  // ─── Scenario 5: QC Single Item - Chemical/Culture Media (Self-buy) ───
+  {
+    id: 'PR-202608-QC002',
+    prNo: 'PR005/2026',
+    department: 'QC',
+    requestedBy: 'คุณสมหญิง (QC)',
+    requesterId: 'REQUESTER_QC',
+    requestedDate: '2026-08-20',
+    urgency: 'NORMAL',
+    purchaseChannel: 'SELF',
+    onlineLink: null,
+    purpose: 'สั่งซื้ออาหารเลี้ยงเชื้อ PCA สำหรับการทดสอบ Microbe ในแล็บควบคุมคุณภาพ',
+    status: 'PO_ISSUED',
+    totalAmount: 22800,
+    grandTotal: 22800,
+    items: [
+      {
+        productId: 'PROD-QC-005',
+        code: 'QC-AGR-PCA',
+        name: 'อาหารเลี้ยงเชื้อ Plate Count Agar (PCA) สำหรับทดสอบจุลชีววิทยา (500g)',
+        category: 'QC',
+        purchaseQty: 8,
+        stockQty: 4000,
+        qty: 8,
+        purchaseUnit: 'ขวด (500g)',
+        stockUnit: 'กรัม',
+        unit: 'ขวด (500g)',
+        conversionRate: 500,
+        price: 2850,
+        unitPrice: 2850,
+        estimatedPrice: 2850,
+        lineTotal: 22800
+      }
+    ],
+    activityLog: [
+      {
+        action: 'สร้างใบขอซื้อ (Draft PR)',
+        user: 'คุณสมหญิง (QC)',
+        role: 'Requester (QC)',
+        timestamp: '20/8/2569 11:00:00',
+        note: 'สร้างคำขอซื้ออาหารเลี้ยงเชื้อ'
+      },
+      {
+        action: 'ส่งพิจารณา (Submit)',
+        user: 'คุณสมหญิง (QC)',
+        role: 'Requester (QC)',
+        timestamp: '20/8/2569 11:15:00',
+        note: 'ส่ง PR เพื่อตรวจสอบ'
+      },
+      {
+        action: 'ตรวจสอบแล้ว (Level 1 - Asst Mgr)',
+        user: 'คุณสมชาย (Asst. Mgr)',
+        role: 'Assistant Manager',
+        timestamp: '20/8/2569 11:45:00',
+        note: 'อนุมัติผ่าน'
+      },
+      {
+        action: 'อนุมัติ (Final Approval - Plant Mgr)',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '20/8/2569 13:00:00',
+        note: 'อนุมัติการสั่งซื้อ ออก PO'
+      }
+    ]
+  },
+
+  // ─── Scenario 6: PD Partial Received PO - Packaging Stretch Film (Self-buy) ───
+  {
+    id: 'PR-202608-PD004',
+    prNo: 'PR006/2026',
+    department: 'PD',
+    requestedBy: 'คุณวิชัย (PD)',
+    requesterId: 'REQUESTER_PD',
+    requestedDate: '2026-08-19',
+    urgency: 'NORMAL',
+    purchaseChannel: 'SELF',
+    onlineLink: null,
+    purpose: 'สั่งซื้อฟิล์มยืดพันพาเลทสำหรับฝ่ายบรรจุภัณฑ์ 20 ลัง (120 ม้วน)',
+    status: 'PO_ISSUED',
+    totalAmount: 22000,
+    grandTotal: 22000,
+    items: [
+      {
+        productId: 'PROD-PD-008',
+        code: 'PD-STF-001',
+        name: 'ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)',
+        category: 'PD',
+        purchaseQty: 20,
+        stockQty: 120,
+        qty: 20,
+        purchaseUnit: 'ลัง (6 ม้วน)',
+        stockUnit: 'ม้วน',
+        unit: 'ลัง (6 ม้วน)',
+        conversionRate: 6,
+        price: 1100,
+        unitPrice: 1100,
+        estimatedPrice: 1100,
+        lineTotal: 22000
+      }
+    ],
+    activityLog: [
+      {
+        action: 'สร้างใบขอซื้อ (Draft PR)',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '19/8/2569 14:00:00',
+        note: 'สร้างคำขอซื้อฟิล์มยืด'
+      },
+      {
+        action: 'ส่งพิจารณา (Submit)',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '19/8/2569 14:15:00',
+        note: 'ส่ง PR'
+      },
+      {
+        action: 'ตรวจสอบแล้ว (Level 1 - Asst Mgr)',
+        user: 'คุณสมชาย (Asst. Mgr)',
+        role: 'Assistant Manager',
+        timestamp: '19/8/2569 15:00:00',
+        note: 'อนุมัติผ่าน'
+      },
+      {
+        action: 'อนุมัติ (Final Approval - Plant Mgr)',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '19/8/2569 15:30:00',
+        note: 'อนุมัติการสั่งซื้อ ออก PO อัตโนมัติ'
+      }
+    ]
+  }
+];
+
+export const initialPOs = [
+  // ─── PO 1: PD Single Item - Ready to Receive Goods (50 Boxes N95) ───
+  {
+    id: 'PO-202608-PD001',
+    poNo: 'PD001/2026',
+    prId: 'PR-202608-PD001',
+    prNo: 'PR001/2026',
+    requestedBy: 'คุณวิชัย (PD)',
+    requesterId: 'REQUESTER_PD',
+    department: 'PD',
+    vendorId: 'VEN-005',
+    vendorName: 'บริษัท โปรเทคทีฟ เซฟตี้ โซลูชั่นส์ จำกัด',
+    purchaseChannel: 'SELF',
+    onlineLink: null,
+    issueDate: '2026-08-20',
+    status: 'ISSUED',
+    subtotal: 24000,
+    vat: 0,
+    grandTotal: 24000,
+    totalAmount: 24000,
+    items: [
+      {
+        productId: 'PROD-PD-010',
+        code: 'PD-MSK-N95',
+        name: 'หน้ากากป้องกันฝุ่นละอองและละอองสารเคมี N95',
+        category: 'PD',
+        purchaseQty: 50,
+        stockQty: 1000,
+        qty: 50,
+        purchaseUnit: 'กล่อง (20 ชิ้น)',
+        stockUnit: 'ชิ้น',
+        unit: 'กล่อง (20 ชิ้น)',
+        conversionRate: 20,
+        price: 480,
+        unitPrice: 480,
+        estimatedPrice: 480,
+        orderedQty: 50,
+        receivedQty: 0,
+        receivedStockQty: 0,
+        receivedNgQty: 0,
+        remainingQty: 50,
+        actUnitPrice: null,
+        source: 'FACTORY',
+        lineTotal: 24000
+      }
+    ],
+    activityLog: [
+      {
+        action: 'แปลง PR เป็น PO และออกใบสั่งซื้ออัตโนมัติ',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '20/8/2569 10:30:00',
+        note: 'อนุมัติสร้างเอกสาร PO เลขที่ PD001/2026'
+      }
+    ]
+  },
+
+  // ─── PO 2: PD Multi-Item (2 Items) - Ready to Receive Goods (Hydraulic Oil + Cleaner) ───
+  {
+    id: 'PO-202608-PD002',
+    poNo: 'PD002/2026',
+    prId: 'PR-202608-PD002',
+    prNo: 'PR002/2026',
+    requestedBy: 'คุณวิชัย (PD)',
+    requesterId: 'REQUESTER_PD',
+    department: 'PD',
+    vendorId: 'VEN-001',
+    vendorName: 'บริษัท สยามอินดัสเตรียล ซัพพลาย แอนด์ เซอร์วิส จำกัด',
+    purchaseChannel: 'SELF',
+    onlineLink: null,
+    issueDate: '2026-08-20',
+    status: 'ISSUED',
+    subtotal: 91000,
+    vat: 0,
+    grandTotal: 91000,
+    totalAmount: 91000,
+    items: [
+      {
+        productId: 'PROD-PD-001',
+        code: 'PD-OIL-068',
+        name: 'น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)',
+        category: 'PD',
+        purchaseQty: 5,
+        stockQty: 1000,
+        qty: 5,
+        purchaseUnit: 'ถัง (200L)',
+        stockUnit: 'ลิตร',
+        unit: 'ถัง (200L)',
+        conversionRate: 200,
+        price: 14500,
+        unitPrice: 14500,
+        estimatedPrice: 14500,
+        orderedQty: 5,
+        receivedQty: 0,
+        receivedStockQty: 0,
+        receivedNgQty: 0,
+        remainingQty: 5,
+        actUnitPrice: null,
+        source: 'FACTORY',
+        lineTotal: 72500
+      },
+      {
+        productId: 'PROD-PD-005',
+        code: 'PD-CLN-IND',
+        name: 'น้ำยาทำความสะอาดคราบน้ำมันเครื่องจักร (Heavy Duty Degreaser Cleaner)',
+        category: 'PD',
+        purchaseQty: 10,
+        stockQty: 200,
+        qty: 10,
+        purchaseUnit: 'แกลลอน (20L)',
+        stockUnit: 'ลิตร',
+        unit: 'แกลลอน (20L)',
+        conversionRate: 20,
+        price: 1850,
+        unitPrice: 1850,
+        estimatedPrice: 1850,
+        orderedQty: 10,
+        receivedQty: 0,
+        receivedStockQty: 0,
+        receivedNgQty: 0,
+        remainingQty: 10,
+        actUnitPrice: null,
+        source: 'FACTORY',
+        lineTotal: 18500
+      }
+    ],
+    activityLog: [
+      {
+        action: 'แปลง PR เป็น PO และออกใบสั่งซื้ออัตโนมัติ',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '20/8/2569 10:45:00',
+        note: 'อนุมัติสร้างเอกสาร PO เลขที่ PD002/2026'
+      }
+    ]
+  },
+
+  // ─── PO 3: PD Single Item - Online Purchased (Shopee - Ready for Warehouse Receiving) ───
+  {
+    id: 'PO-202608-PD003',
+    poNo: 'PD003/2026',
+    prId: 'PR-202608-PD003',
+    prNo: 'PR003/2026',
+    requestedBy: 'คุณวิชัย (PD)',
+    requesterId: 'REQUESTER_PD',
+    department: 'PD',
+    vendorId: 'ONLINE',
+    vendorName: 'ร้าน ThaiIndustrial Machinery (Shopee Mall)',
+    purchaseChannel: 'ONLINE',
+    onlineLink: 'https://shopee.co.th/product/12345/timing-belt-380-5m',
+    issueDate: '2026-08-20',
+    status: 'ORDERED_PENDING_DELIVERY',
+    subtotal: 12400,
+    vat: 0,
+    grandTotal: 12400,
+    totalAmount: 12400,
+    items: [
+      {
+        productId: 'PROD-PD-003',
+        code: 'PD-BLT-380',
+        name: 'สายพานลำเลียงทนความร้อน (Timing Belt 380-5M-15)',
+        category: 'PD',
+        purchaseQty: 20,
+        stockQty: 20,
+        qty: 20,
+        purchaseUnit: 'เส้น',
+        stockUnit: 'เส้น',
+        unit: 'เส้น',
+        conversionRate: 1,
+        price: 620,
+        unitPrice: 620,
+        estimatedPrice: 620,
+        orderedQty: 20,
+        receivedQty: 0,
+        receivedStockQty: 0,
+        receivedNgQty: 0,
+        remainingQty: 20,
+        actUnitPrice: null,
+        source: 'FACTORY',
+        lineTotal: 12400
+      }
+    ],
+    activityLog: [
+      {
+        action: 'แปลง PR เป็น PO และออกใบสั่งซื้ออัตโนมัติ',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '20/8/2569 11:00:00',
+        note: 'อนุมัติสร้างเอกสาร PO ออนไลน์ เลขที่ PD003/2026'
+      },
+      {
+        action: 'รับทราบและสั่งซื้อออนไลน์แล้ว (Online Order Placed)',
+        user: 'คุณนัท (Online Purchaser)',
+        role: 'Online Purchaser (จัดซื้อออนไลน์)',
+        timestamp: '20/8/2569 11:45:00',
+        note: 'สั่งซื้อจาก: ร้าน ThaiIndustrial Machinery (Shopee Mall) — ส่งต่อให้แผนกต้นทางตรวจรับและปิด PO'
+      }
+    ]
+  },
+
+  // ─── PO 4: QC Multi-Item (3 Items) - Online Purchased (Lazada - Ready for Warehouse Receiving) ───
+  {
+    id: 'PO-202608-QC001',
+    poNo: 'QC001/2026',
+    prId: 'PR-202608-QC001',
+    prNo: 'PR004/2026',
+    requestedBy: 'คุณสมหญิง (QC)',
+    requesterId: 'REQUESTER_QC',
+    department: 'QC',
+    vendorId: 'ONLINE',
+    vendorName: 'ScienceLab Thailand Official Store (Lazada)',
+    purchaseChannel: 'ONLINE',
+    onlineLink: 'https://lazada.co.th/sciencelab-official-store',
+    issueDate: '2026-08-20',
+    status: 'ORDERED_PENDING_DELIVERY',
+    subtotal: 20425,
+    vat: 0,
+    grandTotal: 20425,
+    totalAmount: 20425,
+    items: [
+      {
+        productId: 'PROD-QC-003',
+        code: 'QC-PPT-100',
+        name: 'ทิปปิเปตไมโครสีขาว (Micropipette Tips 100-1000 uL, DNase/RNase Free)',
+        category: 'QC',
+        purchaseQty: 10,
+        stockQty: 10000,
+        qty: 10,
+        purchaseUnit: 'กล่อง (1000 ชิ้น)',
+        stockUnit: 'ชิ้น',
+        unit: 'กล่อง (1000 ชิ้น)',
+        conversionRate: 1000,
+        price: 1200,
+        unitPrice: 1200,
+        estimatedPrice: 1200,
+        orderedQty: 10,
+        receivedQty: 0,
+        receivedStockQty: 0,
+        receivedNgQty: 0,
+        remainingQty: 10,
+        actUnitPrice: null,
+        source: 'FACTORY',
+        lineTotal: 12000
+      },
+      {
+        productId: 'PROD-QC-010',
+        code: 'QC-WIP-KIM',
+        name: 'กระดาษเช็ดเลนส์และเครื่องมือวิทยาศาสตร์ไร้ขุย (Kimwipes Delicate Task Wipers)',
+        category: 'QC',
+        purchaseQty: 25,
+        stockQty: 7000,
+        qty: 25,
+        purchaseUnit: 'กล่อง (280 แผ่น)',
+        stockUnit: 'แผ่น',
+        unit: 'กล่อง (280 แผ่น)',
+        conversionRate: 280,
+        price: 145,
+        unitPrice: 145,
+        estimatedPrice: 145,
+        orderedQty: 25,
+        receivedQty: 0,
+        receivedStockQty: 0,
+        receivedNgQty: 0,
+        remainingQty: 25,
+        actUnitPrice: null,
+        source: 'FACTORY',
+        lineTotal: 3625
+      },
+      {
+        productId: 'PROD-QC-008',
+        code: 'QC-BEA-250',
+        name: 'บีกเกอร์แก้วโบโรซิลิเกตทนความร้อน (Glass Beaker Borosilicate 250ml)',
+        category: 'QC',
+        purchaseQty: 30,
+        stockQty: 30,
+        qty: 30,
+        purchaseUnit: 'ชิ้น',
+        stockUnit: 'ชิ้น',
+        unit: 'ชิ้น',
+        conversionRate: 1,
+        price: 160,
+        unitPrice: 160,
+        estimatedPrice: 160,
+        orderedQty: 30,
+        receivedQty: 0,
+        receivedStockQty: 0,
+        receivedNgQty: 0,
+        remainingQty: 30,
+        actUnitPrice: null,
+        source: 'FACTORY',
+        lineTotal: 4800
+      }
+    ],
+    activityLog: [
+      {
+        action: 'แปลง PR เป็น PO และออกใบสั่งซื้ออัตโนมัติ',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '20/8/2569 11:30:00',
+        note: 'อนุมัติสร้างเอกสาร PO ออนไลน์ เลขที่ QC001/2026'
+      },
+      {
+        action: 'รับทราบและสั่งซื้อออนไลน์แล้ว (Online Order Placed)',
+        user: 'คุณนัท (Online Purchaser)',
+        role: 'Online Purchaser (จัดซื้อออนไลน์)',
+        timestamp: '20/8/2569 12:15:00',
+        note: 'สั่งซื้อจาก: ScienceLab Thailand Official Store (Lazada) — ส่งต่อให้แผนก QC ตรวจรับสินค้า'
+      }
+    ]
+  },
+
+  // ─── PO 5: QC Single Item - Ready to Receive Goods (PCA Agar 8 Bottles) ───
+  {
+    id: 'PO-202608-QC002',
+    poNo: 'QC002/2026',
+    prId: 'PR-202608-QC002',
+    prNo: 'PR005/2026',
+    requestedBy: 'คุณสมหญิง (QC)',
+    requesterId: 'REQUESTER_QC',
+    department: 'QC',
+    vendorId: 'VEN-004',
+    vendorName: 'บริษัท ไทยแล็บ แอนด์ เคมีคอล ซัพพลาย จำกัด',
+    purchaseChannel: 'SELF',
+    onlineLink: null,
+    issueDate: '2026-08-20',
+    status: 'ISSUED',
+    subtotal: 22800,
+    vat: 0,
+    grandTotal: 22800,
+    totalAmount: 22800,
+    items: [
+      {
+        productId: 'PROD-QC-005',
+        code: 'QC-AGR-PCA',
+        name: 'อาหารเลี้ยงเชื้อ Plate Count Agar (PCA) สำหรับทดสอบจุลชีววิทยา (500g)',
+        category: 'QC',
+        purchaseQty: 8,
+        stockQty: 4000,
+        qty: 8,
+        purchaseUnit: 'ขวด (500g)',
+        stockUnit: 'กรัม',
+        unit: 'ขวด (500g)',
+        conversionRate: 500,
+        price: 2850,
+        unitPrice: 2850,
+        estimatedPrice: 2850,
+        orderedQty: 8,
+        receivedQty: 0,
+        receivedStockQty: 0,
+        receivedNgQty: 0,
+        remainingQty: 8,
+        actUnitPrice: null,
+        source: 'FACTORY',
+        lineTotal: 22800
+      }
+    ],
+    activityLog: [
+      {
+        action: 'แปลง PR เป็น PO และออกใบสั่งซื้ออัตโนมัติ',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '20/8/2569 13:00:00',
+        note: 'อนุมัติสร้างเอกสาร PO เลขที่ QC002/2026'
+      }
+    ]
+  },
+
+  // ─── PO 6: PD Partial Received - Packaging Stretch Film (20 Boxes ordered, 12 received, 8 remaining) ───
+  {
+    id: 'PO-202608-PD004',
+    poNo: 'PD004/2026',
+    prId: 'PR-202608-PD004',
+    prNo: 'PR006/2026',
+    requestedBy: 'คุณวิชัย (PD)',
+    requesterId: 'REQUESTER_PD',
+    department: 'PD',
+    vendorId: 'VEN-006',
+    vendorName: 'บริษัท รุ่งเรือง แพคเกจจิ้ง แอนด์ แมททีเรียลส์ จำกัด',
+    purchaseChannel: 'SELF',
+    onlineLink: null,
+    issueDate: '2026-08-19',
+    status: 'PARTIAL',
+    subtotal: 22000,
+    vat: 0,
+    grandTotal: 22000,
+    totalAmount: 22000,
+    items: [
+      {
+        productId: 'PROD-PD-008',
+        code: 'PD-STF-001',
+        name: 'ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)',
+        category: 'PD',
+        purchaseQty: 20,
+        stockQty: 120,
+        qty: 20,
+        purchaseUnit: 'ลัง (6 ม้วน)',
+        stockUnit: 'ม้วน',
+        unit: 'ลัง (6 ม้วน)',
+        conversionRate: 6,
+        price: 1100,
+        unitPrice: 1100,
+        estimatedPrice: 1100,
+        orderedQty: 20,
+        receivedQty: 12,
+        receivedStockQty: 72,
+        receivedNgQty: 0,
+        remainingQty: 8,
+        actUnitPrice: null,
+        source: 'FACTORY',
+        lineTotal: 22000
+      }
+    ],
+    activityLog: [
+      {
+        action: 'แปลง PR เป็น PO และออกใบสั่งซื้ออัตโนมัติ',
+        user: 'คุณประเสริฐ (Plant Mgr)',
+        role: 'Plant Manager',
+        timestamp: '19/8/2569 15:30:00',
+        note: 'อนุมัติสร้างเอกสาร PO เลขที่ PD004/2026'
+      },
+      {
+        action: 'ตรวจรับสินค้าบางส่วน (Partial Receive)',
+        user: 'คุณวิชัย (PD)',
+        role: 'Requester (PD)',
+        timestamp: '20/8/2569 09:30:00',
+        note: 'รับสินค้าเข้าคลังรอบแรก 12 ลัง (72 ม้วน) คงเหลือค้างส่งอีก 8 ลัง (48 ม้วน)'
+      }
+    ]
+  }
+];
+
+export const initialStockLogs = [
+  {
+    id: 'LOG-INIT-001',
+    productId: 'PROD-PD-008',
+    productCode: 'PD-STF-001',
+    productName: 'ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)',
+    date: '2026-08-20',
+    timestamp: '20/8/2569 09:30:00',
+    type: 'IN',
+    qty: 72,
+    balance: 60,
+    unit: 'ม้วน',
+    refType: 'PO',
+    refDoc: 'PD004/2026',
+    operator: 'คุณวิชัย (PD)',
+    note: 'ตรวจรับสินค้าเข้าคลังบางส่วน (12 ลัง x 6 ม้วน)'
+  }
+];
 
 export const initialBudgets = {
-  PD: { monthlyBudget: 150000, spent: 0, pending: 0, variance: 0 },
-  QC: { monthlyBudget: 80000, spent: 0, pending: 0, variance: 0 }
+  PD: { monthlyBudget: 250000, spent: 13200, pending: 127400, variance: 0 },
+  QC: { monthlyBudget: 150000, spent: 0, pending: 43225, variance: 0 }
 };
 
 export const initialCounters = {
-  PD: { PR: 0, PO: 0 },
-  QC: { PR: 0, PO: 0 }
+  PD: { PR: 4, PO: 4 },
+  QC: { PR: 2, PO: 2 }
 };
+
 
 
