@@ -1,1 +1,64 @@
-[]
+[
+  {
+    "id": "PR-1788994095116-HAA",
+    "prNo": "PD002/2026",
+    "department": "PD",
+    "source": "FACTORY",
+    "purchaseChannel": "ONLINE",
+    "specUrl": "",
+    "attachments": [],
+    "note": "",
+    "items": [
+      {
+        "productId": "PROD-PD-001",
+        "code": "PD-OIL-068",
+        "name": "น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)",
+        "purchaseUnit": "ถัง (200L)",
+        "stockUnit": "ลิตร",
+        "conversionRate": 200,
+        "purchaseQty": 1,
+        "stockQty": 200,
+        "qty": 1,
+        "unit": "ถัง (200L)",
+        "price": 14500,
+        "discountPercent": 0,
+        "discountAmount": 0,
+        "onlineUrl": "ีร้่ร่้รี้่าา",
+        "total": 14500,
+        "source": "FACTORY",
+        "isCustom": false,
+        "isUnitOverridden": false
+      }
+    ],
+    "financials": {
+      "subtotal": 14500,
+      "itemDiscountTotal": 0,
+      "combinedDiscountType": "fixed",
+      "combinedDiscountValue": 0,
+      "combinedDiscountAmount": 0,
+      "totalDiscount": 0,
+      "vatMode": "NONE",
+      "vatAmount": 0,
+      "roundingAdj": 0,
+      "shippingCost": 0,
+      "grandTotal": 14500
+    },
+    "totalAmount": 14500,
+    "status": "SUBMITTED",
+    "requestedBy": "คุณวิชัย (PD)",
+    "requestedByRole": "Requester (PD)",
+    "requestedDept": "PD",
+    "createdAt": "10/9/2569 05:48:15",
+    "updatedAt": "10/9/2569 05:48:15",
+    "memo": null,
+    "activityLog": [
+      {
+        "action": "สร้างและยื่นส่ง PR (PR Submitted)",
+        "user": "คุณวิชัย (PD)",
+        "role": "Requester (PD)",
+        "timestamp": "10/9/2569 05:48:15",
+        "note": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
+      }
+    ]
+  }
+]

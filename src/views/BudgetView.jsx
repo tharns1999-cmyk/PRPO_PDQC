@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { DEPARTMENTS } from '../config/constants';
 import { apiService } from '../services/apiService';
 import { storageService } from '../services/storageService';
@@ -6,7 +6,7 @@ import { modalService } from '../services/modalService';
 import { 
   Wallet, ShieldAlert, TrendingUp,
   Building2, BarChart3, History,
-  Edit2, Save, X, ChevronLeft, ChevronRight,
+  Edit2, Save, X, ChevronLeft, ChevronRight, ChevronDown,
   ArrowUpRight, ArrowDownRight, Minus,
   CheckCircle2, AlertTriangle, Layers, Calendar
 } from 'lucide-react';
@@ -33,8 +33,33 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
   // Month & Year state (Defaults to current Date)
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
+  const monthPickerRef = useRef(null);
 
   const selectedMonthKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
+
+  // Keep pickerYear synced when opening popover
+  useEffect(() => {
+    if (isMonthPickerOpen) {
+      setPickerYear(selectedYear);
+    }
+  }, [isMonthPickerOpen, selectedYear]);
+
+  // Click outside listener for Popover
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (monthPickerRef.current && !monthPickerRef.current.contains(event.target)) {
+        setIsMonthPickerOpen(false);
+      }
+    }
+    if (isMonthPickerOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMonthPickerOpen]);
 
   // Recalculate dynamic budget summary based on selected month (Zero-Based Budgeting)
   const dynamicSummary = useMemo(() => {
@@ -45,6 +70,11 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
   const thaiMonths = [
     "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
     "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
+  ];
+
+  const thaiShortMonths = [
+    "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+    "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."
   ];
 
   const handlePrevMonth = () => {
@@ -63,6 +93,19 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
     } else {
       setSelectedMonth(m => m + 1);
     }
+  };
+
+  const handleJumpToCurrentMonth = () => {
+    const now = new Date();
+    setSelectedYear(now.getFullYear());
+    setSelectedMonth(now.getMonth() + 1);
+    setIsMonthPickerOpen(false);
+  };
+
+  const handleSelectMonth = (monthIndex) => {
+    setSelectedYear(pickerYear);
+    setSelectedMonth(monthIndex + 1);
+    setIsMonthPickerOpen(false);
   };
 
   // Load budget transaction log (refund entries)
@@ -249,7 +292,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
 
   return (
     <div className="w-full space-y-6 animate-fade-in pb-12">
-      {/* Header & Month Selector */}
+      {/* Unified Glass Header & Action Controls */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -259,66 +302,158 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
               </div>
               <span>ระบบควบคุมงบประมาณ (Monthly Budget Management)</span>
             </h2>
-            <span className="hidden sm:inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-              Zero-Based
-            </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1 font-normal">
-            ระบบตัดรอบงบประมาณรายเดือนแบบฐานศูนย์ (Zero-Based Budget) พร้อมการวิเคราะห์เปรียบเทียบย้อนหลัง (Comparative Analytics)
+            ระบบตัดรอบงบประมาณรายเดือน พร้อมการวิเคราะห์เปรียบเทียบย้อนหลัง (Comparative Analytics)
           </p>
         </div>
 
-        {/* Action Controls: Department & Month Selector */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Month Segmented Selector */}
-          <div className="inline-flex items-center bg-white border border-slate-200 rounded-2xl p-1 shadow-xs">
-            <button
-              onClick={handlePrevMonth}
-              className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-              title="เดือนก่อนหน้า"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <div className="px-3 py-0.5 text-center min-w-[140px]">
-              <span className="text-xs font-semibold text-slate-900 font-sans block">
-                {thaiMonths[selectedMonth - 1]} {selectedYear + 543}
-              </span>
-              <span className="text-[10px] font-mono text-slate-400">
-                ({selectedMonthKey})
-              </span>
+        {/* Right Controls: Decoupled Fiscal Cycle Command Bar & Standalone Department Filter */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+          
+          {/* Piece 1: Fiscal Cycle Command Bar (Visual Anchor) */}
+          <div 
+            ref={monthPickerRef} 
+            className="relative bg-white border border-slate-200/80 rounded-2xl p-2 shadow-xs hover:shadow-sm transition-all flex flex-col justify-center"
+          >
+            {/* Micro Header Label */}
+            <div className="flex items-center justify-between px-1 mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <span>รอบงบประมาณประจำเดือน</span>
+              <span className="font-mono text-slate-400">({selectedMonthKey})</span>
             </div>
-            <button
-              onClick={handleNextMonth}
-              className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-              title="เดือนถัดไป"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+
+            {/* Stepper & Month Popover Trigger Track */}
+            <div className="flex items-center gap-1 select-none">
+              <button
+                type="button"
+                onClick={handlePrevMonth}
+                className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer shadow-none hover:shadow-2xs"
+                title="เดือนก่อนหน้า"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
+                className="px-3 py-1.5 hover:bg-slate-50 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 text-slate-900 group"
+                title="คลิกเพื่อเลือกเดือนจากตาราง 12 เดือน"
+              >
+                <Calendar className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-mono font-bold text-slate-900 text-sm md:text-base leading-tight tracking-tight whitespace-nowrap">
+                  {thaiMonths[selectedMonth - 1]} {selectedYear + 543}
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700 transition-transform duration-200 ${isMonthPickerOpen ? 'rotate-180 text-emerald-600' : ''}`} />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleNextMonth}
+                className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all cursor-pointer shadow-none hover:shadow-2xs"
+                title="เดือนถัดไป"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 12-Month Grid Popover Panel */}
+            {isMonthPickerOpen && (
+              <div className="absolute top-full left-0 sm:left-auto sm:right-0 mt-2 z-50 w-72 bg-white rounded-2xl border border-slate-200 p-4 shadow-2xl animate-fade-in text-slate-900">
+                {/* Popover Header: Year Selector */}
+                <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+                  <span className="text-xs font-semibold text-slate-500">เลือกปี</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPickerYear(y => y - 1)}
+                      className="p-1 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                      title="ปีก่อนหน้า"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="font-mono text-xs font-bold text-slate-900 px-1">
+                      {pickerYear + 543} ({pickerYear})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPickerYear(y => y + 1)}
+                      className="p-1 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                      title="ปีถัดไป"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 12-Month Grid (3 cols x 4 rows) */}
+                <div className="grid grid-cols-3 gap-1.5">
+                  {thaiShortMonths.map((mShort, idx) => {
+                    const isSelected = selectedYear === pickerYear && selectedMonth === idx + 1;
+                    const isCurrent = new Date().getFullYear() === pickerYear && (new Date().getMonth() === idx);
+
+                    return (
+                      <button
+                        key={mShort}
+                        type="button"
+                        onClick={() => handleSelectMonth(idx)}
+                        className={`py-2 px-1 rounded-xl text-xs font-semibold transition-all relative flex flex-col items-center justify-center cursor-pointer ${
+                          isSelected
+                            ? 'bg-slate-900 text-white font-bold shadow-sm'
+                            : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>{mShort}</span>
+                        {isCurrent && !isSelected && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mt-0.5" title="เดือนปัจจุบัน" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Popover Footer: Quick Jump to Current Month */}
+                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={handleJumpToCurrentMonth}
+                    className="w-full py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>กระโดดไปเดือนปัจจุบัน</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Department Filter */}
+          {/* Piece 2: Standalone Department Filter */}
           {currentRole.canViewAllDepts && (
-            <select
-              className="bg-white border border-slate-200 rounded-2xl px-3.5 py-2 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all cursor-pointer shadow-xs"
-              value={selectedDept}
-              onChange={(e) => setSelectedDept(e.target.value)}
-            >
-              <option value="ALL">รวมทุกแผนก (All Departments)</option>
-              {Object.keys(DEPARTMENTS).map(k => (
-                <option key={k} value={k}>{DEPARTMENTS[k].name} ({k})</option>
-              ))}
-            </select>
+            <div className="flex flex-col justify-center">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-1 hidden sm:block">
+                แผนก (Department)
+              </label>
+              <select
+                className="rounded-xl border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 shadow-xs hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all cursor-pointer h-[42px]"
+                value={selectedDept}
+                onChange={(e) => setSelectedDept(e.target.value)}
+              >
+                <option value="ALL">ทุกแผนก (All Depts)</option>
+                {Object.keys(DEPARTMENTS).map(k => (
+                  <option key={k} value={k}>{DEPARTMENTS[k].name} ({k})</option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Navigation Tabs */}
-      <div className="flex gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-2xs overflow-x-auto custom-scrollbar">
+      {/* Navigation Sub-tabs Track */}
+      <div className="bg-slate-100/70 p-1 rounded-2xl inline-flex gap-1 border border-slate-200/60 shadow-2xs overflow-x-auto custom-scrollbar max-w-full">
         <button
           onClick={() => setActiveTab('overview')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'overview'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
+              ? 'bg-white text-slate-900 shadow-sm font-bold'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
@@ -329,7 +464,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
           onClick={() => setActiveTab('trends')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'trends'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
+              ? 'bg-white text-slate-900 shadow-sm font-bold'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
@@ -340,7 +475,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
           onClick={() => setActiveTab('history')}
           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'history'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
+              ? 'bg-white text-slate-900 shadow-sm font-bold'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
@@ -354,7 +489,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
         </button>
       </div>
 
-      {/* Tab 1: Overview Department Cards */}
+      {/* Tab 1: Bento Budget Cards */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
           {deptsToShow.map(dept => {
@@ -378,44 +513,41 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
             return (
               <div 
                 key={dept} 
-                className="bg-white rounded-2xl border border-slate-200/80 p-6 sm:p-7 shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)] transition-all duration-200 flex flex-col justify-between space-y-5"
+                className="rounded-3xl border border-slate-200/80 bg-white/90 p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden flex flex-col justify-between"
               >
                 <div>
-                  {/* Department Header & Actions */}
+                  {/* 1. Header Zone: Clean Department Icon, Title, and Right Actions */}
                   <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-slate-100/80 flex items-center justify-center text-slate-700 shadow-xs">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-50/80 border border-indigo-100/70 flex items-center justify-center text-indigo-600 shadow-2xs">
                         <Building2 className="w-5 h-5" />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-semibold text-base text-slate-900">{DEPARTMENTS[dept]?.name || dept}</h4>
-                          <span className="text-xs text-slate-400 font-mono">({dept})</span>
-                        </div>
-                        <span className="text-[11px] text-slate-500 font-medium">
-                          กรอบงบประมาณประจำเดือน (ฐานศูนย์)
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-slate-900 text-base">{DEPARTMENTS[dept]?.name || dept}</h4>
+                        <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60">
+                          {dept}
                         </span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {/* Delta Badge (MoM comparison) */}
+                      {/* MoM Delta Capsule */}
                       {momDelta && (
                         <div className="hidden sm:flex">
                           {momDelta.isHigher ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50/80 text-amber-700 border border-amber-200/70 shadow-2xs">
                               <ArrowUpRight className="w-3.5 h-3.5" />
-                              <span>+{momDelta.spentPercentDiff}% vs เดือนก่อน</span>
+                              <span>+{momDelta.spentPercentDiff}% vs ด.ก่อน</span>
                             </span>
                           ) : momDelta.isLower ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50/80 text-emerald-700 border border-emerald-200/70 shadow-2xs">
                               <ArrowDownRight className="w-3.5 h-3.5" />
-                              <span>ประหยัด ฿{Math.abs(momDelta.spentDiff).toLocaleString()} vs เดือนก่อน</span>
+                              <span>ประหยัด ฿{Math.abs(momDelta.spentDiff).toLocaleString()}</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-50 text-slate-600 border border-slate-200">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-50 text-slate-600 border border-slate-200">
                               <Minus className="w-3.5 h-3.5" />
-                              <span>คงที่ vs เดือนก่อน</span>
+                              <span>คงที่</span>
                             </span>
                           )}
                         </div>
@@ -427,7 +559,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
                             setEditingBudget(dept); 
                             setEditBaseValue(baseAllocated);
                           }}
-                          className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
                           title="แก้ไขกรอบงบประมาณ"
                         >
                           <Edit2 className="w-4 h-4" />
@@ -437,7 +569,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
                   </div>
 
                   {isEditing ? (
-                    <div className="mt-4 p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-3">
+                    <div className="mt-4 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
                       <div>
                         <label className="text-xs font-semibold text-slate-600 block mb-1">
                           งบประมาณฐานประจำเดือน (฿)
@@ -448,9 +580,6 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
                           onChange={(e) => setEditBaseValue(e.target.value)}
                           className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
                         />
-                        <span className="text-[11px] text-slate-400 mt-1 block">
-                          * ตัดรอบใหม่แบบฐานศูนย์ทุกเดือน ไม่มีภาระทบยอดข้ามเดือน
-                        </span>
                       </div>
                       <div className="flex items-center gap-2 pt-1">
                         <button
@@ -469,128 +598,80 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-4 space-y-4">
-                      {/* Metric Display Grid (4 Snapshot Cards) */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                        <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
-                          <span className="text-slate-400 text-xs block font-medium">งบจัดสรรฐาน</span>
-                          <span className="text-base font-bold text-slate-900 font-mono mt-0.5 block tabular-nums">
-                            ฿{baseAllocated.toLocaleString()}
+                    <div className="mt-5 space-y-4">
+                      {/* 2. Hero Metric & Dynamic Progress (Visual Hierarchy Anchor) */}
+                      <div className="flex items-end justify-between">
+                        <div>
+                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                            งบประมาณคงเหลือ (Remaining)
                           </span>
-                        </div>
-
-                        <div className="p-3 bg-indigo-50/40 rounded-xl border border-indigo-100/60">
-                          <span className="text-indigo-600 text-xs block font-medium">ใช้จ่ายจริง</span>
-                          <span className="text-base font-bold text-indigo-900 font-mono mt-0.5 block tabular-nums">
-                            ฿{actualSpent.toLocaleString()}
-                          </span>
-                        </div>
-
-                        <div className="p-3 bg-amber-50/40 rounded-xl border border-amber-100/60">
-                          <span className="text-amber-700 text-xs block font-medium">ผูกพัน (PR/PO)</span>
-                          <span className="text-base font-bold text-amber-900 font-mono mt-0.5 block tabular-nums">
-                            ฿{committed.toLocaleString()}
-                          </span>
-                        </div>
-
-                        <div className={`p-3 rounded-xl border ${
-                          remaining < 0 ? 'bg-rose-50/70 border-rose-200' : 'bg-emerald-50/70 border-emerald-200'
-                        }`}>
-                          <span className={`text-xs block font-medium ${remaining < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                            {remaining < 0 ? 'เกินงบ' : 'งบคงเหลือ'}
-                          </span>
-                          <span className={`text-base font-bold font-mono mt-0.5 block tabular-nums ${
-                            remaining < 0 ? 'text-rose-700' : 'text-emerald-800'
+                          <h3 className={`font-mono text-3xl font-extrabold mt-1 tracking-tight tabular-nums ${
+                            remaining < (baseAllocated * 0.1) || remaining < 0 ? 'text-rose-600' : 'text-emerald-600'
                           }`}>
-                            ฿{Math.abs(remaining).toLocaleString()}
-                          </span>
+                            {remaining < 0 ? '-' : ''}฿{Math.abs(remaining).toLocaleString()}
+                          </h3>
                         </div>
-                      </div>
 
-                      {/* Progress Bar (Triple-Tone: Green <70%, Amber 70-90%, Rose >=90%) */}
-                      <div className="space-y-2 pt-1">
-                        <div className="flex justify-between items-center text-xs font-medium">
-                          <div className="flex items-center gap-2">
-                            <span className="text-slate-500">อัตราการใช้งานรวม</span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                              isCritical 
-                                ? 'bg-rose-50 text-rose-700 border-rose-200' 
-                                : isWarning 
-                                ? 'bg-amber-50 text-amber-700 border-amber-200' 
-                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            }`}>
-                              {isCritical ? 'ใกล้เต็มงบ / เกินงบ' : isWarning ? 'เฝ้าระวัง' : 'ปกติ'}
-                            </span>
-                          </div>
-                          <span className={`font-mono font-bold text-sm ${
-                            isCritical ? 'text-rose-600' : isWarning ? 'text-amber-600' : 'text-emerald-700'
+                        <div className="text-right flex flex-col items-end">
+                          <span className={`font-mono text-xl font-bold tabular-nums ${
+                            isCritical ? 'text-rose-600' : isWarning ? 'text-amber-600' : 'text-slate-900'
                           }`}>
                             {totalPercent}%
                           </span>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              isCritical ? 'bg-rose-500 animate-pulse' : isWarning ? 'bg-amber-500' : 'bg-emerald-500'
+                            }`} />
+                            <span className={`text-[11px] font-medium ${
+                              isCritical ? 'text-rose-600 font-semibold' : isWarning ? 'text-amber-600' : 'text-slate-500'
+                            }`}>
+                              {isCritical ? 'ใกล้เต็มงบ' : isWarning ? 'เฝ้าระวัง' : 'ปกติ'}
+                            </span>
+                          </div>
                         </div>
+                      </div>
 
-                        <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden flex shadow-inner">
-                          {/* Segment 1: Actual Spent (Indigo) */}
+                      {/* Modern Slim Progress Bar */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden flex">
+                          {/* Segment 1: Actual Spent */}
                           <div 
                             className="bg-indigo-600 h-full transition-all duration-300"
                             style={{ width: `${Math.min(actualPercent, 100)}%` }}
                             title={`ใช้จริง: ${actualPercent}%`}
                           />
-                          {/* Segment 2: Committed (Amber) */}
+                          {/* Segment 2: Committed */}
                           <div 
                             className="bg-amber-400 h-full transition-all duration-300"
                             style={{ width: `${Math.min(committedPercent, Math.max(0, 100 - actualPercent))}%` }}
                             title={`ผูกพัน: ${committedPercent}%`}
                           />
                         </div>
+                      </div>
 
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5 font-medium">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-indigo-600 inline-block" />
-                            ใช้จริง: <span className="font-mono text-slate-800 font-semibold">{actualPercent}%</span>
+                      {/* 3. Bento Metric Strip (3 Columns) */}
+                      <div className="grid grid-cols-3 gap-2 mt-5 bg-slate-50/70 p-3 rounded-2xl border border-slate-100">
+                        <div>
+                          <span className="text-[11px] font-medium text-slate-500 block">งบตั้งต้น</span>
+                          <span className="font-mono text-sm font-bold text-slate-800 tracking-tight tabular-nums block mt-0.5">
+                            ฿{baseAllocated.toLocaleString()}
                           </span>
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
-                            ผูกพัน: <span className="font-mono text-slate-800 font-semibold">{committedPercent}%</span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-medium text-slate-500 block">ใช้จริง</span>
+                          <span className="font-mono text-sm font-bold text-slate-800 tracking-tight tabular-nums block mt-0.5">
+                            ฿{actualSpent.toLocaleString()}
                           </span>
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-slate-300 inline-block" />
-                            ว่าง: <span className="font-mono text-slate-800 font-semibold">{Math.max(0, 100 - totalPercent)}%</span>
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-medium text-slate-500 block">ผูกพันรอของ</span>
+                          <span className="font-mono text-sm font-bold text-slate-800 tracking-tight tabular-nums block mt-0.5">
+                            ฿{committed.toLocaleString()}
                           </span>
                         </div>
                       </div>
-
-                      {/* Mobile Delta View */}
-                      {momDelta && (
-                        <div className="flex sm:hidden pt-2 border-t border-slate-100 text-xs items-center justify-between">
-                          <span className="text-slate-400">เทียบเดือนก่อนหน้า:</span>
-                          {momDelta.isHigher ? (
-                            <span className="font-semibold text-amber-600 flex items-center gap-1">
-                              <ArrowUpRight className="w-3.5 h-3.5" /> +{momDelta.spentPercentDiff}%
-                            </span>
-                          ) : momDelta.isLower ? (
-                            <span className="font-semibold text-emerald-600 flex items-center gap-1">
-                              <ArrowDownRight className="w-3.5 h-3.5" /> ประหยัด ฿{Math.abs(momDelta.spentDiff).toLocaleString()}
-                            </span>
-                          ) : (
-                            <span className="text-slate-500 font-medium">คงที่</span>
-                          )}
-                        </div>
-                      )}
                     </div>
                   )}
-                </div>
-
-                {/* Card Footer Summary */}
-                <div className="pt-3.5 border-t border-slate-100 text-xs text-slate-400 flex items-center justify-between font-mono">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    รอบ: {selectedMonthKey}
-                  </span>
-                  <span className="text-slate-500 font-medium flex items-center gap-1">
-                    <Layers className="w-3.5 h-3.5 text-indigo-500" />
-                    ตัดรอบฐานศูนย์ (Zero-Based)
-                  </span>
                 </div>
               </div>
             );
