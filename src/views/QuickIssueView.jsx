@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { apiService } from '../services/apiService';
 import { ISSUE_LOCATIONS, ISSUE_LOCATION_CONFIG, INITIAL_USAGE_UNITS } from '../config/constants';
+import { hasDepartmentAccess, getUserAccessibleDepartments } from '../utils/permissions';
 import { 
   SendToBack, CheckCircle2, AlertCircle, AlertTriangle, 
   PackageCheck, Layers, MapPin, Clock, ArrowRight,
@@ -63,7 +64,22 @@ const getLogUnit = (log) => {
   return 'ไม่ระบุหน่วย';
 };
 
-export default function QuickIssueView({ products = [], stockLogs = [], usageUnits: propUsageUnits, currentRole, onRefresh, onNavigate, onQuickPR }) {
+export default function QuickIssueView({
+  products = [],
+  stockLogs = [],
+  usageUnits: propUsageUnits,
+  currentRole,
+  currentUser: propCurrentUser,
+  onRefresh,
+  onNavigate,
+  onQuickPR
+}) {
+  const user = propCurrentUser || currentRole || {};
+  const userAccessibleDepts = useMemo(() => {
+    return getUserAccessibleDepartments(user, ['PD', 'QC']);
+  }, [user]);
+  const hasMultiDeptAccess = userAccessibleDepts.length > 1;
+
   const [activeTab, setActiveTab] = useState('ISSUE'); // 'ISSUE' | 'STATS'
 
   const allUsageUnits = useMemo(() => {
@@ -71,8 +87,13 @@ export default function QuickIssueView({ products = [], stockLogs = [], usageUni
     return INITIAL_USAGE_UNITS;
   }, [propUsageUnits]);
 
+  // Usage units strictly filtered by user's permitted departments
+  const userAllowedUnits = useMemo(() => {
+    return allUsageUnits.filter(u => hasDepartmentAccess(user, u.department));
+  }, [allUsageUnits, user]);
+
   // Form State
-  const [categoryFilter, setCategoryFilter] = useState(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
+  const [categoryFilter, setCategoryFilter] = useState(() => hasMultiDeptAccess ? 'ALL' : (userAccessibleDepts[0] || user?.department || 'PD'));
   const [selectedProdId, setSelectedProdId] = useState('');
   const [issueQty, setIssueQty] = useState(1);
   const [reason, setReason] = useState(ISSUE_REASONS[0]);
@@ -87,21 +108,29 @@ export default function QuickIssueView({ products = [], stockLogs = [], usageUni
   const [statsTimeFilter, setStatsTimeFilter] = useState('ALL'); // 'ALL' | 'TODAY' | 'WEEK' | 'MONTH' | 'CUSTOM'
   const [statsCustomStart, setStatsCustomStart] = useState('');
   const [statsCustomEnd, setStatsCustomEnd] = useState('');
-  const [statsDeptFilter, setStatsDeptFilter] = useState('ALL'); // 'ALL' | 'PD' | 'QC'
+  const [statsDeptFilter, setStatsDeptFilter] = useState(() => hasMultiDeptAccess ? 'ALL' : (userAccessibleDepts[0] || user?.department || 'PD'));
   const [statsSearchQuery, setStatsSearchQuery] = useState('');
   const [statsViewMode, setStatsViewMode] = useState('UNITS'); // 'UNITS' (Card breakdown) | 'MATRIX' (Item x Unit table) | 'LOGS' (Detailed table)
+
+  // Synchronize department & unit filters when user/role changes (Fast Switcher)
+  useEffect(() => {
+    const initialDept = hasMultiDeptAccess ? 'ALL' : (userAccessibleDepts[0] || user?.department || 'PD');
+    setStatsDeptFilter(initialDept);
+    setStatsUnitFilter('ALL');
+    setCategoryFilter(hasMultiDeptAccess ? 'ALL' : (userAccessibleDepts[0] || user?.department || 'PD'));
+  }, [user?.id, user?.username, hasMultiDeptAccess, userAccessibleDepts, user?.department]);
 
   // Department and Category Filtered Products
   const filteredProducts = useMemo(() => {
     return products
       .filter(p => {
         const pCat = p.category || p.department || 'PD';
-        const matchesDept = currentRole.canViewAllDepts || pCat === currentRole.department;
+        const matchesDept = hasDepartmentAccess(user, pCat);
         const matchesCat = categoryFilter === 'ALL' || pCat === categoryFilter;
         return matchesDept && matchesCat;
       })
       .sort((a, b) => (a.code || '').localeCompare(b.code || ''));
-  }, [products, currentRole, categoryFilter]);
+  }, [products, user, categoryFilter]);
 
   // Transform to SearchableSelect options
   const productOptions = useMemo(() => {
@@ -153,10 +182,10 @@ export default function QuickIssueView({ products = [], stockLogs = [], usageUni
   // Dynamic displayed units for Statistics Tab based on dropdown filter
   const displayedUnits = useMemo(() => {
     if (statsDeptFilter === 'ALL') {
-      return allUsageUnits;
+      return userAllowedUnits;
     }
-    return allUsageUnits.filter(u => u.department === statsDeptFilter);
-  }, [allUsageUnits, statsDeptFilter]);
+    return userAllowedUnits.filter(u => u.department === statsDeptFilter);
+  }, [userAllowedUnits, statsDeptFilter]);
 
   // Dynamic usage unit config map for styling & dots
   const usageUnitConfigMap = useMemo(() => {
@@ -268,18 +297,18 @@ export default function QuickIssueView({ products = [], stockLogs = [], usageUni
     let logs = stockLogs.filter(log => log.type === 'OUT');
 
     // Role department permission filter
-    if (!currentRole.canViewAllDepts) {
-      logs = logs.filter(log => {
-        const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
-        return prod ? prod.category === currentRole.department : true;
-      });
-    }
+    logs = logs.filter(log => {
+      const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
+      const prodCat = prod?.category || prod?.department || log.department;
+      return hasDepartmentAccess(user, prodCat);
+    });
 
     // UI Department filter
     if (statsDeptFilter !== 'ALL') {
       logs = logs.filter(log => {
         const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
-        return prod && prod.category === statsDeptFilter;
+        const prodCat = prod?.category || prod?.department || log.department;
+        return prodCat === statsDeptFilter;
       });
     }
 
@@ -329,14 +358,14 @@ export default function QuickIssueView({ products = [], stockLogs = [], usageUni
         const name = prod?.name?.toLowerCase() || '';
         const code = log.productCode?.toLowerCase() || '';
         const note = log.note?.toLowerCase() || '';
-        const user = log.user?.toLowerCase() || '';
+        const actor = log.user?.toLowerCase() || '';
         const unit = getLogUnit(log).toLowerCase();
-        return name.includes(q) || code.includes(q) || note.includes(q) || user.includes(q) || unit.includes(q);
+        return name.includes(q) || code.includes(q) || note.includes(q) || actor.includes(q) || unit.includes(q);
       });
     }
 
     return logs;
-  }, [stockLogs, products, currentRole, statsUnitFilter, statsTimeFilter, statsCustomStart, statsCustomEnd, statsDeptFilter, statsSearchQuery]);
+  }, [stockLogs, products, user, statsUnitFilter, statsTimeFilter, statsCustomStart, statsCustomEnd, statsDeptFilter, statsSearchQuery]);
 
   // ─── Aggregated Statistics Calculations ───
   const analytics = useMemo(() => {
@@ -470,13 +499,20 @@ export default function QuickIssueView({ products = [], stockLogs = [], usageUni
     displayedUnits.forEach(u => { counts[u.name] = 0; });
     stockLogs.forEach(log => {
       if (log.type === 'OUT') {
-        counts.ALL = (counts.ALL || 0) + 1;
+        const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
+        const prodCat = prod?.category || prod?.department || log.department;
+        if (!hasDepartmentAccess(user, prodCat)) return;
+        if (statsDeptFilter !== 'ALL' && prodCat !== statsDeptFilter) return;
+
         const u = getLogUnit(log);
-        if (counts[u] !== undefined) counts[u] += 1;
+        if (counts[u] !== undefined) {
+          counts[u] += 1;
+          counts.ALL = (counts.ALL || 0) + 1;
+        }
       }
     });
     return counts;
-  }, [stockLogs, displayedUnits]);
+  }, [stockLogs, displayedUnits, products, user, statsDeptFilter]);
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -1013,7 +1049,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], usageUni
                 }`}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
-                <span>จำแนกตามหน่วย (5 หน่วย)</span>
+                <span>จำแนกตามหน่วย ({displayedUnits.length} หน่วย)</span>
               </button>
               <button
                 type="button"
@@ -1115,18 +1151,27 @@ export default function QuickIssueView({ products = [], stockLogs = [], usageUni
               </select>
             </div>
 
-            {/* Department Filter (Only if multi-dept permitted) */}
+            {/* Department Filter (Scoped to User Permissions) */}
             <div>
               <label className="text-[11px] font-semibold text-slate-500 block mb-1">แผนกสินค้า (Department)</label>
               <select
                 value={statsDeptFilter}
                 onChange={e => setStatsDeptFilter(e.target.value)}
-                disabled={!currentRole.canViewAllDepts}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-60"
+                disabled={!hasMultiDeptAccess}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-75 disabled:bg-slate-100/80 cursor-pointer disabled:cursor-not-allowed"
               >
-                <option value="ALL">ทุกแผนก (PD + QC)</option>
-                <option value="PD">ฝ่ายผลิต (PD)</option>
-                <option value="QC">ฝ่าย QC</option>
+                {hasMultiDeptAccess && (
+                  <option value="ALL">ทุกแผนก (PD + QC)</option>
+                )}
+                {userAccessibleDepts.includes('PD') && (
+                  <option value="PD">ฝ่ายผลิต (PD)</option>
+                )}
+                {userAccessibleDepts.includes('QC') && (
+                  <option value="QC">ฝ่าย QC</option>
+                )}
+                {userAccessibleDepts.filter(d => d !== 'PD' && d !== 'QC').map(d => (
+                  <option key={d} value={d}>แผนก {d}</option>
+                ))}
               </select>
             </div>
 
@@ -1386,12 +1431,12 @@ export default function QuickIssueView({ products = [], stockLogs = [], usageUni
                       <button
                         type="button"
                         onClick={() => {
-                          setStatsUnitFilter(loc);
+                          setStatsUnitFilter(unit?.name || unit?.id || '');
                           setStatsViewMode('MATRIX');
                         }}
                         className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer transition-colors"
                       >
-                        <span>ดูตารางสินค้าของ {loc}</span>
+                        <span>ดูตารางสินค้าของ {unit?.name || unit?.id}</span>
                         <ChevronRight className="w-3.5 h-3.5" />
                       </button>
                     </div>

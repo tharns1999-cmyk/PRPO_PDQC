@@ -6,6 +6,7 @@ import PRDetailsModal from '../components/pr/PRDetailsModal';
 import EmptyState from '../components/common/EmptyState';
 import Pagination from '../components/common/Pagination';
 import { ClipboardList, Plus, FileSearch, Search, X, DollarSign, Clock, CheckCircle2, Building2, Tag, ShoppingCart, Pencil, ArrowRight } from 'lucide-react';
+import { hasDepartmentAccess } from '../utils/permissions';
 
 const PR_TABS = [
   { id: 'ALL', label: 'ทั้งหมด', filter: () => true },
@@ -50,8 +51,7 @@ export default function PRListView({
   // Department-based access check
   const accessiblePRs = useMemo(() => {
     return (prs || []).filter(pr => {
-      if (currentRole.canViewAllDepts || currentRole.id === 'ADMIN') return true;
-      return pr.department === currentRole.department;
+      return hasDepartmentAccess(currentRole, pr.department);
     });
   }, [prs, currentRole]);
 

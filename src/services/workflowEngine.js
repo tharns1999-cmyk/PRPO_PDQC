@@ -2,6 +2,7 @@ import { storageService } from './storageService.js';
 import { PR_STATUS, PO_STATUS, DEPARTMENTS } from '../config/constants.js';
 import { notificationService } from './notificationService.js';
 import { auditService } from './auditService.js';
+import { hasDepartmentAccess } from '../utils/permissions.js';
 
 export const workflowEngine = {
   
@@ -35,7 +36,7 @@ export const workflowEngine = {
     };
 
     const matchesDept = (dept) => {
-      return role.department === 'ALL' || role.department === dept || isAdmin;
+      return hasDepartmentAccess(role, dept);
     };
 
     // --- 1. PO Document Action Checks (if document is a PO) ---
@@ -228,7 +229,7 @@ export const workflowEngine = {
         } else if (isPlantMgr || isAsstMgr) {
           isWaiting = false;
         } else {
-          const isDeptMember = currentRole?.department === 'ALL' || currentRole?.department === po.department;
+          const isDeptMember = hasDepartmentAccess(currentRole, po.department);
           isWaiting = (isOwnerOfPO || isDeptMember) && po.status === 'IN_PROGRESS_ONLINE';
         }
       }
@@ -238,7 +239,7 @@ export const workflowEngine = {
         if (isAdmin) {
           isClaimAction = true;
         } else if (po.purchaseChannel === 'SELF') {
-          const isDeptMember = currentRole?.department === 'ALL' || currentRole?.department === po.department;
+          const isDeptMember = hasDepartmentAccess(currentRole, po.department);
           isClaimAction = (isOwnerOfPO || isDeptMember) && !isOnlinePurchaser;
         } else if (po.purchaseChannel === 'ONLINE' && isOnlinePurchaser) {
           isClaimAction = true;

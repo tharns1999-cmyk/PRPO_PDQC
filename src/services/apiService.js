@@ -78,6 +78,21 @@ export const apiService = {
     }
     return storageService.getUsageUnits(department);
   },
+  async getUsers() {
+    try {
+      const res = await fetch('http://localhost:3001/api/users');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          storageService.saveUsers(data);
+          return data;
+        }
+      }
+    } catch (e) {
+      console.warn('[apiService] GET /api/users fallback to storageService:', e.message);
+    }
+    return storageService.getUsers();
+  },
   async getPRs() {
     try {
       const res = await fetch('http://localhost:3001/api/prs');
@@ -769,6 +784,97 @@ export const apiService = {
         docNo: unit.id,
         docType: 'USAGE_UNIT',
         details: `ลบหน่วยเบิกใช้งาน "${unit.name}" (${unit.department}) ออกจากระบบ`
+      });
+    }
+
+    return true;
+  },
+
+  async saveUser(user, actor = null) {
+    const isUpdate = Boolean(user.id);
+    const users = storageService.getUsers();
+
+    // Check duplicate username if username is provided
+    if (user.username) {
+      const isDuplicate = users.some(u =>
+        u.username?.trim().toLowerCase() === user.username.trim().toLowerCase() &&
+        u.id !== user.id
+      );
+      if (isDuplicate) {
+        throw new Error(`Username "${user.username}" มีอยู่ในระบบแล้ว กรุณาใช้ชื่ออื่น`);
+      }
+    }
+
+    const primaryDept = user.primaryDepartment || user.department || 'PD';
+    const allowedDepts = Array.isArray(user.allowedDepartments) && user.allowedDepartments.length > 0
+      ? user.allowedDepartments
+      : (primaryDept === 'ALL' ? ['*'] : [primaryDept]);
+
+    const userPayload = {
+      ...user,
+      primaryDepartment: primaryDept,
+      department: primaryDept,
+      allowedDepartments: allowedDepts
+    };
+
+    try {
+      const url = isUpdate ? `http://localhost:3001/api/users/${user.id}` : 'http://localhost:3001/api/users';
+      const method = isUpdate ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userPayload)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        const updatedList = isUpdate ? users.map(u => u.id === user.id ? saved : u) : [...users, saved];
+        storageService.saveUsers(updatedList);
+
+        auditService.logAction({
+          action: isUpdate ? 'USER_UPDATED' : 'USER_CREATED',
+          actor: actor || 'Admin',
+          department: saved.primaryDepartment || 'ALL',
+          docNo: saved.id,
+          docType: 'USER',
+          details: `${isUpdate ? 'แก้ไขข้อมูลผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'} "${saved.name}" (${saved.title || saved.roleId}) แผนก: ${saved.primaryDepartment} [${(saved.allowedDepartments || []).join(', ')}]`
+        });
+
+        return saved;
+      }
+    } catch (e) {
+      console.warn('[apiService] saveUser API fallback:', e.message);
+    }
+
+    const saved = storageService.saveUser(userPayload);
+
+    auditService.logAction({
+      action: isUpdate ? 'USER_UPDATED' : 'USER_CREATED',
+      actor: actor || 'Admin',
+      department: saved.primaryDepartment || 'ALL',
+      docNo: saved.id,
+      docType: 'USER',
+      details: `${isUpdate ? 'แก้ไขข้อมูลผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'} "${saved.name}" (${saved.title || saved.roleId}) แผนก: ${saved.primaryDepartment} [${(saved.allowedDepartments || []).join(', ')}]`
+    });
+
+    return saved;
+  },
+
+  async deleteUser(userId, actor = null) {
+    try {
+      await fetch(`http://localhost:3001/api/users/${userId}`, { method: 'DELETE' });
+    } catch (e) {}
+    const users = storageService.getUsers();
+    const target = users.find(u => u.id === userId);
+    storageService.deleteUser(userId);
+
+    if (target) {
+      auditService.logAction({
+        action: 'USER_DELETED',
+        actor: actor || 'Admin',
+        department: target.primaryDepartment || target.department || 'ALL',
+        docNo: target.id,
+        docType: 'USER',
+        details: `ลบผู้ใช้งาน "${target.name}" (${target.username}) ออกจากระบบ`
       });
     }
 

@@ -64,9 +64,10 @@ export function AppProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
 
   // Available mock users for Fast Account Switcher
+  const [users, setUsers] = useState([]);
   const availableUsers = useMemo(() => {
-    return authService.getRegisteredUsers() || DEFAULT_EMPLOYEE_ACCOUNTS;
-  }, []);
+    return users.length > 0 ? users : (authService.getRegisteredUsers() || DEFAULT_EMPLOYEE_ACCOUNTS);
+  }, [users]);
 
   // 2. Operational Data States
   const [products, setProducts] = useState([]);
@@ -100,7 +101,8 @@ export function AppProvider({ children }) {
         logsData,
         notisData,
         vendorsData,
-        unitsData
+        unitsData,
+        usersData
       ] = await Promise.all([
         apiService.getProducts(),
         apiService.getPRs(),
@@ -110,7 +112,8 @@ export function AppProvider({ children }) {
         apiService.getStockLogs(),
         apiService.getNotifications(),
         apiService.getVendors(),
-        apiService.getUsageUnits()
+        apiService.getUsageUnits(),
+        apiService.getUsers()
       ]);
 
       if (Array.isArray(prodsData)) {
@@ -124,6 +127,21 @@ export function AppProvider({ children }) {
       }
       if (Array.isArray(unitsData)) {
         setUsageUnits(unitsData);
+      }
+      if (Array.isArray(usersData) && usersData.length > 0) {
+        setUsers(usersData);
+        setCurrentUser(prevUser => {
+          if (!prevUser) return prevUser;
+          const fresh = usersData.find(u => u.id === prevUser.id || u.username === prevUser.username);
+          if (fresh) {
+            const permissions = resolveUserPermissions(fresh);
+            const updatedSession = { ...prevUser, ...fresh, ...permissions, role: permissions };
+            setCurrentRole(updatedSession);
+            try { localStorage.setItem('prpo_auth_session', JSON.stringify(updatedSession)); } catch {}
+            return updatedSession;
+          }
+          return prevUser;
+        });
       }
 
       // Deduplicate PRs by id and prNo
@@ -226,11 +244,17 @@ export function AppProvider({ children }) {
     }
   }, []);
 
-  // Initial Data Hydration on Component Mount
+  // Initial Data Hydration on Component Mount (Strictly runs once on mount)
   useEffect(() => {
-    storageService.setCurrentRole(currentUser);
     loadAllData();
-  }, [loadAllData, currentUser]);
+  }, [loadAllData]);
+
+  // Synchronize current role to storageService without triggering circular data fetch
+  useEffect(() => {
+    if (currentUser) {
+      storageService.setCurrentRole(currentUser);
+    }
+  }, [currentUser]);
 
   /**
    * Fast Account Switcher:
@@ -454,6 +478,18 @@ export function AppProvider({ children }) {
     return result;
   }, [currentRole, currentUser, loadAllData]);
 
+  const handleSaveUser = useCallback(async (userPayload) => {
+    const saved = await apiService.saveUser(userPayload, currentUser?.name || currentRole?.name);
+    await loadAllData();
+    return saved;
+  }, [currentUser, currentRole, loadAllData]);
+
+  const handleDeleteUser = useCallback(async (userId) => {
+    const result = await apiService.deleteUser(userId, currentUser?.name || currentRole?.name);
+    await loadAllData();
+    return result;
+  }, [currentUser, currentRole, loadAllData]);
+
   const handleUpdateBudget = useCallback(async (department, newAmount, targetMonth) => {
     const updated = await apiService.updateBudget(department, newAmount, targetMonth);
     await loadAllData();
@@ -512,6 +548,9 @@ export function AppProvider({ children }) {
     deleteStorageLocation: handleDeleteStorageLocation,
     saveUsageUnit: handleSaveUsageUnit,
     deleteUsageUnit: handleDeleteUsageUnit,
+    users,
+    saveUser: handleSaveUser,
+    deleteUser: handleDeleteUser,
     updateBudget: handleUpdateBudget,
     markNotificationAsRead: handleMarkNotificationAsRead,
     clearNotifications: handleClearNotifications,
@@ -568,6 +607,9 @@ export function AppProvider({ children }) {
     handleDeleteStorageLocation,
     handleSaveUsageUnit,
     handleDeleteUsageUnit,
+    users,
+    handleSaveUser,
+    handleDeleteUser,
     handleUpdateBudget,
     handleMarkNotificationAsRead,
     handleClearNotifications,

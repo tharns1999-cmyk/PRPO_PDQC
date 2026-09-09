@@ -1,5 +1,6 @@
 import { STORAGE_KEYS, ROLES, INITIAL_USAGE_UNITS } from '../config/constants.js';
 import { initialProducts, initialVendors, initialStorageLocations, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
+import { DEFAULT_EMPLOYEE_ACCOUNTS } from './authService.js';
 
 const DATA_VERSION = 'prpo_clean_v14';
 const API_URL = 'http://localhost:3001/api/storage';
@@ -29,7 +30,7 @@ const _getItem = (key) => {
   return local ? JSON.parse(local) : null;
 };
 
-const _setItem = (key, value) => {
+const _setItem = (key, value, syncWithBackend = false) => {
   _cache[key] = value;
   if (typeof localStorage !== 'undefined') {
     try {
@@ -38,11 +39,13 @@ const _setItem = (key, value) => {
       // ignore storage quota error
     }
   }
-  _syncApi();
+  if (syncWithBackend) {
+    _syncApi();
+  }
 };
 
 export const storageService = {
-  // Initialize storage from Local Node.js Backend with fallback to LocalStorage & Mock Data
+  // Initialize storage from Local Node.js Backend with fallback to LocalStorage
   async init() {
     try {
       const res = await fetch(API_URL);
@@ -50,78 +53,40 @@ export const storageService = {
         const data = await res.json();
         _cache = data || {};
         _apiReady = true;
-
-        // Seed empty backend data from initial defaults if first time
-        let needSync = false;
-        if (!_cache[STORAGE_KEYS.PRODUCTS] || _cache[STORAGE_KEYS.PRODUCTS].length === 0) {
-          _cache[STORAGE_KEYS.PRODUCTS] = initialProducts;
-          needSync = true;
-        }
-        if (!_cache[STORAGE_KEYS.VENDORS] || _cache[STORAGE_KEYS.VENDORS].length === 0) {
-          _cache[STORAGE_KEYS.VENDORS] = initialVendors;
-          needSync = true;
-        }
-        if (!_cache[STORAGE_KEYS.STORAGE_LOCATIONS] || _cache[STORAGE_KEYS.STORAGE_LOCATIONS].length === 0) {
-          _cache[STORAGE_KEYS.STORAGE_LOCATIONS] = initialStorageLocations;
-          needSync = true;
-        }
-        if (!_cache[STORAGE_KEYS.USAGE_UNITS] || _cache[STORAGE_KEYS.USAGE_UNITS].length === 0) {
-          _cache[STORAGE_KEYS.USAGE_UNITS] = INITIAL_USAGE_UNITS;
-          needSync = true;
-        }
-        if (!_cache[STORAGE_KEYS.BUDGETS]) {
-          _cache[STORAGE_KEYS.BUDGETS] = initialBudgets;
-          needSync = true;
-        }
-        if (!_cache[STORAGE_KEYS.PR_COUNTERS]) {
-          _cache[STORAGE_KEYS.PR_COUNTERS] = initialCounters;
-          needSync = true;
-        }
-
-        if (needSync) {
-          await _syncApi();
-        }
         console.log('[StorageService] Synced with Local Node.js File API successfully.');
         return;
       }
     } catch (e) {
       console.warn('[StorageService] Local API not reachable. Using in-memory / LocalStorage fallback.');
     }
-
-    // Fallback to local storage version check
-    if (typeof localStorage !== 'undefined') {
-      const currentVer = localStorage.getItem('prpo_data_version');
-      if (!currentVer || currentVer !== DATA_VERSION) {
-        this.resetData();
-      }
-    }
   },
 
-  // Reset data to initial defaults
+  // Reset local browser cache only (Strictly NEVER overwrites server SSOT files)
   resetData() {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('prpo_data_version', DATA_VERSION);
     }
-    _setItem(STORAGE_KEYS.CURRENT_ROLE, ROLES.REQUESTER_PD);
-    _setItem(STORAGE_KEYS.PRODUCTS, initialProducts);
-    _setItem(STORAGE_KEYS.VENDORS, initialVendors);
-    _setItem(STORAGE_KEYS.STORAGE_LOCATIONS, initialStorageLocations);
-    _setItem(STORAGE_KEYS.USAGE_UNITS, INITIAL_USAGE_UNITS);
-    _setItem(STORAGE_KEYS.PRS, []);
-    _setItem(STORAGE_KEYS.POS, []);
-    _setItem(STORAGE_KEYS.STOCK_LOGS, []);
+    _setItem(STORAGE_KEYS.CURRENT_ROLE, ROLES.REQUESTER_PD, false);
+    _setItem(STORAGE_KEYS.PRODUCTS, initialProducts, false);
+    _setItem(STORAGE_KEYS.VENDORS, initialVendors, false);
+    _setItem(STORAGE_KEYS.STORAGE_LOCATIONS, initialStorageLocations, false);
+    _setItem(STORAGE_KEYS.USAGE_UNITS, INITIAL_USAGE_UNITS, false);
+    _setItem(STORAGE_KEYS.USERS, DEFAULT_EMPLOYEE_ACCOUNTS, false);
+    _setItem(STORAGE_KEYS.PRS, [], false);
+    _setItem(STORAGE_KEYS.POS, [], false);
+    _setItem(STORAGE_KEYS.STOCK_LOGS, [], false);
     _setItem(STORAGE_KEYS.BUDGETS, {
       PD: { monthlyBudget: 250000, spent: 0, pending: 0, variance: 0 },
       QC: { monthlyBudget: 150000, spent: 0, pending: 0, variance: 0 }
-    });
+    }, false);
     _setItem(STORAGE_KEYS.PR_COUNTERS, {
       PD: { PR: 0, PO: 0 },
       QC: { PR: 0, PO: 0 }
-    });
-    _setItem('prpo_budget_transactions', []);
-    _setItem('prpo_audit_logs', []);
-    _setItem('prpo_notifications', []);
-    console.log('[StorageService] Operational mock data cleared. Master data preserved.');
+    }, false);
+    _setItem('prpo_budget_transactions', [], false);
+    _setItem('prpo_audit_logs', [], false);
+    _setItem('prpo_notifications', [], false);
+    console.log('[StorageService] Local browser cache reset. Server SSOT preserved.');
   },
 
   // Role
@@ -234,6 +199,59 @@ export const storageService = {
     const units = this.getUsageUnits();
     const filtered = units.filter(u => u.id !== unitId);
     this.saveUsageUnits(filtered);
+    return true;
+  },
+
+  // Users & Access Management
+  getUsers() {
+    const data = _getItem(STORAGE_KEYS.USERS);
+    if (!data) {
+      this.saveUsers(DEFAULT_EMPLOYEE_ACCOUNTS);
+      return DEFAULT_EMPLOYEE_ACCOUNTS;
+    }
+    return data;
+  },
+  saveUsers(users) {
+    _setItem(STORAGE_KEYS.USERS, users);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('prpo_registered_users', JSON.stringify(users));
+    }
+  },
+  saveUser(userObj) {
+    const users = [...this.getUsers()];
+    let updatedUser = { ...userObj };
+    const isUpdate = Boolean(updatedUser.id);
+    const primaryDept = updatedUser.primaryDepartment || updatedUser.department || 'PD';
+    const allowedDepts = Array.isArray(updatedUser.allowedDepartments) && updatedUser.allowedDepartments.length > 0
+      ? updatedUser.allowedDepartments
+      : (primaryDept === 'ALL' ? ['*'] : [primaryDept]);
+
+    updatedUser = {
+      ...updatedUser,
+      primaryDepartment: primaryDept,
+      department: primaryDept,
+      allowedDepartments: allowedDepts
+    };
+
+    if (!isUpdate) {
+      updatedUser.id = `USR-${Date.now().toString().slice(-4)}`;
+      updatedUser.status = updatedUser.status || 'ACTIVE';
+      users.push(updatedUser);
+    } else {
+      const idx = users.findIndex(u => u.id === updatedUser.id);
+      if (idx !== -1) {
+        users[idx] = { ...users[idx], ...updatedUser };
+      } else {
+        users.push(updatedUser);
+      }
+    }
+    this.saveUsers(users);
+    return updatedUser;
+  },
+  deleteUser(userId) {
+    const users = this.getUsers();
+    const filtered = users.filter(u => u.id !== userId);
+    this.saveUsers(filtered);
     return true;
   },
   saveStorageLocation(locationObj) {

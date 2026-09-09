@@ -164,12 +164,13 @@ function StockCardRoute() {
 }
 
 function QuickIssueRoute() {
-  const { products, stockLogs, currentRole, usageUnits, refreshData } = useAppContext();
+  const { products, stockLogs, currentRole, currentUser, usageUnits, refreshData } = useAppContext();
   return (
     <QuickIssueView
       products={products}
       stockLogs={stockLogs}
       currentRole={currentRole}
+      currentUser={currentUser}
       usageUnits={usageUnits}
       onRefresh={refreshData}
     />
@@ -192,7 +193,7 @@ function BudgetRoute() {
 }
 
 function MasterDataRoute() {
-  const { products, vendors, storageLocations, usageUnits, currentRole, refreshData, saveUsageUnit, deleteUsageUnit } = useAppContext();
+  const { products, vendors, storageLocations, usageUnits, users, currentRole, refreshData, saveUsageUnit, deleteUsageUnit, saveUser, deleteUser } = useAppContext();
   return (
     <RoleGuard allowed={(role) => role?.canManageMaster}>
       <MasterDataView
@@ -200,10 +201,13 @@ function MasterDataRoute() {
         vendors={vendors}
         storageLocations={storageLocations}
         usageUnits={usageUnits}
+        users={users}
         currentRole={currentRole}
         onRefresh={refreshData}
         onSaveUsageUnit={saveUsageUnit}
         onDeleteUsageUnit={deleteUsageUnit}
+        onSaveUser={saveUser}
+        onDeleteUser={deleteUser}
       />
     </RoleGuard>
   );

@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { initialProducts, initialVendors } from '../src/data/mockData.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,6 +44,122 @@ const initialUsageUnits = [
   { id: 'UNIT-QC-002', name: 'Lab จุลชีววิทยา', department: 'QC', dot: 'bg-teal-500', color: 'bg-teal-50 text-teal-700 border-teal-200/80', status: 'ACTIVE' },
   { id: 'UNIT-QC-003', name: 'ห้อง Sensory', department: 'QC', dot: 'bg-fuchsia-500', color: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200/80', status: 'ACTIVE' },
   { id: 'UNIT-QC-004', name: 'ออฟฟิศ QC', department: 'QC', dot: 'bg-rose-500', color: 'bg-rose-50 text-rose-700 border-rose-200/80', status: 'ACTIVE' }
+];
+
+const initialUsers = [
+  {
+    id: 'USR-0001',
+    employeeId: 'EMP-PD-001',
+    username: 'wichai.pd',
+    password: 'password123',
+    name: 'คุณวิชัย (PD)',
+    employeeName: 'คุณวิชัย สุขใจ',
+    displayName: 'Wichai (PD)',
+    primaryDepartment: 'PD',
+    department: 'PD',
+    allowedDepartments: ['PD'],
+    roleId: 'REQUESTER_PD',
+    positionKey: 'REQUESTER_PD',
+    title: 'Requester (PD)',
+    level: 1,
+    status: 'ACTIVE',
+    pictureUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    description: 'สร้าง/ส่ง PR ฝ่ายผลิต, เบิกจ่ายสินค้า, ตรวจรับของเข้าสต็อก'
+  },
+  {
+    id: 'USR-0002',
+    employeeId: 'EMP-QC-001',
+    username: 'somying.qc',
+    password: 'password123',
+    name: 'คุณสมหญิง (QC)',
+    employeeName: 'คุณสมหญิง รักดี',
+    displayName: 'Somying (QC)',
+    primaryDepartment: 'QC',
+    department: 'QC',
+    allowedDepartments: ['QC'],
+    roleId: 'REQUESTER_QC',
+    positionKey: 'REQUESTER_QC',
+    title: 'Requester (QC)',
+    level: 1,
+    status: 'ACTIVE',
+    pictureUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
+    description: 'สร้าง/ส่ง PR ฝ่าย QC/Lab, เบิกจ่ายสารเคมี, ตรวจรับของ'
+  },
+  {
+    id: 'USR-0003',
+    employeeId: 'EMP-MGR-001',
+    username: 'somchai.am',
+    password: 'password123',
+    name: 'คุณสมชาย (Asst. Mgr)',
+    employeeName: 'คุณสมชาย มุ่งมั่น',
+    displayName: 'Somchai (Asst Mgr)',
+    primaryDepartment: 'ALL',
+    department: 'ALL',
+    allowedDepartments: ['*'],
+    roleId: 'ASST_MANAGER',
+    positionKey: 'REVIEWER',
+    title: 'Assistant Manager',
+    level: 2,
+    status: 'ACTIVE',
+    pictureUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    description: 'ตรวจทาน PR (Level 1 Reviewer), ดูงบประมาณทุกแผนก'
+  },
+  {
+    id: 'USR-0004',
+    employeeId: 'EMP-PUR-001',
+    username: 'nat.on',
+    password: 'password123',
+    name: 'คุณนัท (Online Purchaser)',
+    employeeName: 'คุณนัท จัดซื้อ',
+    displayName: 'Nat (Online)',
+    primaryDepartment: 'ALL',
+    department: 'ALL',
+    allowedDepartments: ['*'],
+    roleId: 'ONLINE_PURCHASER',
+    positionKey: 'ONLINE_PURCHASER',
+    title: 'Online Purchaser (คุณนัท)',
+    level: 2,
+    status: 'ACTIVE',
+    pictureUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    description: 'จัดการสั่งซื้อออนไลน์ Shopee/Lazada, บันทึกราคาจริง'
+  },
+  {
+    id: 'USR-0005',
+    employeeId: 'EMP-MGR-002',
+    username: 'prasert.pm',
+    password: 'password123',
+    name: 'คุณประเสริฐ (Plant Mgr)',
+    employeeName: 'คุณประเสริฐ ยิ่งยง',
+    displayName: 'Prasert (Plant Mgr)',
+    primaryDepartment: 'ALL',
+    department: 'ALL',
+    allowedDepartments: ['*'],
+    roleId: 'PLANT_MANAGER',
+    positionKey: 'APPROVER',
+    title: 'Plant Manager',
+    level: 3,
+    status: 'ACTIVE',
+    pictureUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    description: 'อนุมัติสั่งซื้อ (Final Approver), ออก PO อัตโนมัติ, คุมงบประมาณ'
+  },
+  {
+    id: 'USR-0006',
+    employeeId: 'EMP-SYS-999',
+    username: 'admin',
+    password: 'admin123',
+    name: 'Admin System',
+    displayName: 'Admin',
+    primaryDepartment: 'ALL',
+    department: 'ALL',
+    allowedDepartments: ['*'],
+    roleId: 'ADMIN',
+    positionKey: 'ADMIN',
+    title: 'System Administrator',
+    level: 99,
+    status: 'ACTIVE',
+    pictureUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
+    description: 'ผู้ดูแลระบบ สิทธิ์สูงสุดในการจัดการข้อมูลทุกส่วน'
+  }
 ];
 
 const initialBudgets = {
@@ -105,15 +222,18 @@ const initialCounters = {
   QC: { PR: 0, PO: 0 }
 };
 
-// Seed product items from initial catalog
+// Seed product items from initial catalog (Only used if file does not exist on disk)
 const defaultSeedCatalog = {
+  'products.json': initialProducts,
+  'vendors.json': initialVendors,
   'storageLocations.json': initialStorageLocations,
   'usageUnits.json': initialUsageUnits,
+  'users.json': initialUsers,
+  'budgets.json': initialBudgets,
+  'prCounters.json': initialCounters,
   'prs.json': [],
   'pos.json': [],
   'stockLogs.json': [],
-  'budgets.json': initialBudgets,
-  'prCounters.json': initialCounters,
   'budgetTransactions.json': [],
   'auditLogs.json': [],
   'notifications.json': []
@@ -122,38 +242,67 @@ const defaultSeedCatalog = {
 // File helpers with atomic write to prevent read-during-write corruption
 const getFilePath = (fileName) => path.join(dataDir, fileName);
 
-async function writeFile(fileName, data) {
+// Central synchronous atomic file writer with formatted Pretty JSON (SSOT)
+function saveDataToFile(fileName, data) {
   const filePath = getFilePath(fileName);
   const tmpPath = `${filePath}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
   try {
-    await fs.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
-    await fs.rename(tmpPath, filePath);
+    fsSync.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fsSync.renameSync(tmpPath, filePath);
   } catch (err) {
-    try { await fs.unlink(tmpPath); } catch {}
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    try { fsSync.unlinkSync(tmpPath); } catch {}
+    fsSync.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
   }
 }
 
+async function writeFile(fileName, data) {
+  saveDataToFile(fileName, data);
+}
+
+// Single Source of Truth (SSOT) reader
 async function readFile(fileName, defaultValue = []) {
   const filePath = getFilePath(fileName);
   try {
+    if (!fsSync.existsSync(filePath)) {
+      const fallback = defaultSeedCatalog[fileName] !== undefined ? defaultSeedCatalog[fileName] : defaultValue;
+      saveDataToFile(fileName, fallback);
+      return fallback;
+    }
     const content = await fs.readFile(filePath, 'utf-8');
     if (!content || !content.trim()) {
       const fallback = defaultSeedCatalog[fileName] !== undefined ? defaultSeedCatalog[fileName] : defaultValue;
-      await writeFile(fileName, fallback);
+      saveDataToFile(fileName, fallback);
       return fallback;
     }
     return JSON.parse(content);
   } catch (err) {
     if (err.code === 'ENOENT') {
       const fallback = defaultSeedCatalog[fileName] !== undefined ? defaultSeedCatalog[fileName] : defaultValue;
-      await writeFile(fileName, fallback);
+      saveDataToFile(fileName, fallback);
       return fallback;
     }
-    console.error(`[Backend] Read error for ${fileName}:`, err);
+    console.error(`[Backend SSOT] Read error for ${fileName}:`, err);
     return defaultSeedCatalog[fileName] !== undefined ? defaultSeedCatalog[fileName] : defaultValue;
   }
 }
+
+// ── One-Time Bootstrap Lock ──
+// Strictly preserves existing data on disk. Only seeds if file is missing completely.
+function ensureBootstrapData() {
+  console.log('[SSOT Lock] Verifying Single Source of Truth data files...');
+  for (const [fileName, seedData] of Object.entries(defaultSeedCatalog)) {
+    const filePath = getFilePath(fileName);
+    if (!fsSync.existsSync(filePath)) {
+      console.log(`[SSOT Lock] Initializing missing master data file on disk: ${fileName}`);
+      saveDataToFile(fileName, seedData);
+    } else {
+      console.log(`[SSOT Lock] File exists on disk, preserving on-disk user data: ${fileName}`);
+    }
+  }
+}
+
+// Execute one-time bootstrap on startup
+ensureBootstrapData();
 
 // ── 1. Products ──
 app.get('/api/products', async (req, res) => {
@@ -328,6 +477,91 @@ app.delete('/api/usage-units/:id', async (req, res) => {
     const units = await readFile('usageUnits.json', initialUsageUnits);
     const filtered = units.filter(u => u.id !== id);
     await writeFile('usageUnits.json', filtered);
+    res.json({ success: true, id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── 2.2 Users & Access Management ──
+app.get('/api/users', async (req, res) => {
+  try {
+    const users = await readFile('users.json', initialUsers);
+    res.json(users);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/users', async (req, res) => {
+  try {
+    const data = req.body;
+    if (Array.isArray(data)) {
+      await writeFile('users.json', data);
+      return res.json(data);
+    }
+    const users = await readFile('users.json', initialUsers);
+    const newId = data.id || `USR-${Date.now().toString().slice(-4)}`;
+    const primaryDept = data.primaryDepartment || data.department || 'PD';
+    const allowedDepts = Array.isArray(data.allowedDepartments) && data.allowedDepartments.length > 0 
+      ? data.allowedDepartments 
+      : (primaryDept === 'ALL' ? ['*'] : [primaryDept]);
+
+    const newUser = {
+      ...data,
+      id: newId,
+      primaryDepartment: primaryDept,
+      department: primaryDept,
+      allowedDepartments: allowedDepts,
+      status: data.status || 'ACTIVE'
+    };
+    users.push(newUser);
+    await writeFile('users.json', users);
+    res.json(newUser);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = req.body;
+    const users = await readFile('users.json', initialUsers);
+    const idx = users.findIndex(u => u.id === id);
+    
+    const primaryDept = updated.primaryDepartment || updated.department || (idx !== -1 ? users[idx].primaryDepartment : 'PD');
+    const allowedDepts = Array.isArray(updated.allowedDepartments) 
+      ? updated.allowedDepartments 
+      : (idx !== -1 ? users[idx].allowedDepartments : [primaryDept]);
+
+    const merged = {
+      ...(idx !== -1 ? users[idx] : {}),
+      ...updated,
+      id,
+      primaryDepartment: primaryDept,
+      department: primaryDept,
+      allowedDepartments: allowedDepts
+    };
+
+    if (idx !== -1) {
+      users[idx] = merged;
+    } else {
+      users.push(merged);
+    }
+    await writeFile('users.json', users);
+    res.json(merged);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const users = await readFile('users.json', initialUsers);
+    const filtered = users.filter(u => u.id !== id);
+    await writeFile('users.json', filtered);
     res.json({ success: true, id });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -984,11 +1218,12 @@ app.delete('/api/audit-logs', async (req, res) => {
 // ── 8. Generic Key-Value Bulk Storage (For backward compatibility & quick sync) ──
 app.get('/api/storage', async (req, res) => {
   try {
-    const [products, vendors, storageLocations, usageUnits, prs, pos, stockLogs, budgets, prCounters, budgetTransactions, auditLogs, notifications] = await Promise.all([
+    const [products, vendors, storageLocations, usageUnits, users, prs, pos, stockLogs, budgets, prCounters, budgetTransactions, auditLogs, notifications] = await Promise.all([
       readFile('products.json', []),
       readFile('vendors.json', []),
       readFile('storageLocations.json', initialStorageLocations),
       readFile('usageUnits.json', initialUsageUnits),
+      readFile('users.json', initialUsers),
       readFile('prs.json', []),
       readFile('pos.json', []),
       readFile('stockLogs.json', []),
@@ -1004,6 +1239,7 @@ app.get('/api/storage', async (req, res) => {
       prpo_vendors_data: vendors,
       prpo_storage_locations_data: storageLocations,
       prpo_usage_units_data: usageUnits,
+      prpo_users_data: users,
       prpo_prs_data: prs,
       prpo_pos_data: pos,
       prpo_stock_logs: stockLogs,
@@ -1023,11 +1259,31 @@ app.post('/api/storage', async (req, res) => {
     const data = req.body || {};
     const writes = [];
 
-    if (data.prpo_products_data) writes.push(writeFile('products.json', data.prpo_products_data));
-    if (data.prpo_vendors_data) writes.push(writeFile('vendors.json', data.prpo_vendors_data));
-    if (data.prpo_storage_locations_data) writes.push(writeFile('storageLocations.json', data.prpo_storage_locations_data));
-    if (data.prpo_usage_units_data) writes.push(writeFile('usageUnits.json', data.prpo_usage_units_data));
-    if (data.prpo_prs_data) {
+    // Master Data Anti-Overwrite Guards: Never overwrite with empty/partial data
+    if (Array.isArray(data.prpo_products_data) && data.prpo_products_data.length > 0) {
+      writes.push(writeFile('products.json', data.prpo_products_data));
+    }
+    if (Array.isArray(data.prpo_vendors_data) && data.prpo_vendors_data.length > 0) {
+      writes.push(writeFile('vendors.json', data.prpo_vendors_data));
+    }
+    if (Array.isArray(data.prpo_storage_locations_data) && data.prpo_storage_locations_data.length > 0) {
+      writes.push(writeFile('storageLocations.json', data.prpo_storage_locations_data));
+    }
+    if (Array.isArray(data.prpo_usage_units_data) && data.prpo_usage_units_data.length > 0) {
+      writes.push(writeFile('usageUnits.json', data.prpo_usage_units_data));
+    }
+    if (Array.isArray(data.prpo_users_data) && data.prpo_users_data.length > 0) {
+      writes.push(writeFile('users.json', data.prpo_users_data));
+    }
+    if (data.prpo_budgets_data && typeof data.prpo_budgets_data === 'object' && Object.keys(data.prpo_budgets_data).length > 0) {
+      writes.push(writeFile('budgets.json', data.prpo_budgets_data));
+    }
+    if (data.prpo_pr_counters && typeof data.prpo_pr_counters === 'object' && Object.keys(data.prpo_pr_counters).length > 0) {
+      writes.push(writeFile('prCounters.json', data.prpo_pr_counters));
+    }
+
+    // Operational/Transaction Data
+    if (data.prpo_prs_data !== undefined) {
       const seenPr = new Set();
       const uniquePrs = (Array.isArray(data.prpo_prs_data) ? data.prpo_prs_data : []).filter(p => {
         const key = p.id || p.prNo;
@@ -1037,7 +1293,7 @@ app.post('/api/storage', async (req, res) => {
       });
       writes.push(writeFile('prs.json', uniquePrs));
     }
-    if (data.prpo_pos_data) {
+    if (data.prpo_pos_data !== undefined) {
       const seenPo = new Set();
       const uniquePos = (Array.isArray(data.prpo_pos_data) ? data.prpo_pos_data : []).filter(p => {
         const key = p.poNo || p.poNumber || p.id;
@@ -1047,12 +1303,10 @@ app.post('/api/storage', async (req, res) => {
       });
       writes.push(writeFile('pos.json', uniquePos));
     }
-    if (data.prpo_stock_logs) writes.push(writeFile('stockLogs.json', data.prpo_stock_logs));
-    if (data.prpo_budgets_data) writes.push(writeFile('budgets.json', data.prpo_budgets_data));
-    if (data.prpo_pr_counters) writes.push(writeFile('prCounters.json', data.prpo_pr_counters));
-    if (data.prpo_budget_transactions) writes.push(writeFile('budgetTransactions.json', data.prpo_budget_transactions));
-    if (data.prpo_audit_logs) writes.push(writeFile('auditLogs.json', data.prpo_audit_logs));
-    if (data.prpo_notifications) writes.push(writeFile('notifications.json', data.prpo_notifications));
+    if (data.prpo_stock_logs !== undefined) writes.push(writeFile('stockLogs.json', data.prpo_stock_logs));
+    if (data.prpo_budget_transactions !== undefined) writes.push(writeFile('budgetTransactions.json', data.prpo_budget_transactions));
+    if (data.prpo_audit_logs !== undefined) writes.push(writeFile('auditLogs.json', data.prpo_audit_logs));
+    if (data.prpo_notifications !== undefined) writes.push(writeFile('notifications.json', data.prpo_notifications));
 
     await Promise.all(writes);
     res.json({ success: true });

@@ -1,9 +1,10 @@
 import React from 'react';
 import { Clock, ShoppingCart, AlertTriangle, DollarSign, ArrowUpRight } from 'lucide-react';
+import { hasDepartmentAccess } from '../../utils/permissions';
 
 export default function KPICards({ prs, pos, products, budgetSummary, currentRole, onNavigate, onQuickPR }) {
-  const accessiblePRs = currentRole.canViewAllDepts ? prs : prs.filter(p => p.department === currentRole.department);
-  const accessiblePOs = currentRole.canViewAllDepts ? pos : pos.filter(p => p.department === currentRole.department);
+  const accessiblePRs = prs.filter(p => hasDepartmentAccess(currentRole, p.department));
+  const accessiblePOs = pos.filter(p => hasDepartmentAccess(currentRole, p.department));
 
   const pendingPRs = accessiblePRs.filter(p => ['SUBMITTED', 'REVIEWED', 'REJECTED_TO_L2'].includes(p.status)).length;
   const activePOs = accessiblePOs.filter(p => ['ISSUED', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL', 'IN_PROGRESS_ONLINE', 'CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(p.status)).length;

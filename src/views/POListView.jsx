@@ -5,6 +5,7 @@ import { ShoppingBag, FileText, Search, X, DollarSign, PackageCheck, AlertTriang
 import PODetailsModal from '../components/po/PODetailsModal';
 import EmptyState from '../components/common/EmptyState';
 import Pagination from '../components/common/Pagination';
+import { hasDepartmentAccess } from '../utils/permissions';
 
 export default function POListView({ pos = [], currentRole, onRefresh }) {
   const [selectedPO, setSelectedPO] = useState(null);
@@ -26,8 +27,7 @@ export default function POListView({ pos = [], currentRole, onRefresh }) {
   const accessiblePOs = useMemo(() => {
     return pos.filter(po => {
       if (isOnlinePurchaser) return po.purchaseChannel === 'ONLINE';
-      if (currentRole.canViewAllDepts || currentRole.id === 'ADMIN') return true;
-      return po.department === currentRole.department;
+      return hasDepartmentAccess(currentRole, po.department);
     });
   }, [pos, currentRole, isOnlinePurchaser]);
 

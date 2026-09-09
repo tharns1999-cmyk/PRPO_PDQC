@@ -357,6 +357,7 @@ export const STORAGE_KEYS = {
   VENDORS:             'prpo_vendors_data',
   STORAGE_LOCATIONS:   'prpo_storage_locations_data',
   USAGE_UNITS:         'prpo_usage_units_data',
+  USERS:               'prpo_users_data',
   PRS:                 'prpo_prs_data',
   POS:                 'prpo_pos_data',
   STOCK_LOGS:          'prpo_stock_logs',
