@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-React, Vite, Tailwind CSS (built as a single-file bundle for Google Apps Script deployment).
+React, Vite, Tailwind CSS.
 
 ## Users
 
@@ -20,7 +20,7 @@ Web Application สำหรับจัดการวงจรการจั�
 
 ## Positioning
 
-ระบบอุตสาหกรรมขนาดเล็กที่เน้น "ความเรียบง่าย" (Industrial Simplicity) และความรวดเร็วในการใช้งาน เช่น ระบบ Auto-PR สำหรับสินค้าที่สต็อกต่ำ โดยออกแบบมาเพื่อรันบน Google Apps Script (GAS) ได้ในไฟล์เดียว
+ระบบอุตสาหกรรมขนาดเล็กที่เน้น "ความเรียบง่าย" (Industrial Simplicity) และความรวดเร็วในการใช้งาน เช่น ระบบ Auto-PR สำหรับสินค้าที่สต็อกต่ำ
 
 ## Operating Context
 
@@ -29,8 +29,8 @@ Web Application สำหรับจัดการวงจรการจั�
 ## Capabilities and Constraints
 
 - รองรับระบบ Role-Based Access Control
-- ระบบทำงานในรูปแบบ Single-page Application โดยฝัง Logic และ UI ไว้ในไฟล์ HTML เดียวเมื่อ Build เสร็จ (เพื่อใช้บน GAS)
-- เก็บข้อมูลผ่าน API/Storage Service ที่สลับใช้ Mock/LocalStorage สำหรับ Local Dev และ google.script.run สำหรับ Production ได้
+- ระบบทำงานในรูปแบบ Single-page Application (SPA) ที่รวดเร็วและตอบสนองทันที
+- เก็บและจัดการข้อมูลผ่าน Storage Service / API Layer รองรับ LocalStorage และต่อขยายไปยัง REST API Backend ได้อย่างยืดหยุ่น
 
 ## Brand Commitments
 

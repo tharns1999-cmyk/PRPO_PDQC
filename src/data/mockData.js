@@ -1,6 +1,55 @@
 // Initial Mock Master Data for Production (PD) & Quality Control (QC)
 // Designed for local testing without pre-existing PR/PO workflow documents
 
+// ─── STORAGE LOCATIONS MASTER DATA ──────────────────────────────────────────
+export const initialStorageLocations = [
+  // PRODUCTION (PD)
+  {
+    id: 'LOC-PD-001',
+    name: 'ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)',
+    department: 'PD'
+  },
+  {
+    id: 'LOC-PD-002',
+    name: 'ชั้นวาง A-02 (อะไหล่เครื่องจักร & สายพาน)',
+    department: 'PD'
+  },
+  {
+    id: 'LOC-PD-003',
+    name: 'ตู้เก็บอุปกรณ์ความปลอดภัย (PPE)',
+    department: 'PD'
+  },
+  {
+    id: 'LOC-PD-004',
+    name: 'ห้องแพ็คเกจจิ้ง',
+    department: 'PD'
+  },
+
+  // QUALITY CONTROL (QC)
+  {
+    id: 'LOC-QC-001',
+    name: 'ตู้เก็บสารเคมีทดสอบ (Lab 1)',
+    department: 'QC'
+  },
+  {
+    id: 'LOC-QC-002',
+    name: 'ชั้นวางอาหารเลี้ยงเชื้อ (Media Shelf B)',
+    department: 'QC'
+  },
+  {
+    id: 'LOC-QC-003',
+    name: 'ตู้ควบคุมอุณหภูมิ 4°C (Cold Storage)',
+    department: 'QC'
+  },
+
+  // SHARED / GENERAL (ALL)
+  {
+    id: 'LOC-GEN-001',
+    name: 'คลังพัสดุกลาง',
+    department: 'ALL'
+  }
+];
+
 export const initialProducts = [
   // ─── PRODUCTION (PD) ITEMS ───
   {
@@ -16,7 +65,9 @@ export const initialProducts = [
     stockBalance: 2400,
     reorderPoint: 1000,
     leadTimeDays: 5,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-PD-001',
+    locationName: 'ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)'
   },
   {
     id: 'PROD-PD-002',
@@ -31,7 +82,9 @@ export const initialProducts = [
     stockBalance: 25,
     reorderPoint: 10,
     leadTimeDays: 3,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-PD-001',
+    locationName: 'ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)'
   },
   {
     id: 'PROD-PD-003',
@@ -46,7 +99,9 @@ export const initialProducts = [
     stockBalance: 6,
     reorderPoint: 8,
     leadTimeDays: 7,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-PD-002',
+    locationName: 'ชั้นวาง A-02 (อะไหล่เครื่องจักร & สายพาน)'
   },
   {
     id: 'PROD-PD-004',
@@ -61,7 +116,9 @@ export const initialProducts = [
     stockBalance: 2000,
     reorderPoint: 750,
     leadTimeDays: 3,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-PD-003',
+    locationName: 'ตู้เก็บอุปกรณ์ความปลอดภัย (PPE)'
   },
   {
     id: 'PROD-PD-005',
@@ -76,7 +133,9 @@ export const initialProducts = [
     stockBalance: 360,
     reorderPoint: 120,
     leadTimeDays: 4,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-PD-001',
+    locationName: 'ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)'
   },
   {
     id: 'PROD-PD-006',
@@ -91,7 +150,9 @@ export const initialProducts = [
     stockBalance: 30,
     reorderPoint: 12,
     leadTimeDays: 5,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-PD-002',
+    locationName: 'ชั้นวาง A-02 (อะไหล่เครื่องจักร & สายพาน)'
   },
   {
     id: 'PROD-PD-007',
@@ -106,7 +167,9 @@ export const initialProducts = [
     stockBalance: 20,
     reorderPoint: 8,
     leadTimeDays: 3,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-PD-004',
+    locationName: 'ห้องแพ็คเกจจิ้ง'
   },
   {
     id: 'PROD-PD-008',
@@ -121,7 +184,9 @@ export const initialProducts = [
     stockBalance: 60,
     reorderPoint: 25,
     leadTimeDays: 2,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-PD-004',
+    locationName: 'ห้องแพ็คเกจจิ้ง'
   },
   {
     id: 'PROD-PD-009',
@@ -136,7 +201,9 @@ export const initialProducts = [
     stockBalance: 22,
     reorderPoint: 10,
     leadTimeDays: 5,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-PD-002',
+    locationName: 'ชั้นวาง A-02 (อะไหล่เครื่องจักร & สายพาน)'
   },
   {
     id: 'PROD-PD-010',
@@ -151,7 +218,9 @@ export const initialProducts = [
     stockBalance: 700,
     reorderPoint: 300,
     leadTimeDays: 3,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-PD-003',
+    locationName: 'ตู้เก็บอุปกรณ์ความปลอดภัย (PPE)'
   },
 
   // ─── QUALITY CONTROL (QC) ITEMS ───
@@ -168,7 +237,9 @@ export const initialProducts = [
     stockBalance: 8,
     reorderPoint: 4,
     leadTimeDays: 5,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-QC-001',
+    locationName: 'ตู้เก็บสารเคมีทดสอบ (Lab 1)'
   },
   {
     id: 'PROD-QC-002',
@@ -183,7 +254,9 @@ export const initialProducts = [
     stockBalance: 6,
     reorderPoint: 3,
     leadTimeDays: 5,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-QC-001',
+    locationName: 'ตู้เก็บสารเคมีทดสอบ (Lab 1)'
   },
   {
     id: 'PROD-QC-003',
@@ -198,7 +271,9 @@ export const initialProducts = [
     stockBalance: 15000,
     reorderPoint: 5000,
     leadTimeDays: 4,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-QC-001',
+    locationName: 'ตู้เก็บสารเคมีทดสอบ (Lab 1)'
   },
   {
     id: 'PROD-QC-004',
@@ -213,7 +288,9 @@ export const initialProducts = [
     stockBalance: 1200,
     reorderPoint: 400,
     leadTimeDays: 7,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-QC-002',
+    locationName: 'ชั้นวางอาหารเลี้ยงเชื้อ (Media Shelf B)'
   },
   {
     id: 'PROD-QC-005',
@@ -228,7 +305,9 @@ export const initialProducts = [
     stockBalance: 2500,
     reorderPoint: 1000,
     leadTimeDays: 10,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-QC-002',
+    locationName: 'ชั้นวางอาหารเลี้ยงเชื้อ (Media Shelf B)'
   },
   {
     id: 'PROD-QC-006',
@@ -243,7 +322,9 @@ export const initialProducts = [
     stockBalance: 400,
     reorderPoint: 150,
     leadTimeDays: 7,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-QC-003',
+    locationName: 'ตู้ควบคุมอุณหภูมิ 4°C (Cold Storage)'
   },
   {
     id: 'PROD-QC-007',
@@ -258,128 +339,189 @@ export const initialProducts = [
     stockBalance: 4,
     reorderPoint: 2,
     leadTimeDays: 14,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-QC-001',
+    locationName: 'ตู้เก็บสารเคมีทดสอบ (Lab 1)'
   },
   {
     id: 'PROD-QC-008',
-    code: 'QC-BEA-250',
-    name: 'บีกเกอร์แก้วโบโรซิลิเกตทนความร้อน (Glass Beaker Borosilicate 250ml)',
+    code: 'QC-GLV-EXM',
+    name: 'ถุงมือตรวจโรคลาเท็กซ์ไม่มีแป้งสำหรับการทดสอบแล็บ (Powder-Free Latex Gloves Size M)',
     category: 'QC',
-    purchaseUnit: 'ชิ้น',
+    purchaseUnit: 'กล่อง (100 ชิ้น)',
     stockUnit: 'ชิ้น',
-    conversionRate: 1,
+    conversionRate: 100,
     unit: 'ชิ้น',
-    price: 160,
-    stockBalance: 25,
-    reorderPoint: 10,
+    price: 260,
+    stockBalance: 1200,
+    reorderPoint: 400,
     leadTimeDays: 3,
-    supplierId: null
+    supplierId: null,
+    locationId: 'LOC-QC-001',
+    locationName: 'ตู้เก็บสารเคมีทดสอบ (Lab 1)'
   },
   {
     id: 'PROD-QC-009',
-    code: 'QC-IPA-998',
-    name: 'ไอโซโพรพิลแอลกอฮอล์เกรดวิเคราะห์ (Isopropanol / IPA 99.8% AR Grade 2.5L)',
+    code: 'QC-ETH-995',
+    name: 'เอทานอลบริสุทธิ์เกรดวิเคราะห์ Ethanol Absolute 99.5% AR Grade (4.0L)',
     category: 'QC',
-    purchaseUnit: 'แกลลอน (2.5L)',
+    purchaseUnit: 'ขวด (4.0L)',
     stockUnit: 'ลิตร',
-    conversionRate: 2.5,
+    conversionRate: 4,
     unit: 'ลิตร',
-    price: 1350,
-    stockBalance: 25,
-    reorderPoint: 10,
-    leadTimeDays: 4,
-    supplierId: null
+    price: 1650,
+    stockBalance: 24,
+    reorderPoint: 8,
+    leadTimeDays: 5,
+    supplierId: null,
+    locationId: 'LOC-QC-001',
+    locationName: 'ตู้เก็บสารเคมีทดสอบ (Lab 1)'
   },
   {
     id: 'PROD-QC-010',
-    code: 'QC-WIP-KIM',
-    name: 'กระดาษเช็ดเลนส์และเครื่องมือวิทยาศาสตร์ไร้ขุย (Kimwipes Delicate Task Wipers)',
+    code: 'QC-ALC-PAD',
+    name: 'แผ่นแอลกอฮอล์ฆ่าเชื้อสำหรับทำความสะอาดอุปกรณ์วัด (Alcohol Prep Pads)',
     category: 'QC',
-    purchaseUnit: 'กล่อง (280 แผ่น)',
+    purchaseUnit: 'กล่อง (200 แผ่น)',
     stockUnit: 'แผ่น',
-    conversionRate: 280,
+    conversionRate: 200,
     unit: 'แผ่น',
-    price: 145,
-    stockBalance: 14000,
-    reorderPoint: 5600,
-    leadTimeDays: 2,
-    supplierId: null
+    price: 180,
+    stockBalance: 2000,
+    reorderPoint: 800,
+    leadTimeDays: 3,
+    supplierId: null,
+    locationId: 'LOC-QC-001',
+    locationName: 'ตู้เก็บสารเคมีทดสอบ (Lab 1)'
   }
 ];
 
 export const initialVendors = [
   {
-    id: 'VEN-001',
-    code: 'VND-TH-001',
-    name: 'บริษัท สยามอินดัสเตรียล ซัพพลาย แอนด์ เซอร์วิส จำกัด',
-    contactPerson: 'คุณธนากร สมบูรณ์',
-    phone: '02-345-6789',
-    taxId: '0105558012341',
+    id: 'VEND-001',
+    code: 'VEND-IND-01',
+    name: 'บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด',
     department: 'PD',
-    address: '88/12 นิคมอุตสาหกรรมบางปู ซอย 11 ต.บางปูใหม่ อ.เมือง จ.สมุทรปราการ 10280'
+    contactPerson: 'คุณสมชาย มุ่งมั่น',
+    phone: '02-123-4567',
+    email: 'sales@siamind.co.th',
+    taxId: '0105551234567',
+    address: '88/9 หมู่ 4 นิคมอุตสาหกรรมบางชัน ถ.เสรีไทย คันนายาว กทม. 10230'
   },
   {
-    id: 'VEN-002',
-    code: 'VND-TH-002',
-    name: 'บริษัท พรีเมียร์ แมชชีน แอนด์ สแปร์พาร์ท จำกัด',
-    contactPerson: 'คุณสุภาพร รัตนเวช',
-    phone: '02-789-0123',
-    taxId: '0105559023452',
+    id: 'VEND-002',
+    code: 'VEND-OIL-02',
+    name: 'บริษัท ปิโตรเลียมแอนด์ลูบริแคนท์ เทรดดิ้ง จำกัด',
     department: 'PD',
-    address: '456/78 ถ.เทพารักษ์ ต.บางพลีใหญ่ อ.บางพลี จ.สมุทรปราการ 10540'
-  },
-  {
-    id: 'VEN-003',
-    code: 'VND-TH-003',
-    name: 'บริษัท บางกอกไซแอนติฟิก อินสตรูเมนท์ส จำกัด',
-    contactPerson: 'ดร.กิตติพงศ์ วงศ์สวรรค์',
-    phone: '02-555-8899',
-    taxId: '0105560034563',
-    department: 'QC',
-    address: '99/5 อาคารไซแอนซ์แล็บ ถ.พหลโยธิน แขวงลาดยาว เขตจตุจักร กรุงเทพฯ 10900'
-  },
-  {
-    id: 'VEN-004',
-    code: 'VND-TH-004',
-    name: 'บริษัท ไทยแล็บ แอนด์ เคมีคอล ซัพพลาย จำกัด',
-    contactPerson: 'คุณนพดล สุขเกษม',
+    contactPerson: 'คุณวิภาวรรณ ชัยเจริญ',
     phone: '02-987-6543',
-    taxId: '0105561045674',
+    email: 'contact@petrolube.com',
+    taxId: '0105559876543',
+    address: '123/45 ถ.วิภาวดีรังสิต จตุจักร กทม. 10900'
+  },
+  {
+    id: 'VEND-003',
+    code: 'VEND-SAF-03',
+    name: 'ห้างหุ้นส่วนจำกัด เซฟตี้เฟิร์สท์ โปรดักส์',
+    department: 'PD',
+    contactPerson: 'คุณธวัชชัย รักษ์ดี',
+    phone: '081-456-7890',
+    email: 'service@safetyfirst.co.th',
+    taxId: '0103554567890',
+    address: '45/12 ถ.กิ่งแก้ว ต.ราชาเทวะ อ.บางพลี จ.สมุทรปราการ 10540'
+  },
+  {
+    id: 'VEND-004',
+    code: 'VEND-LAB-01',
+    name: 'บริษัท ไซแอนติฟิคแล็บ แอนด์เคมิคอล จำกัด',
     department: 'QC',
-    address: '120/14 ถ.รามอินทรา แขวงมีนบุรี เขตมีนบุรี กรุงเทพฯ 10510'
+    contactPerson: 'ดร.กิตติศักดิ์ วิริยะ',
+    phone: '02-456-7890',
+    email: 'order@scilabchem.co.th',
+    taxId: '0105554567891',
+    address: '99/1 อาคารไซแอนซ์ปาร์ค ถ.พหลโยธิน คลองหนึ่ง คลองหลวง ปทุมธานี 12120'
   },
   {
-    id: 'VEN-005',
-    code: 'VND-TH-005',
-    name: 'บริษัท โปรเทคทีฟ เซฟตี้ โซลูชั่นส์ จำกัด',
-    contactPerson: 'คุณวรรณา จันทร์เพ็ญ',
-    phone: '02-444-1122',
-    taxId: '0105562056785',
-    department: 'BOTH',
-    address: '333/19 ถ.เพชรเกษม แขวงหนองค้างพลู เขตหนองแขม กรุงเทพฯ 10160'
+    id: 'VEND-005',
+    code: 'VEND-INS-02',
+    name: 'บริษัท เพรสซิชั่นอินสตรูเมนท์ส (ไทยแลนด์) จำกัด',
+    department: 'QC',
+    contactPerson: 'คุณนุชนาถ สุขเกษม',
+    phone: '02-789-0123',
+    email: 'support@precision-inst.co.th',
+    taxId: '0105557890123',
+    address: '55/3 ซอยสุขุมวิท 63 แขวงคลองตันเหนือ เขตวัฒนา กทม. 10110'
   },
   {
-    id: 'VEN-006',
-    code: 'VND-TH-006',
-    name: 'บริษัท รุ่งเรือง แพคเกจจิ้ง แอนด์ แมททีเรียลส์ จำกัด',
-    contactPerson: 'คุณสมศักดิ์ เจริญพร',
-    phone: '02-666-3322',
-    taxId: '0105563067896',
+    id: 'VEND-006',
+    code: 'VEND-GEN-01',
+    name: 'บริษัท ออฟฟิศแอนด์แฟคทอรี่ ดีโป้ จำกัด',
     department: 'BOTH',
-    address: '77/8 หมู่ 3 ถ.เศรษฐกิจ 1 ต.คลองมะเดื่อ อ.กระทุ่มแบน จ.สมุทรสาคร 74110'
+    contactPerson: 'คุณปริญญา มั่นคง',
+    phone: '02-333-4444',
+    email: 'info@officedepot-th.com',
+    taxId: '0105553334444',
+    address: '100/8 ถ.พระราม 9 แขวงห้วยขวาง เขตห้วยขวาง กทม. 10310'
   }
 ];
+
 export const initialPRs = [];
-
 export const initialPOs = [];
-
 export const initialStockLogs = [];
-
 export const initialBudgets = {
-  PD: { monthlyBudget: 250000, spent: 0, pending: 0, variance: 0 },
-  QC: { monthlyBudget: 150000, spent: 0, pending: 0, variance: 0 }
+  PD: {
+    monthlyBudget: 250000,
+    spent: 0,
+    pending: 0,
+    variance: 0,
+    history: {
+      "2024-10": 250000, "2024-11": 250000, "2024-12": 250000,
+      "2025-01": 250000, "2025-02": 250000, "2025-03": 250000,
+      "2025-04": 250000, "2025-05": 250000, "2025-06": 250000,
+      "2025-07": 250000, "2025-08": 250000, "2025-09": 250000,
+      "2025-10": 250000, "2025-11": 250000, "2025-12": 250000,
+      "2026-01": 250000, "2026-02": 250000, "2026-03": 250000,
+      "2026-04": 250000, "2026-05": 250000, "2026-06": 250000,
+      "2026-07": 250000, "2026-08": 250000, "2026-09": 250000
+    },
+    historicalSpent: {
+      "2024-10": 0, "2024-11": 0, "2024-12": 0,
+      "2025-01": 0, "2025-02": 0, "2025-03": 0,
+      "2025-04": 0, "2025-05": 0, "2025-06": 0,
+      "2025-07": 0, "2025-08": 0, "2025-09": 0,
+      "2025-10": 0, "2025-11": 0, "2025-12": 0,
+      "2026-01": 0, "2026-02": 0, "2026-03": 0,
+      "2026-04": 0, "2026-05": 0, "2026-06": 0,
+      "2026-07": 0, "2026-08": 0, "2026-09": 0
+    }
+  },
+  QC: {
+    monthlyBudget: 150000,
+    spent: 0,
+    pending: 0,
+    variance: 0,
+    history: {
+      "2024-10": 150000, "2024-11": 150000, "2024-12": 150000,
+      "2025-01": 150000, "2025-02": 150000, "2025-03": 150000,
+      "2025-04": 150000, "2025-05": 150000, "2025-06": 150000,
+      "2025-07": 150000, "2025-08": 150000, "2025-09": 150000,
+      "2025-10": 150000, "2025-11": 150000, "2025-12": 150000,
+      "2026-01": 150000, "2026-02": 150000, "2026-03": 150000,
+      "2026-04": 150000, "2026-05": 150000, "2026-06": 150000,
+      "2026-07": 150000, "2026-08": 150000, "2026-09": 150000
+    },
+    historicalSpent: {
+      "2024-10": 0, "2024-11": 0, "2024-12": 0,
+      "2025-01": 0, "2025-02": 0, "2025-03": 0,
+      "2025-04": 0, "2025-05": 0, "2025-06": 0,
+      "2025-07": 0, "2025-08": 0, "2025-09": 0,
+      "2025-10": 0, "2025-11": 0, "2025-12": 0,
+      "2026-01": 0, "2026-02": 0, "2026-03": 0,
+      "2026-04": 0, "2026-05": 0, "2026-06": 0,
+      "2026-07": 0, "2026-08": 0, "2026-09": 0
+    }
+  }
 };
-
 export const initialCounters = {
   PD: { PR: 0, PO: 0 },
   QC: { PR: 0, PO: 0 }

@@ -103,22 +103,24 @@ export default function PrintablePO({ po }) {
         </tbody>
       </table>
 
-      {/* Signatures */}
-      <div className="grid grid-cols-3 gap-2 mt-12 text-center">
-        <div>
-          <div className="border-b border-black w-3/4 mx-auto mb-2 h-10"></div>
-          <p className="font-semibold">ผู้จัดทำ (Prepared By)</p>
-          <p className="text-sm mt-1">วันที่ ___________________</p>
+      {/* Electronic Approvals & Acknowledgement */}
+      <div className="grid grid-cols-3 gap-3 mt-10 text-center text-xs">
+        <div className="border border-slate-300 rounded-xl p-3 bg-slate-50/50">
+          <p className="font-semibold text-slate-800">ผู้จัดทำ (Prepared By)</p>
+          <p className="text-[11px] text-emerald-700 font-medium mt-1">✓ อนุมัติทางอิเล็กทรอนิกส์</p>
+          <p className="font-mono text-[11px] text-slate-700 mt-0.5">{po.createdBy || po.createdByName || po.requesterName || 'คุณวิชัย (PD)'}</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">วันที่: {po.issuedDate || po.createdAt || '-'}</p>
         </div>
-        <div>
-          <div className="border-b border-black w-3/4 mx-auto mb-2 h-10"></div>
-          <p className="font-semibold">ผู้อนุมัติ (Authorized By)</p>
-          <p className="text-sm mt-1">วันที่ ___________________</p>
+        <div className="border border-slate-300 rounded-xl p-3 bg-slate-50/50">
+          <p className="font-semibold text-slate-800">ผู้อนุมัติ (Authorized By)</p>
+          <p className="text-[11px] text-emerald-700 font-medium mt-1">✓ อนุมัติทางอิเล็กทรอนิกส์</p>
+          <p className="font-mono text-[11px] text-slate-700 mt-0.5">{po.approvedBy || 'คุณประเสริฐ (Plant Mgr)'}</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">วันที่: {po.approvedAt || po.issuedDate || '-'}</p>
         </div>
-        <div>
-          <div className="border-b border-black w-3/4 mx-auto mb-2 h-10"></div>
-          <p className="font-semibold">ผู้ขายรับเอกสาร (Accepted By)</p>
-          <p className="text-sm mt-1">วันที่ ___________________</p>
+        <div className="border border-slate-300 rounded-xl p-3 bg-slate-50/50 flex flex-col justify-between">
+          <p className="font-semibold text-slate-800">ผู้ขายรับเอกสาร (Accepted By)</p>
+          <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto my-2"></div>
+          <p className="text-[10px] text-slate-400">วันที่: ___________________</p>
         </div>
       </div>
     </div>

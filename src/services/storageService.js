@@ -1,53 +1,142 @@
-import { STORAGE_KEYS, ROLES } from '../config/constants.js';
-import { initialProducts, initialVendors, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
+import { STORAGE_KEYS, ROLES, INITIAL_USAGE_UNITS } from '../config/constants.js';
+import { initialProducts, initialVendors, initialStorageLocations, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
 
-const DATA_VERSION = 'prpo_clean_v12';
+const DATA_VERSION = 'prpo_clean_v14';
+const API_URL = 'http://localhost:3001/api/storage';
+
+// In-Memory Storage Cache backed by Local File API Server
+let _cache = {};
+let _apiReady = false;
+
+const _syncApi = async () => {
+  if (!_apiReady) return;
+  try {
+    await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_cache)
+    });
+  } catch (e) {
+    console.warn('[StorageService] Local API Sync warning:', e.message);
+  }
+};
+
+const _getItem = (key) => {
+  if (_apiReady && _cache[key] !== undefined) {
+    return _cache[key];
+  }
+  const local = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+  return local ? JSON.parse(local) : null;
+};
+
+const _setItem = (key, value) => {
+  _cache[key] = value;
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      // ignore storage quota error
+    }
+  }
+  _syncApi();
+};
 
 export const storageService = {
-  // Initialize storage if empty or version mismatch
-  init() {
-    const currentVer = localStorage.getItem('prpo_data_version');
-    if (!currentVer || currentVer !== DATA_VERSION) {
-      this.resetData();
+  // Initialize storage from Local Node.js Backend with fallback to LocalStorage & Mock Data
+  async init() {
+    try {
+      const res = await fetch(API_URL);
+      if (res.ok) {
+        const data = await res.json();
+        _cache = data || {};
+        _apiReady = true;
+
+        // Seed empty backend data from initial defaults if first time
+        let needSync = false;
+        if (!_cache[STORAGE_KEYS.PRODUCTS] || _cache[STORAGE_KEYS.PRODUCTS].length === 0) {
+          _cache[STORAGE_KEYS.PRODUCTS] = initialProducts;
+          needSync = true;
+        }
+        if (!_cache[STORAGE_KEYS.VENDORS] || _cache[STORAGE_KEYS.VENDORS].length === 0) {
+          _cache[STORAGE_KEYS.VENDORS] = initialVendors;
+          needSync = true;
+        }
+        if (!_cache[STORAGE_KEYS.STORAGE_LOCATIONS] || _cache[STORAGE_KEYS.STORAGE_LOCATIONS].length === 0) {
+          _cache[STORAGE_KEYS.STORAGE_LOCATIONS] = initialStorageLocations;
+          needSync = true;
+        }
+        if (!_cache[STORAGE_KEYS.USAGE_UNITS] || _cache[STORAGE_KEYS.USAGE_UNITS].length === 0) {
+          _cache[STORAGE_KEYS.USAGE_UNITS] = INITIAL_USAGE_UNITS;
+          needSync = true;
+        }
+        if (!_cache[STORAGE_KEYS.BUDGETS]) {
+          _cache[STORAGE_KEYS.BUDGETS] = initialBudgets;
+          needSync = true;
+        }
+        if (!_cache[STORAGE_KEYS.PR_COUNTERS]) {
+          _cache[STORAGE_KEYS.PR_COUNTERS] = initialCounters;
+          needSync = true;
+        }
+
+        if (needSync) {
+          await _syncApi();
+        }
+        console.log('[StorageService] Synced with Local Node.js File API successfully.');
+        return;
+      }
+    } catch (e) {
+      console.warn('[StorageService] Local API not reachable. Using in-memory / LocalStorage fallback.');
+    }
+
+    // Fallback to local storage version check
+    if (typeof localStorage !== 'undefined') {
+      const currentVer = localStorage.getItem('prpo_data_version');
+      if (!currentVer || currentVer !== DATA_VERSION) {
+        this.resetData();
+      }
     }
   },
 
-  // Reset data to initial defaults (Clearing mock PR/PO/Logs, Preserving Master Data)
+  // Reset data to initial defaults
   resetData() {
-    localStorage.setItem('prpo_data_version', DATA_VERSION);
-    localStorage.setItem(STORAGE_KEYS.CURRENT_ROLE, JSON.stringify(ROLES.REQUESTER_PD));
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(initialProducts));
-    localStorage.setItem(STORAGE_KEYS.VENDORS, JSON.stringify(initialVendors));
-    localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.POS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.STOCK_LOGS, JSON.stringify([]));
-    localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify({
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('prpo_data_version', DATA_VERSION);
+    }
+    _setItem(STORAGE_KEYS.CURRENT_ROLE, ROLES.REQUESTER_PD);
+    _setItem(STORAGE_KEYS.PRODUCTS, initialProducts);
+    _setItem(STORAGE_KEYS.VENDORS, initialVendors);
+    _setItem(STORAGE_KEYS.STORAGE_LOCATIONS, initialStorageLocations);
+    _setItem(STORAGE_KEYS.USAGE_UNITS, INITIAL_USAGE_UNITS);
+    _setItem(STORAGE_KEYS.PRS, []);
+    _setItem(STORAGE_KEYS.POS, []);
+    _setItem(STORAGE_KEYS.STOCK_LOGS, []);
+    _setItem(STORAGE_KEYS.BUDGETS, {
       PD: { monthlyBudget: 250000, spent: 0, pending: 0, variance: 0 },
       QC: { monthlyBudget: 150000, spent: 0, pending: 0, variance: 0 }
-    }));
-    localStorage.setItem(STORAGE_KEYS.PR_COUNTERS, JSON.stringify({
+    });
+    _setItem(STORAGE_KEYS.PR_COUNTERS, {
       PD: { PR: 0, PO: 0 },
       QC: { PR: 0, PO: 0 }
-    }));
-    localStorage.setItem('prpo_budget_transactions', JSON.stringify([]));
-    localStorage.setItem('prpo_audit_logs', JSON.stringify([]));
-    localStorage.setItem('prpo_notifications', JSON.stringify([]));
+    });
+    _setItem('prpo_budget_transactions', []);
+    _setItem('prpo_audit_logs', []);
+    _setItem('prpo_notifications', []);
     console.log('[StorageService] Operational mock data cleared. Master data preserved.');
   },
 
   // Role
   getCurrentRole() {
-    const data = localStorage.getItem(STORAGE_KEYS.CURRENT_ROLE);
-    return data ? JSON.parse(data) : ROLES.REQUESTER_PD;
+    const data = _getItem(STORAGE_KEYS.CURRENT_ROLE);
+    return data || ROLES.REQUESTER_PD;
   },
   setCurrentRole(role) {
-    localStorage.setItem(STORAGE_KEYS.CURRENT_ROLE, JSON.stringify(role));
+    _setItem(STORAGE_KEYS.CURRENT_ROLE, role);
   },
 
   // Products (with Lazy Migration)
   getProducts() {
-    const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-    const products = data ? JSON.parse(data) : initialProducts;
+    const data = _getItem(STORAGE_KEYS.PRODUCTS);
+    const products = data || initialProducts;
     
     let needsSave = false;
     const migrated = products.map(p => {
@@ -85,28 +174,164 @@ export const storageService = {
     });
 
     if (needsSave) {
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(migrated));
+      _setItem(STORAGE_KEYS.PRODUCTS, migrated);
     }
     return migrated;
   },
   saveProducts(products) {
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+    _setItem(STORAGE_KEYS.PRODUCTS, products);
+  },
+
+  // Storage Locations (Simple Name & Department)
+  getStorageLocations() {
+    const data = _getItem(STORAGE_KEYS.STORAGE_LOCATIONS);
+    if (!data) {
+      this.saveStorageLocations(initialStorageLocations);
+      return initialStorageLocations;
+    }
+    return data;
+  },
+  saveStorageLocations(locations) {
+    _setItem(STORAGE_KEYS.STORAGE_LOCATIONS, locations);
+  },
+
+  // Usage Units (Department-Scoped Rooms / Units)
+  getUsageUnits(department) {
+    const data = _getItem(STORAGE_KEYS.USAGE_UNITS);
+    const list = data || INITIAL_USAGE_UNITS;
+    if (!data) {
+      this.saveUsageUnits(INITIAL_USAGE_UNITS);
+    }
+    if (department && department !== 'ALL') {
+      return list.filter(u => u.department === department);
+    }
+    return list;
+  },
+  saveUsageUnits(units) {
+    _setItem(STORAGE_KEYS.USAGE_UNITS, units);
+  },
+  saveUsageUnit(unitObj) {
+    const units = [...this.getUsageUnits()];
+    let updatedUnit = { ...unitObj };
+    const isUpdate = Boolean(updatedUnit.id);
+    if (!isUpdate) {
+      const dept = updatedUnit.department || 'PD';
+      updatedUnit.id = `UNIT-${dept}-${Date.now().toString().slice(-6)}`;
+      updatedUnit.status = updatedUnit.status || 'ACTIVE';
+      units.push(updatedUnit);
+    } else {
+      const idx = units.findIndex(u => u.id === updatedUnit.id);
+      if (idx !== -1) {
+        units[idx] = { ...units[idx], ...updatedUnit };
+      } else {
+        units.push(updatedUnit);
+      }
+    }
+    this.saveUsageUnits(units);
+    return updatedUnit;
+  },
+  deleteUsageUnit(unitId) {
+    const units = this.getUsageUnits();
+    const filtered = units.filter(u => u.id !== unitId);
+    this.saveUsageUnits(filtered);
+    return true;
+  },
+  saveStorageLocation(locationObj) {
+    const locations = this.getStorageLocations();
+    let updatedLoc = { ...locationObj };
+    const isUpdate = Boolean(updatedLoc.id);
+
+    if (!isUpdate) {
+      const dept = updatedLoc.department || 'ALL';
+      updatedLoc.id = `LOC-${dept}-${Date.now().toString().slice(-6)}`;
+      locations.unshift(updatedLoc);
+    } else {
+      const idx = locations.findIndex(l => l.id === updatedLoc.id);
+      if (idx !== -1) {
+        locations[idx] = { ...locations[idx], ...updatedLoc };
+      } else {
+        locations.unshift(updatedLoc);
+      }
+    }
+    this.saveStorageLocations(locations);
+
+    // Cascading Sync on Update: sync all products referencing this locationId
+    if (isUpdate) {
+      const products = this.getProducts();
+      let productsNeedUpdate = false;
+      const updatedProducts = products.map(p => {
+        if (p.locationId === updatedLoc.id) {
+          productsNeedUpdate = true;
+          return {
+            ...p,
+            locationName: updatedLoc.name
+          };
+        }
+        return p;
+      });
+      if (productsNeedUpdate) {
+        this.saveProducts(updatedProducts);
+      }
+    }
+
+    return updatedLoc;
+  },
+  deleteStorageLocation(locationId, { reassignToLocationId = null, unlinkProducts = false } = {}) {
+    const products = this.getProducts();
+    const locations = this.getStorageLocations();
+    const assignedProducts = products.filter(p => p.locationId === locationId);
+
+    if (assignedProducts.length > 0 && !unlinkProducts && !reassignToLocationId) {
+      throw new Error(`ไม่สามารถลบจุดเก็บนี้ได้ เนื่องจากมีสินค้าผูกอยู่ ${assignedProducts.length} รายการ กรุณาย้ายหรือเปลี่ยนจุดเก็บของสินค้าออกก่อน`);
+    }
+
+    if (assignedProducts.length > 0) {
+      let targetLoc = null;
+      if (reassignToLocationId) {
+        targetLoc = locations.find(l => l.id === reassignToLocationId);
+      }
+
+      const updatedProducts = products.map(p => {
+        if (p.locationId === locationId) {
+          if (reassignToLocationId && targetLoc) {
+            return {
+              ...p,
+              locationId: targetLoc.id,
+              locationName: targetLoc.name
+            };
+          } else if (unlinkProducts) {
+            return {
+              ...p,
+              locationId: null,
+              locationName: null
+            };
+          }
+        }
+        return p;
+      });
+
+      this.saveProducts(updatedProducts);
+    }
+
+    const filtered = locations.filter(l => l.id !== locationId);
+    this.saveStorageLocations(filtered);
+    return true;
   },
 
   // Vendors
   getVendors() {
-    const data = localStorage.getItem(STORAGE_KEYS.VENDORS);
-    return data ? JSON.parse(data) : initialVendors;
+    const data = _getItem(STORAGE_KEYS.VENDORS);
+    return data || initialVendors;
   },
   saveVendors(vendors) {
-    localStorage.setItem(STORAGE_KEYS.VENDORS, JSON.stringify(vendors));
+    _setItem(STORAGE_KEYS.VENDORS, vendors);
   },
 
   // PRs (with Lazy Migration)
   getPRs() {
-    const data = localStorage.getItem(STORAGE_KEYS.PRS);
-    const prs = data ? JSON.parse(data) : initialPRs;
-    const filtered = prs.filter(pr => pr.department === 'PD' || pr.department === 'QC');
+    const data = _getItem(STORAGE_KEYS.PRS);
+    const prs = Array.isArray(data) ? data : (initialPRs || []);
+    const filtered = prs;
     
     let needsSave = false;
     const migrated = filtered.map(pr => {
@@ -137,22 +362,31 @@ export const storageService = {
     });
 
     if (needsSave) {
-      localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify(migrated));
+      _setItem(STORAGE_KEYS.PRS, migrated);
     }
     return migrated;
   },
   savePRs(prs) {
-    localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify(prs));
+    _setItem(STORAGE_KEYS.PRS, prs);
   },
 
-  // POs (with Lazy Migration)
+  // POs (with Lazy Migration & Deduplication)
   getPOs() {
-    const data = localStorage.getItem(STORAGE_KEYS.POS);
-    const pos = data ? JSON.parse(data) : initialPOs;
+    const data = _getItem(STORAGE_KEYS.POS);
+    const pos = Array.isArray(data) ? data : (initialPOs || []);
     const filtered = pos.filter(po => po.department === 'PD' || po.department === 'QC');
 
-    let needsSave = false;
-    const migrated = filtered.map(po => {
+    // Deduplicate POs by unique identifier
+    const seen = new Set();
+    const deduplicated = filtered.filter(p => {
+      const key = p.poNo || p.poNumber || p.id;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    let needsSave = deduplicated.length !== filtered.length;
+    const migrated = deduplicated.map(po => {
       let poUpdated = false;
       let items = po.items || [];
 
@@ -201,64 +435,70 @@ export const storageService = {
     });
 
     if (needsSave) {
-      localStorage.setItem(STORAGE_KEYS.POS, JSON.stringify(migrated));
+      _setItem(STORAGE_KEYS.POS, migrated);
     }
     return migrated;
   },
   savePOs(pos) {
-    localStorage.setItem(STORAGE_KEYS.POS, JSON.stringify(pos));
+    const seen = new Set();
+    const unique = (Array.isArray(pos) ? pos : []).filter(p => {
+      const key = p.poNo || p.poNumber || p.id;
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    _setItem(STORAGE_KEYS.POS, unique);
   },
 
   // Stock Logs
   getStockLogs() {
-    const data = localStorage.getItem(STORAGE_KEYS.STOCK_LOGS);
-    return data ? JSON.parse(data) : initialStockLogs;
+    const data = _getItem(STORAGE_KEYS.STOCK_LOGS);
+    return data || initialStockLogs;
   },
   saveStockLogs(logs) {
-    localStorage.setItem(STORAGE_KEYS.STOCK_LOGS, JSON.stringify(logs));
+    _setItem(STORAGE_KEYS.STOCK_LOGS, logs);
   },
 
   // Budgets
   getBudgets() {
-    const data = localStorage.getItem(STORAGE_KEYS.BUDGETS);
-    const budgets = data ? JSON.parse(data) : initialBudgets;
+    const data = _getItem(STORAGE_KEYS.BUDGETS);
+    const budgets = data || initialBudgets;
     const sanitized = {};
     if (budgets.PD) sanitized.PD = budgets.PD;
     if (budgets.QC) sanitized.QC = budgets.QC;
     return sanitized;
   },
   saveBudgets(budgets) {
-    localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(budgets));
+    _setItem(STORAGE_KEYS.BUDGETS, budgets);
   },
 
   // Budget Transaction Log (Refund / Restore entries)
   getBudgetTransactions() {
-    const data = localStorage.getItem(STORAGE_KEYS.BUDGET_TRANSACTIONS);
-    return data ? JSON.parse(data) : [];
+    const data = _getItem(STORAGE_KEYS.BUDGET_TRANSACTIONS);
+    return data || [];
   },
   saveBudgetTransactions(transactions) {
-    localStorage.setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, JSON.stringify(transactions));
+    _setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, transactions);
   },
   appendBudgetTransaction(tx) {
     const existing = this.getBudgetTransactions();
     existing.unshift({ ...tx, id: `BTX-${Date.now()}` }); // prepend newest first
-    localStorage.setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, JSON.stringify(existing));
+    _setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, existing);
   },
-
 
   getPRCounters() {
-    const data = localStorage.getItem(STORAGE_KEYS.PR_COUNTERS);
-    return data ? JSON.parse(data) : initialCounters;
+    const data = _getItem(STORAGE_KEYS.PR_COUNTERS);
+    return data || initialCounters;
   },
   savePRCounters(counters) {
-    localStorage.setItem(STORAGE_KEYS.PR_COUNTERS, JSON.stringify(counters));
+    _setItem(STORAGE_KEYS.PR_COUNTERS, counters);
   },
 
   // Signatures Management (Admin Managed)
   getSignatures() {
-    const data = localStorage.getItem(STORAGE_KEYS.SIGNATURES);
+    const data = _getItem(STORAGE_KEYS.SIGNATURES);
     if (data) {
-      try { return JSON.parse(data); } catch (e) { return {}; }
+      return data;
     }
     const defaultSignatures = {
       'ASST_MANAGER': {
@@ -311,11 +551,11 @@ export const storageService = {
         updatedBy: 'Admin'
       }
     };
-    localStorage.setItem(STORAGE_KEYS.SIGNATURES, JSON.stringify(defaultSignatures));
+    _setItem(STORAGE_KEYS.SIGNATURES, defaultSignatures);
     return defaultSignatures;
   },
   saveSignatures(signatures) {
-    localStorage.setItem(STORAGE_KEYS.SIGNATURES, JSON.stringify(signatures));
+    _setItem(STORAGE_KEYS.SIGNATURES, signatures);
   },
   getSignatureByRole(userOrRoleId) {
     if (!userOrRoleId) return null;

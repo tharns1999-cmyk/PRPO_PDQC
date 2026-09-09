@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useAppContext } from '../context/AppContext';
 import { PR_STATUS, PURCHASE_CHANNEL } from '../config/constants';
 import { workflowEngine } from '../services/workflowEngine';
 import PRDetailsModal from '../components/pr/PRDetailsModal';
 import EmptyState from '../components/common/EmptyState';
+import Pagination from '../components/common/Pagination';
 import { ClipboardList, Plus, FileSearch, Search, X, DollarSign, Clock, CheckCircle2, Building2, Tag, ShoppingCart, Pencil, ArrowRight } from 'lucide-react';
 
 const PR_TABS = [
@@ -14,11 +16,36 @@ const PR_TABS = [
   { id: 'REJECTED', label: 'ไม่อนุมัติ / ยกเลิก', filter: pr => ['REJECTED', 'CANCELLED'].includes(pr.status) },
 ];
 
-export default function PRListView({ prs = [], currentRole, onRefresh, onNavigate, onEditPR }) {
+export default function PRListView({ 
+  prs: propPrs, 
+  currentRole: propRole, 
+  onRefresh: propRefresh, 
+  onNavigate: propNavigate, 
+  onEditPR: propEditPR 
+} = {}) {
+  const context = useAppContext();
+  const prs = propPrs ?? context.prs ?? [];
+  const currentRole = propRole ?? context.currentRole;
+  const onRefresh = propRefresh ?? context.refreshData;
+  const onNavigate = propNavigate ?? context.onNavigate;
+  const onEditPR = propEditPR ?? context.handleEditPR;
+
   const [selectedPR, setSelectedPR] = useState(null);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [deptFilter, setDeptFilter] = useState(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  // Sync department filter whenever user switches role via Fast Switcher
+  useEffect(() => {
+    setDeptFilter(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
+  }, [currentRole]);
+
+  // Auto-reset page when filter or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterStatus, deptFilter, searchQuery]);
 
   // Department-based access check
   const accessiblePRs = useMemo(() => {
@@ -76,6 +103,13 @@ export default function PRListView({ prs = [], currentRole, onRefresh, onNavigat
     return { totalCount, totalAmount, pendingCount, pendingAmount, approvedCount };
   }, [filteredPRs]);
 
+  // Pagination slicing
+  const totalPages = Math.ceil(filteredPRs.length / pageSize) || 1;
+  const paginatedPRs = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredPRs.slice(start, start + pageSize);
+  }, [filteredPRs, currentPage, pageSize]);
+
   return (
     <div className="w-full space-y-6 animate-fade-in pb-10">
       
@@ -105,64 +139,64 @@ export default function PRListView({ prs = [], currentRole, onRefresh, onNavigat
       </div>
 
       {/* Insight Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
-        <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/70 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ยอดรวม PR ในตัวกรอง</p>
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono tabular-nums tracking-tight">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">ยอดรวม PR ในตัวกรอง</p>
+              <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mt-1.5 font-mono tabular-nums tracking-tight">
                 ฿{metrics.totalAmount.toLocaleString()}
               </h3>
             </div>
-            <div className="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center shrink-0 shadow-2xs">
-              <DollarSign className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center shrink-0 shadow-2xs">
+              <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
             <span>รายการทั้งหมด</span>
-            <span className="font-bold text-slate-900 font-mono tabular-nums bg-slate-50 px-2.5 py-0.5 rounded-full border border-slate-200/60">{metrics.totalCount} รายการ</span>
+            <span className="font-semibold text-slate-800 font-mono tabular-nums bg-slate-50 px-2.5 py-0.5 rounded-full border border-slate-200/60">{metrics.totalCount} รายการ</span>
           </div>
         </div>
 
-        <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/70 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">รออนุมัติสั่งซื้อ</p>
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono tabular-nums tracking-tight">
-                {metrics.pendingCount} <span className="text-xs font-semibold text-slate-400 font-sans">รายการ</span>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">รออนุมัติสั่งซื้อ</p>
+              <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mt-1.5 font-mono tabular-nums tracking-tight">
+                {metrics.pendingCount} <span className="text-xs font-normal text-slate-400 font-sans">รายการ</span>
               </h3>
             </div>
-            <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center shrink-0 shadow-2xs">
-              <Clock className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center shrink-0 shadow-2xs">
+              <Clock className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
             <span>มูลค่ารออนุมัติ</span>
-            <span className="font-bold text-amber-800 font-mono tabular-nums bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/60">฿{metrics.pendingAmount.toLocaleString()}</span>
+            <span className="font-semibold text-amber-800 font-mono tabular-nums bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/60">฿{metrics.pendingAmount.toLocaleString()}</span>
           </div>
         </div>
 
-        <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col justify-between">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/70 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">อนุมัติแล้ว / ออก PO</p>
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono tabular-nums tracking-tight">
-                {metrics.approvedCount} <span className="text-xs font-semibold text-slate-400 font-sans">รายการ</span>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">อนุมัติแล้ว / ออก PO</p>
+              <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mt-1.5 font-mono tabular-nums tracking-tight">
+                {metrics.approvedCount} <span className="text-xs font-normal text-slate-400 font-sans">รายการ</span>
               </h3>
             </div>
-            <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0 shadow-2xs">
-              <CheckCircle2 className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0 shadow-2xs">
+              <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
             <span>สถานะ</span>
-            <span className="font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60 text-[11px]">ผ่านการอนุมัติแล้ว</span>
+            <span className="font-medium text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60 text-[11px]">ผ่านการอนุมัติแล้ว</span>
           </div>
         </div>
       </div>
 
       {/* Filter Toolbar Container */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5 bg-white p-2.5 rounded-2xl border border-slate-200/70 shadow-2xs">
         {/* Business Status Tabs */}
         <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl overflow-x-auto custom-scrollbar">
           {PR_TABS.map(tab => {
@@ -234,18 +268,18 @@ export default function PRListView({ prs = [], currentRole, onRefresh, onNavigat
       </div>
 
       {/* PR Table Card */}
-      <div className="bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-sm">
+      <div className="bg-white border border-slate-200/70 rounded-2xl overflow-hidden shadow-2xs">
         <div className="overflow-x-auto overflow-y-auto max-h-[580px] custom-scrollbar relative">
-          <table className="w-full text-left text-sm">
-            <thead className="sticky top-0 z-20 shadow-2xs bg-slate-50/90 border-b border-slate-200 text-slate-500 font-bold text-[11px] uppercase tracking-wider">
+          <table className="w-full text-left text-xs sm:text-sm">
+            <thead className="sticky top-0 z-20 shadow-2xs bg-slate-50/95 backdrop-blur-xs border-b border-slate-200/80 text-slate-500 font-semibold text-[11px] uppercase tracking-wider">
               <tr>
-                <th className="py-3.5 pl-6">เลขที่ PR</th>
-                <th className="py-3.5 px-4">ผู้ขอซื้อ / ฝ่าย</th>
-                <th className="py-3.5 px-4 w-1/3">รายการสินค้า</th>
-                <th className="py-3.5 px-4">ช่องทาง</th>
-                <th className="py-3.5 px-4 text-right">ยอดรวม</th>
-                <th className="py-3.5 px-4 text-center">สถานะ</th>
-                <th className="py-3.5 pr-6 text-center">จัดการ</th>
+                <th className="py-3 pl-5">เลขที่ PR</th>
+                <th className="py-3 px-4">ผู้ขอซื้อ / ฝ่าย</th>
+                <th className="py-3 px-4 w-1/3">รายการสินค้า</th>
+                <th className="py-3 px-4">ช่องทาง</th>
+                <th className="py-3 px-4 text-right">ยอดรวม</th>
+                <th className="py-3 px-4 text-center">สถานะ</th>
+                <th className="py-3 pr-5 text-center">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -259,7 +293,7 @@ export default function PRListView({ prs = [], currentRole, onRefresh, onNavigat
                   </td>
                 </tr>
               ) : (
-                filteredPRs.map(pr => {
+                paginatedPRs.map(pr => {
                   const canAction = workflowEngine.canAction(currentRole, pr);
                   const channel = PURCHASE_CHANNEL[pr.purchaseChannel] || PURCHASE_CHANNEL.SELF || { label: 'ซื้อเอง' };
                   const statusConf = PR_STATUS[pr.status] || { label: pr.status || 'ไม่ระบุสถานะ', color: 'bg-slate-100 text-slate-700 border-slate-200' };
@@ -344,6 +378,15 @@ export default function PRListView({ prs = [], currentRole, onRefresh, onNavigat
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Controls */}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredPRs.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* PR DETAIL MODAL */}

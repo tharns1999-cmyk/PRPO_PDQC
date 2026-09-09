@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { SlidersHorizontal, AlertCircle, X, Check, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { SlidersHorizontal, AlertCircle, X, Check, ArrowDownCircle, ArrowUpCircle, MapPin } from 'lucide-react';
 import { storageService } from '../../services/storageService';
 import SearchableSelect from '../common/SearchableSelect';
 
@@ -182,11 +182,17 @@ export default function StockAdjustmentModal({ products = [], currentRole, onClo
                   buttonClassName="h-11 text-xs font-medium"
                 />
                 {selectedProduct && (
-                  <div className="mt-2.5 p-3 bg-white border border-slate-200/80 rounded-xl flex items-center justify-between text-xs shadow-2xs font-mono">
-                    <span className="text-slate-500 font-sans">ยอดคงเหลือปัจจุบัน:</span>
-                    <span className="font-bold text-slate-900 tabular-nums">
-                      {selectedProduct.stockBalance || 0} {sUnit}
-                    </span>
+                  <div className="mt-2.5 p-3 bg-white border border-slate-200/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs shadow-2xs">
+                    <div className="flex items-center gap-1.5 text-slate-600">
+                      <MapPin className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                      <span>จุดจัดเก็บ: <b className="text-slate-900 font-semibold">{selectedProduct.locationName || 'ไม่ระบุจุดจัดเก็บ'}</b></span>
+                    </div>
+                    <div className="font-mono">
+                      <span className="text-slate-500 font-sans">คงเหลือ: </span>
+                      <span className="font-bold text-slate-900 tabular-nums">
+                        {selectedProduct.stockBalance || 0} {sUnit}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>

@@ -4,6 +4,7 @@ import { PO_STATUS } from '../../config/constants';
 import { apiService } from '../../services/apiService';
 import { storageService } from '../../services/storageService';
 import { modalService } from '../../services/modalService';
+import { useAppContext } from '../../context/AppContext';
 import { 
   Printer, Download, History, XCircle, CheckCircle, AlertTriangle, 
   ExternalLink, ShoppingCart, Info, X, Building2, Calendar, FileText, 
@@ -15,7 +16,9 @@ import PrintablePO from './PrintablePO';
 import AttachmentViewerModal from '../common/AttachmentViewerModal';
 
 export default function PODetailsModal({ selectedPO, currentRole, onClose, onRefresh }) {
+  const context = useAppContext();
   const [isReceiving, setIsReceiving] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showReceivingPanel, setShowReceivingPanel] = useState(false);
   const [receivingQtys, setReceivingQtys] = useState({});
   const [problematicItems, setProblematicItems] = useState({});
@@ -172,6 +175,10 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
   };
 
   const handleSubmitReceiving = async () => {
+    // 1. Immediate Double-Click Guard
+    if (isSubmitting || isReceiving) return;
+    setIsSubmitting(true);
+
     const receivingItems = selectedPO.items.map(item => ({
       productId: item.productId,
       receivedThisTime: Number(receivingQtys[item.productId]) || 0
@@ -182,20 +189,40 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
 
     // If no normal items received and no claims filed, reject
     if (totalReceiving <= 0 && !hasProblematic) {
+      setIsSubmitting(false);
       return modalService.warning('กรุณาระบุจำนวนที่รับ หรือทำเครื่องหมายรายการที่มีปัญหา');
     }
 
-    // Validate defect descriptions and claimed quantities for problematic items
+    // 2. Validate Defect Details & Quantity Boundaries (receivedQty + incomingQty <= orderedQty)
     for (const item of selectedPO.items) {
       const prob = problematicItems[item.productId];
       if (prob?.isProblematic) {
         const cQty = Number(prob.claimedQty) || 0;
         if (cQty <= 0) {
+          setIsSubmitting(false);
           return modalService.warning('กรุณาระบุจำนวนที่มีปัญหา/เคลม', `สำหรับรายการ "${item.name}"`);
         }
         if (!prob.description?.trim() && !prob.defectReason?.trim()) {
+          setIsSubmitting(false);
           return modalService.warning('กรุณาระบุรายละเอียดปัญหาของสินค้า', `สำหรับรายการ "${item.name}" ที่ทำเครื่องหมายว่าสินค้ามีปัญหา`);
         }
+      }
+
+      const ordered = Number(item.orderedQty ?? item.purchaseQty ?? item.qty) || 0;
+      const alreadyReceived = Number(item.receivedQty) || 0;
+      const incoming = Number(receivingQtys[item.productId]) || 0;
+
+      if (incoming < 0) {
+        setIsSubmitting(false);
+        return modalService.warning('จำนวนรับไม่ถูกต้อง', `จำนวนรับสำหรับรายการ "${item.name}" ต้องไม่ติดลบ`);
+      }
+
+      if (alreadyReceived + incoming > ordered) {
+        setIsSubmitting(false);
+        return modalService.warning(
+          'จำนวนรับเกินยอดสั่งซื้อ (Quantity Boundary Exceeded)',
+          `รายการ "${item.name}" สั่งซื้อ ${ordered} ${item.purchaseUnit || item.unit || 'ชิ้น'} รับไปแล้ว ${alreadyReceived} จะรับเพิ่ม ${incoming} (ยอดรวม ${alreadyReceived + incoming} เกินกว่าจำนวนที่สั่งซื้อใน PO)`
+        );
       }
     }
 
@@ -221,16 +248,24 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
       confirmText: hasProblematic ? 'บันทึกรับของ & ส่งเรื่องเคลม' : (allRemaining ? 'ตรวจรับครบและปิด PO' : 'บันทึกการรับของ'),
       cancelText: 'ยกเลิก'
     });
-    if (!confirmed) return;
+    if (!confirmed) {
+      setIsSubmitting(false);
+      return;
+    }
 
     setIsReceiving(true);
+    // 3. Unique GR Identifier Generation
+    const grNumber = `GR-${selectedPO.poNo || selectedPO.id}-${Date.now()}`;
+
     try {
-      await apiService.receiveGoods(
+      const receiveAction = context?.receivePOItems || context?.receiveGoods || apiService.receiveGoods;
+      await receiveAction(
         selectedPO.id, 
         receivingItems, 
-        currentRole, 
         receiveNote.trim(),
         {
+          grNumber,
+          grId: grNumber,
           problematicItems,
           grAttachments
         }
@@ -243,7 +278,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
       } else {
         await modalService.success(
           'ตรวจรับสินค้าสำเร็จ',
-          `บันทึกการตรวจรับเข้าสต็อกสำหรับ PO ${selectedPO.poNo} เรียบร้อยแล้ว`
+          `บันทึกการตรวจรับเข้าสต็อกสำหรับ PO ${selectedPO.poNo} เรียบร้อยแล้ว (เลขที่อ้างอิง: ${grNumber})`
         );
       }
       onRefresh();
@@ -251,6 +286,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     } catch (err) {
       modalService.error('เกิดข้อผิดพลาดในการตรวจรับ', err.message);
     } finally {
+      setIsSubmitting(false);
       setIsReceiving(false);
     }
   };
@@ -1447,8 +1483,8 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                     <button
                       type="button"
                       onClick={handleShortClosePO}
-                      disabled={isShortClosing || isReceiving}
-                      className="w-full sm:w-auto px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-xl shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      disabled={isShortClosing || isReceiving || isSubmitting}
+                      className="w-full sm:w-auto px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-xl shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       title="ปิด PO ทันทีแม้ได้ของไม่ครบ เช่น ร้านค้าแจ้งของหมด"
                     >
                       <AlertOctagon className="w-3.5 h-3.5 text-amber-700" />
@@ -1460,22 +1496,22 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                       <button
                         type="button"
                         onClick={handleSubmitReceiving}
-                        disabled={isReceiving || isShortClosing}
-                        className="w-full sm:w-auto px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-60 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer ring-2 ring-rose-200"
+                        disabled={isReceiving || isSubmitting || isShortClosing}
+                        className="w-full sm:w-auto px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer ring-2 ring-rose-200"
                       >
                         <AlertTriangle className="w-4 h-4" />
-                        <span>{isReceiving ? 'กำลังบันทึก...' : '🚨 ยืนยันตรวจรับพร้อมแจ้งเคลมสินค้า (Receive & File Claim)'}</span>
+                        <span>{isReceiving || isSubmitting ? 'กำลังบันทึกตรวจรับ...' : '🚨 ยืนยันตรวจรับพร้อมแจ้งเคลมสินค้า (Receive & File Claim)'}</span>
                       </button>
                     ) : (
                       <button
                         type="button"
                         onClick={handleSubmitReceiving}
-                        disabled={isReceiving || isShortClosing}
-                        className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                        disabled={isReceiving || isSubmitting || isShortClosing}
+                        className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <CheckCircle2 className="w-4 h-4" />
                         <span>
-                          {isReceiving ? 'กำลังบันทึก...' : (
+                          {isReceiving || isSubmitting ? 'กำลังบันทึกตรวจรับ...' : (
                             selectedPO.items.every(item => {
                               const ord = Number(item.orderedQty ?? item.purchaseQty ?? item.qty) || 0;
                               const rec = Number(item.receivedQty) || 0;

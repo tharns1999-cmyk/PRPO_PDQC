@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { apiService } from '../services/apiService';
-import { ISSUE_LOCATIONS, ISSUE_LOCATION_CONFIG } from '../config/constants';
+import { ISSUE_LOCATIONS, ISSUE_LOCATION_CONFIG, INITIAL_USAGE_UNITS } from '../config/constants';
 import { 
   SendToBack, CheckCircle2, AlertCircle, AlertTriangle, 
   PackageCheck, Layers, MapPin, Clock, ArrowRight,
@@ -54,20 +54,22 @@ const getLogUnit = (log) => {
     const match = log.note.match(/\[(.*?)\]/);
     if (match && match[1]) {
       const parsed = match[1].trim();
-      if (ISSUE_LOCATIONS.includes(parsed)) return parsed;
-      // Map legacy names if any
       if (parsed.includes('1') || parsed.includes('Mixing')) return 'ห้อง K1';
       if (parsed.includes('2') || parsed.includes('Filling')) return 'ห้อง K2';
       if (parsed.includes('3') || parsed.includes('Packing')) return 'ห้องแพ็ค';
-      if (parsed.includes('4') || parsed.includes('QC')) return 'ห้อง K1';
       return parsed;
     }
   }
   return 'ไม่ระบุหน่วย';
 };
 
-export default function QuickIssueView({ products = [], stockLogs = [], currentRole, onRefresh, onNavigate, onQuickPR }) {
+export default function QuickIssueView({ products = [], stockLogs = [], usageUnits: propUsageUnits, currentRole, onRefresh, onNavigate, onQuickPR }) {
   const [activeTab, setActiveTab] = useState('ISSUE'); // 'ISSUE' | 'STATS'
+
+  const allUsageUnits = useMemo(() => {
+    if (propUsageUnits && propUsageUnits.length > 0) return propUsageUnits;
+    return INITIAL_USAGE_UNITS;
+  }, [propUsageUnits]);
 
   // Form State
   const [categoryFilter, setCategoryFilter] = useState(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
@@ -75,7 +77,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
   const [issueQty, setIssueQty] = useState(1);
   const [reason, setReason] = useState(ISSUE_REASONS[0]);
   const [note, setNote] = useState('');
-  const [productionUnit, setProductionUnit] = useState(ISSUE_LOCATIONS[0]);
+  const [productionUnit, setProductionUnit] = useState('ห้อง K1');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -115,9 +117,9 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
         value: p.id,
         label: p.name,
         code: p.code,
-        subLabel: `คงเหลือ: ${Number(p.stockBalance || 0).toLocaleString()} ${sUnit}${dualText} • ROP: ${Number(p.reorderPoint || 0).toLocaleString()} ${sUnit}`,
+        subLabel: `จุดเก็บ: ${p.locationName || 'คลังหลัก'} • คงเหลือ: ${Number(p.stockBalance || 0).toLocaleString()} ${sUnit}${dualText} • ROP: ${Number(p.reorderPoint || 0).toLocaleString()} ${sUnit}`,
         badge: pCat === 'PD' ? 'ฝ่ายผลิต' : 'ฝ่าย QC',
-        keywords: `${p.code} ${p.name} ${sUnit} ${pUnit} ${pCat}`
+        keywords: `${p.code} ${p.name} ${sUnit} ${pUnit} ${pCat} ${p.locationName || ''}`
       };
     });
   }, [filteredProducts]);
@@ -130,6 +132,65 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
   }, [filteredProducts, selectedProdId]);
 
   const selectedProduct = filteredProducts.find(p => p.id === selectedProdId) || products.find(p => p.id === selectedProdId);
+
+  // Target department for form based on selected product or current role
+  const formDept = useMemo(() => {
+    if (selectedProduct?.category) return selectedProduct.category;
+    if (selectedProduct?.department) return selectedProduct.department;
+    if (currentRole?.department && !currentRole.canViewAllDepts) return currentRole.department;
+    return categoryFilter !== 'ALL' ? categoryFilter : 'PD';
+  }, [selectedProduct, currentRole, categoryFilter]);
+
+  // Dynamic usage units for form tab (Department-Scoped)
+  const formUsageUnits = useMemo(() => {
+    const matched = allUsageUnits.filter(u => u.department === formDept && u.status !== 'INACTIVE');
+    if (matched.length > 0) return matched;
+    const fallbackDept = allUsageUnits.filter(u => u.department === formDept);
+    if (fallbackDept.length > 0) return fallbackDept;
+    return allUsageUnits;
+  }, [allUsageUnits, formDept]);
+
+  // Dynamic displayed units for Statistics Tab based on dropdown filter
+  const displayedUnits = useMemo(() => {
+    if (statsDeptFilter === 'ALL') {
+      return allUsageUnits;
+    }
+    return allUsageUnits.filter(u => u.department === statsDeptFilter);
+  }, [allUsageUnits, statsDeptFilter]);
+
+  // Dynamic usage unit config map for styling & dots
+  const usageUnitConfigMap = useMemo(() => {
+    const map = { ...ISSUE_LOCATION_CONFIG };
+    allUsageUnits.forEach(u => {
+      map[u.name] = {
+        id: u.name,
+        label: u.name,
+        color: u.color || 'bg-slate-100 text-slate-700 border-slate-200',
+        badgeBg: u.badgeBg || 'bg-slate-100 text-slate-800',
+        dot: u.dot || 'bg-slate-500',
+        department: u.department
+      };
+    });
+    return map;
+  }, [allUsageUnits]);
+
+  // Auto-select first unit of the department when department changes or current selection is invalid
+  useEffect(() => {
+    if (formUsageUnits.length > 0) {
+      const exists = formUsageUnits.some(u => u.name === productionUnit);
+      if (!exists) {
+        setProductionUnit(formUsageUnits[0].name);
+      }
+    }
+  }, [formUsageUnits, productionUnit]);
+
+  // Reset statsUnitFilter if it does not belong to displayedUnits
+  useEffect(() => {
+    if (statsUnitFilter !== 'ALL') {
+      const exists = displayedUnits.some(u => u.name === statsUnitFilter);
+      if (!exists) setStatsUnitFilter('ALL');
+    }
+  }, [displayedUnits, statsUnitFilter]);
 
   // Post-issue balance calculation & ROP Warning logic
   const currentBalance = Number(selectedProduct?.stockBalance || 0);
@@ -284,9 +345,13 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
 
     // 1. Group by Unit
     const unitMap = {};
-    ISSUE_LOCATIONS.forEach(loc => {
-      unitMap[loc] = {
-        name: loc,
+    displayedUnits.forEach(u => {
+      unitMap[u.name] = {
+        name: u.name,
+        department: u.department,
+        color: u.color,
+        badgeBg: u.badgeBg,
+        dot: u.dot,
         count: 0,
         totalQty: 0,
         items: {},
@@ -297,8 +362,13 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
     filteredStatsLogs.forEach(log => {
       const unitName = getLogUnit(log);
       if (!unitMap[unitName]) {
+        const found = allUsageUnits.find(u => u.name === unitName);
         unitMap[unitName] = {
           name: unitName,
+          department: found?.department || 'ALL',
+          color: found?.color || 'bg-slate-100 text-slate-700',
+          badgeBg: found?.badgeBg || 'bg-slate-100 text-slate-800',
+          dot: found?.dot || 'bg-slate-500',
           count: 0,
           totalQty: 0,
           items: {},
@@ -397,7 +467,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
   // Unit count badges for quick filter pills
   const unitBadgeCounts = useMemo(() => {
     const counts = { ALL: 0 };
-    ISSUE_LOCATIONS.forEach(loc => { counts[loc] = 0; });
+    displayedUnits.forEach(u => { counts[u.name] = 0; });
     stockLogs.forEach(log => {
       if (log.type === 'OUT') {
         counts.ALL = (counts.ALL || 0) + 1;
@@ -406,7 +476,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
       }
     });
     return counts;
-  }, [stockLogs]);
+  }, [stockLogs, displayedUnits]);
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -441,27 +511,21 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2.5">
-            <div className="p-2.5 bg-rose-600 text-white rounded-xl shadow-sm shadow-rose-600/20">
+            <div className="p-2.5 bg-slate-950 text-white rounded-2xl shadow-sm shadow-slate-900/10">
               <SendToBack className="w-5 h-5" />
             </div>
-            <span>เบิกสินค้าออกจากคลัง</span>
+            <span>เบิกสินค้าออกจากสต็อก (Quick Issue)</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-1 font-medium">
-            บันทึกตัดยอดสต็อกสินค้าทันที (-OUT) และดูสถิติการใช้งานแยกตามหน่วยและพื้นที่
+          <p className="text-xs text-slate-500 mt-1 font-normal">
+            บันทึกตัดยอดสต็อกสินค้าทันที (-OUT) พร้อมจำลองสต็อกคงเหลือแบบ Real-time
           </p>
         </div>
 
-        {/* Department Badge */}
-        <div className="flex items-center gap-2 px-3.5 py-1.5 bg-white rounded-xl border border-slate-200 shadow-2xs w-fit text-xs font-semibold text-slate-600">
-          <Building2 className="w-4 h-4 text-slate-400" />
-          <span>สิทธิ์การเบิก:</span>
-          <span className={`px-2.5 py-0.5 rounded-md text-xs font-semibold ${
-            currentRole.department === 'PD' 
-              ? 'bg-blue-50 text-blue-700 border border-blue-200/80' 
-              : currentRole.department === 'QC'
-                ? 'bg-amber-50 text-amber-700 border border-amber-200/80'
-                : 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
-          }`}>
+        {/* Department Badge with Glowing Dot */}
+        <div className="flex items-center gap-2 px-3.5 py-1.5 bg-white rounded-full border border-slate-200/80 shadow-2xs w-fit text-xs font-medium text-slate-600">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
+          <span className="text-slate-500">สิทธิ์การเบิก:</span>
+          <span className="font-semibold text-slate-900">
             {currentRole.department === 'ALL' ? 'ทุกแผนก (ALL)' : `แผนก ${currentRole.department}`}
           </span>
         </div>
@@ -469,58 +533,60 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
 
       {/* ── Alert Notifications ── */}
       {successMsg && (
-        <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl flex items-center justify-between gap-2.5 text-xs font-semibold shadow-2xs animate-fade-in">
+        <div className="p-3.5 bg-emerald-50/80 border border-emerald-200/80 text-emerald-900 rounded-2xl flex items-center justify-between gap-2.5 text-xs font-medium shadow-2xs animate-fade-in">
           <div className="flex items-center gap-2.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{successMsg}</span>
           </div>
-          <button onClick={() => setSuccessMsg('')} className="text-emerald-700 hover:text-emerald-900 text-xs cursor-pointer font-bold">
+          <button onClick={() => setSuccessMsg('')} className="text-emerald-700 hover:text-emerald-900 text-xs cursor-pointer font-bold p-1">
             ✕
           </button>
         </div>
       )}
 
       {errorMsg && (
-        <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-900 rounded-xl flex items-center justify-between gap-2.5 text-xs font-semibold shadow-2xs animate-fade-in">
+        <div className="p-3.5 bg-rose-50/80 border border-rose-200/80 text-rose-900 rounded-2xl flex items-center justify-between gap-2.5 text-xs font-medium shadow-2xs animate-fade-in">
           <div className="flex items-center gap-2.5">
             <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             <span>{errorMsg}</span>
           </div>
-          <button onClick={() => setErrorMsg('')} className="text-rose-700 hover:text-rose-900 text-xs cursor-pointer font-bold">
+          <button onClick={() => setErrorMsg('')} className="text-rose-700 hover:text-rose-900 text-xs cursor-pointer font-bold p-1">
             ✕
           </button>
         </div>
       )}
 
-      {/* ── Primary Navigation Tabs ── */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-px">
-        <button
-          onClick={() => setActiveTab('ISSUE')}
-          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer flex items-center gap-2 ${
-            activeTab === 'ISSUE' 
-              ? 'border-indigo-600 text-indigo-700 font-bold' 
-              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-          }`}
-        >
-          <SendToBack className="w-4 h-4" />
-          <span>ฟอร์มเบิกสินค้า</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('STATS')}
-          className={`px-4 py-2.5 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'STATS' 
-              ? 'border-indigo-600 text-indigo-700 font-bold' 
-              : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-          }`}
-        >
-          <BarChart2 className="w-4 h-4" />
-          <span>สถิติการใช้งาน & วิเคราะห์ตามหน่วย</span>
-          {stockLogs.filter(l => l.type === 'OUT').length > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-              {stockLogs.filter(l => l.type === 'OUT').length}
-            </span>
-          )}
-        </button>
+      {/* ── Floating Capsule Bar Navigation ── */}
+      <div className="flex items-center">
+        <div className="bg-slate-100/90 p-1.5 rounded-full inline-flex gap-1 border border-slate-200/50 shadow-2xs">
+          <button
+            onClick={() => setActiveTab('ISSUE')}
+            className={`transition-all cursor-pointer flex items-center gap-2 text-xs sm:text-sm ${
+              activeTab === 'ISSUE' 
+                ? 'bg-white shadow-sm font-semibold text-slate-900 rounded-full px-5 py-2' 
+                : 'text-slate-500 hover:text-slate-900 font-medium px-5 py-2 rounded-full'
+            }`}
+          >
+            <SendToBack className="w-4 h-4" />
+            <span>ฟอร์มเบิกสินค้า</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('STATS')}
+            className={`transition-all flex items-center gap-2 cursor-pointer text-xs sm:text-sm ${
+              activeTab === 'STATS' 
+                ? 'bg-white shadow-sm font-semibold text-slate-900 rounded-full px-5 py-2' 
+                : 'text-slate-500 hover:text-slate-900 font-medium px-5 py-2 rounded-full'
+            }`}
+          >
+            <BarChart2 className="w-4 h-4" />
+            <span>สถิติการใช้งาน & วิเคราะห์ตามหน่วย</span>
+            {stockLogs.filter(l => l.type === 'OUT').length > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-slate-900 text-white ml-0.5">
+                {stockLogs.filter(l => l.type === 'OUT').length}
+              </span>
+            )}
+          </button>
+        </div>
       </div>
 
       {activeTab === 'ISSUE' ? (
@@ -530,22 +596,22 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* ── Left Column: Issue Form (7 cols = 60%) ── */}
-        <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 sm:p-7 space-y-6">
+        <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-100 shadow-sm p-6 sm:p-7 space-y-6">
           
           {/* Department Filter Toggle */}
-          <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 flex-wrap">
-            <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+          <div className="flex items-center justify-between gap-2 pb-3.5 border-b border-slate-100 flex-wrap">
+            <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
               <Layers className="w-4 h-4 text-indigo-600" />
               <span>ระบุข้อมูลการเบิกจ่ายสินค้า</span>
             </span>
 
             {currentRole.canViewAllDepts && (
-              <div className="flex items-center gap-1 bg-slate-100/90 p-0.5 rounded-lg border border-slate-200/50">
+              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/50 text-xs">
                 <button
                   type="button"
                   onClick={() => setCategoryFilter('ALL')}
-                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                    categoryFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                    categoryFilter === 'ALL' ? 'bg-white text-slate-900 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
                   ทั้งหมด ({products.length})
@@ -553,8 +619,8 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                 <button
                   type="button"
                   onClick={() => setCategoryFilter('PD')}
-                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                    categoryFilter === 'PD' ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                    categoryFilter === 'PD' ? 'bg-white text-blue-700 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
                   ฝ่ายผลิต (PD)
@@ -562,8 +628,8 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                 <button
                   type="button"
                   onClick={() => setCategoryFilter('QC')}
-                  className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
-                    categoryFilter === 'QC' ? 'bg-white text-amber-700 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                    categoryFilter === 'QC' ? 'bg-white text-amber-700 shadow-xs font-semibold' : 'text-slate-500 hover:text-slate-800'
                   }`}
                 >
                   ฝ่าย QC
@@ -572,38 +638,37 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* 0. Unit / Room Selector (Interactive Modern Chips + Select) */}
-            <div className="space-y-2">
-              <label className="impeccable-label mb-1 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* 0. Unit / Room Selector (Tactile Capsule Chips) */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
                   <DoorClosed className="w-4 h-4 text-indigo-600" />
                   <span>หน่วยที่เบิก / พื้นที่ใช้งาน (Location / Unit)</span>
                   <span className="text-rose-500">*</span>
-                </span>
+                </label>
                 <span className="text-[11px] text-slate-400 font-normal">เลือกห้องหรือพื้นที่ที่นำสินค้าไปใช้</span>
-              </label>
+              </div>
 
-              {/* Visual Quick Select Chips */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-                {ISSUE_LOCATIONS.map(loc => {
-                  const isSelected = productionUnit === loc;
-                  const config = ISSUE_LOCATION_CONFIG[loc] || { color: 'bg-slate-100 text-slate-700', dot: 'bg-slate-500' };
+              {/* Visual Tactile Capsule Chips */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                {formUsageUnits.map(unit => {
+                  const isSelected = productionUnit === unit.name;
+                  const dot = unit.dot || 'bg-slate-500';
+                  const color = unit.color || 'bg-slate-50 text-slate-700 border-slate-200/80';
                   return (
                     <button
-                      key={loc}
+                      key={unit.id || unit.name}
                       type="button"
-                      onClick={() => setProductionUnit(loc)}
-                      className={`px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-center flex flex-col items-center justify-center gap-1 cursor-pointer border ${
+                      onClick={() => setProductionUnit(unit.name)}
+                      className={`px-3.5 py-3 rounded-2xl text-xs font-semibold transition-all text-center flex items-center justify-center gap-2 cursor-pointer hover:-translate-y-0.5 ${
                         isSelected
-                          ? 'bg-slate-900 text-white border-slate-900 shadow-sm ring-2 ring-indigo-500/20'
-                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200/80 hover:border-slate-300'
+                          ? 'bg-slate-900 text-white shadow-md shadow-slate-900/15 ring-2 ring-slate-900/10'
+                          : `${color} hover:border-slate-300 shadow-2xs`
                       }`}
                     >
-                      <div className="flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-indigo-400' : config.dot}`} />
-                        <span>{loc}</span>
-                      </div>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-emerald-400 shadow-xs ring-2 ring-white/20' : dot}`} />
+                      <span className="truncate">{unit.name}</span>
                     </button>
                   );
                 })}
@@ -611,9 +676,14 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
             </div>
 
             {/* 1. Product Selector */}
-            <div>
-              <label className="impeccable-label">
-                เลือกสินค้าจากคลัง <span className="text-rose-500">*</span>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-800 flex items-center justify-between">
+                <span>เลือกสินค้าจากคลัง <span className="text-rose-500">*</span></span>
+                {selectedProduct && (
+                  <span className="font-mono text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">
+                    {selectedProduct.code}
+                  </span>
+                )}
               </label>
               <SearchableSelect
                 options={productOptions}
@@ -627,58 +697,41 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
               
               {/* Compact Micro-badge Info Strip */}
               {selectedProduct && (
-                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 font-medium px-1">
+                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 font-normal px-1">
                   <div className="flex items-center gap-2">
                     {rate > 1 && (
-                      <span className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 font-mono">
+                      <span className="text-indigo-600 bg-indigo-50/80 px-2 py-0.5 rounded-md border border-indigo-100 font-mono text-[10px]">
                         1 {pUnit} = {rate} {sUnit}
                       </span>
                     )}
                     <span className="text-slate-500">
-                      ที่เก็บ: <strong className="text-slate-700 font-semibold">{selectedProduct.location || 'คลังหลัก'}</strong>
+                      จุดจัดเก็บ: <strong className="text-slate-700 font-medium">{selectedProduct.locationName || 'คลังหลัก'}</strong>
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <span>จุดสั่งซื้อ ROP:</span>
-                    <strong className="text-amber-700 font-mono font-semibold">{Number(reorderPoint).toLocaleString()} {sUnit}</strong>
+                    <strong className="text-amber-800 font-mono font-medium">{Number(reorderPoint).toLocaleString()} {sUnit}</strong>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* 2. Issue Quantity Input Group with Integrated Quick Add */}
-            <div className="space-y-2">
-              <label className="impeccable-label mb-0">
-                จำนวนที่ต้องการเบิก ({sUnit}) <span className="text-rose-500">*</span>
-              </label>
-
-              {/* Integrated Input Group Container */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <div className="flex items-center flex-1 bg-white border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-rose-500/20 focus-within:border-rose-500 shadow-2xs transition-all">
-                  <input
-                    type="number"
-                    step="any"
-                    min="0.001"
-                    max={Math.max(0.001, currentBalance)}
-                    value={issueQty}
-                    onChange={e => setIssueQty(e.target.value)}
-                    required
-                    placeholder="0.00"
-                    className="w-full h-[44px] px-3.5 text-center font-mono font-bold text-rose-600 text-base outline-none bg-transparent"
-                  />
-                  <span className="h-[44px] px-3.5 flex items-center bg-slate-50 border-l border-slate-200 text-xs font-semibold text-slate-600 shrink-0">
-                    {sUnit}
-                  </span>
-                </div>
-
-                {/* Quick Add Chips */}
-                <div className="flex items-center gap-1.5 shrink-0 bg-slate-50 p-1 rounded-xl border border-slate-200/80">
+            {/* 2. Modern Quantity Stepper & Stock Simulation */}
+            <div className="space-y-3 bg-slate-50/70 p-4 sm:p-5 rounded-2xl border border-slate-100">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-800 flex items-center gap-1">
+                  <span>จำนวนที่ต้องการเบิก ({sUnit})</span>
+                  <span className="text-rose-500">*</span>
+                </label>
+                
+                {/* Glassy Micro-pills Quick Steppers */}
+                <div className="flex items-center gap-1.5">
                   {[1, 5, 10].map(n => (
                     <button
                       key={n}
                       type="button"
                       onClick={() => handleQuickQty(n)}
-                      className="px-2.5 py-1.5 text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 rounded-lg shadow-2xs transition-colors cursor-pointer border border-slate-200/60"
+                      className="bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 cursor-pointer border border-slate-200/40 text-slate-600"
                     >
                       +{n}
                     </button>
@@ -686,32 +739,81 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                   <button
                     type="button"
                     onClick={() => handleQuickQty('max')}
-                    className="px-2.5 py-1.5 text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg border border-rose-200 transition-colors cursor-pointer"
+                    className="bg-slate-100 hover:bg-amber-50 hover:text-amber-700 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 cursor-pointer border border-slate-200/40 text-slate-700 flex items-center gap-1"
                   >
-                    Max
+                    <span>⚡ Max</span>
                   </button>
                 </div>
               </div>
 
-              {/* Live Calculation Indicator */}
-              <div className="flex items-center justify-between text-xs text-slate-500 pt-1 px-1">
-                <span>คงเหลือปัจจุบัน: <strong className="font-mono text-slate-800 font-semibold">{Number(currentBalance).toLocaleString(undefined, { maximumFractionDigits: 4 })}</strong> {sUnit}</span>
-                <div className="flex items-center gap-1">
-                  <ArrowRight className="w-3 h-3 text-slate-400" />
-                  <span>หลังเบิก: <strong className={`font-mono font-semibold ${postIssueBalance < 0 ? 'text-rose-600' : 'text-indigo-700'}`}>
-                    {Number(postIssueBalance).toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                  </strong> {sUnit}</span>
+              {/* Large Stepper Input (Center/Left High Contrast) */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-3 flex items-center justify-between shadow-xs focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-400 transition-all">
+                <input
+                  type="number"
+                  step="any"
+                  min="0.001"
+                  max={Math.max(0.001, currentBalance)}
+                  value={issueQty}
+                  onChange={e => setIssueQty(e.target.value)}
+                  required
+                  placeholder="0"
+                  className="w-full font-mono text-3xl font-bold text-slate-900 outline-none bg-transparent px-2"
+                />
+                <span className="font-medium text-xs text-slate-500 px-3 py-1 bg-slate-100 rounded-xl shrink-0">
+                  {sUnit}
+                </span>
+              </div>
+
+              {/* Live Simulation Bar: Current -> Post Issue */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 text-slate-500">
+                    <span>สต็อกเดิม:</span>
+                    <span className="font-mono font-medium text-slate-800">{Number(currentBalance).toLocaleString()} {sUnit}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400">→</span>
+                    <span className="text-slate-500">หลังเบิกจริง:</span>
+                    <span className={`font-mono font-bold ${postIssueBalance < 0 ? 'text-rose-600' : postIssueBalance <= reorderPoint ? 'text-amber-700' : 'text-emerald-700'}`}>
+                      {Number(postIssueBalance).toLocaleString(undefined, { maximumFractionDigits: 4 })} {sUnit}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Progress bar visualizer */}
+                <div className="w-full bg-slate-200/70 h-2 rounded-full overflow-hidden flex">
+                  <div 
+                    className={`h-full transition-all duration-300 ${
+                      postIssueBalance < 0 
+                        ? 'bg-rose-500' 
+                        : postIssueBalance <= reorderPoint 
+                          ? 'bg-amber-500' 
+                          : 'bg-emerald-500'
+                    }`}
+                    style={{ 
+                      width: `${currentBalance > 0 ? Math.max(0, Math.min(100, (postIssueBalance / currentBalance) * 100)) : 0}%` 
+                    }}
+                  />
+                  {qtyNumber > 0 && currentBalance > 0 && postIssueBalance >= 0 && (
+                    <div 
+                      className="h-full bg-slate-300 opacity-60 transition-all duration-300"
+                      style={{ 
+                        width: `${Math.min(100, (qtyNumber / currentBalance) * 100)}%` 
+                      }}
+                      title={`กำลังจะเบิกออก ${qtyNumber} ${sUnit}`}
+                    />
+                  )}
                 </div>
               </div>
 
-              {/* Real-time Status Alert Pill */}
+              {/* Status alerts */}
               {isOutOfStock ? (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-800 text-xs font-medium">
+                <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2 text-rose-800 text-xs font-normal">
                   <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                   <span>จำนวนที่ขอเบิกเกินยอดคงเหลือในคลัง ({currentBalance} {sUnit})</span>
                 </div>
               ) : willTriggerROP ? (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 text-amber-900 text-xs font-medium">
+                <div className="p-3 bg-amber-50/70 border border-amber-100 rounded-xl flex items-start gap-2 text-amber-900 text-xs font-normal">
                   <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <span>
                     หลังเบิกยอดจะเหลือ <strong>{postIssueBalance} {sUnit}</strong> ซึ่งแตะจุดสั่งซื้อ ROP ({reorderPoint} {sUnit})
@@ -721,14 +823,14 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
             </div>
 
             {/* 3. Reason Selector */}
-            <div>
-              <label className="impeccable-label">
-                วัตถุประสงค์การเบิก <span className="text-rose-500">*</span>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-800 flex items-center justify-between">
+                <span>วัตถุประสงค์การเบิก <span className="text-rose-500">*</span></span>
               </label>
               <select
                 value={reason}
                 onChange={e => setReason(e.target.value)}
-                className="impeccable-input font-medium cursor-pointer"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 cursor-pointer"
               >
                 {ISSUE_REASONS.map(r => (
                   <option key={r} value={r}>{r}</option>
@@ -737,8 +839,8 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
             </div>
 
             {/* 4. Additional Note */}
-            <div>
-              <label className="impeccable-label">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-800">
                 หมายเหตุเพิ่มเติม (ถ้ามี)
               </label>
               <input
@@ -746,18 +848,18 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                 value={note}
                 onChange={e => setNote(e.target.value)}
                 placeholder="เช่น กะดึก, ซ่อมบำรุงเครื่องจักร No.3, หรืองานทดสอบพิเศษ..."
-                className="impeccable-input font-medium"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
               />
             </div>
 
-            {/* 5. Submit Button */}
+            {/* 5. Hero Action Button */}
             <div className="pt-2">
               <button
                 type="submit"
                 disabled={isSubmitting || isOutOfStock}
-                className="w-full h-[44px] bg-rose-600 hover:bg-rose-700 active:scale-[0.99] disabled:opacity-50 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-sm shadow-rose-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full bg-slate-950 hover:bg-slate-900 text-white rounded-2xl py-4 font-semibold text-base shadow-xl shadow-slate-900/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <PackageCheck className="w-4 h-4" />
+                <PackageCheck className="w-5 h-5 text-emerald-400" />
                 <span>{isSubmitting ? 'กำลังบันทึกตัดยอด...' : `ยืนยันการเบิกจ่ายสินค้า (-OUT) สู่ ${productionUnit}`}</span>
               </button>
             </div>
@@ -767,35 +869,35 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
         {/* ── Right Column: Product Snapshot & Recent Logs (5 cols = 40%) ── */}
         <div className="lg:col-span-5 space-y-6">
           
-          {/* Card 1: Selected Product Inventory Snapshot */}
+          {/* Card 1: Bento Card - Selected Product Inventory Snapshot */}
           {selectedProduct && (
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 sm:p-6 space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
                   <Boxes className="w-4 h-4 text-indigo-600" />
                   <span>ข้อมูลสต็อกสินค้า</span>
                 </div>
-                <span className="font-mono text-xs font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200/80">
+                <span className="font-mono text-[11px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">
                   {selectedProduct.code}
                 </span>
               </div>
 
               <div>
-                <h4 className="font-bold text-sm text-slate-900 leading-snug">
+                <h4 className="font-semibold text-sm text-slate-900 leading-snug">
                   {selectedProduct.name}
                 </h4>
 
-                {/* KPI Metrics */}
-                <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-100">
+                {/* 2-Column Pastel Bento Metrics */}
+                <div className="mt-3.5 grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-100">
                     <span className="text-slate-500 block text-[11px]">คงเหลือปัจจุบัน</span>
-                    <span className="text-xl font-black text-slate-900 font-mono mt-0.5 block">
+                    <span className="text-2xl font-bold text-slate-900 font-mono mt-1 block">
                       {Number(currentBalance).toLocaleString()} <span className="text-xs font-normal text-slate-400 font-sans">{sUnit}</span>
                     </span>
                   </div>
-                  <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-100/80">
+                  <div className="p-4 bg-amber-50/40 rounded-2xl border border-amber-100/60">
                     <span className="text-amber-800 block text-[11px]">จุดสั่งซื้อ ROP</span>
-                    <span className="text-xl font-black text-amber-800 font-mono mt-0.5 block">
+                    <span className="text-2xl font-bold text-amber-800 font-mono mt-1 block">
                       {Number(reorderPoint).toLocaleString()} <span className="text-xs font-normal text-amber-600 font-sans">{sUnit}</span>
                     </span>
                   </div>
@@ -805,7 +907,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                 <div className="mt-4 space-y-1.5">
                   <div className="flex justify-between text-[11px] text-slate-500 font-medium">
                     <span>ระดับสต็อก</span>
-                    <span className={currentBalance <= reorderPoint ? 'text-amber-700 font-semibold' : 'text-emerald-700 font-semibold'}>
+                    <span className={currentBalance <= reorderPoint ? 'text-amber-700 font-medium' : 'text-emerald-700 font-medium'}>
                       {currentBalance <= reorderPoint ? 'แตะจุดสั่งซื้อ (Low Stock)' : 'พร้อมใช้งานปกติ'}
                     </span>
                   </div>
@@ -822,35 +924,35 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
             </div>
           )}
 
-          {/* Card 2: Recent Issue Activity Log */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 sm:p-6 space-y-3.5">
-            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+          {/* Card 2: Bento Card - Recent Issue Activity Log */}
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
                 <History className="w-4 h-4 text-slate-500" />
                 <span>ประวัติการเบิกจ่ายล่าสุด</span>
               </span>
-              <span className="text-[11px] text-slate-400 font-medium">ล่าสุด {recentIssueLogs.length} รายการ</span>
+              <span className="text-[11px] text-slate-400 font-normal">ล่าสุด {recentIssueLogs.length} รายการ</span>
             </div>
 
             {recentIssueLogs.length > 0 ? (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-slate-100/80">
                 {recentIssueLogs.map(log => {
                   const logUnit = getLogUnit(log);
-                  const unitConf = ISSUE_LOCATION_CONFIG[logUnit] || { color: 'bg-slate-100 text-slate-600 border-slate-200' };
+                  const unitConf = usageUnitConfigMap[logUnit] || { color: 'bg-slate-100 text-slate-600 border-slate-200' };
                   return (
                     <div 
                       key={log.id} 
-                      className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-3 text-xs"
+                      className="py-3 first:pt-0 last:pb-0 flex items-center justify-between gap-3 text-xs"
                     >
-                      <div className="min-w-0 space-y-0.5 flex-1">
+                      <div className="min-w-0 space-y-1 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${unitConf.color}`}>
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${unitConf.color}`}>
                             {logUnit}
                           </span>
-                          <span className="font-mono font-semibold text-[10px] text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200/60">
+                          <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
                             {log.productCode}
                           </span>
-                          <span className="font-semibold text-slate-800 truncate block text-xs" title={log.productCode}>
+                          <span className="font-medium text-slate-800 truncate block text-xs" title={log.productCode}>
                             {products.find(p => p.id === log.productId || p.code === log.productCode)?.name || log.productCode}
                           </span>
                         </div>
@@ -865,7 +967,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                       </div>
 
                       <div className="text-right shrink-0">
-                        <span className="font-mono font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200/80 text-xs">
+                        <span className="font-mono font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md text-xs">
                           -{log.qty} {products.find(p => p.id === log.productId || p.code === log.productCode)?.stockUnit || products.find(p => p.id === log.productId || p.code === log.productCode)?.unit || log.unit || 'ชิ้น'}
                         </span>
                         <span className="block text-[10px] text-slate-400 mt-1 font-mono">คงเหลือ: {log.balance}</span>
@@ -875,9 +977,9 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                 })}
               </div>
             ) : (
-              <div className="py-6 text-center text-xs text-slate-400 space-y-1">
-                <PackageCheck className="w-6 h-6 mx-auto text-slate-300" />
-                <p>ยังไม่มีประวัติการเบิกจ่ายสินค้า</p>
+              <div className="py-8 text-center text-xs text-slate-400 space-y-1.5">
+                <PackageCheck className="w-7 h-7 mx-auto text-slate-300 stroke-[1.5]" />
+                <p className="font-normal text-slate-400">ยังไม่มีประวัติการเบิกจ่ายสินค้า</p>
               </div>
             )}
           </div>
@@ -966,23 +1068,24 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                 </span>
               </button>
 
-              {ISSUE_LOCATIONS.map(loc => {
-                const isSelected = statsUnitFilter === loc;
-                const config = ISSUE_LOCATION_CONFIG[loc] || { color: 'bg-slate-100 text-slate-700', dot: 'bg-slate-500' };
-                const count = unitBadgeCounts[loc] || 0;
+              {displayedUnits.map(unit => {
+                const isSelected = statsUnitFilter === unit.name;
+                const dot = unit.dot || 'bg-slate-500';
+                const color = unit.color || 'bg-slate-100 text-slate-700 border-slate-200';
+                const count = unitBadgeCounts[unit.name] || 0;
                 return (
                   <button
-                    key={loc}
+                    key={unit.id || unit.name}
                     type="button"
-                    onClick={() => setStatsUnitFilter(loc)}
+                    onClick={() => setStatsUnitFilter(unit.name)}
                     className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border ${
                       isSelected
                         ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-indigo-500/20'
-                        : `${config.color} hover:shadow-2xs`
+                        : `${color} hover:shadow-2xs`
                     }`}
                   >
-                    <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-indigo-400' : config.dot}`} />
-                    <span>{loc}</span>
+                    <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-indigo-400' : dot}`} />
+                    <span>{unit.name}</span>
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${isSelected ? 'bg-white/20 text-white' : 'bg-white/80 text-slate-700 border border-slate-200/50'}`}>
                       {count}
                     </span>
@@ -1172,7 +1275,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                   <LayoutGrid className="w-5 h-5 text-indigo-600" />
-                  <span>การใช้งานแยกตามหน่วยทั้ง 5 ห้อง (Unit Breakdown)</span>
+                  <span>การใช้งานแยกตามหน่วยทั้ง {displayedUnits.length} หน่วย (Unit Breakdown)</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   สรุปรายละเอียดว่าแต่ละห้องมีการเบิกสินค้าอะไรบ้าง และปริมาณการใช้งานในแต่ละห้อง
@@ -1190,20 +1293,21 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {ISSUE_LOCATIONS.map(loc => {
-                const uData = analytics.unitList.find(u => u.name === loc) || {
-                  name: loc,
+              {displayedUnits.map(unit => {
+                const uData = analytics.unitList.find(u => u.name === unit.name) || {
+                  name: unit.name,
                   count: 0,
                   totalQty: 0,
                   topItems: [],
                   uniqueItemCount: 0
                 };
-                const config = ISSUE_LOCATION_CONFIG[loc] || { color: 'bg-slate-100 text-slate-700', badgeBg: 'bg-slate-200 text-slate-800', dot: 'bg-slate-500' };
-                const isCurrentFilter = statsUnitFilter === loc;
+                const isCurrentFilter = statsUnitFilter === unit.name;
+                const dot = unit.dot || 'bg-slate-500';
+                const badgeBg = unit.badgeBg || 'bg-slate-200 text-slate-800';
 
                 return (
                   <div
-                    key={loc}
+                    key={unit.id || unit.name}
                     className={`bg-white rounded-2xl border transition-all p-5 flex flex-col justify-between space-y-4 shadow-xs ${
                       isCurrentFilter 
                         ? 'border-indigo-600 ring-2 ring-indigo-500/10 shadow-sm' 
@@ -1214,10 +1318,13 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                     <div>
                       <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
                         <div className="flex items-center gap-2.5">
-                          <span className={`w-3 h-3 rounded-full ${config.dot}`} />
-                          <h4 className="font-bold text-sm text-slate-900">{loc}</h4>
+                          <span className={`w-3 h-3 rounded-full ${dot}`} />
+                          <h4 className="font-bold text-sm text-slate-900">{unit.name}</h4>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${unit.department === 'PD' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+                            {unit.department}
+                          </span>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold font-mono ${config.badgeBg}`}>
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold font-mono ${badgeBg}`}>
                           {uData.count} ครั้ง
                         </span>
                       </div>
@@ -1349,7 +1456,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                     </tr>
                   ) : (
                     analytics.matrixRows.map((row, idx) => {
-                      const config = ISSUE_LOCATION_CONFIG[row.unitName] || { color: 'bg-slate-100 text-slate-700', badgeBg: 'bg-slate-100 text-slate-800' };
+                      const config = usageUnitConfigMap[row.unitName] || { color: 'bg-slate-100 text-slate-700', badgeBg: 'bg-slate-100 text-slate-800' };
                       return (
                         <tr key={`${row.unitName}-${row.code}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
                           <td className="py-3 px-4 pl-6">
@@ -1452,7 +1559,7 @@ export default function QuickIssueView({ products = [], stockLogs = [], currentR
                   ) : (
                     filteredStatsLogs.map(log => {
                       const logUnit = getLogUnit(log);
-                      const unitConf = ISSUE_LOCATION_CONFIG[logUnit] || { color: 'bg-slate-100 text-slate-700 border-slate-200' };
+                      const unitConf = usageUnitConfigMap[logUnit] || { color: 'bg-slate-100 text-slate-700 border-slate-200' };
                       const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
                       return (
                         <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">

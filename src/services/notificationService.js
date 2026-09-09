@@ -202,6 +202,13 @@ export const notificationService = {
     const all = this.getAll();
     const updated = all.map(n => n.id === id ? { ...n, isRead: true } : n);
     this.saveAll(updated);
+    try {
+      fetch(`http://localhost:3001/api/notifications/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isRead: true })
+      }).catch(() => {});
+    } catch (e) {}
     return updated;
   },
 
@@ -215,12 +222,22 @@ export const notificationService = {
       return n;
     });
     this.saveAll(updated);
+    try {
+      fetch('http://localhost:3001/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      }).catch(() => {});
+    } catch (e) {}
     return updated;
   },
 
   // Clear all
   clearAll() {
     this.saveAll([]);
+    try {
+      fetch('http://localhost:3001/api/notifications', { method: 'DELETE' }).catch(() => {});
+    } catch (e) {}
   },
 
   // Dispatch an In-App Notification
@@ -266,6 +283,14 @@ export const notificationService = {
     // Keep max 100 notifications in local cache to avoid memory bloating
     const trimmed = all.slice(0, 100);
     this.saveAll(trimmed);
+
+    try {
+      fetch('http://localhost:3001/api/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newNoti)
+      }).catch(() => {});
+    } catch (e) {}
 
     console.log('[NotificationService] In-App Notification created:', newNoti);
     return newNoti;

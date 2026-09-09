@@ -1,21 +1,41 @@
 import React, { useState, useMemo } from 'react';
 import { workflowEngine } from '../services/workflowEngine';
+import { useAppContext } from '../context/AppContext';
 import { PR_STATUS, PO_STATUS } from '../config/constants';
-import { AlertCircle, Clock, CheckCircle2, ArrowRight, FileText, ShoppingBag, Loader2, Sparkles, ShieldCheck, Building2, Store } from 'lucide-react';
-import EmptyState from '../components/common/EmptyState';
+import { AlertCircle, Clock, CheckCircle2, ArrowRight, FileText, ShoppingBag, Loader2, Sparkles, Building2, Store } from 'lucide-react';
 import PRDetailsModal from '../components/pr/PRDetailsModal';
 import PODetailsModal from '../components/po/PODetailsModal';
 
-export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefresh, onEditPR }) {
+const EMPTY_ARRAY = [];
+
+export default function MyWorkView({ 
+  prs: propPrs, 
+  pos: propPos, 
+  currentRole: propRole, 
+  onNavigate: propNavigate, 
+  onRefresh: propRefresh, 
+  onEditPR: propEditPR 
+} = {}) {
+  const context = useAppContext();
+  const prs = propPrs ?? context.prs ?? EMPTY_ARRAY;
+  const pos = propPos ?? context.pos ?? EMPTY_ARRAY;
+  const currentRole = propRole ?? context.currentRole;
+  const onRefresh = propRefresh ?? context.refreshData;
+  const onEditPR = propEditPR ?? context.handleEditPR;
+
   const [activeTab, setActiveTab] = useState('action');
   const [selectedPR, setSelectedPR] = useState(null);
   const [selectedPO, setSelectedPO] = useState(null);
 
+  // Recalculate tasks reactively whenever prs, pos, or currentRole changes
   const tasks = useMemo(() => {
     return workflowEngine.getUserTasks(currentRole, prs, pos);
   }, [prs, pos, currentRole]);
 
-  const activeTasks = tasks[activeTab];
+  // Active tab filter calculated strictly via useMemo from central AppContext state
+  const activeTasks = useMemo(() => {
+    return tasks[activeTab] || [];
+  }, [tasks, activeTab]);
 
   const handleTaskClick = (task) => {
     if (task.type === 'PR') {
@@ -47,13 +67,13 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
       </div>
 
       {/* Modern Segmented Filter Tabs */}
-      <div className="flex gap-1.5 p-1.5 bg-slate-100/80 rounded-2xl w-full sm:w-fit overflow-x-auto custom-scrollbar border border-slate-200/60 shadow-2xs">
+      <div className="flex gap-1 p-1 bg-slate-100/80 rounded-xl w-full sm:w-fit overflow-x-auto custom-scrollbar border border-slate-200/50 shadow-2xs">
         <button
           onClick={() => setActiveTab('action')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-medium text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'action'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              ? 'bg-white text-slate-900 shadow-2xs font-semibold'
+              : 'text-slate-600 hover:text-slate-900'
           }`}
         >
           <AlertCircle className={`w-4 h-4 text-indigo-600 ${activeTab === 'action' ? 'animate-bounce-slight' : ''}`} />
@@ -67,10 +87,10 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
 
         <button
           onClick={() => setActiveTab('waiting')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-medium text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'waiting'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              ? 'bg-white text-slate-900 shadow-2xs font-semibold'
+              : 'text-slate-600 hover:text-slate-900'
           }`}
         >
           <Loader2 className={`w-4 h-4 text-amber-600 ${activeTab === 'waiting' ? 'animate-spin-slow' : ''}`} />
@@ -84,10 +104,10 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
 
         <button
           onClick={() => setActiveTab('completed')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg font-medium text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
             activeTab === 'completed'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+              ? 'bg-white text-slate-900 shadow-2xs font-semibold'
+              : 'text-slate-600 hover:text-slate-900'
           }`}
         >
           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
@@ -96,48 +116,61 @@ export default function MyWorkView({ prs, pos, currentRole, onNavigate, onRefres
       </div>
 
       {/* Task List Container */}
-      <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200/80 shadow-sm min-h-[400px]">
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/70 shadow-2xs min-h-[400px]">
         {activeTasks.length === 0 ? (
-          <div className="h-[300px] flex items-center justify-center">
+          <div className="h-[320px] flex items-center justify-center p-6">
             {activeTab === 'action' && (
-              <EmptyState 
-                title="ไม่มีงานค้าง ยอดเยี่ยมมาก!" 
-                description="คุณได้ดำเนินการทุกอย่างที่อยู่ในความรับผิดชอบเสร็จสิ้นแล้ว"
-                icon={CheckCircle2}
-              />
+              <div className="text-center max-w-sm">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100/80 mx-auto flex items-center justify-center mb-3 shadow-2xs">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-semibold text-slate-900 mb-1">ไม่มีงานค้าง ยอดเยี่ยมมาก!</h4>
+                <p className="text-xs text-slate-500 leading-relaxed font-normal">
+                  คุณได้ตรวจสอบและอนุมัติเอกสารในความรับผิดชอบครบถ้วนแล้ว
+                </p>
+              </div>
             )}
             {activeTab === 'waiting' && (
-              <EmptyState 
-                title="ไม่มีรายการที่รอผู้อื่น" 
-                description="คุณยังไม่ได้สร้างคำขอหรือมีงานที่รอการดำเนินการจากแผนกอื่น"
-                icon={Clock}
-              />
+              <div className="text-center max-w-sm">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 border border-amber-100/80 mx-auto flex items-center justify-center mb-3 shadow-2xs">
+                  <Clock className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-semibold text-slate-900 mb-1">ไม่มีรายการที่รอผู้อื่น</h4>
+                <p className="text-xs text-slate-500 leading-relaxed font-normal">
+                  คุณไม่มีคำขอ PR หรือ PO ที่อยู่ระหว่างรอการดำเนินการจากแผนกอื่น
+                </p>
+              </div>
             )}
             {activeTab === 'completed' && (
-              <EmptyState 
-                title="ยังไม่มีรายการที่เสร็จสิ้น" 
-                description="ประวัติงานที่สำเร็จแล้วของคุณจะแสดงที่นี่"
-                icon={FileText}
-              />
+              <div className="text-center max-w-sm">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 border border-slate-200/80 mx-auto flex items-center justify-center mb-3 shadow-2xs">
+                  <FileText className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-semibold text-slate-900 mb-1">ยังไม่มีรายการที่เสร็จสิ้น</h4>
+                <p className="text-xs text-slate-500 leading-relaxed font-normal">
+                  ประวัติงานที่คุณอนุมัติหรือตรวจรับเสร็จสิ้นแล้วจะบันทึกไว้ที่นี่
+                </p>
+              </div>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeTasks.map(task => {
               const isPR = task.type === 'PR';
               const Icon = isPR ? FileText : ShoppingBag;
               
+              const uniqueCardKey = task.raw?.poNo || task.raw?.poNumber || task.raw?.prNo || task.raw?.prNumber || `${task.type}-${task.id || task.docNo}`;
               return (
                 <div 
-                  key={`${task.type}-${task.id}`} 
+                  key={uniqueCardKey} 
                   onClick={() => handleTaskClick(task)}
-                  className="group bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between relative overflow-hidden"
+                  className="group bg-white border border-slate-200/70 hover:border-slate-300 rounded-2xl p-4 sm:p-5 shadow-2xs hover:shadow-xs transition-all duration-150 cursor-pointer flex flex-col justify-between relative overflow-hidden"
                 >
                   <div>
                     {/* Top Type & Date */}
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex items-center gap-2.5">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                           isPR ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
                         }`}>
                           <Icon className="w-4 h-4" />

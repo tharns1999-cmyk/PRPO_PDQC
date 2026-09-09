@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, ChevronDown, Check, X } from 'lucide-react';
+import { Search, ChevronDown, Check, X, Plus, Edit3, Trash2 } from 'lucide-react';
 
 export default function SearchableSelect({
   options = [],
@@ -12,7 +12,11 @@ export default function SearchableSelect({
   disabled = false,
   className = '',
   buttonClassName = '',
-  required = false
+  required = false,
+  onAddOption = null,
+  addOptionLabel = '+ เพิ่มรายการใหม่',
+  onEditOption = null,
+  onDeleteOption = null
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -229,6 +233,24 @@ export default function SearchableSelect({
           }}
           className="bg-white rounded-2xl border border-slate-200/90 shadow-xl overflow-hidden animate-zoom-in text-slate-800"
         >
+          {/* Optional Quick Add Action Header */}
+          {onAddOption && (
+            <div className="p-2 border-b border-slate-100 bg-indigo-50/50">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsOpen(false);
+                  onAddOption();
+                }}
+                className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{addOptionLabel}</span>
+              </button>
+            </div>
+          )}
+
           {/* Search Box */}
           <div className="p-2.5 border-b border-slate-100 bg-slate-50/70">
             <div className="relative">
@@ -269,13 +291,14 @@ export default function SearchableSelect({
               filteredOptions.map((opt, idx) => {
                 const isSelected = String(opt.value) === String(value);
                 const isHighlighted = idx === highlightedIndex;
+                const hasItemActions = (onEditOption || onDeleteOption) && opt.value !== '' && opt.value !== null && opt.value !== undefined;
 
                 return (
                   <div
-                    key={opt.value}
+                    key={opt.value || `empty-${idx}`}
                     onClick={() => handleSelect(opt)}
                     onMouseEnter={() => setHighlightedIndex(idx)}
-                    className={`px-3 py-2 rounded-xl cursor-pointer transition-all flex items-center justify-between gap-2 ${
+                    className={`group/opt px-3 py-2 rounded-xl cursor-pointer transition-all flex items-center justify-between gap-2 ${
                       isSelected
                         ? 'bg-indigo-50 text-indigo-950 font-semibold border border-indigo-200/80 shadow-2xs'
                         : isHighlighted
@@ -304,9 +327,48 @@ export default function SearchableSelect({
                       )}
                     </div>
 
-                    {isSelected && (
-                      <Check className="w-4 h-4 text-indigo-600 shrink-0 ml-2" />
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* Row Action Buttons (Edit / Delete) */}
+                      {hasItemActions && (
+                        <div 
+                          className="flex items-center gap-0.5 opacity-80 group-hover/opt:opacity-100 transition-opacity mr-1"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {onEditOption && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsOpen(false);
+                                onEditOption(opt);
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-white text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer border border-transparent hover:border-slate-200 shadow-2xs"
+                              title={`แก้ไข ${opt.label}`}
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {onDeleteOption && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsOpen(false);
+                                onDeleteOption(opt);
+                              }}
+                              className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer border border-transparent hover:border-rose-200 shadow-2xs"
+                              title={`ลบ ${opt.label}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {isSelected && (
+                        <Check className="w-4 h-4 text-indigo-600 shrink-0" />
+                      )}
+                    </div>
                   </div>
                 );
               })

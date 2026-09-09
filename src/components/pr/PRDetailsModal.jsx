@@ -2,28 +2,80 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PR_STATUS } from '../../config/constants';
 import { apiService } from '../../services/apiService';
+import { useAppContext } from '../../context/AppContext';
 import { storageService } from '../../services/storageService';
 import { workflowEngine } from '../../services/workflowEngine';
 import { modalService } from '../../services/modalService';
 import { 
   ExternalLink, History, ShieldCheck, CheckCircle2, XCircle, 
   Trash2, Send, Edit3, Save, RotateCcw, AlertTriangle, Layers, 
-  X, Building2, User, Calendar, FileText, ShoppingCart, 
-  Check, ChevronRight, MessageSquare, Info, Pencil,
+  X, User, Calendar, FileText, 
+  ChevronRight, MessageSquare, Pencil,
   Paperclip, Globe, Tag, Factory, Building, Package
 } from 'lucide-react';
 import MEMODetailsSection from './MEMODetailsSection';
-import ElectronicSignatureModal from './ElectronicSignatureModal';
 import POSplitModal from '../po/POSplitModal';
 import AttachmentViewerModal from '../common/AttachmentViewerModal';
 
+const REVISION_PRESETS = [
+  'สเปกไม่ชัดเจน',
+  'งบประมาณไม่พอ',
+  'มีสต็อกในคลัง',
+  'ราคาผิดปกติ',
+  'เอกสารแนบไม่ครบถ้วน',
+  'จำนวนสั่งซื้อไม่เหมาะสม'
+];
+
 export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onClose, onRefresh, onSelectPO, onEditPR }) {
-  const selectedPR = (storageService.getPRs() || []).find(p => p.id === initialPR?.id || p.prNo === initialPR?.prNo) || initialPR;
+  const context = useAppContext();
+  const allPRs = context?.prs || storageService.getPRs() || [];
+  const selectedPR = allPRs.find(p => p.id === initialPR?.id || p.prNo === initialPR?.prNo) || initialPR;
   const [actionNote, setActionNote] = useState('');
-  const [sigModalConfig, setSigModalConfig] = useState(null); // { actionText, nextStatus, isSubmit, isReject }
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [viewingAttachment, setViewingAttachment] = useState(null);
+
+  // Inline Revision Drawer State
+  const [isRevising, setIsRevising] = useState(false);
+  const [revisionReason, setRevisionReason] = useState('');
+  const [selectedPreset, setSelectedPreset] = useState('');
+  const [isSubmittingReject, setIsSubmittingReject] = useState(false);
+
+  const handleSelectPreset = (preset) => {
+    setSelectedPreset(preset);
+    if (!revisionReason.trim()) {
+      setRevisionReason(preset);
+    } else if (!revisionReason.includes(preset)) {
+      setRevisionReason(prev => `${prev.trim()} / ${preset}`);
+    }
+  };
+
+  const handleConfirmRevision = async () => {
+    if (!revisionReason.trim()) {
+      modalService.warning('กรุณาระบุเหตุผลการส่งกลับแก้ไข');
+      return;
+    }
+
+    setIsSubmittingReject(true);
+    try {
+      if (context?.rejectPR) {
+        await context.rejectPR(selectedPR.id, revisionReason.trim());
+      } else {
+        await apiService.rejectPR(selectedPR.id, currentRole, revisionReason.trim());
+      }
+      modalService.success('ส่งกลับเรียบร้อย', `ส่งกลับใบขอซื้อ ${selectedPR.prNo} เพื่อแก้ไขแล้ว`);
+      setIsRevising(false);
+      setRevisionReason('');
+      setSelectedPreset('');
+      setActionNote('');
+      onClose();
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      modalService.error('เกิดข้อผิดพลาด', err.message);
+    } finally {
+      setIsSubmittingReject(false);
+    }
+  };
   
   // Approver Item Editing State
   const [isEditingItems, setIsEditingItems] = useState(false);
@@ -81,31 +133,48 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
     }
   };
 
-  const executeAction = async () => {
-    if (!sigModalConfig) return;
-    try {
-      if (sigModalConfig.isReject) {
-        await apiService.rejectPR(selectedPR.id, currentRole, actionNote);
-      } else if (sigModalConfig.isSubmit) {
-        await apiService.submitPR(selectedPR.id, currentRole);
-      } else {
-        await apiService.updatePRStatus(selectedPR.id, sigModalConfig.nextStatus, currentRole, actionNote);
-      }
-      setActionNote('');
-      setSigModalConfig(null);
-      onClose();
-      onRefresh();
-    } catch (err) {
-      modalService.error('เกิดข้อผิดพลาด', err.message);
-    }
-  };
-
-  const requestSignature = (actionText, nextStatus, isSubmit = false, isReject = false) => {
+  const handleWorkflowAction = async ({ actionText, nextStatus, isSubmit = false, isReject = false }) => {
     if (isReject && !actionNote.trim()) {
       modalService.warning('กรุณาระบุเหตุผลการปฏิเสธ / ส่งกลับ ในช่องหมายเหตุด้านล่าง');
       return;
     }
-    setSigModalConfig({ actionText, nextStatus, isSubmit, isReject });
+
+    const confirmed = await modalService.confirm({
+      title: isReject ? 'ยืนยันการปฏิเสธ / ส่งกลับ' : 'ยืนยันการดำเนินการ',
+      message: `ต้องการดำเนินการ "${actionText}" สำหรับใบขอซื้อเลขที่ ${selectedPR.prNo} หรือไม่?`,
+      confirmText: isReject ? 'ยืนยันส่งกลับ' : 'ยืนยันดำเนินการ',
+      cancelText: 'ยกเลิก',
+      type: isReject ? 'warning' : 'info'
+    });
+    if (!confirmed) return;
+
+    try {
+      if (isReject) {
+        if (context?.rejectPR) {
+          await context.rejectPR(selectedPR.id, actionNote);
+        } else {
+          await apiService.rejectPR(selectedPR.id, currentRole, actionNote);
+        }
+        modalService.success('ส่งกลับเรียบร้อย', `ส่งกลับใบขอซื้อ ${selectedPR.prNo} เพื่อแก้ไขแล้ว`);
+      } else if (isSubmit) {
+        await apiService.submitPR(selectedPR.id, currentRole);
+        modalService.success('ส่งใบขอซื้อสำเร็จ', `ใบขอซื้อ ${selectedPR.prNo} ถูกส่งเข้าสู่ระบบแล้ว`);
+      } else if (nextStatus === 'REVIEWED' && context?.reviewPR) {
+        await context.reviewPR(selectedPR.id, actionNote);
+        modalService.success('ดำเนินการสำเร็จ', `อัปเดตสถานะใบขอซื้อ ${selectedPR.prNo} เรียบร้อยแล้ว`);
+      } else if (nextStatus === 'APPROVED' && context?.approvePR) {
+        await context.approvePR(selectedPR.id, actionNote);
+        modalService.success('ดำเนินการสำเร็จ', `อัปเดตสถานะใบขอซื้อ ${selectedPR.prNo} เรียบร้อยแล้ว`);
+      } else {
+        await apiService.updatePRStatus(selectedPR.id, nextStatus, currentRole, actionNote);
+        modalService.success('ดำเนินการสำเร็จ', `อัปเดตสถานะใบขอซื้อ ${selectedPR.prNo} เรียบร้อยแล้ว`);
+      }
+      setActionNote('');
+      onClose();
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      modalService.error('เกิดข้อผิดพลาด', err.message);
+    }
   };
 
   const handleCancelPR = async () => {
@@ -226,6 +295,25 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
               </div>
             </div>
           </div>
+
+          {/* Rejection Alert Banner (When PR has been rejected) */}
+          {(selectedPR.status === 'REJECTED_TO_DRAFT' || selectedPR.status === 'REJECTED_TO_L2' || selectedPR.rejectReason) && (
+            <div className="bg-rose-50/90 border border-rose-200/90 rounded-2xl p-4 flex items-start gap-3 shadow-2xs">
+              <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 mt-0.5">
+                <RotateCcw className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs sm:text-sm font-bold text-rose-950">
+                    ใบขอซื้อถูกส่งกลับเพื่อแก้ไข (Revision Required)
+                  </h4>
+                </div>
+                <p className="text-xs text-rose-900 mt-1 bg-white/90 p-3 rounded-xl border border-rose-200/60 font-medium leading-relaxed">
+                  {selectedPR.rejectReason || 'กรุณาตรวจสอบรายละเอียดและแก้ไขตามที่ได้รับแจ้งก่อนส่งอีกครั้ง'}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Linked PO Banner */}
           {relatedPOs.length > 0 && (
@@ -631,130 +719,241 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
         </div>
 
         {/* ── 5. Sticky Action Footer (Non-scrollable) ── */}
-        <div className="shrink-0 px-6 py-4 bg-slate-50/80 border-t border-slate-100 space-y-3 sticky bottom-0 z-20">
-          
-          {/* Action note field (Shown for Approvers/Reviewers when actionable) */}
-          {(['SUBMITTED', 'REVIEWED', 'REJECTED_TO_L2'].includes(selectedPR.status)) && 
-           (workflowEngine.canAction(currentRole, selectedPR)) && (
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <MessageSquare className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input 
-                  type="text" 
-                  placeholder="ระบุความเห็น / หมายเหตุประกอบการอนุมัติ (จำเป็นต้องระบุเมื่อ Reject)..." 
-                  className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-2xs"
-                  value={actionNote}
-                  onChange={e => setActionNote(e.target.value)}
+        <div className="shrink-0 px-6 py-4 bg-slate-50/90 border-t border-slate-100 sticky bottom-0 z-20">
+          {isRevising ? (
+            /* Inline Revision Drawer */
+            <div className="bg-white rounded-2xl border border-rose-200 p-4 shadow-sm space-y-3 animate-fade-in">
+              <div className="flex items-center justify-between pb-2 border-b border-rose-100/80">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center">
+                    <RotateCcw className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-900">
+                      ระบุเหตุผลการส่งกลับแก้ไข (Send Back for Revision)
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      ระบบจะบันทึกเหตุผลนี้ลงในประวัติการอนุมัติและส่งแจ้งเตือนกลับไปยังผู้ขอซื้อ ({selectedPR.requestedBy})
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRevising(false);
+                    setRevisionReason('');
+                    setSelectedPreset('');
+                  }}
+                  className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="ปิดแผงส่งกลับ"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Preset Quick Chips */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-semibold text-slate-500 block">แท็กเหตุผลด่วน (Quick Presets):</span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {REVISION_PRESETS.map((preset) => {
+                    const isSelected = selectedPreset === preset || revisionReason.includes(preset);
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleSelectPreset(preset)}
+                        className={`px-3 py-1 rounded-full text-xs transition-all cursor-pointer border flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-rose-50 text-rose-700 border-rose-300 font-semibold shadow-2xs ring-1 ring-rose-300'
+                            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-white hover:border-slate-300 hover:text-slate-900'
+                        }`}
+                      >
+                        <Tag className="w-3 h-3 text-rose-500 opacity-80" />
+                        <span>{preset}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Reason Textarea */}
+              <div className="space-y-1">
+                <textarea
+                  rows={3}
+                  value={revisionReason}
+                  onChange={(e) => setRevisionReason(e.target.value)}
+                  placeholder="พิมพ์รายละเอียดหรือคำแนะนำเพิ่มเติมที่ต้องการให้ผู้ขอซื้อแก้ไข..."
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 outline-none transition-all shadow-inner resize-none"
+                  autoFocus
                 />
+                <div className="flex items-center justify-between text-[10px] text-slate-400 px-1">
+                  <span>* จำเป็นต้องระบุเหตุผลเพื่อประกอบการส่งกลับ</span>
+                  <span>{revisionReason.length} ตัวอักษร</span>
+                </div>
+              </div>
+
+              {/* Action Pair */}
+              <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                <button
+                  type="button"
+                  disabled={isSubmittingReject}
+                  onClick={() => {
+                    setIsRevising(false);
+                    setRevisionReason('');
+                    setSelectedPreset('');
+                  }}
+                  className="px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer shadow-2xs"
+                >
+                  ยกเลิก
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!revisionReason.trim() || isSubmittingReject}
+                  onClick={handleConfirmRevision}
+                  className={`px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-semibold rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer ${
+                    !revisionReason.trim() || isSubmittingReject ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'
+                  }`}
+                >
+                  <XCircle className="w-4 h-4" />
+                  <span>{isSubmittingReject ? 'กำลังส่งกลับ...' : 'ยืนยันการส่งกลับ'}</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Normal Action Footer */
+            <div className="space-y-3">
+              {/* Action note field (Shown for Approvers/Reviewers when actionable) */}
+              {(['SUBMITTED', 'REVIEWED', 'REJECTED_TO_L2'].includes(selectedPR.status)) && 
+               (workflowEngine.canAction(currentRole, selectedPR)) && (
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <MessageSquare className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="text" 
+                      placeholder="ระบุความเห็น / หมายเหตุประกอบการอนุมัติ..." 
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-2xs"
+                      value={actionNote}
+                      onChange={e => setActionNote(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Unified Action Button Strip */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                
+                {/* Left side: Cancel PR (Ghost Destructive) */}
+                <div className="flex items-center gap-2">
+                  {isPRCancellable && (
+                    <button 
+                      type="button"
+                      onClick={handleCancelPR}
+                      disabled={isCancelling}
+                      className="px-3.5 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{isCancelling ? 'กำลังยกเลิก...' : 'ยกเลิก PR'}</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Right side: Actions */}
+                <div className="flex items-center gap-2 ml-auto">
+                  
+                  {/* Close Button */}
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="bg-white border border-slate-300/80 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium shadow-xs transition-all cursor-pointer"
+                  >
+                    ปิดหน้าต่าง
+                  </button>
+
+                  {/* Requester Actions (Draft / Rejected to Draft) */}
+                  {(selectedPR.status === 'DRAFT' || selectedPR.status === 'REJECTED_TO_DRAFT') && 
+                   (workflowEngine.canAction(currentRole, selectedPR)) && (
+                    <>
+                      {onEditPR && (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            onClose();
+                            onEditPR(selectedPR);
+                          }}
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          <span>แก้ไขใบขอซื้อ (Edit PR)</span>
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => handleWorkflowAction({ actionText: 'ส่งใบ PR เข้าสู่ระบบ', nextStatus: null, isSubmit: true })}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>ส่งใบขอซื้อ (Submit PR)</span>
+                      </button>
+                    </>
+                  )}
+
+                  {/* Asst. Manager Actions (Level 1 Review) */}
+                  {(selectedPR.status === 'SUBMITTED' || selectedPR.status === 'REJECTED_TO_L2') && 
+                   (workflowEngine.canAction(currentRole, selectedPR)) && (
+                    <>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setIsRevising(true);
+                          if (actionNote) setRevisionReason(actionNote);
+                        }}
+                        className="px-4 py-2 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 font-semibold text-xs sm:text-sm rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                        <span>ส่งกลับแก้ไข (Reject)</span>
+                      </button>
+
+                      <button 
+                        onClick={() => handleWorkflowAction({ actionText: 'ตรวจสอบและส่งต่อให้ Plant Manager', nextStatus: 'REVIEWED' })}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                        <span>ตรวจสอบผ่าน (ส่งต่อ Plant Mgr)</span>
+                      </button>
+                    </>
+                  )}
+
+                  {/* Plant Manager Actions (Final Approval) */}
+                  {selectedPR.status === 'REVIEWED' && 
+                   (workflowEngine.canAction(currentRole, selectedPR)) && (
+                    <>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setIsRevising(true);
+                          if (actionNote) setRevisionReason(actionNote);
+                        }}
+                        className="px-4 py-2 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 font-semibold text-xs sm:text-sm rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                        title="ส่งกลับให้ผู้ขอซื้อแก้ไข"
+                      >
+                        <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                        <span>ส่งกลับแก้ไข (Reject)</span>
+                      </button>
+
+                      <button 
+                        onClick={() => handleWorkflowAction({ actionText: 'อนุมัติสั่งซื้อและสร้าง PO', nextStatus: 'APPROVED' })}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>อนุมัติสั่งซื้อ (Approve & ออก PO)</span>
+                      </button>
+                    </>
+                  )}
+
+                </div>
               </div>
             </div>
           )}
-
-          {/* Unified Action Button Strip */}
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            
-            {/* Left side: Cancel PR (Ghost Destructive) */}
-            <div className="flex items-center gap-2">
-              {isPRCancellable && (
-                <button 
-                  type="button"
-                  onClick={handleCancelPR}
-                  disabled={isCancelling}
-                  className="px-3.5 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{isCancelling ? 'กำลังยกเลิก...' : 'ยกเลิก PR'}</span>
-                </button>
-              )}
-            </div>
-
-            {/* Right side: Actions */}
-            <div className="flex items-center gap-2 ml-auto">
-              
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={onClose}
-                className="bg-white border border-slate-300/80 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium shadow-xs transition-all cursor-pointer"
-              >
-                ปิดหน้าต่าง
-              </button>
-
-              {/* Requester Actions (Draft / Rejected to Draft) */}
-              {(selectedPR.status === 'DRAFT' || selectedPR.status === 'REJECTED_TO_DRAFT') && 
-               (workflowEngine.canAction(currentRole, selectedPR)) && (
-                <>
-                  {onEditPR && (
-                    <button 
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onEditPR(selectedPR);
-                      }}
-                      className="px-4 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                      <span>แก้ไขใบขอซื้อ (Edit PR)</span>
-                    </button>
-                  )}
-                  <button 
-                    onClick={() => requestSignature('ส่งใบ PR เข้าสู่ระบบ', null, true)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>ส่งใบขอซื้อ (Submit PR)</span>
-                  </button>
-                </>
-              )}
-
-              {/* Asst. Manager Actions (Level 1 Review) */}
-              {(selectedPR.status === 'SUBMITTED' || selectedPR.status === 'REJECTED_TO_L2') && 
-               (workflowEngine.canAction(currentRole, selectedPR)) && (
-                <>
-                  <button 
-                    onClick={() => requestSignature('ปฏิเสธและส่งกลับผู้ขอซื้อ', 'REJECTED_TO_DRAFT', false, true)}
-                    className="px-4 py-2 bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 font-semibold text-xs sm:text-sm rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <XCircle className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Reject (ส่งกลับผู้ขอซื้อ)</span>
-                  </button>
-
-                  <button 
-                    onClick={() => requestSignature('ตรวจสอบและส่งต่อให้ Plant Manager', 'REVIEWED')}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-                  >
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>ตรวจสอบผ่าน (ส่งต่อ Plant Mgr)</span>
-                  </button>
-                </>
-              )}
-
-              {/* Plant Manager Actions (Final Approval) */}
-              {selectedPR.status === 'REVIEWED' && 
-               (workflowEngine.canAction(currentRole, selectedPR)) && (
-                <>
-                  <button 
-                    onClick={() => requestSignature('ปฏิเสธและส่งกลับผู้ขอซื้อ', 'REJECTED_TO_DRAFT', false, true)}
-                    className="px-4 py-2 bg-white hover:bg-amber-50 text-amber-800 border border-amber-300 font-semibold text-xs sm:text-sm rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
-                    title="ส่งกลับให้ผู้ขอซื้อแก้ไข"
-                  >
-                    <XCircle className="w-3.5 h-3.5 text-amber-600" />
-                    <span>ส่งกลับให้แก้ไข (Reject)</span>
-                  </button>
-
-                  <button 
-                    onClick={() => requestSignature('อนุมัติสั่งซื้อและสร้าง PO', 'APPROVED')}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>อนุมัติสั่งซื้อ (Approve & ออก PO)</span>
-                  </button>
-                </>
-              )}
-
-            </div>
-          </div>
-
         </div>
 
       </div>
@@ -768,15 +967,6 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
           onSelectPO={onSelectPO}
         />
       )}
-
-      {/* Signature Modal */}
-      <ElectronicSignatureModal 
-        isOpen={!!sigModalConfig}
-        user={currentRole}
-        actionText={sigModalConfig?.actionText}
-        onConfirm={executeAction}
-        onCancel={() => setSigModalConfig(null)}
-      />
 
       {/* AttachmentViewerModal */}
       {viewingAttachment && (

@@ -1,0 +1,14 @@
+{
+  "PD": {
+    "monthlyBudget": 250000,
+    "spent": 0,
+    "pending": 0,
+    "variance": 0
+  },
+  "QC": {
+    "monthlyBudget": 150000,
+    "spent": 0,
+    "pending": 0,
+    "variance": 0
+  }
+}

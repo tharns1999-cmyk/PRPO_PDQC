@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiService } from '../services/apiService';
 import { 
-  FileText, ArrowLeft, Info, AlertTriangle, FileSignature, 
+  FileText, ArrowLeft, Info, AlertTriangle, 
   Plus, Trash2, Building2, Calendar, ShoppingBag, Globe, 
-  Sparkles, CheckCircle2, ShoppingCart, SlidersHorizontal, Repeat, ArrowRight, Factory, Building, Receipt, Package, HelpCircle, Layers, Paperclip
+  Sparkles, CheckCircle2, ShoppingCart, SlidersHorizontal, Repeat, ArrowRight, Factory, Building, Receipt, Package, HelpCircle, Layers, Paperclip, Loader2
 } from 'lucide-react';
 import { PR_SOURCE, PURCHASE_CHANNEL, MEMO_THRESHOLD, DEPARTMENTS } from '../config/constants';
 import FileUploader from '../components/common/FileUploader';
@@ -18,8 +18,13 @@ export default function PRCreateView({
   preselectedProduct, 
   clearPreselectedProduct,
   editingPR,
-  clearEditingPR
+  clearEditingPR,
+  createPR,
+  updatePR
 }) {
+  // Submission Guard to prevent duplicate submissions
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Determine effective department (locked for PD/QC users, selectable for ALL)
   const initialDept = editingPR 
     ? editingPR.department 
@@ -322,7 +327,8 @@ export default function PRCreateView({
   };
 
   const handleCreateSubmit = async (e, isDraft) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+    if (isSubmitting) return;
 
     // Validations
     if (!isDraft) {
@@ -352,6 +358,7 @@ export default function PRCreateView({
       }
     }
 
+    setIsSubmitting(true);
     try {
       const itemsFormatted = prItems.map(item => {
         const itemSource = item.source === 'OFFICE' ? 'OFFICE' : 'FACTORY';
@@ -488,19 +495,29 @@ export default function PRCreateView({
       };
 
       if (editingPR) {
-        await apiService.updatePR(editingPR.id, prPayload, currentRole, isDraft);
+        if (updatePR) {
+          await updatePR(editingPR.id, prPayload, isDraft);
+        } else {
+          await apiService.updatePR(editingPR.id, prPayload, currentRole, isDraft);
+        }
         if (clearEditingPR) clearEditingPR();
         modalService.success(isDraft ? 'บันทึกแบบร่างเรียบร้อย' : 'แก้ไขและยื่นส่งใบขอซื้อ (PR) สำเร็จ');
       } else {
-        await apiService.createPR(prPayload, currentRole, isDraft);
+        if (createPR) {
+          await createPR(prPayload, isDraft);
+        } else {
+          await apiService.createPR(prPayload, currentRole, isDraft);
+        }
         if (clearPreselectedProduct) clearPreselectedProduct();
         modalService.success(isDraft ? 'บันทึกแบบร่างสำเร็จ' : 'สร้างและยื่นส่งใบขอซื้อ (PR) สำเร็จ');
       }
 
-      onRefresh();
+      if (onRefresh) await onRefresh();
       onNavigate('pr-list');
     } catch (err) {
       modalService.error(editingPR ? 'เกิดข้อผิดพลาดในการแก้ไข PR' : 'เกิดข้อผิดพลาดในการสร้าง PR', err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -576,7 +593,7 @@ export default function PRCreateView({
 
       {/* ── Main Form Formcard ── */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-200/60 overflow-hidden">
-        <form className="divide-y divide-slate-100">
+        <form className="divide-y divide-slate-100" onSubmit={e => e.preventDefault()}>
           
           {/* ─────────────────────────────────────────────────────────────
              SECTION 1: ข้อมูลเบื้องต้น (General Information)
@@ -1549,18 +1566,28 @@ export default function PRCreateView({
             <div className="flex items-center gap-3 ml-auto">
               <button
                 type="button"
+                disabled={isSubmitting}
                 onClick={(e) => handleCreateSubmit(e, true)}
-                className="px-5 py-2.5 text-xs sm:text-sm font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900 rounded-xl transition-all shadow-xs hover:shadow cursor-pointer"
+                className={`px-5 py-2.5 text-xs sm:text-sm font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900 rounded-xl transition-all shadow-xs hover:shadow cursor-pointer ${
+                  isSubmitting ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+                }`}
               >
                 {editingPR ? 'บันทึกแบบร่าง (Save Draft)' : 'บันทึกแบบร่าง (Draft)'}
               </button>
               <button
                 type="button"
+                disabled={isSubmitting}
                 onClick={(e) => handleCreateSubmit(e, false)}
-                className="px-7 py-2.5 text-xs sm:text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center gap-2"
+                className={`px-7 py-2.5 text-xs sm:text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center gap-2 ${
+                  isSubmitting ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+                }`}
               >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{editingPR ? 'บันทึกและส่งใบ PR ใหม่ (Resubmit)' : 'ส่งใบ PR เข้าสู่ระบบ'}</span>
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4" />
+                )}
+                <span>{isSubmitting ? 'กำลังประมวลผล...' : (editingPR ? 'บันทึกและส่งใบ PR ใหม่ (Resubmit)' : 'ส่งใบ PR เข้าสู่ระบบ')}</span>
               </button>
             </div>
           </div>

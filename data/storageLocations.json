@@ -1,0 +1,42 @@
+[
+  {
+    "id": "LOC-PD-001",
+    "name": "ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)",
+    "department": "PD"
+  },
+  {
+    "id": "LOC-PD-002",
+    "name": "ชั้นวาง A-02 (อะไหล่เครื่องจักร & สายพาน)",
+    "department": "PD"
+  },
+  {
+    "id": "LOC-PD-003",
+    "name": "ตู้เก็บอุปกรณ์ความปลอดภัย (PPE)",
+    "department": "PD"
+  },
+  {
+    "id": "LOC-PD-004",
+    "name": "ห้องแพ็คเกจจิ้ง",
+    "department": "PD"
+  },
+  {
+    "id": "LOC-QC-001",
+    "name": "ตู้เก็บสารเคมีทดสอบ (Lab 1)",
+    "department": "QC"
+  },
+  {
+    "id": "LOC-QC-002",
+    "name": "ชั้นวางอาหารเลี้ยงเชื้อ (Media Shelf B)",
+    "department": "QC"
+  },
+  {
+    "id": "LOC-QC-003",
+    "name": "ตู้เก็บแก้วและอุปกรณ์สอบเทียบ (Calibration Room)",
+    "department": "QC"
+  },
+  {
+    "id": "LOC-QC-004",
+    "name": "จุดพักตัวอย่างรอตรวจ (Pending Sample Area)",
+    "department": "QC"
+  }
+]

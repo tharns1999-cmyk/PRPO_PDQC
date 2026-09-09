@@ -318,22 +318,27 @@ export const VENDOR_DEPARTMENTS = {
   BOTH: { id: 'BOTH', label: 'ใช้ร่วมกันทุกแผนก (BOTH)' },
 };
 
-// ─── QUICK ISSUE LOCATIONS / UNITS ──────────────────────────────────────────
-export const ISSUE_LOCATIONS = [
-  'ห้อง K1',
-  'ห้อง K2',
-  'ห้องผลไม้',
-  'ห้องแพ็ค',
-  'ออฟฟิศ',
+// ─── QUICK ISSUE LOCATIONS / UNITS (Department-Scoped Initial Defaults) ────────
+export const INITIAL_USAGE_UNITS = [
+  { id: 'UNIT-PD-001', name: 'ห้อง K1', department: 'PD', dot: 'bg-blue-500', color: 'bg-blue-50 text-blue-700 border-blue-200/80', badgeBg: 'bg-blue-100 text-blue-800', status: 'ACTIVE' },
+  { id: 'UNIT-PD-002', name: 'ห้อง K2', department: 'PD', dot: 'bg-violet-500', color: 'bg-violet-50 text-violet-700 border-violet-200/80', badgeBg: 'bg-violet-100 text-violet-800', status: 'ACTIVE' },
+  { id: 'UNIT-PD-003', name: 'ห้องผลไม้', department: 'PD', dot: 'bg-emerald-500', color: 'bg-emerald-50 text-emerald-700 border-emerald-200/80', badgeBg: 'bg-emerald-100 text-emerald-800', status: 'ACTIVE' },
+  { id: 'UNIT-PD-004', name: 'ห้องแพ็ค', department: 'PD', dot: 'bg-amber-500', color: 'bg-amber-50 text-amber-700 border-amber-200/80', badgeBg: 'bg-amber-100 text-amber-800', status: 'ACTIVE' },
+  { id: 'UNIT-PD-005', name: 'ออฟฟิศ PD', department: 'PD', dot: 'bg-slate-500', color: 'bg-slate-100 text-slate-700 border-slate-200/80', badgeBg: 'bg-slate-200 text-slate-800', status: 'ACTIVE' },
+  { id: 'UNIT-QC-001', name: 'Lab เคมี', department: 'QC', dot: 'bg-cyan-500', color: 'bg-cyan-50 text-cyan-700 border-cyan-200/80', badgeBg: 'bg-cyan-100 text-cyan-800', status: 'ACTIVE' },
+  { id: 'UNIT-QC-002', name: 'Lab จุลชีววิทยา', department: 'QC', dot: 'bg-teal-500', color: 'bg-teal-50 text-teal-700 border-teal-200/80', badgeBg: 'bg-teal-100 text-teal-800', status: 'ACTIVE' },
+  { id: 'UNIT-QC-003', name: 'ห้อง Sensory', department: 'QC', dot: 'bg-fuchsia-500', color: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200/80', badgeBg: 'bg-fuchsia-100 text-fuchsia-800', status: 'ACTIVE' },
+  { id: 'UNIT-QC-004', name: 'ออฟฟิศ QC', department: 'QC', dot: 'bg-rose-500', color: 'bg-rose-50 text-rose-700 border-rose-200/80', badgeBg: 'bg-rose-100 text-rose-800', status: 'ACTIVE' },
 ];
 
-export const ISSUE_LOCATION_CONFIG = {
-  'ห้อง K1':   { id: 'ห้อง K1',   label: 'ห้อง K1',   color: 'bg-blue-50 text-blue-700 border-blue-200/80',    badgeBg: 'bg-blue-100 text-blue-800',    dot: 'bg-blue-500' },
-  'ห้อง K2':   { id: 'ห้อง K2',   label: 'ห้อง K2',   color: 'bg-violet-50 text-violet-700 border-violet-200/80', badgeBg: 'bg-violet-100 text-violet-800', dot: 'bg-violet-500' },
-  'ห้องผลไม้': { id: 'ห้องผลไม้', label: 'ห้องผลไม้', color: 'bg-emerald-50 text-emerald-700 border-emerald-200/80', badgeBg: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-500' },
-  'ห้องแพ็ค':  { id: 'ห้องแพ็ค',  label: 'ห้องแพ็ค',  color: 'bg-amber-50 text-amber-700 border-amber-200/80',   badgeBg: 'bg-amber-100 text-amber-800',   dot: 'bg-amber-500' },
-  'ออฟฟิศ':    { id: 'ออฟฟิศ',    label: 'ออฟฟิศ',    color: 'bg-slate-100 text-slate-700 border-slate-200/80',  badgeBg: 'bg-slate-200 text-slate-800',  dot: 'bg-slate-500' },
-};
+export const ISSUE_LOCATIONS = INITIAL_USAGE_UNITS.map(u => u.name);
+
+export const ISSUE_LOCATION_CONFIG = INITIAL_USAGE_UNITS.reduce((acc, u) => {
+  acc[u.name] = { id: u.name, label: u.name, color: u.color, badgeBg: u.badgeBg, dot: u.dot };
+  return acc;
+}, {
+  'ออฟฟิศ': { id: 'ออฟฟิศ', label: 'ออฟฟิศ', color: 'bg-slate-100 text-slate-700 border-slate-200/80', badgeBg: 'bg-slate-200 text-slate-800', dot: 'bg-slate-500' }
+});
 
 // ─── STOCK IN REASONS ─────────────────────────────────────────────────────────
 export const STOCK_IN_REASONS = [
@@ -350,6 +355,8 @@ export const STORAGE_KEYS = {
   CURRENT_ROLE:        'prpo_current_role',
   PRODUCTS:            'prpo_products_data',
   VENDORS:             'prpo_vendors_data',
+  STORAGE_LOCATIONS:   'prpo_storage_locations_data',
+  USAGE_UNITS:         'prpo_usage_units_data',
   PRS:                 'prpo_prs_data',
   POS:                 'prpo_pos_data',
   STOCK_LOGS:          'prpo_stock_logs',

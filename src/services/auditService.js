@@ -3,7 +3,6 @@ import { STORAGE_KEYS } from '../config/constants.js';
 /**
  * Audit Service for tracking all system actions, document status changes, 
  * master data edits, stock movements, and signature updates.
- * Built to be 100% compatible with Google Apps Script (GAS) Web App & Google Sheets logging.
  */
 export const auditService = {
   /**
@@ -40,7 +39,7 @@ export const auditService = {
         actorRole,
         details: details || '',
         changes: changes ? JSON.stringify(changes) : '',
-        clientEnv: 'React Web App (GAS Compatible)',
+        clientEnv: 'React Web App',
       };
 
       // Save to localStorage
@@ -49,14 +48,6 @@ export const auditService = {
       localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS || 'prpo_audit_logs', JSON.stringify(updated));
 
       console.log(`[AuditService] Action logged: ${action} by ${actorName} (${docNo})`);
-
-      // Optional GAS Webhook push if GAS URL is configured
-      const gasUrl = localStorage.getItem('prpo_gas_webhook_url');
-      if (gasUrl) {
-        this.sendToGASWebhook(gasUrl, logEntry).catch(err => {
-          console.warn('[AuditService] GAS Webhook sync failed (offline or unconfigured):', err);
-        });
-      }
 
       return logEntry;
     } catch (err) {
@@ -105,60 +96,5 @@ export const auditService = {
   clearLogs() {
     localStorage.removeItem(STORAGE_KEYS.AUDIT_LOGS || 'prpo_audit_logs');
     console.log('[AuditService] Audit logs cleared.');
-  },
-
-  /**
-   * Format logs for Google Apps Script (GAS) doPost payload
-   * Transforms logs into 2D Array format suitable for Google Sheets Range.setValues()
-   */
-  exportToGASPayload(filters = {}) {
-    const logs = this.getLogs(filters);
-    const headers = [
-      'Log ID', 'Timestamp (ISO)', 'Date Time (TH)', 'Action', 
-      'Doc Type', 'Doc No', 'Department', 'Actor Name', 
-      'Actor Role', 'Details', 'Changes Context', 'Client Environment'
-    ];
-
-    const rows = logs.map(l => [
-      l.id,
-      l.timestamp,
-      l.timeFormatted,
-      l.action,
-      l.docType,
-      l.docNo,
-      l.department,
-      l.actorName,
-      l.actorRole,
-      l.details,
-      l.changes,
-      l.clientEnv
-    ]);
-
-    return {
-      headers,
-      rows,
-      totalCount: rows.length,
-      exportedAt: new Date().toISOString(),
-    };
-  },
-
-  /**
-   * Async push to Google Apps Script Web App Endpoint
-   */
-  async sendToGASWebhook(gasWebhookUrl, entry) {
-    if (!gasWebhookUrl) return;
-    try {
-      await fetch(gasWebhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventType: 'AUDIT_LOG',
-          payload: entry
-        }),
-        mode: 'no-cors' // Allows GAS Web App cross-origin requests
-      });
-    } catch (e) {
-      console.warn('[AuditService] Webhook call failed:', e);
-    }
   }
 };

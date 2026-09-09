@@ -1,19 +1,58 @@
-import React, { useState, useMemo } from 'react';
-import { Warehouse, AlertTriangle, PlusCircle, History, Search, PackagePlus, BarChart3, TrendingUp, Edit3, CheckCircle, X, ChevronRight, SlidersHorizontal, CheckCircle2 } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { 
+  Warehouse, AlertTriangle, PlusCircle, History, Search, PackagePlus, 
+  BarChart3, TrendingUp, Edit3, X, SlidersHorizontal, MapPin, 
+  FileText, ArrowUpRight, ArrowDownRight, Layers, Sparkles
+} from 'lucide-react';
 import StockMovementTable from '../components/stock/StockMovementTable';
 import ManualStockInModal from '../components/stock/ManualStockInModal';
 import StockAdjustmentModal from '../components/stock/StockAdjustmentModal';
+import ProductRemarkDrawer from '../components/stock/ProductRemarkDrawer';
 import EmptyState from '../components/common/EmptyState';
 import { storageService } from '../services/storageService';
 import { modalService } from '../services/modalService';
+import Pagination from '../components/common/Pagination';
 
-export default function StockCardView({ products, stockLogs, currentRole, onQuickPR, onRefresh }) {
+export default function StockCardView({ 
+  products = [], 
+  storageLocations = [], 
+  stockLogs = [], 
+  pos = [], 
+  currentRole, 
+  onQuickPR, 
+  onRefresh 
+}) {
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [categoryFilter, setCategoryFilter] = useState(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
+  const [remarkProduct, setRemarkProduct] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState(currentRole?.canViewAllDepts ? 'ALL' : (currentRole?.department || 'PD'));
+  const [selectedLocation, setSelectedLocation] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('stock-list');
   const [showManualIn, setShowManualIn] = useState(false);
   const [showAdjustStock, setShowAdjustStock] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  const isOnlinePurchaser = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER';
+
+  useEffect(() => {
+    setCategoryFilter(currentRole?.canViewAllDepts ? 'ALL' : (currentRole?.department || 'PD'));
+  }, [currentRole]);
+
+  // Auto-reset page on filter or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [categoryFilter, selectedLocation, searchQuery]);
+
+  // Available unique locations from Master Data & Products
+  const availableLocations = useMemo(() => {
+    const locs = (storageLocations && storageLocations.length > 0)
+      ? storageLocations 
+      : (storageService.getStorageLocations?.() || []);
+    const locsFromMaster = (locs || []).map(l => l?.name).filter(Boolean);
+    const locsFromProds = (products || []).map(p => p?.locationName).filter(Boolean);
+    return Array.from(new Set([...locsFromMaster, ...locsFromProds]));
+  }, [products, storageLocations]);
 
   const viewableProducts = useMemo(() => {
     return products.filter(p => {
@@ -22,17 +61,20 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
     });
   }, [products, currentRole]);
 
-  // Filter & Priority Sort
+  // Filter & Priority Sort with Location Filter
   const sortedAndFilteredProducts = useMemo(() => {
     return viewableProducts
       .filter(p => {
         const pCat = p.category || p.department || 'PD';
         const matchesCat = categoryFilter === 'ALL' || pCat === categoryFilter;
+        const matchesLocation = selectedLocation === 'ALL' || p.locationName === selectedLocation;
         const q = searchQuery.trim().toLowerCase();
         const matchesSearch = !q || 
           (p.name && p.name.toLowerCase().includes(q)) || 
-          (p.code && p.code.toLowerCase().includes(q));
-        return matchesCat && matchesSearch;
+          (p.code && p.code.toLowerCase().includes(q)) ||
+          (p.locationName && p.locationName.toLowerCase().includes(q)) ||
+          (p.remark && p.remark.toLowerCase().includes(q));
+        return matchesCat && matchesLocation && matchesSearch;
       })
       .sort((a, b) => {
         const aLow = a.stockBalance <= a.reorderPoint ? 1 : 0;
@@ -43,7 +85,14 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
         if (aRatio !== bRatio) return aRatio - bRatio;
         return (a.code || '').localeCompare(b.code || '');
       });
-  }, [viewableProducts, categoryFilter, searchQuery]);
+  }, [viewableProducts, categoryFilter, selectedLocation, searchQuery]);
+
+  // Pagination slicing
+  const totalPages = Math.ceil(sortedAndFilteredProducts.length / pageSize) || 1;
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedAndFilteredProducts.slice(start, start + pageSize);
+  }, [sortedAndFilteredProducts, currentPage, pageSize]);
 
   // Count of items requiring reorder
   const lowStockCount = useMemo(() => {
@@ -52,11 +101,11 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
 
   // ROP Analytics Computation
   const ropAnalytics = useMemo(() => {
-    const viewableProducts = currentRole.canViewAllDepts
+    const viewable = currentRole.canViewAllDepts
       ? products
       : products.filter(p => p.category === currentRole.department);
 
-    return viewableProducts.map(prod => {
+    return viewable.map(prod => {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
@@ -106,384 +155,490 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
   };
 
   return (
-    <div className="w-full space-y-6 animate-fade-in pb-10">
-      {/* ── Page Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="w-full space-y-4 animate-fade-in pb-12 font-sans">
+      
+      {/* ── 1. Modern Minimalist SaaS Header & Action Hub ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2.5 tracking-tight">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center shadow-2xs">
-              <Warehouse className="w-5 h-5" />
-            </div>
-            <span>คลังสินค้าและสต็อก (Warehouse & Inventory)</span>
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-normal">
-            บริหารจัดการสต็อกสินค้า รับเข้า-เบิกจ่าย และวิเคราะห์จุดสั่งซื้อ (ROP)
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-900">
+              คลังสินค้า & สต็อก
+            </h1>
+            <span className="text-xs font-mono font-medium text-slate-500 bg-slate-100/80 px-2 py-0.5 rounded-md border border-slate-200/60">
+              {products.length} SKUs
+            </span>
+          </div>
+          <p className="text-xs sm:text-[13px] text-slate-600 mt-0.5 font-normal">
+            ระบบบริหารสินค้าคงคลัง ตรวจสอบยอดคงเหลือ รับเข้า-เบิกจ่าย และจุดสั่งซื้อซ้ำ
           </p>
         </div>
-        {currentRole?.roleId !== 'ONLINE_PURCHASER' && (currentRole?.canReceiveGoods || currentRole?.roleId === 'ASST_MANAGER' || currentRole?.id === 'ADMIN') && (
-          <div className="flex items-center gap-2.5">
+
+        {/* High-aesthetic Action Hub */}
+        {!isOnlinePurchaser && (currentRole?.canReceiveGoods || currentRole?.roleId === 'ASST_MANAGER' || currentRole?.id === 'ADMIN') && (
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Ghost Outline Secondary Button */}
             <button
               onClick={() => setShowAdjustStock(true)}
-              className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-xs transition-all cursor-pointer"
+              className="group inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 active:scale-[0.98] text-slate-700 hover:text-slate-900 border border-slate-200 text-xs font-medium px-3.5 py-2 rounded-xl transition-all duration-150 cursor-pointer shadow-2xs"
+              title="ปรับปรุงยอดสต็อก (+/-)"
             >
-              <SlidersHorizontal className="w-4 h-4 text-slate-500" />
-              <span>ปรับปรุงสต็อก (+/-)</span>
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-colors" />
+              <span>ปรับปรุงยอด</span>
             </button>
+
+            {/* Solid Dark Minimal Primary Button */}
             <button
               onClick={() => setShowManualIn(true)}
-              className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold px-5 py-2.5 rounded-xl shadow-sm transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-white text-xs font-medium px-4 py-2 rounded-xl transition-all duration-150 cursor-pointer shadow-xs hover:shadow-sm"
+              title="บันทึกรับสินค้าเข้าคลัง"
             >
-              <PackagePlus className="w-4 h-4" />
-              <span>รับสินค้าเข้าคลัง</span>
+              <PackagePlus className="w-3.5 h-3.5 text-slate-200" />
+              <span>รับเข้าคลัง</span>
             </button>
           </div>
         )}
       </div>
 
-      {/* Control Bar */}
-      <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+      {/* ── 2. Sleek ROP Alert Strip (Linear / Raycast notification style) ── */}
+      {lowStockCount > 0 && (
+        <div className="relative overflow-hidden bg-amber-50/70 border border-amber-200/80 rounded-2xl px-4 py-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs backdrop-blur-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {/* Subtle Pulse Indicator */}
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+            </span>
+
+            <div className="text-xs text-amber-950 font-normal truncate">
+              <span className="font-semibold text-amber-900 mr-1.5">ตรวจพบสินค้าแตะจุด ROP</span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-amber-200/70 text-amber-900 border border-amber-300/80 mr-2">
+                {lowStockCount} รายการ
+              </span>
+              <span className="text-slate-600 hidden md:inline">
+                ควรเปิดใบขอซื้อ (PR) เพิ่มเติมเพื่อความต่อเนื่องในการผลิต
+              </span>
+            </div>
+          </div>
+
+          {onQuickPR && !isOnlinePurchaser && (
+            <button
+              onClick={() => {
+                const firstLow = sortedAndFilteredProducts.find(p => p.stockBalance <= p.reorderPoint);
+                if (firstLow) onQuickPR(firstLow);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-900/90 hover:bg-amber-950 active:scale-[0.98] text-amber-50 text-xs font-medium rounded-full transition-all cursor-pointer shrink-0 shadow-2xs self-end sm:self-auto"
+            >
+              <span>เปิด PR ด่วน</span>
+              <ArrowUpRight className="w-3 h-3 text-amber-300" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── 3. Unified Filter & Search Toolbar (Linear / Vercel Segmented Bar) ── */}
+      <div className="bg-white p-2 rounded-2xl border border-slate-200/70 shadow-2xs">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
           
-          {/* Left: View Tabs */}
-          <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl shrink-0 overflow-x-auto custom-scrollbar">
+          {/* Left: Modern Capsule Segmented Tabs */}
+          <div className="flex items-center p-1 bg-slate-100/70 rounded-xl shrink-0 overflow-x-auto custom-scrollbar border border-slate-200/50">
             <button
               onClick={() => setActiveTab('stock-list')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 cursor-pointer whitespace-nowrap ${
                 activeTab === 'stock-list' 
-                  ? 'bg-white text-slate-900 shadow-xs font-bold' 
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                  ? 'bg-white text-slate-900 shadow-2xs font-semibold' 
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <Warehouse className="w-4 h-4 text-indigo-600" />
-              <span>รายการสต็อก ({sortedAndFilteredProducts.length})</span>
+              <Warehouse className="w-3.5 h-3.5 text-slate-500" />
+              <span>รายการสต็อก</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-600">
+                {sortedAndFilteredProducts.length}
+              </span>
             </button>
+
             <button
               onClick={() => setActiveTab('rop-analysis')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 cursor-pointer whitespace-nowrap ${
                 activeTab === 'rop-analysis' 
-                  ? 'bg-white text-slate-900 shadow-xs font-bold' 
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                  ? 'bg-white text-slate-900 shadow-2xs font-semibold' 
+                  : 'text-slate-500 hover:text-slate-900'
               }`}
             >
-              <BarChart3 className="w-4 h-4 text-amber-600" />
-              <span>วิเคราะห์ ROP & Safety Stock</span>
+              <BarChart3 className="w-3.5 h-3.5 text-slate-500" />
+              <span>วิเคราะห์ ROP</span>
               {lowStockCount > 0 && (
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-amber-500 text-white">
+                <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-800">
                   {lowStockCount}
                 </span>
               )}
             </button>
           </div>
 
-          {/* Right: Department Filter & Search Bar */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 lg:max-w-xl justify-end">
+          {/* Right: Department, Location & Search */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 lg:max-w-3xl justify-end flex-wrap">
+            
+            {/* Department Segmented Filter */}
             {currentRole.canViewAllDepts ? (
-              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0">
+              <div className="flex items-center p-1 bg-slate-100/70 rounded-xl shrink-0 border border-slate-200/50">
                 <button
                   onClick={() => setCategoryFilter('ALL')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     categoryFilter === 'ALL' 
-                      ? 'bg-white text-slate-900 shadow-xs font-bold' 
-                      : 'text-slate-600 hover:text-slate-900'
+                      ? 'bg-white text-slate-900 shadow-2xs font-semibold' 
+                      : 'text-slate-500 hover:text-slate-900'
                   }`}
                 >
-                  ทุกแผนก
+                  ทั้งหมด
                 </button>
                 <button
                   onClick={() => setCategoryFilter('PD')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     categoryFilter === 'PD' 
-                      ? 'bg-white text-blue-700 shadow-xs font-bold' 
-                      : 'text-slate-600 hover:text-blue-700'
+                      ? 'bg-white text-blue-700 shadow-2xs font-semibold' 
+                      : 'text-slate-500 hover:text-blue-700'
                   }`}
                 >
-                  ฝ่ายผลิต (PD)
+                  ผลิต (PD)
                 </button>
                 <button
                   onClick={() => setCategoryFilter('QC')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     categoryFilter === 'QC' 
-                      ? 'bg-white text-amber-700 shadow-xs font-bold' 
-                      : 'text-slate-600 hover:text-amber-700'
+                      ? 'bg-white text-amber-700 shadow-2xs font-semibold' 
+                      : 'text-slate-500 hover:text-amber-700'
                   }`}
                 >
-                  ฝ่ายตรวจสอบ (QC)
+                  QC
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-200 shrink-0 text-xs">
-                <span className="text-slate-500 font-medium">คลังแผนก:</span>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold font-mono bg-indigo-50 text-indigo-700 border border-indigo-100">
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-xl border border-slate-200/60 shrink-0 text-xs">
+                <span className="text-slate-400 font-medium">แผนก:</span>
+                <span className="font-mono font-semibold text-slate-800">
                   {currentRole.department}
                 </span>
               </div>
             )}
 
-            {/* Search Input */}
-            <div className="relative w-full sm:w-72 md:w-80">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            {/* Storage Location Selector */}
+            <div className="relative min-w-[140px] shrink-0">
+              <select
+                value={selectedLocation}
+                onChange={e => setSelectedLocation(e.target.value)}
+                className="w-full appearance-none bg-slate-50 hover:bg-slate-100/80 border border-slate-200/70 rounded-xl pl-3 pr-7 py-1.5 text-xs font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-1 focus:ring-slate-400 transition-all cursor-pointer truncate shadow-2xs"
+              >
+                <option value="ALL">📍 ทุกจุดจัดเก็บ</option>
+                {availableLocations.map(locName => (
+                  <option key={locName} value={locName}>{locName}</option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-slate-400">
+                <svg className="h-3.5 w-3.5 stroke-current" fill="none" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Search Input with ⌘K Badge style */}
+            <div className="relative flex-1 sm:w-60 md:w-64 min-w-[180px]">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
-                placeholder="ค้นหาชื่อ หรือ รหัสสินค้า..."
+                placeholder="ค้นหาสินค้า, รหัส, จุดจัดเก็บ..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-9 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-400 shadow-2xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                className="w-full bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200/70 rounded-xl pl-8 pr-12 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 transition-all shadow-2xs font-normal"
               />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 font-bold text-xs cursor-pointer"
-                >
-                  ✕
-                </button>
-              )}
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {searchQuery ? (
+                  <button 
+                    onClick={() => setSearchQuery('')}
+                    className="text-slate-400 hover:text-slate-700 p-0.5 text-xs cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                ) : (
+                  <kbd className="hidden sm:inline-block font-mono text-[9px] text-slate-400 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                    /
+                  </kbd>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Tab 1: Stock List View */}
+      {/* ── 4. Tab 1: Clean Minimalist Data Table ── */}
       {activeTab === 'stock-list' && (
-        <>
-          {/* Slim ROP Alert Banner */}
-          {lowStockCount > 0 && (
-            <div className="bg-amber-50/90 border border-amber-200 rounded-2xl px-5 py-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-fade-in">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <div className="text-xs sm:text-sm text-amber-950 font-medium leading-tight">
-                  <span className="font-bold text-amber-900">สินค้าถึงจุดสั่งซื้อซ้ำ (ROP)</span>
-                  <span className="ml-2 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-200/80 text-amber-900 border border-amber-300">
-                    {lowStockCount} รายการ
-                  </span>
-                  <span className="text-slate-500 ml-2 hidden md:inline font-normal">
-                    (ระบบได้จัดเรียงไว้ที่ด้านบนสุดของตารางแล้ว)
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                {onQuickPR && (
-                  <button
-                    onClick={() => {
-                      const firstLow = sortedAndFilteredProducts.find(p => p.stockBalance <= p.reorderPoint);
-                      if (firstLow) onQuickPR(firstLow);
-                    }}
-                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
-                  >
-                    <PlusCircle className="w-4 h-4" />
-                    <span>เปิด PR สั่งซื้อด่วน</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Stock Table Card */}
-          <div className="bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto overflow-y-auto max-h-[600px] custom-scrollbar relative">
-              <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 z-20 shadow-2xs bg-slate-50/90 border-b border-slate-200 text-slate-500 font-bold text-[11px] uppercase tracking-wider">
+        <div className="bg-white border border-slate-200/70 rounded-2xl overflow-hidden shadow-2xs">
+          <div className="overflow-x-auto max-h-[640px] custom-scrollbar relative">
+            <table className="w-full text-left text-xs sm:text-sm min-w-[880px]">
+              <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200/70 text-slate-400 font-semibold text-[11px] uppercase tracking-wider">
+                <tr>
+                  <th className="py-3 pl-5 whitespace-nowrap">รหัสสินค้า</th>
+                  <th className="py-3 px-4 w-2/5">รายการสินค้า</th>
+                  <th className="py-3 px-3 text-center whitespace-nowrap">แผนก</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">คงเหลือ</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap">จุดเตือน (ROP)</th>
+                  <th className="py-3 px-4 text-center whitespace-nowrap">สถานะ</th>
+                  <th className="py-3 pr-5 text-center whitespace-nowrap">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100/90 bg-white">
+                {sortedAndFilteredProducts.length === 0 ? (
                   <tr>
-                    <th className="py-3.5 pl-6">รหัสสินค้า</th>
-                    <th className="py-3.5 px-4 w-2/5">ชื่อสินค้า</th>
-                    <th className="py-3.5 px-4">แผนก</th>
-                    <th className="py-3.5 px-4 text-right">คงเหลือปัจจุบัน</th>
-                    <th className="py-3.5 px-4 text-right">จุดเตือน (ROP)</th>
-                    <th className="py-3.5 px-4 text-center">สถานะ</th>
-                    <th className="py-3.5 pr-6 text-center">จัดการ</th>
+                    <td colSpan="7" className="p-0">
+                      <EmptyState 
+                        title="ไม่พบรายการสินค้า" 
+                        description="ลองปรับเงื่อนไขการค้นหา หรือเปลี่ยนหมวดหมู่ตัวกรอง" 
+                      />
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {sortedAndFilteredProducts.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="p-0">
-                        <EmptyState title="ไม่พบสินค้าในสต็อก" description="ไม่มีสินค้าที่ตรงกับคำค้นหา หรือกรองหมวดหมู่ผิดประเภท" />
-                      </td>
-                    </tr>
-                  ) : (
-                    sortedAndFilteredProducts.map(prod => {
-                      const isLow = prod.stockBalance <= prod.reorderPoint;
-                      const sUnit = prod.stockUnit || prod.unit || 'ชิ้น';
-                      const pUnit = prod.purchaseUnit || prod.unit || sUnit;
-                      const rate = Number(prod.conversionRate) > 0 ? Number(prod.conversionRate) : 1;
-                      const purchaseEquiv = rate > 1 ? (Number(prod.stockBalance || 0) / rate) : null;
-                      const purchaseEquivStr = purchaseEquiv !== null
-                        ? (purchaseEquiv % 1 === 0 ? purchaseEquiv.toLocaleString() : purchaseEquiv.toFixed(1).replace(/\.0$/, ''))
-                        : null;
+                ) : (
+                  paginatedProducts.map(prod => {
+                    const isLow = prod.stockBalance <= prod.reorderPoint;
+                    const sUnit = prod.stockUnit || prod.unit || 'ชิ้น';
+                    const pUnit = prod.purchaseUnit || prod.unit || sUnit;
+                    const rate = Number(prod.conversionRate) > 0 ? Number(prod.conversionRate) : 1;
+                    const purchaseEquiv = rate > 1 ? (Number(prod.stockBalance || 0) / rate) : null;
+                    const purchaseEquivStr = purchaseEquiv !== null
+                      ? (purchaseEquiv % 1 === 0 ? purchaseEquiv.toLocaleString() : purchaseEquiv.toFixed(1).replace(/\.0$/, ''))
+                      : null;
+                    
+                    const hasRemark = Boolean(prod.remark && prod.remark.trim());
 
-                      return (
-                        <tr 
-                          key={prod.id} 
-                          className={`hover:bg-slate-50/80 group transition-colors ${
-                            isLow ? 'bg-amber-50/30' : ''
-                          }`}
-                        >
-                          <td className="py-4 pl-6 whitespace-nowrap">
-                            <span className="bg-slate-100 text-slate-800 font-mono text-xs px-2.5 py-1 rounded-md font-bold border border-slate-200/60">{prod.code}</span>
-                          </td>
+                    return (
+                      <tr 
+                        key={prod.id} 
+                        className={`hover:bg-slate-50/70 transition-colors duration-100 ${
+                          isLow ? 'bg-amber-50/15' : ''
+                        }`}
+                      >
+                        {/* รหัสสินค้า (Developer Tag Style) */}
+                        <td className="py-3 pl-5 whitespace-nowrap">
+                          <span className="font-mono text-xs text-slate-700 bg-slate-100/90 px-2 py-0.5 rounded-md border border-slate-200/50">
+                            {prod.code}
+                          </span>
+                        </td>
 
-                          <td className="py-4 px-4 break-words max-w-md">
-                            <div className="font-semibold text-slate-900 text-sm leading-snug">
+                        {/* ชื่อสินค้า & Location Breadcrumb & Remark Inline Chip */}
+                        <td className="py-3 px-4 break-words max-w-md">
+                          <div className="flex items-start gap-1.5 flex-wrap">
+                            <span className="font-medium text-slate-900 text-xs sm:text-[13px] leading-snug">
                               {prod.name}
-                            </div>
-                            {rate > 1 && (
-                              <div className="text-xs text-slate-500 font-medium mt-0.5">
-                                อัตราแปลง: 1 {pUnit} = {rate} {sUnit}
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="py-4 px-4 whitespace-nowrap">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                              prod.category === 'PD' 
-                                ? 'bg-blue-50 text-blue-700 border-blue-200/60' 
-                                : 'bg-amber-50 text-amber-700 border-amber-200/60'
-                            }`}>
-                              {prod.category}
                             </span>
-                          </td>
 
-                          <td className={`py-4 px-4 text-right font-bold whitespace-nowrap tabular-nums ${
-                            isLow ? 'text-amber-800' : 'text-slate-900'
-                          }`}>
-                            <div className="text-sm sm:text-base font-mono font-bold">
-                              {Number(prod.stockBalance || 0).toLocaleString()} <span className="font-normal text-slate-400 text-xs font-sans ml-0.5">{sUnit}</span>
-                            </div>
-                            {purchaseEquivStr && (
-                              <div className="text-xs font-normal text-slate-400 mt-0.5 font-mono">
-                                ≈ {purchaseEquivStr} {pUnit}
-                              </div>
-                            )}
-                          </td>
-
-                          <td className="py-4 px-4 text-right font-medium text-slate-600 font-mono tabular-nums whitespace-nowrap text-sm">
-                            {Number(prod.reorderPoint || 0).toLocaleString()} <span className="text-xs font-normal text-slate-400 font-sans ml-0.5">{sUnit}</span>
-                          </td>
-
-                          <td className="py-4 px-4 text-center whitespace-nowrap">
-                            {isLow ? (
-                              <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-700 px-3 py-1 rounded-full text-xs font-bold border border-amber-200">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                                ถึงจุด ROP
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-200">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                สต็อกปกติ
-                              </span>
-                            )}
-                          </td>
-
-                          <td className="py-4 pr-6 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-2">
-                              {isLow && (
-                                <button
-                                  onClick={() => onQuickPR(prod)}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 shadow-2xs"
-                                  title="เปิด PR สินค้านี้ทันที"
-                                >
-                                  <PlusCircle className="w-3.5 h-3.5" />
-                                  <span>สั่งซื้อ</span>
-                                </button>
-                              )}
+                            {/* Minimal Remark Pill */}
+                            {hasRemark && (
                               <button
-                                onClick={() => setSelectedProduct(prod)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer border-slate-200 hover:bg-slate-50 text-slate-700 bg-white shadow-2xs"
-                                title="ดูประวัติเคลื่อนไหว (Stock Card)"
+                                type="button"
+                                onClick={() => setRemarkProduct(prod)}
+                                className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
+                                title={`คลิกเพื่อดูหมายเหตุ: ${prod.remark}`}
                               >
-                                <History className="w-3.5 h-3.5" />
-                                <span>ประวัติ</span>
+                                <FileText className="w-2.5 h-2.5 text-amber-600" />
+                                <span>Note</span>
                               </button>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 mt-1 text-slate-400 text-[11px]">
+                            <span className="inline-flex items-center gap-1 text-slate-500 font-normal">
+                              <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span>{prod.locationName || 'ไม่ระบุจุดเก็บ'}</span>
+                            </span>
+                            {rate > 1 && (
+                              <span>• 1 {pUnit} = {rate} {sUnit}</span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* แผนก */}
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
+                            prod.category === 'PD' 
+                              ? 'bg-blue-50 text-blue-700 border border-blue-100' 
+                              : 'bg-amber-50 text-amber-700 border border-amber-100'
+                          }`}>
+                            {prod.category}
+                          </span>
+                        </td>
+
+                        {/* คงเหลือปัจจุบัน (Right aligned, monospace numbers) */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <div className={`font-mono text-xs sm:text-sm font-semibold tabular-nums ${
+                            isLow ? 'text-amber-900' : 'text-slate-900'
+                          }`}>
+                            {Number(prod.stockBalance || 0).toLocaleString()}
+                            <span className="font-sans font-normal text-slate-400 text-xs ml-1">
+                              {sUnit}
+                            </span>
+                          </div>
+                          {purchaseEquivStr && (
+                            <div className="text-[10px] text-slate-400 font-mono">
+                              ≈ {purchaseEquivStr} {pUnit}
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                          )}
+                        </td>
+
+                        {/* จุดเตือน ROP */}
+                        <td className="py-3 px-4 text-right whitespace-nowrap">
+                          <span className="font-mono text-xs text-slate-500 tabular-nums">
+                            {Number(prod.reorderPoint || 0).toLocaleString()}
+                          </span>
+                          <span className="font-sans text-slate-400 text-xs ml-1">{sUnit}</span>
+                        </td>
+
+                        {/* สถานะ (Soft Dot Badge สไตล์ Minimal) */}
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          {isLow ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 font-medium bg-amber-50/80 px-2.5 py-0.5 rounded-full border border-amber-200/60">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                              ถึงจุด ROP
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-medium bg-emerald-50/80 px-2.5 py-0.5 rounded-full border border-emerald-200/60">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              ปกติ
+                            </span>
+                          )}
+                        </td>
+
+                        {/* จัดการ (Actions Group) */}
+                        <td className="py-3 pr-5 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Quick PR Order Button */}
+                            {isLow && onQuickPR && !isOnlinePurchaser && (
+                              <button
+                                type="button"
+                                onClick={() => onQuickPR(prod)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 transition-all cursor-pointer shadow-2xs"
+                                title="เปิด PR สินค้านี้ทันที"
+                              >
+                                <PlusCircle className="w-3 h-3 text-amber-600" />
+                                <span>สั่งซื้อ</span>
+                              </button>
+                            )}
+
+                            {/* History Button */}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedProduct(prod)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-all cursor-pointer"
+                              title="ดูประวัติการเคลื่อนไหวสต็อก (Stock Movement Log)"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Product Remark Drawer Trigger */}
+                            <button
+                              type="button"
+                              onClick={() => setRemarkProduct(prod)}
+                              className={`p-1.5 rounded-lg transition-all cursor-pointer relative ${
+                                hasRemark
+                                  ? 'text-amber-700 hover:bg-amber-50'
+                                  : 'text-slate-400 hover:text-slate-800 hover:bg-slate-100'
+                              }`}
+                              title={hasRemark ? `มีหมายเหตุ: ${prod.remark}` : 'บันทึกหมายเหตุสินค้า'}
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                              {hasRemark && (
+                                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              )}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-        </>
+
+          {/* Table Footer Pagination */}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={sortedAndFilteredProducts.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
+        </div>
       )}
 
-      {/* Tab 2: ROP Analytics */}
+      {/* ── 5. Tab 2: ROP Analytics (Modern Tech Spec style) ── */}
       {activeTab === 'rop-analysis' && (
-        <div className="space-y-4">
-          <div className="flex items-start gap-3 p-5 bg-indigo-50/70 border border-indigo-100 rounded-3xl shadow-2xs">
-            <TrendingUp className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-            <div className="text-xs sm:text-sm text-indigo-950">
-              <span className="font-bold text-indigo-900">สูตรคำนวณ ROP ที่แนะนำ:</span>
-              <span className="text-indigo-700 ml-1.5">
-                ROP แนะนำ = (ค่าเฉลี่ยการใช้ต่อวัน × Lead Time) + Safety Stock &nbsp;|&nbsp; Safety Stock = ค่าเฉลี่ยต่อวัน × Lead Time × 1.5
-              </span>
-              <p className="text-xs text-slate-500 mt-1">คำนวณจากประวัติการเบิก (OUT) ย้อนหลัง 30 วัน</p>
-            </div>
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border border-slate-200/70 rounded-2xl text-xs text-slate-600">
+            <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
+            <span>
+              <strong>สูตรคำนวณ:</strong> ROP แนะนำ = (ใช้เฉลี่ยต่อวัน × Lead Time) + Safety Stock (คำนวณจากประวัติการเบิกออก 30 วันล่าสุด)
+            </span>
           </div>
 
-          <div className="bg-white rounded-3xl overflow-hidden border border-slate-200/80 shadow-sm">
-            <div className="overflow-x-auto overflow-y-auto max-h-[560px] custom-scrollbar relative">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead className="sticky top-0 z-20 bg-slate-50/90 shadow-2xs border-b border-slate-200 text-slate-500 font-bold text-[11px] uppercase tracking-wider">
+          <div className="bg-white rounded-2xl overflow-hidden border border-slate-200/70 shadow-2xs">
+            <div className="overflow-x-auto max-h-[580px] custom-scrollbar relative">
+              <table className="w-full text-left text-xs sm:text-sm min-w-[800px]">
+                <thead className="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200/70 text-slate-400 font-semibold text-[11px] uppercase tracking-wider">
                   <tr>
-                    <th className="py-3.5 pl-6">รหัส / ชื่อสินค้า</th>
-                    <th className="py-3.5 px-4 text-right">คงเหลือ</th>
-                    <th className="py-3.5 px-4 text-right">เบิก 30 วัน</th>
-                    <th className="py-3.5 px-4 text-right">ใช้เฉลี่ย/วัน</th>
-                    <th className="py-3.5 px-4 text-right">Lead Time</th>
-                    <th className="py-3.5 px-4 text-right">ROP ปัจจุบัน</th>
-                    <th className="py-3.5 px-4 text-right">ROP แนะนำ</th>
-                    <th className="py-3.5 px-4 text-center">สถานะ ROP</th>
-                    <th className="py-3.5 pr-6 text-center">ปรับ ROP</th>
+                    <th className="py-3 pl-5">รหัส & รายการสินค้า</th>
+                    <th className="py-3 px-4 text-right">คงเหลือ</th>
+                    <th className="py-3 px-4 text-right">เบิก 30 วัน</th>
+                    <th className="py-3 px-4 text-right">ใช้เฉลี่ย/วัน</th>
+                    <th className="py-3 px-4 text-right">Lead Time</th>
+                    <th className="py-3 px-4 text-right">ROP ปัจจุบัน</th>
+                    <th className="py-3 px-4 text-right">ROP แนะนำ</th>
+                    <th className="py-3 px-4 text-center">สถานะ</th>
+                    <th className="py-3 pr-5 text-center">ปรับ ROP</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 bg-white">
                   {ropAnalytics.map(item => (
-                    <tr key={item.id} className={`hover:bg-slate-50/80 transition-colors ${item.isRopUnderSuggested ? 'bg-amber-50/30' : ''}`}>
-                      <td className="py-4 pl-6 whitespace-nowrap">
-                        <div className="font-mono font-bold text-slate-500 text-xs">{item.code}</div>
-                        <div className="font-semibold text-slate-900 text-sm mt-0.5">{item.name}</div>
+                    <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 pl-5 whitespace-nowrap">
+                        <div className="font-mono text-xs text-slate-500">{item.code}</div>
+                        <div className="font-medium text-slate-900 text-xs sm:text-sm">{item.name}</div>
                       </td>
-                      <td className="py-4 px-4 text-right font-mono font-bold text-slate-900 tabular-nums">
-                        {item.stockBalance} <span className="text-xs font-normal text-slate-400 font-sans">{item.unit}</span>
+                      <td className="py-3 px-4 text-right font-mono font-semibold text-slate-900 tabular-nums">
+                        {item.stockBalance} <span className="font-sans font-normal text-slate-400 text-xs">{item.unit}</span>
                       </td>
-                      <td className="py-4 px-4 text-right font-mono text-slate-600 tabular-nums">
-                        {item.totalOut30Days} <span className="text-xs font-normal text-slate-400 font-sans">{item.unit}</span>
+                      <td className="py-3 px-4 text-right font-mono text-slate-600 tabular-nums">
+                        {item.totalOut30Days} <span className="font-sans font-normal text-slate-400 text-xs">{item.unit}</span>
                       </td>
-                      <td className="py-4 px-4 text-right font-mono text-slate-600 tabular-nums">
+                      <td className="py-3 px-4 text-right font-mono text-slate-600 tabular-nums">
                         {item.avgDailyUsage}
                       </td>
-                      <td className="py-4 px-4 text-right font-mono text-slate-600 tabular-nums">
+                      <td className="py-3 px-4 text-right font-mono text-slate-600 tabular-nums">
                         {item.leadTimeDays || 7} วัน
                       </td>
-                      <td className="py-4 px-4 text-right font-mono font-semibold text-slate-700 tabular-nums">
+                      <td className="py-3 px-4 text-right font-mono text-slate-600 tabular-nums">
                         {item.reorderPoint}
                       </td>
-                      <td className="py-4 px-4 text-right font-mono font-bold text-indigo-600 tabular-nums">
+                      <td className="py-3 px-4 text-right font-mono font-semibold text-indigo-600 tabular-nums">
                         {item.suggestedROP}
                       </td>
-                      <td className="py-4 px-4 text-center whitespace-nowrap">
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
                         {item.isRopUnderSuggested ? (
-                          <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full text-[11px] font-bold border border-rose-200">
-                            ROP ต่ำเกินไป (-{item.ropGap})
+                          <span className="inline-flex items-center text-[11px] font-medium text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                            ต่ำกว่าเกณฑ์ (-{item.ropGap})
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-[11px] font-bold border border-emerald-200">
-                            เหมาะสมแล้ว
+                          <span className="inline-flex items-center text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                            เหมาะสม
                           </span>
                         )}
                       </td>
-                      <td className="py-4 pr-6 text-center whitespace-nowrap">
-                        {item.isRopUnderSuggested ? (
+                      <td className="py-3 pr-5 text-center whitespace-nowrap">
+                        {item.isRopUnderSuggested && !isOnlinePurchaser ? (
                           <button
                             onClick={() => handleApplyROP(item, item.suggestedROP)}
-                            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer"
+                            className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium transition-all cursor-pointer"
                           >
                             ใช้ค่า {item.suggestedROP}
                           </button>
                         ) : (
-                          <span className="text-xs text-slate-400">-</span>
+                          <span className="text-xs text-slate-300">-</span>
                         )}
                       </td>
                     </tr>
@@ -495,14 +650,26 @@ export default function StockCardView({ products, stockLogs, currentRole, onQuic
         </div>
       )}
 
+      {/* ── 6. Modals & Drawers ── */}
+
       {/* Stock Movement Modal */}
       {selectedProduct && (
         <StockMovementTable
           product={selectedProduct}
           stockLogs={stockLogs.filter(l => l.productId === selectedProduct.id || l.productCode === selectedProduct.code)}
+          pos={pos}
           onClose={() => setSelectedProduct(null)}
         />
       )}
+
+      {/* Product Remark Drawer */}
+      <ProductRemarkDrawer
+        isOpen={Boolean(remarkProduct)}
+        product={remarkProduct}
+        currentRole={currentRole}
+        onClose={() => setRemarkProduct(null)}
+        onRefresh={onRefresh}
+      />
 
       {/* Manual Stock In Modal */}
       {showManualIn && (
