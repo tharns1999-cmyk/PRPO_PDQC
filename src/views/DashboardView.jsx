@@ -30,21 +30,21 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
       {/* Low Stock Warning Section */}
       <LowStockTable products={products} onQuickPR={onQuickPR} />
 
-      {/* Recent Workflow Stream Cards Grid */}
+      {/* Recent Workflow Stream Cards Grid (Activity Hub) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
         
         {/* ── CARD 1: Recent PRs ── */}
-        <div className="bg-white border border-slate-100 rounded-2xl flex flex-col justify-between overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.05)] transition-all duration-200">
+        <div className="bg-white border border-slate-200/70 rounded-3xl flex flex-col justify-between overflow-hidden shadow-sm hover:shadow-md transition-all duration-200">
           {/* Header */}
-          <div className="p-6 sm:px-8 border-b border-slate-100/80 flex items-center justify-between gap-3 bg-white">
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 bg-indigo-50/70 text-indigo-600 rounded-xl border border-indigo-100/60 flex items-center justify-center shrink-0 shadow-xs">
+          <div className="p-5 sm:px-6 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100 flex items-center justify-center shrink-0 shadow-2xs">
                 <FileText className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-semibold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2 tracking-tight">
                   <span>ใบขอซื้อล่าสุด</span>
-                  <span className="text-xs font-normal text-slate-400 font-sans">(Recent PRs)</span>
+                  <span className="text-xs font-normal text-slate-400 font-sans hidden sm:inline">(Recent PRs)</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5 font-normal">
                   {recentPRs.length > 0 ? `แสดง ${recentPRs.length} รายการล่าสุด` : 'ยังไม่มีข้อมูลใบขอซื้อ'}
@@ -53,7 +53,7 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
             </div>
             <button
               onClick={() => onNavigate('pr-list')}
-              className="group text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1 px-3 py-1.5 rounded-xl border border-transparent hover:border-indigo-100 hover:bg-indigo-50/70 transition-all cursor-pointer whitespace-nowrap"
+              className="group text-xs text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 px-3 py-1.5 rounded-xl border border-transparent hover:border-indigo-100 hover:bg-indigo-50/70 transition-all cursor-pointer whitespace-nowrap"
             >
               <span>ดูทั้งหมด</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
@@ -61,26 +61,26 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
           </div>
 
           {/* Content Body */}
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col justify-start">
             {recentPRs.length === 0 ? (
-              <div className="flex-1 min-h-[280px] flex flex-col items-center justify-center p-8 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-indigo-50/60 border border-dashed border-indigo-200 flex items-center justify-center text-indigo-400 mb-3.5 shadow-xs">
-                  <FileText className="w-6 h-6" />
+              <div className="flex-1 py-10 px-6 flex flex-col items-center justify-center text-center">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-400 mb-3 shadow-2xs">
+                  <FileText className="w-5 h-5" />
                 </div>
-                <h4 className="text-sm font-semibold text-slate-900 mb-1">ยังไม่มีใบขอซื้อในระบบ</h4>
-                <p className="text-xs text-slate-500 max-w-xs leading-relaxed mb-5 font-normal">
+                <h4 className="text-sm font-bold text-slate-900 mb-1">ยังไม่มีใบขอซื้อในระบบ</h4>
+                <p className="text-xs text-slate-500 max-w-xs leading-relaxed mb-4 font-normal">
                   คุณสามารถสร้างใบขอซื้อใหม่เพื่อเริ่มกระบวนการจัดซื้อวัตถุดิบหรืออุปกรณ์
                 </p>
                 <button
                   onClick={() => onNavigate('pr-create')}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-medium shadow-xs hover:shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="px-4 py-2 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <PlusCircle className="w-3.5 h-3.5 text-slate-300" />
                   <span>สร้างใบ PR ใหม่</span>
                 </button>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100/70">
+              <div className="divide-y divide-slate-100/80">
                 {recentPRs.map((pr) => {
                   const statusInfo = PR_STATUS[pr.status] || { label: pr.status, color: 'bg-slate-100 text-slate-700 border-slate-200' };
                   const itemCount = pr.items?.length || 1;
@@ -90,46 +90,46 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
                     <div
                       key={pr.id}
                       onClick={() => onOpenPR ? onOpenPR(pr.id) : onNavigate('pr-list')}
-                      className="p-4 sm:px-8 hover:bg-slate-50/60 transition-all cursor-pointer flex items-center justify-between gap-4 group"
+                      className="p-3.5 sm:px-6 hover:bg-slate-50/70 transition-all cursor-pointer flex items-center justify-between gap-4 group"
                       title="คลิกเพื่อเปิดดูรายละเอียดใบขอซื้อ"
                     >
                       {/* Left: PR Meta & Items Info */}
                       <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono font-semibold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">
+                          <span className="font-mono font-bold text-slate-950 text-xs sm:text-sm group-hover:text-indigo-600 transition-colors">
                             {pr.prNo}
                           </span>
-                          <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full border ${
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
                             pr.department === 'PD' 
-                              ? 'bg-blue-50/80 text-blue-700 border-blue-200/50' 
-                              : 'bg-amber-50/80 text-amber-700 border-amber-200/50'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
                           }`}>
                             {pr.department}
                           </span>
                           {pr.purchaseChannel === 'ONLINE' && (
-                            <span className="text-[11px] font-medium text-purple-700 bg-purple-50/80 border border-purple-200/50 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                            <span className="text-[10px] font-semibold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-md flex items-center gap-1">
                               <ShoppingCart className="w-3 h-3 text-purple-600" />
                               <span>Online</span>
                             </span>
                           )}
-                          <span className="text-xs text-slate-400 font-normal">
+                          <span className="text-xs text-slate-400 font-normal truncate">
                             • {pr.requestedBy}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-500 truncate max-w-md font-normal">
-                          <span className="text-slate-400 font-mono">{itemCount} รายการ:</span> {firstItemName}
+                        <p className="text-xs text-slate-600 truncate max-w-md font-medium">
+                          <span className="text-slate-400 font-mono text-[11px] font-normal">{itemCount} รายการ:</span> {firstItemName}
                         </p>
                       </div>
 
-                      {/* Right: Amount & Status */}
-                      <div className="flex items-center gap-3 shrink-0 text-right">
+                      {/* Right: Amount & Glowing Status Dot */}
+                      <div className="flex items-center gap-2.5 shrink-0 text-right">
                         <div>
-                          <div className="font-mono font-semibold text-sm text-slate-900 tabular-nums">
+                          <div className="font-mono font-bold text-xs sm:text-sm text-slate-900 tabular-nums">
                             ฿{(pr.totalAmount || 0).toLocaleString()}
                           </div>
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium border mt-0.5 ${statusInfo.color}`}>
-                            <span className="w-1.5 h-1.5 rounded-full bg-current opacity-75"></span>
-                            {statusInfo.label}
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border mt-0.5 ${statusInfo.color}`}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80 animate-pulse"></span>
+                            <span>{statusInfo.label}</span>
                           </span>
                         </div>
                         <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all" />
@@ -143,9 +143,9 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
 
           {/* Footer Summary */}
           {recentPRs.length > 0 && (
-            <div className="p-4 sm:px-8 bg-slate-50/40 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400 font-normal">
+            <div className="p-3.5 sm:px-6 bg-slate-50/60 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
               <span>รวม {recentPRs.length} รายการล่าสุด</span>
-              <span className="font-mono font-semibold text-slate-900 tabular-nums">
+              <span className="font-mono font-bold text-slate-900 tabular-nums">
                 ยอดรวม ฿{recentPRTotal.toLocaleString()}
               </span>
             </div>
@@ -153,17 +153,17 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
         </div>
 
         {/* ── CARD 2: Recent POs ── */}
-        <div className="bg-white border border-slate-100 rounded-2xl flex flex-col justify-between overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.03)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.05)] transition-all duration-200">
+        <div className="bg-white border border-slate-200/70 rounded-3xl flex flex-col justify-between overflow-hidden shadow-sm hover:shadow-md transition-all duration-200">
           {/* Header */}
-          <div className="p-6 sm:px-8 border-b border-slate-100/80 flex items-center justify-between gap-3 bg-white">
-            <div className="flex items-center gap-3.5">
-              <div className="w-11 h-11 bg-emerald-50/70 text-emerald-600 rounded-xl border border-emerald-100/60 flex items-center justify-center shrink-0 shadow-xs">
+          <div className="p-5 sm:px-6 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 flex items-center justify-center shrink-0 shadow-2xs">
                 <ShoppingCart className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-semibold text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 text-sm sm:text-base flex items-center gap-2 tracking-tight">
                   <span>ใบสั่งซื้อล่าสุด</span>
-                  <span className="text-xs font-normal text-slate-400 font-sans">(Recent POs)</span>
+                  <span className="text-xs font-normal text-slate-400 font-sans hidden sm:inline">(Recent POs)</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5 font-normal">
                   {recentPOs.length > 0 ? `แสดง ${recentPOs.length} รายการล่าสุด` : 'ยังไม่มีข้อมูลใบสั่งซื้อ'}
@@ -172,7 +172,7 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
             </div>
             <button
               onClick={() => onNavigate('po-list')}
-              className="group text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1 px-3 py-1.5 rounded-xl border border-transparent hover:border-emerald-100 hover:bg-emerald-50/70 transition-all cursor-pointer whitespace-nowrap"
+              className="group text-xs text-emerald-600 hover:text-emerald-800 font-semibold flex items-center gap-1 px-3 py-1.5 rounded-xl border border-transparent hover:border-emerald-100 hover:bg-emerald-50/70 transition-all cursor-pointer whitespace-nowrap"
             >
               <span>ดูทั้งหมด</span>
               <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
@@ -180,26 +180,26 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
           </div>
 
           {/* Content Body */}
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col justify-start">
             {recentPOs.length === 0 ? (
-              <div className="flex-1 min-h-[280px] flex flex-col items-center justify-center p-8 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-emerald-50/60 border border-dashed border-emerald-200 flex items-center justify-center text-emerald-500 mb-3.5 shadow-xs">
-                  <ShoppingCart className="w-6 h-6" />
+              <div className="flex-1 py-10 px-6 flex flex-col items-center justify-center text-center">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100/70 border border-dashed border-slate-200 flex items-center justify-center text-slate-400 mb-3 shadow-2xs">
+                  <ShoppingCart className="w-5 h-5" />
                 </div>
-                <h4 className="text-sm font-semibold text-slate-900 mb-1">ยังไม่มีใบสั่งซื้อในระบบ</h4>
-                <p className="text-xs text-slate-500 max-w-xs leading-relaxed mb-5 font-normal">
+                <h4 className="text-sm font-bold text-slate-800 mb-1">ยังไม่มีใบสั่งซื้อในระบบ</h4>
+                <p className="text-xs text-slate-400 max-w-xs leading-relaxed mb-4 font-normal">
                   ใบสั่งซื้อ (PO) จะถูกสร้างอัตโนมัติเมื่อ PR ผ่านการอนุมัติขั้นสุดท้ายจาก Plant Manager
                 </p>
                 <button
                   onClick={() => onNavigate('pr-list')}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-medium shadow-xs hover:shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="px-4 py-2 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5 text-slate-300" />
                   <span>เปิดดูรายการ PR เพื่อติดตาม</span>
                 </button>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100/70">
+              <div className="divide-y divide-slate-100/80">
                 {recentPOs.map((po) => {
                   const statusInfo = PO_STATUS[po.status] || { label: po.status, color: 'bg-slate-100 text-slate-700 border-slate-200' };
                   const vendorDisplay = po.vendorName && po.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)' 
@@ -210,19 +210,19 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
                     <div
                       key={po.id}
                       onClick={() => onOpenPO ? onOpenPO(po.id) : onNavigate('po-list')}
-                      className="p-4 sm:px-8 hover:bg-slate-50/60 transition-all cursor-pointer flex items-center justify-between gap-4 group"
+                      className="p-3.5 sm:px-6 hover:bg-slate-50/70 transition-all cursor-pointer flex items-center justify-between gap-4 group"
                       title="คลิกเพื่อเปิดดูรายละเอียดใบสั่งซื้อ"
                     >
                       {/* Left: PO Meta & Vendor */}
                       <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono font-semibold text-slate-900 text-sm group-hover:text-emerald-600 transition-colors">
+                          <span className="font-mono font-bold text-slate-950 text-xs sm:text-sm group-hover:text-emerald-600 transition-colors">
                             {po.poNo}
                           </span>
-                          <span className={`text-[11px] font-medium px-2.5 py-0.5 rounded-full border ${
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
                             po.department === 'PD' 
-                              ? 'bg-blue-50/80 text-blue-700 border-blue-200/50' 
-                              : 'bg-amber-50/80 text-amber-700 border-amber-200/50'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
                           }`}>
                             {po.department}
                           </span>
@@ -232,7 +232,7 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-slate-500 truncate max-w-md font-normal flex items-center gap-1.5">
+                        <p className="text-xs text-slate-600 truncate max-w-md font-medium flex items-center gap-1.5">
                           {po.purchaseChannel === 'ONLINE' ? (
                             <Store className="w-3.5 h-3.5 text-purple-500 shrink-0" />
                           ) : (
@@ -243,14 +243,14 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
                       </div>
 
                       {/* Right: Amount & Status */}
-                      <div className="flex items-center gap-3 shrink-0 text-right">
+                      <div className="flex items-center gap-2.5 shrink-0 text-right">
                         <div>
-                          <div className="font-mono font-semibold text-sm text-slate-900 tabular-nums">
+                          <div className="font-mono font-bold text-xs sm:text-sm text-slate-900 tabular-nums">
                             ฿{(po.grandTotal || po.subtotal || 0).toLocaleString()}
                           </div>
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium border mt-0.5 ${statusInfo.color}`}>
-                            <span className="w-1.5 h-1.5 rounded-full bg-current opacity-75"></span>
-                            {statusInfo.label}
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border mt-0.5 ${statusInfo.color}`}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80 animate-pulse"></span>
+                            <span>{statusInfo.label}</span>
                           </span>
                         </div>
                         <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all" />
@@ -264,9 +264,9 @@ export default function DashboardView({ prs = [], pos = [], products = [], budge
 
           {/* Footer Summary */}
           {recentPOs.length > 0 && (
-            <div className="p-4 sm:px-8 bg-slate-50/40 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400 font-normal">
+            <div className="p-3.5 sm:px-6 bg-slate-50/60 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
               <span>รวม {recentPOs.length} รายการล่าสุด</span>
-              <span className="font-mono font-semibold text-slate-900 tabular-nums">
+              <span className="font-mono font-bold text-slate-900 tabular-nums">
                 ยอดรวม ฿{recentPOTotal.toLocaleString()}
               </span>
             </div>

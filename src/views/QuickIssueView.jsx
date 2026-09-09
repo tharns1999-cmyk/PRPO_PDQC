@@ -12,6 +12,7 @@ import {
   RefreshCw, TrendingUp, HelpCircle
 } from 'lucide-react';
 import SearchableSelect from '../components/common/SearchableSelect';
+import Pagination from '../components/common/Pagination';
 
 const ISSUE_REASONS = [
   'เบิกใช้ในสายการผลิต (Production Line)',
@@ -111,6 +112,18 @@ export default function QuickIssueView({
   const [statsDeptFilter, setStatsDeptFilter] = useState(() => hasMultiDeptAccess ? 'ALL' : (userAccessibleDepts[0] || user?.department || 'PD'));
   const [statsSearchQuery, setStatsSearchQuery] = useState('');
   const [statsViewMode, setStatsViewMode] = useState('UNITS'); // 'UNITS' (Card breakdown) | 'MATRIX' (Item x Unit table) | 'LOGS' (Detailed table)
+
+  // Pagination for Stats views (MATRIX and LOGS)
+  const [matrixPage, setMatrixPage] = useState(1);
+  const [matrixPageSize, setMatrixPageSize] = useState(10);
+  const [logsPage, setLogsPage] = useState(1);
+  const [logsPageSize, setLogsPageSize] = useState(10);
+
+  // Auto-reset page when filters change
+  useEffect(() => {
+    setMatrixPage(1);
+    setLogsPage(1);
+  }, [statsUnitFilter, statsTimeFilter, statsCustomStart, statsCustomEnd, statsDeptFilter, statsSearchQuery, statsViewMode]);
 
   // Synchronize department & unit filters when user/role changes (Fast Switcher)
   useEffect(() => {
@@ -479,8 +492,6 @@ export default function QuickIssueView({
         });
       });
     });
-    matrixRows.sort((a, b) => b.qty - a.qty);
-
     return {
       totalIssues,
       totalQty,
@@ -492,6 +503,20 @@ export default function QuickIssueView({
       uniqueProductCount: topProducts.length
     };
   }, [filteredStatsLogs, products]);
+
+  // Pagination slicing for MATRIX view
+  const matrixTotalPages = Math.ceil(analytics.matrixRows.length / matrixPageSize) || 1;
+  const paginatedMatrixRows = useMemo(() => {
+    const start = (matrixPage - 1) * matrixPageSize;
+    return analytics.matrixRows.slice(start, start + matrixPageSize);
+  }, [analytics.matrixRows, matrixPage, matrixPageSize]);
+
+  // Pagination slicing for LOGS view
+  const logsTotalPages = Math.ceil(filteredStatsLogs.length / logsPageSize) || 1;
+  const paginatedStatsLogs = useMemo(() => {
+    const start = (logsPage - 1) * logsPageSize;
+    return filteredStatsLogs.slice(start, start + logsPageSize);
+  }, [filteredStatsLogs, logsPage, logsPageSize]);
 
   // Unit count badges for quick filter pills
   const unitBadgeCounts = useMemo(() => {
@@ -1491,7 +1516,7 @@ export default function QuickIssueView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {analytics.matrixRows.length === 0 ? (
+                  {paginatedMatrixRows.length === 0 ? (
                     <tr>
                       <td colSpan="8" className="p-8 text-center text-slate-400">
                         <PackageCheck className="w-8 h-8 mx-auto text-slate-300 mb-2" />
@@ -1500,7 +1525,7 @@ export default function QuickIssueView({
                       </td>
                     </tr>
                   ) : (
-                    analytics.matrixRows.map((row, idx) => {
+                    paginatedMatrixRows.map((row, idx) => {
                       const config = usageUnitConfigMap[row.unitName] || { color: 'bg-slate-100 text-slate-700', badgeBg: 'bg-slate-100 text-slate-800' };
                       return (
                         <tr key={`${row.unitName}-${row.code}-${idx}`} className="hover:bg-slate-50/80 transition-colors">
@@ -1547,6 +1572,16 @@ export default function QuickIssueView({
                 </tbody>
               </table>
             </div>
+
+            {/* Matrix Table Footer Pagination */}
+            <Pagination
+              currentPage={matrixPage}
+              totalPages={matrixTotalPages}
+              totalItems={analytics.matrixRows.length}
+              pageSize={matrixPageSize}
+              onPageChange={setMatrixPage}
+              onPageSizeChange={setMatrixPageSize}
+            />
           </div>
         )}
 
@@ -1566,7 +1601,7 @@ export default function QuickIssueView({
 
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500 font-mono font-semibold">
-                  แสดง {filteredStatsLogs.length} รายการ
+                  ทั้งหมด {filteredStatsLogs.length} รายการ
                 </span>
                 <button
                   type="button"
@@ -1594,7 +1629,7 @@ export default function QuickIssueView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredStatsLogs.length === 0 ? (
+                  {paginatedStatsLogs.length === 0 ? (
                     <tr>
                       <td colSpan="8" className="p-8 text-center text-slate-400">
                         <PackageCheck className="w-8 h-8 mx-auto text-slate-300 mb-2" />
@@ -1602,7 +1637,7 @@ export default function QuickIssueView({
                       </td>
                     </tr>
                   ) : (
-                    filteredStatsLogs.map(log => {
+                    paginatedStatsLogs.map(log => {
                       const logUnit = getLogUnit(log);
                       const unitConf = usageUnitConfigMap[logUnit] || { color: 'bg-slate-100 text-slate-700 border-slate-200' };
                       const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
@@ -1645,6 +1680,16 @@ export default function QuickIssueView({
                 </tbody>
               </table>
             </div>
+
+            {/* Logs Table Footer Pagination */}
+            <Pagination
+              currentPage={logsPage}
+              totalPages={logsTotalPages}
+              totalItems={filteredStatsLogs.length}
+              pageSize={logsPageSize}
+              onPageChange={setLogsPage}
+              onPageSizeChange={setLogsPageSize}
+            />
           </div>
         )}
 

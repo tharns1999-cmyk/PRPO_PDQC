@@ -17,6 +17,16 @@ import AttachmentViewerModal from '../common/AttachmentViewerModal';
 
 export default function PODetailsModal({ selectedPO, currentRole, onClose, onRefresh }) {
   const context = useAppContext();
+  const currentUser = context?.currentUser;
+  const rawRole = typeof currentUser?.role === 'object' 
+    ? (currentUser?.role?.id || currentUser?.role?.name || '') 
+    : (currentUser?.role || currentRole?.roleId || currentRole?.id || '');
+  const role = String(rawRole).toLowerCase();
+
+  const isOperational = ['requester', 'asst_mgr', 'supervisor'].some(r => role.includes(r));
+  const isPlantManager = role.includes('plant_mgr') || role.includes('plant manager');
+  const isPurchaser = role.includes('purchaser');
+
   const [isReceiving, setIsReceiving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showReceivingPanel, setShowReceivingPanel] = useState(false);
@@ -485,6 +495,9 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                     <span className="w-1.5 h-1.5 rounded-full bg-current opacity-75"></span>
                     {statusInfo.label}
                   </span>
+                  {isPlantManager && (
+                    <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">มุมมองผู้บริหาร (Read-Only)</span>
+                  )}
                 </div>
 
                 {/* 4-Column Metadata Grid */}
@@ -557,7 +570,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                         รหัสผู้ขาย: {selectedPO.vendorId === 'ONLINE' ? 'สั่งซื้อออนไลน์' : selectedPO.vendorId}
                       </p>
                     </div>
-                  ) : (
+                  ) : (isPurchaser || role === 'admin') ? (
                     <div className="p-3.5 mt-2 bg-amber-50/90 border border-amber-200/90 rounded-xl space-y-2.5 shadow-2xs">
                       <p className="text-amber-900 text-xs font-semibold flex items-center gap-1.5">
                         <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
@@ -590,6 +603,12 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                           {isAssigning ? 'บันทึก...' : 'บันทึกผู้ขาย'}
                         </button>
                       </div>
+                    </div>
+                  ) : (
+                    <div className="pt-2">
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200/80 px-3 py-2 rounded-lg font-medium">
+                        รอฝ่ายจัดซื้อระบุร้านค้า
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1164,7 +1183,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
             )}
 
             {/* Goods Receiving Panel */}
-            {canReceiveGoods && isReceivable && showReceivingPanel && (
+            {isOperational && canReceiveGoods && isReceivable && showReceivingPanel && (
               <div className="bg-emerald-50/80 border border-emerald-200/90 rounded-xl p-4 space-y-4 shadow-2xs animate-fade-in">
                 <div className="flex items-center justify-between pb-3 border-b border-emerald-200/70">
                   <span className="text-xs sm:text-sm font-semibold text-emerald-950 flex items-center gap-2">
@@ -1660,7 +1679,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                   ปิดหน้าต่าง
                 </button>
 
-                {isPOCancellable && canCancelPO && (
+                {!isPlantManager && isPOCancellable && canCancelPO && (
                   <button 
                     type="button"
                     onClick={handleCancelPO}
@@ -1676,7 +1695,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
               {/* Right Side: Action Decisions */}
               <div className="flex items-center gap-2 ml-auto">
                 {/* Self-buy Claim Resolution Active Toolbar */}
-                {isClaimStatus && selectedPO.purchaseChannel === 'SELF' && showSelfClaimResolution ? (
+                {isOperational && isClaimStatus && selectedPO.purchaseChannel === 'SELF' && showSelfClaimResolution ? (
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -1695,7 +1714,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                       <span>{isResolvingSelfClaim ? 'กำลังบันทึก...' : 'ยืนยันการจัดการเคส'}</span>
                     </button>
                   </div>
-                ) : showClaimForm ? (
+                ) : isOperational && showClaimForm ? (
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -1730,7 +1749,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                 ) : (
                   <>
                     {/* Claim / Problem button: ONLINE or SELF (when not in CLAIM status) */}
-                    {canFileClaim && (
+                    {isOperational && canFileClaim && (
                       <button
                         onClick={() => setShowClaimForm(p => !p)}
                         className={`px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -1745,7 +1764,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                     )}
 
                     {/* Self-buy Claim Resolution button (only for CLAIM status + authorized user) */}
-                    {isClaimStatus && selectedPO.purchaseChannel === 'SELF' && canResolveSelfClaim && (
+                    {isOperational && isClaimStatus && selectedPO.purchaseChannel === 'SELF' && canResolveSelfClaim && (
                       <button
                         onClick={() => setShowSelfClaimResolution(p => !p)}
                         className={`px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -1758,8 +1777,8 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                     )}
 
                     {/* Online Purchaser: Mark as ordered */}
-                    {(selectedPO.status === 'ISSUED' || selectedPO.status === 'IN_PROGRESS_ONLINE') &&
-                     (currentRole.id === 'ADMIN' || currentRole.canOnlinePurchase || currentRole.roleId === 'ONLINE_PURCHASER') && (
+                    {!isPlantManager && (selectedPO.status === 'ISSUED' || selectedPO.status === 'IN_PROGRESS_ONLINE') &&
+                     (isPurchaser || role === 'admin' || currentRole?.id === 'ADMIN' || currentRole?.canOnlinePurchase) && (
                       <button
                         onClick={async () => {
                           const targetStatus = selectedPO.purchaseChannel === 'ONLINE' ? 'ORDERED_PENDING_DELIVERY' : 'IN_DELIVERY';
@@ -1787,7 +1806,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                     )}
 
                     {/* Requester: Toggle goods receiving panel */}
-                    {canReceiveGoods && isReceivable && (
+                    {isOperational && canReceiveGoods && isReceivable && (
                       <button
                         onClick={handleToggleReceiving}
                         className={`px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${

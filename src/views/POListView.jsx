@@ -6,19 +6,31 @@ import PODetailsModal from '../components/po/PODetailsModal';
 import EmptyState from '../components/common/EmptyState';
 import Pagination from '../components/common/Pagination';
 import { hasDepartmentAccess } from '../utils/permissions';
+import { useAppContext } from '../context/AppContext';
 
 export default function POListView({ pos = [], currentRole, onRefresh }) {
+  const context = useAppContext();
+  const currentUser = context?.currentUser;
+  const rawRole = typeof currentUser?.role === 'object' 
+    ? (currentUser?.role?.id || currentUser?.role?.name || '') 
+    : (currentUser?.role || currentRole?.roleId || currentRole?.id || currentRole?.name || '');
+  const role = String(rawRole).toLowerCase();
+
+  const isOperational = ['requester', 'asst_mgr', 'supervisor'].some(r => role.includes(r));
+  const isPlantManager = role.includes('plant_mgr') || role.includes('plant manager');
+  const isPurchaser = role.includes('purchaser');
+
   const [selectedPO, setSelectedPO] = useState(null);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [deptFilter, setDeptFilter] = useState(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   // Auto-reset page when filter or search changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterStatus, deptFilter, searchQuery]);
+  }, [filterStatus, deptFilter, searchQuery, pageSize]);
 
   const isPendingReceipt = (status) => ['ISSUED', 'PARTIAL'].includes(status);
   const isOnlinePurchaser = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER';
@@ -288,13 +300,13 @@ export default function POListView({ pos = [], currentRole, onRefresh }) {
                         <button 
                           onClick={() => setSelectedPO(po)}
                           className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
-                            canAction 
+                            isOperational && canAction 
                               ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-sm' 
                               : 'border-slate-200 hover:bg-slate-50 text-slate-700 bg-white shadow-2xs'
                           }`}
                         >
                           <FileSearch className="w-3.5 h-3.5" />
-                          <span>{canAction ? 'ตรวจรับ / จัดการ' : 'รายละเอียด'}</span>
+                          <span>{isOperational && canAction ? 'ตรวจรับ / จัดการ' : 'ดูรายละเอียด'}</span>
                         </button>
                       </td>
                     </tr>
@@ -312,6 +324,7 @@ export default function POListView({ pos = [], currentRole, onRefresh }) {
           totalItems={filteredPOs.length}
           pageSize={pageSize}
           onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
         />
       </div>
 

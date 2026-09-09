@@ -36,7 +36,7 @@ export default function PRListView({
   const [deptFilter, setDeptFilter] = useState(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   // Sync department filter whenever user switches role via Fast Switcher
   useEffect(() => {
@@ -46,7 +46,7 @@ export default function PRListView({
   // Auto-reset page when filter or search changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterStatus, deptFilter, searchQuery]);
+  }, [filterStatus, deptFilter, searchQuery, pageSize]);
 
   // Department-based access check
   const accessiblePRs = useMemo(() => {
@@ -138,130 +138,149 @@ export default function PRListView({
         )}
       </div>
 
-      {/* Insight Summary Cards */}
+      {/* Bento Stat Cards Redesign */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/70 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between">
+        {/* Card 1: Total Volume */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">ยอดรวม PR ในตัวกรอง</p>
-              <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mt-1.5 font-mono tabular-nums tracking-tight">
+              <h3 className="font-mono text-2xl font-bold text-slate-900 mt-1.5 tabular-nums tracking-tight">
                 ฿{metrics.totalAmount.toLocaleString()}
               </h3>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center shrink-0 shadow-2xs">
-              <DollarSign className="w-4 h-4" />
+            <div className="w-10 h-10 rounded-xl bg-indigo-50/80 backdrop-blur-xs text-indigo-600 border border-indigo-100 flex items-center justify-center shrink-0 shadow-2xs">
+              <DollarSign className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
             <span>รายการทั้งหมด</span>
-            <span className="font-semibold text-slate-800 font-mono tabular-nums bg-slate-50 px-2.5 py-0.5 rounded-full border border-slate-200/60">{metrics.totalCount} รายการ</span>
+            <span className="font-semibold text-slate-800 font-mono tabular-nums bg-slate-50 px-2.5 py-0.5 rounded-full border border-slate-200/60">
+              {metrics.totalCount} รายการ
+            </span>
           </div>
         </div>
 
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/70 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between">
+        {/* Card 2: Pending Approval */}
+        <div className="rounded-2xl border border-amber-200/60 bg-amber-50/40 p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">รออนุมัติสั่งซื้อ</p>
-              <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mt-1.5 font-mono tabular-nums tracking-tight">
-                {metrics.pendingCount} <span className="text-xs font-normal text-slate-400 font-sans">รายการ</span>
+              <p className="text-xs font-semibold text-amber-800 uppercase tracking-wider">รออนุมัติสั่งซื้อ</p>
+              <h3 className="font-mono text-2xl font-bold text-amber-950 mt-1.5 tabular-nums tracking-tight">
+                {metrics.pendingCount} <span className="text-xs font-normal text-amber-700/80 font-sans">รายการ</span>
               </h3>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center shrink-0 shadow-2xs">
-              <Clock className="w-4 h-4" />
+            <div className="w-10 h-10 rounded-xl bg-amber-100/70 backdrop-blur-xs text-amber-700 border border-amber-200/80 flex items-center justify-center shrink-0 shadow-2xs">
+              <Clock className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-4 pt-3 border-t border-amber-200/50 flex items-center justify-between text-xs text-amber-800">
             <span>มูลค่ารออนุมัติ</span>
-            <span className="font-semibold text-amber-800 font-mono tabular-nums bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/60">฿{metrics.pendingAmount.toLocaleString()}</span>
+            <span className="font-semibold text-amber-900 font-mono tabular-nums bg-white/80 px-2.5 py-0.5 rounded-full border border-amber-200/60">
+              ฿{metrics.pendingAmount.toLocaleString()}
+            </span>
           </div>
         </div>
 
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/70 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between">
+        {/* Card 3: Approved */}
+        <div className="rounded-2xl border border-emerald-200/60 bg-emerald-50/30 p-5 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">อนุมัติแล้ว / ออก PO</p>
-              <h3 className="text-xl sm:text-2xl font-bold text-slate-900 mt-1.5 font-mono tabular-nums tracking-tight">
-                {metrics.approvedCount} <span className="text-xs font-normal text-slate-400 font-sans">รายการ</span>
+              <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">อนุมัติแล้ว / ออก PO</p>
+              <h3 className="font-mono text-2xl font-bold text-emerald-950 mt-1.5 tabular-nums tracking-tight">
+                {metrics.approvedCount} <span className="text-xs font-normal text-emerald-700/80 font-sans">รายการ</span>
               </h3>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shrink-0 shadow-2xs">
-              <CheckCircle2 className="w-4 h-4" />
+            <div className="w-10 h-10 rounded-xl bg-emerald-100/70 backdrop-blur-xs text-emerald-700 border border-emerald-200/80 flex items-center justify-center shrink-0 shadow-2xs">
+              <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+          <div className="mt-4 pt-3 border-t border-emerald-200/50 flex items-center justify-between text-xs text-emerald-800">
             <span>สถานะ</span>
-            <span className="font-medium text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60 text-[11px]">ผ่านการอนุมัติแล้ว</span>
+            <span className="font-semibold text-emerald-800 bg-white/80 px-2.5 py-0.5 rounded-full border border-emerald-200/60 text-[11px]">
+              ผ่านการอนุมัติแล้ว
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Filter Toolbar Container */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5 bg-white p-2.5 rounded-2xl border border-slate-200/70 shadow-2xs">
-        {/* Business Status Tabs */}
-        <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl overflow-x-auto custom-scrollbar">
-          {PR_TABS.map(tab => {
-            const isSelected = filterStatus === tab.id;
-            const count = tabCounts[tab.id] || 0;
-            return (
-              <button 
-                key={tab.id}
-                onClick={() => setFilterStatus(tab.id)}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                  isSelected 
-                    ? 'bg-white text-slate-900 shadow-xs font-bold' 
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-                }`}
-              >
-                <span>{tab.label}</span>
-                {count > 0 && (
-                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+      {/* Status Tabs & Controls Section */}
+      <div className="space-y-3">
+        {/* Status Segmented Track */}
+        <div className="w-full overflow-x-auto scrollbar-none pb-1">
+          <div className="bg-slate-100/80 p-1.5 rounded-2xl inline-flex gap-1 max-w-full">
+            {PR_TABS.map(tab => {
+              const isSelected = filterStatus === tab.id;
+              const count = tabCounts[tab.id] || 0;
+              return (
+                <button 
+                  key={tab.id}
+                  onClick={() => setFilterStatus(tab.id)}
+                  className={`flex items-center gap-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                     isSelected 
-                      ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' 
-                      : 'bg-slate-200/80 text-slate-600'
-                  }`}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                      ? 'bg-white text-slate-900 shadow-sm font-semibold px-4 py-2' 
+                      : 'text-slate-500 hover:text-slate-800 px-3 py-2 transition-colors'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  {count > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold transition-colors ${
+                      isSelected 
+                        ? 'bg-slate-900 text-white shadow-2xs' 
+                        : 'bg-slate-200/80 text-slate-600'
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Right Controls: Dept Filter & Search Input */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-          {currentRole.canViewAllDepts && (
-            <div className="relative min-w-[140px]">
-              <select
-                value={deptFilter}
-                onChange={e => setDeptFilter(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 shadow-2xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
-              >
-                <option value="ALL">ทุกแผนก</option>
-                <option value="PD">ฝ่ายผลิต (PD)</option>
-                <option value="QC">ควบคุมคุณภาพ (QC)</option>
-                <option value="HR">HR & Admin (HR)</option>
-                <option value="ACCT">ฝ่ายบัญชี (ACCT)</option>
-                <option value="LAB">Micro Lab (LAB)</option>
-              </select>
-            </div>
-          )}
-
-          <div className="relative flex-1 sm:w-64 min-w-[200px]">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        {/* Utility Control Row */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-[0_2px_6px_rgba(0,0,0,0.02)]">
+          {/* Search Box with icon and shortcut hint */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               placeholder="ค้นหาเลข PR, ผู้ขอ, สินค้า..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-400 shadow-2xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              className="w-full bg-slate-50 border border-slate-200/80 rounded-xl pl-10 pr-14 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
             />
-            {searchQuery && (
+            {searchQuery ? (
               <button 
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 font-bold text-xs"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 font-bold text-xs"
               >
                 ✕
               </button>
+            ) : (
+              <span className="hidden sm:inline absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono bg-slate-200/60 px-1.5 py-0.5 rounded border border-slate-200 pointer-events-none">
+                /
+              </span>
+            )}
+          </div>
+
+          {/* Department Filter Dropdown */}
+          <div className="flex items-center gap-2">
+            {currentRole.canViewAllDepts && (
+              <div className="relative min-w-[150px] w-full sm:w-auto">
+                <select
+                  value={deptFilter}
+                  onChange={e => setDeptFilter(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200/80 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100/80 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                >
+                  <option value="ALL">ทุกแผนก (All Depts)</option>
+                  <option value="PD">ฝ่ายผลิต (PD)</option>
+                  <option value="QC">ควบคุมคุณภาพ (QC)</option>
+                  <option value="HR">HR & Admin (HR)</option>
+                  <option value="ACCT">ฝ่ายบัญชี (ACCT)</option>
+                  <option value="LAB">Micro Lab (LAB)</option>
+                </select>
+              </div>
             )}
           </div>
         </div>
@@ -386,6 +405,7 @@ export default function PRListView({
           totalItems={filteredPRs.length}
           pageSize={pageSize}
           onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
         />
       </div>
 

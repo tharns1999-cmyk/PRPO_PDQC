@@ -31,7 +31,9 @@ export default function StockCardView({
   const [showManualIn, setShowManualIn] = useState(false);
   const [showAdjustStock, setShowAdjustStock] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
+  const [ropPage, setRopPage] = useState(1);
+  const [ropPageSize, setRopPageSize] = useState(10);
 
   const isOnlinePurchaser = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER';
 
@@ -42,7 +44,8 @@ export default function StockCardView({
   // Auto-reset page on filter or search changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [categoryFilter, selectedLocation, searchQuery]);
+    setRopPage(1);
+  }, [categoryFilter, selectedLocation, searchQuery, activeTab]);
 
   // Available unique locations from Master Data & Products
   const availableLocations = useMemo(() => {
@@ -134,6 +137,13 @@ export default function StockCardView({
       };
     });
   }, [products, stockLogs, currentRole]);
+
+  // ROP Analytics Pagination Slicing
+  const ropTotalPages = Math.ceil(ropAnalytics.length / ropPageSize) || 1;
+  const paginatedRopAnalytics = useMemo(() => {
+    const start = (ropPage - 1) * ropPageSize;
+    return ropAnalytics.slice(start, start + ropPageSize);
+  }, [ropAnalytics, ropPage, ropPageSize]);
 
   const handleApplyROP = async (product, suggestedROP) => {
     const confirmed = await modalService.confirm({
@@ -563,6 +573,7 @@ export default function StockCardView({
             totalItems={sortedAndFilteredProducts.length}
             pageSize={pageSize}
             onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
           />
         </div>
       )}
@@ -594,7 +605,7 @@ export default function StockCardView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {ropAnalytics.map(item => (
+                  {paginatedRopAnalytics.map(item => (
                     <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3 pl-5 whitespace-nowrap">
                         <div className="font-mono text-xs text-slate-500">{item.code}</div>
@@ -646,6 +657,16 @@ export default function StockCardView({
                 </tbody>
               </table>
             </div>
+
+            {/* ROP Table Footer Pagination */}
+            <Pagination
+              currentPage={ropPage}
+              totalPages={ropTotalPages}
+              totalItems={ropAnalytics.length}
+              pageSize={ropPageSize}
+              onPageChange={setRopPage}
+              onPageSizeChange={setRopPageSize}
+            />
           </div>
         </div>
       )}

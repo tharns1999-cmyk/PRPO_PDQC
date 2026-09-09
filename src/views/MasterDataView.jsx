@@ -88,22 +88,22 @@ export default function MasterDataView({
 
   // Pagination states
   const [prodPage, setProdPage] = useState(1);
-  const prodPageSize = 10;
+  const [prodPageSize, setProdPageSize] = useState(10);
   const [vendorPage, setVendorPage] = useState(1);
-  const vendorPageSize = 10;
+  const [vendorPageSize, setVendorPageSize] = useState(10);
   const [locPage, setLocPage] = useState(1);
-  const locPageSize = 10;
+  const [locPageSize, setLocPageSize] = useState(10);
   const [unitPage, setUnitPage] = useState(1);
-  const unitPageSize = 10;
+  const [unitPageSize, setUnitPageSize] = useState(10);
   const [userPage, setUserPage] = useState(1);
-  const userPageSize = 10;
+  const [userPageSize, setUserPageSize] = useState(10);
 
   // Auto-resets on filter/search change
-  useEffect(() => { setProdPage(1); }, [prodCategoryFilter, prodSearch]);
-  useEffect(() => { setVendorPage(1); }, [vendorDeptFilter, vendorSearch]);
-  useEffect(() => { setLocPage(1); }, [locDeptFilter, locSearch]);
-  useEffect(() => { setUnitPage(1); }, [unitDeptFilter, unitSearch]);
-  useEffect(() => { setUserPage(1); }, [userDeptFilter, userRoleFilter, userSearch]);
+  useEffect(() => { setProdPage(1); }, [prodCategoryFilter, prodSearch, prodPageSize]);
+  useEffect(() => { setVendorPage(1); }, [vendorDeptFilter, vendorSearch, vendorPageSize]);
+  useEffect(() => { setLocPage(1); }, [locDeptFilter, locSearch, locPageSize]);
+  useEffect(() => { setUnitPage(1); }, [unitDeptFilter, unitSearch, unitPageSize]);
+  useEffect(() => { setUserPage(1); }, [userDeptFilter, userRoleFilter, userSearch, userPageSize]);
 
   const canSeeAll = currentRole?.canViewAllDepts;
   const myDept = currentRole?.department;
@@ -643,6 +643,7 @@ export default function MasterDataView({
               totalItems={filteredProducts.length}
               pageSize={prodPageSize}
               onPageChange={setProdPage}
+              onPageSizeChange={setProdPageSize}
             />
           </div>
         </div>
@@ -736,6 +737,7 @@ export default function MasterDataView({
               totalItems={filteredVendors.length}
               pageSize={vendorPageSize}
               onPageChange={setVendorPage}
+              onPageSizeChange={setVendorPageSize}
             />
           </div>
         </div>

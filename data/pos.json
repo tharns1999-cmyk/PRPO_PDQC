@@ -1,1 +1,71 @@
-[]
+[
+  {
+    "id": "PO-1789003809083-1",
+    "poNo": "PO-PD-2026-001",
+    "prId": "PR-1788994095116-HAA",
+    "prNo": "PD002/2026",
+    "requestedBy": "คุณวิชัย (PD)",
+    "requesterId": null,
+    "department": "PD",
+    "vendorId": null,
+    "vendorName": "Shopee / Lazada (ระบุร้านภายหลัง)",
+    "purchaseChannel": "ONLINE",
+    "onlineLink": null,
+    "specUrl": null,
+    "issueDate": "2026-09-10",
+    "status": "IN_PROGRESS_ONLINE",
+    "items": [
+      {
+        "productId": "PROD-PD-001",
+        "code": "PD-OIL-068",
+        "name": "น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)",
+        "purchaseUnit": "ถัง (200L)",
+        "stockUnit": "ลิตร",
+        "conversionRate": 200,
+        "purchaseQty": 1,
+        "stockQty": 200,
+        "qty": 1,
+        "unit": "ถัง (200L)",
+        "price": 14500,
+        "discountPercent": 0,
+        "discountAmount": 0,
+        "onlineUrl": "ีร้่ร่้รี้่าา",
+        "total": 14500,
+        "source": "FACTORY",
+        "isCustom": false,
+        "isUnitOverridden": false,
+        "orderedQty": 1,
+        "receivedQty": 0,
+        "receivedStockQty": 0,
+        "receivedNgQty": 0,
+        "remainingQty": 1,
+        "actUnitPrice": null
+      }
+    ],
+    "financials": {
+      "subtotal": 14500,
+      "itemDiscountTotal": 0,
+      "combinedDiscountType": "fixed",
+      "combinedDiscountValue": 0,
+      "combinedDiscountAmount": 0,
+      "totalDiscount": 0,
+      "vatMode": "NONE",
+      "vatAmount": 0,
+      "roundingAdj": 0,
+      "shippingCost": 0,
+      "grandTotal": 14500
+    },
+    "subtotal": 14500,
+    "vat": 0,
+    "grandTotal": 14500,
+    "activityLog": [
+      {
+        "action": "แปลง PR เป็น PO และออกใบสั่งซื้ออัตโนมัติ",
+        "user": "คุณประเสริฐ (Plant Mgr)",
+        "role": "Plant Manager",
+        "timestamp": "10/9/2569 08:30:09",
+        "note": "อนุมัติสร้างเอกสาร PO เลขที่ PO-PD-2026-001"
+      }
+    ]
+  }
+]

@@ -6,7 +6,9 @@ export default function Pagination({
   totalPages = 1,
   totalItems = 0,
   pageSize = 10,
-  onPageChange
+  onPageChange,
+  onPageSizeChange,
+  pageSizeOptions = [10, 20, 50]
 }) {
   if (totalItems === 0) return null;
 
@@ -39,24 +41,43 @@ export default function Pagination({
   };
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-200/80 bg-slate-50/70 text-xs text-slate-600 select-none">
-      {/* Left: Summary */}
-      <div className="font-normal text-slate-500">
-        แสดง <span className="font-mono font-medium text-slate-800">{startItem}</span> - <span className="font-mono font-medium text-slate-800">{endItem}</span> จากทั้งหมด <span className="font-mono font-semibold text-slate-900">{totalItems.toLocaleString()}</span> รายการ
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3.5 border-t border-slate-200/80 bg-white/70 text-xs text-slate-600 select-none">
+      {/* Left: Summary & Rows per page */}
+      <div className="flex items-center gap-3 font-medium text-slate-500">
+        <span>
+          แสดง <span className="font-mono font-semibold text-slate-800">{startItem}</span> - <span className="font-mono font-semibold text-slate-800">{endItem}</span> จากทั้งหมด <span className="font-mono font-semibold text-slate-800">{totalItems.toLocaleString()}</span> รายการ
+        </span>
+
+        {onPageSizeChange && (
+          <div className="hidden sm:flex items-center gap-1.5 pl-2 border-l border-slate-200">
+            <span className="text-[11px] text-slate-400">แสดง:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className="bg-white border border-slate-200 text-slate-700 text-[11px] font-mono font-semibold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-slate-400 cursor-pointer shadow-2xs"
+            >
+              {pageSizeOptions.map((size) => (
+                <option key={size} value={size}>
+                  {size} / หน้า
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Right: Controls & Page Info */}
       <div className="flex items-center gap-2">
         {/* Subtle Page Indicator Badge */}
         <span className="text-[11px] font-medium text-slate-500 bg-white px-2 py-1 rounded-md border border-slate-200/80 shadow-2xs font-mono">
-          หน้า <strong className="text-slate-800">{currentPage}</strong> / {validTotalPages}
+          หน้า <strong className="font-mono font-bold text-slate-800 px-0.5">{currentPage}</strong> / <span className="font-mono">{validTotalPages}</span>
         </span>
 
         <button
           type="button"
           onClick={() => onPageChange && onPageChange(currentPage - 1)}
           disabled={currentPage <= 1}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:hover:bg-white disabled:cursor-not-allowed transition-all cursor-pointer shadow-2xs text-xs font-medium"
+          className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all shadow-2xs inline-flex items-center gap-1 cursor-pointer"
           title="หน้าก่อนหน้า"
           aria-label="Previous Page"
         >
@@ -97,7 +118,7 @@ export default function Pagination({
           type="button"
           onClick={() => onPageChange && onPageChange(currentPage + 1)}
           disabled={currentPage >= validTotalPages}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40 disabled:hover:bg-white disabled:cursor-not-allowed transition-all cursor-pointer shadow-2xs text-xs font-medium"
+          className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none transition-all shadow-2xs inline-flex items-center gap-1 cursor-pointer"
           title="หน้าถัดไป"
           aria-label="Next Page"
         >

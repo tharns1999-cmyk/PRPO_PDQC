@@ -40,6 +40,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   const [revisionReason, setRevisionReason] = useState('');
   const [selectedPreset, setSelectedPreset] = useState('');
   const [isSubmittingReject, setIsSubmittingReject] = useState(false);
+  const [rejectValidationError, setRejectValidationError] = useState(false);
 
   const handleSelectPreset = (preset) => {
     setSelectedPreset(preset);
@@ -121,7 +122,27 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
     }
     setIsSavingItems(true);
     try {
-      await apiService.editPRItems(selectedPR.id, editItems, currentRole, editReason.trim());
+      // Data Integrity Guard: Ensure master unit conversion and units are locked from original PR items
+      const originalItemsMap = new Map((selectedPR.items || []).map(it => [it.id || it.code || it.name, it]));
+      const sanitizedItems = editItems.map(item => {
+        const orig = originalItemsMap.get(item.id || item.code || item.name);
+        const originalRate = Number(orig?.conversionRate ?? item.conversionRate) > 0 ? Number(orig?.conversionRate ?? item.conversionRate) : 1;
+        const pQty = Number(item.purchaseQty ?? item.qty) || 1;
+        const price = Number(item.price) || 0;
+        return {
+          ...item,
+          purchaseUnit: orig?.purchaseUnit || orig?.unit || item.purchaseUnit || item.unit || 'ชิ้น',
+          stockUnit: orig?.stockUnit || orig?.unit || item.stockUnit || item.unit || 'ชิ้น',
+          conversionRate: originalRate,
+          purchaseQty: pQty,
+          qty: pQty,
+          stockQty: pQty * originalRate,
+          price: price,
+          total: pQty * price
+        };
+      });
+
+      await apiService.editPRItems(selectedPR.id, sanitizedItems, currentRole, editReason.trim());
       setIsEditingItems(false);
       setEditReason('');
       onRefresh();
@@ -215,99 +236,66 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden">
-      <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in">
+      <div className="w-full max-w-5xl xl:max-w-6xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in">
         
         {/* ── 1. Fixed Header (Sticky Top / Non-scrollable) ── */}
-        <div className="shrink-0 px-6 py-4 border-b border-slate-100 bg-white flex items-center justify-between gap-4 sticky top-0 z-20">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-slate-900">
-              {selectedPR.prNo}
-            </span>
-            
-            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border shadow-2xs ${statusInfo.color}`}>
-              <span className="w-1.5 h-1.5 rounded-full bg-current opacity-75"></span>
-              {statusInfo.label}
-            </span>
-
-            {isOverBudget && (
-              <span className="bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-2xs">
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                <span>เกินงบประมาณ (Over Budget)</span>
+        <div className="shrink-0 px-6 py-4 border-b border-slate-100/90 bg-white/95 backdrop-blur-md sticky top-0 z-20">
+          <div className="flex items-center justify-between gap-4">
+            {/* Left: PR No + Status Badge */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xl sm:text-2xl font-black font-mono tracking-tight text-slate-950">
+                {selectedPR.prNo}
               </span>
-            )}
+              
+              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border shadow-2xs ${statusInfo.color}`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-current opacity-75"></span>
+                {statusInfo.label}
+              </span>
+            </div>
+
+            {/* Right: Hero Metric จิ๋ว + Close button */}
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="hidden sm:flex flex-col items-end px-3.5 py-1.5 rounded-xl bg-slate-900 text-white shadow-sm shrink-0">
+                <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider whitespace-nowrap">ยอดเงินสุทธิ</span>
+                <span className="font-mono font-black text-sm text-emerald-400 tabular-nums whitespace-nowrap">
+                  ฿{Number(selectedPR.financials?.grandTotal || calculatedTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              <button 
+                onClick={onClose} 
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-all cursor-pointer shrink-0" 
+                title="ปิดหน้าต่าง (Esc)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
-          <button 
-            onClick={onClose} 
-            className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-all cursor-pointer shrink-0" 
-            title="ปิดหน้าต่าง (Esc)"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {/* Over-Budget Alert Callout Banner (เมื่อติดเงื่อนไขเกินงบ) */}
+          {isOverBudget && (
+            <div className="bg-rose-50/80 border border-rose-200/80 rounded-2xl p-3 text-xs text-rose-900 flex items-center gap-2 mt-3 shadow-2xs">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <span className="font-bold">คำเตือนงบประมาณ:</span> ยอดคำขอซื้อนี้เกินกรอบงบประมาณคงเหลือของแผนก ({selectedPR.department}) ระบบจะส่งต่อเพื่อพิจารณาอนุมัติแบบ Over Budget
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* ── Scrollable Body ── */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 custom-scrollbar bg-slate-50/40">
+        {/* ── 2-Column Split Content Architecture ── */}
+        <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 custom-scrollbar bg-slate-50/40">
           
-          {/* ── 2. Quick Meta Strip (Compact 1-Line Info Bar) ── */}
-          <div className="bg-white border border-slate-200/80 rounded-xl p-3 sm:px-4 shadow-2xs grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <User className="w-4 h-4 text-slate-400 shrink-0" />
-              <div className="min-w-0">
-                <span className="text-slate-400 block text-[10px]">ผู้ขอซื้อ</span>
-                <span className="font-semibold text-slate-800 truncate block">
-                  {selectedPR.requestedBy} <span className="text-slate-500 font-medium font-mono">({selectedPR.department})</span>
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 min-w-0">
-              <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
-              <div className="min-w-0">
-                <span className="text-slate-400 block text-[10px]">วันที่ขอซื้อ</span>
-                <span className="font-semibold text-slate-800 font-mono truncate block">
-                  {selectedPR.requestedDate || selectedPR.createdAt || '-'}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 min-w-0">
-              <Tag className="w-4 h-4 text-slate-400 shrink-0" />
-              <div className="min-w-0">
-                <span className="text-slate-400 block text-[10px]">ช่องทาง</span>
-                <span className="font-semibold text-slate-800 truncate block">
-                  {selectedPR.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์ (Online)' : 'จัดซื้อเอง (Self-buy)'}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 min-w-0">
-              {selectedPR.source === 'FACTORY' || !selectedPR.source || selectedPR.source === 'PD' ? (
-                <Factory className="w-4 h-4 text-slate-400 shrink-0" />
-              ) : (
-                <Building className="w-4 h-4 text-slate-400 shrink-0" />
-              )}
-              <div className="min-w-0">
-                <span className="text-slate-400 block text-[10px]">การใช้งาน</span>
-                <span className="font-semibold text-slate-800 truncate block">
-                  {selectedPR.source === 'FACTORY' || !selectedPR.source || selectedPR.source === 'PD' ? 'โรงงาน (Factory)' : (selectedPR.source === 'OFFICE' ? 'สำนักงาน (Office)' : selectedPR.source)}
-                </span>
-              </div>
-            </div>
-          </div>
-
           {/* Rejection Alert Banner (When PR has been rejected) */}
           {(selectedPR.status === 'REJECTED_TO_DRAFT' || selectedPR.status === 'REJECTED_TO_L2' || selectedPR.rejectReason) && (
-            <div className="bg-rose-50/90 border border-rose-200/90 rounded-2xl p-4 flex items-start gap-3 shadow-2xs">
+            <div className="bg-rose-50/90 border border-rose-200/90 rounded-2xl p-4 flex items-start gap-3 shadow-2xs mb-4">
               <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 mt-0.5">
                 <RotateCcw className="w-4 h-4" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h4 className="text-xs sm:text-sm font-bold text-rose-950">
-                    ใบขอซื้อถูกส่งกลับเพื่อแก้ไข (Revision Required)
-                  </h4>
-                </div>
+                <h4 className="text-xs sm:text-sm font-bold text-rose-950">
+                  ใบขอซื้อถูกส่งกลับเพื่อแก้ไข (Revision Required)
+                </h4>
                 <p className="text-xs text-rose-900 mt-1 bg-white/90 p-3 rounded-xl border border-rose-200/60 font-medium leading-relaxed">
                   {selectedPR.rejectReason || 'กรุณาตรวจสอบรายละเอียดและแก้ไขตามที่ได้รับแจ้งก่อนส่งอีกครั้ง'}
                 </p>
@@ -317,13 +305,13 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
 
           {/* Linked PO Banner */}
           {relatedPOs.length > 0 && (
-            <div className="bg-indigo-50/70 border border-indigo-100 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+            <div className="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-indigo-100/80 text-indigo-700 flex items-center justify-center shrink-0">
                   <Layers className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs sm:text-sm font-medium text-indigo-950">
+                  <h4 className="text-xs sm:text-sm font-semibold text-indigo-950">
                     ออกใบสั่งซื้อ (PO) เรียบร้อยแล้ว {relatedPOs.length} ฉบับ
                     {relatedPOs.length === 1 && `: ${relatedPOs[0]?.poNo} (${relatedPOs[0]?.vendorName})`}
                   </h4>
@@ -337,7 +325,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
               <button
                 type="button"
                 onClick={() => setShowSplitModal(true)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3.5 py-2 rounded-lg font-medium shadow-xs transition-all cursor-pointer whitespace-nowrap self-end sm:self-center flex items-center gap-1.5"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3.5 py-2 rounded-xl font-medium shadow-xs transition-all cursor-pointer whitespace-nowrap self-end sm:self-center flex items-center gap-1.5"
               >
                 <span>ดูรายละเอียด PO {relatedPOs.length > 1 ? `(${relatedPOs.length} ใบ)` : ''}</span>
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -345,381 +333,396 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
             </div>
           )}
 
-          {/* Rejection Notice Banner */}
-          {(selectedPR.status === 'REJECTED_TO_L2' || selectedPR.status === 'REJECTED_TO_DRAFT') && (
-            <div className="bg-amber-50/80 border border-amber-200/90 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 text-xs sm:text-sm shadow-2xs">
-              <div className="flex items-start gap-2.5">
-                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-semibold text-amber-900">
-                    {selectedPR.status === 'REJECTED_TO_L2' ? 'เอกสารถูกส่งกลับจาก Level 3 มาให้ Level 2 ตรวจสอบใหม่' : 'เอกสารถูกตีกลับมายังผู้ขอซื้อ (ร่างเอกสาร / ส่งกลับแก้ไข)'}
-                  </h4>
-                  <p className="text-amber-800/80 mt-0.5 text-xs leading-relaxed">
-                    กรุณาตรวจสอบประวัติด้านล่าง หรือกดปุ่มแก้ไขรายการสินค้า/ข้อมูล และส่งพิจารณาใหม่อีกครั้ง
-                  </p>
-                </div>
-              </div>
-              {selectedPR.status === 'REJECTED_TO_DRAFT' && onEditPR && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onEditPR(selectedPR);
-                  }}
-                  className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap self-end sm:self-center"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  <span>แก้ไขและส่งใหม่</span>
-                </button>
-              )}
-            </div>
-          )}
+          {/* Grid Layout 2-Column (col-span-7 / col-span-5) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* ── คอลัมน์ซ้าย (Main Detail - col-span-7): รายการสินค้า & ยอดรวม ── */}
+            <div className="lg:col-span-7 space-y-4">
+              
+              {/* รายการสินค้า Card */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
+                <div className="bg-slate-50/90 px-4 py-3.5 border-b border-slate-200/80 flex items-center justify-between">
+                  <span className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Package className="w-4 h-4 text-slate-700" />
+                    <span>รายการสินค้าที่ขอซื้อ</span>
+                    <span className="text-xs font-semibold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full font-mono">({displayedItems.length})</span>
+                  </span>
 
-          {/* ── 3. Primary Section: Items Table (รายการสินค้าที่ขอซื้อ) ── */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl overflow-hidden shadow-xs">
-            <div className="bg-slate-50/90 px-4 py-3.5 sm:px-5 border-b border-slate-200/80 flex items-center justify-between">
-              <span className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Package className="w-4 h-4 text-indigo-600" />
-                <span>รายการสินค้าที่ขอซื้อ</span>
-                <span className="text-xs font-semibold text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-full font-mono">({displayedItems.length} รายการ)</span>
-              </span>
-
-              {canApproverEdit && (
-                <div>
-                  {!isEditingItems ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditItems((selectedPR.items || []).map(it => ({ ...it })));
-                        setIsEditingItems(true);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-2xs"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      <span>แก้ไขจำนวน/ราคาก่อนอนุมัติ</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditItems((selectedPR.items || []).map(it => ({ ...it })));
-                        setIsEditingItems(false);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>ยกเลิกการแก้ไข</span>
-                    </button>
+                  {canApproverEdit && (
+                    <div>
+                      {!isEditingItems ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditItems((selectedPR.items || []).map(it => ({ ...it })));
+                            setIsEditingItems(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>แก้ไขจำนวน/ราคา</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditItems((selectedPR.items || []).map(it => ({ ...it })));
+                            setIsEditingItems(false);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>ยกเลิกการแก้ไข</span>
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
 
-            {/* Approver Editing Reason Input Bar */}
-            {isEditingItems && (
-              <div className="bg-amber-50/90 p-3.5 border-b border-amber-200 flex flex-col sm:flex-row items-center gap-2.5">
-                <div className="flex-1 w-full">
-                  <input
-                    type="text"
-                    placeholder="ระบุเหตุผลที่ปรับแก้จำนวน/ราคา (เช่น ปรับลดตามงบ หรือ ต่อรองราคาได้)... *"
-                    value={editReason}
-                    onChange={e => setEditReason(e.target.value)}
-                    className="w-full bg-white border border-amber-300 rounded-lg px-3.5 py-1.5 text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none"
-                    required
-                  />
-                </div>
-                <button
-                  type="button"
-                  disabled={isSavingItems}
-                  onClick={handleSaveItemsEdit}
-                  className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs px-3.5 py-1.5 rounded-lg shadow-xs transition-all cursor-pointer shrink-0"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>{isSavingItems ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</span>
-                </button>
-              </div>
-            )}
+                {/* Approver Editing Reason Input Bar */}
+                {isEditingItems && (
+                  <div className="bg-amber-50/90 p-3.5 border-b border-amber-200 flex flex-col sm:flex-row items-center gap-2.5">
+                    <div className="flex-1 w-full">
+                      <input
+                        type="text"
+                        placeholder="ระบุเหตุผลที่ปรับแก้จำนวน/ราคา (เช่น ปรับลดตามงบ หรือ ต่อรองราคาได้)... *"
+                        value={editReason}
+                        onChange={e => setEditReason(e.target.value)}
+                        className="w-full bg-white border border-amber-300 rounded-lg px-3.5 py-1.5 text-xs font-medium focus:ring-2 focus:ring-amber-500 outline-none"
+                        required
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isSavingItems}
+                      onClick={handleSaveItemsEdit}
+                      className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs px-3.5 py-1.5 rounded-lg shadow-xs transition-all cursor-pointer shrink-0"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      <span>{isSavingItems ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}</span>
+                    </button>
+                  </div>
+                )}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200/80 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                    <th className="pl-4 py-3 w-10 text-center">#</th>
-                    <th className="py-3 px-3">รหัส / รายการสินค้า & สเปก</th>
-                    <th className="text-center py-3 px-3 whitespace-nowrap">จำนวน</th>
-                    <th className="text-right py-3 px-3 whitespace-nowrap">ราคา/หน่วย (฿)</th>
-                    <th className="text-right pr-4 py-3 whitespace-nowrap">รวมเงิน (฿)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {displayedItems.map((item, idx) => {
-                    const pQty = item.purchaseQty ?? item.qty;
-                    const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
-                    const sUnit = item.stockUnit || item.unit || pUnit;
-                    const rate = Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1;
-                    const sQty = item.stockQty ?? (pQty * rate);
+                <div className="w-full overflow-hidden">
+                  <table className="w-full text-left text-xs table-fixed">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200/80 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                        <th className="py-2.5 px-2 w-[6%] text-center text-xs text-slate-400">#</th>
+                        <th className="py-2.5 px-2 w-[48%] text-left">รายการ & สเปก</th>
+                        <th className="py-2.5 px-2 w-[14%] text-right font-mono text-xs whitespace-nowrap">จำนวน</th>
+                        <th className="py-2.5 px-2 w-[16%] text-right font-mono text-xs whitespace-nowrap">ราคา/หน่วย</th>
+                        <th className="py-2.5 px-2 w-[16%] text-right font-mono text-xs font-bold text-slate-900 pr-3 whitespace-nowrap">รวม (฿)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {displayedItems.map((item, idx) => {
+                        const pQty = item.purchaseQty ?? item.qty;
+                        const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
+                        const sUnit = item.stockUnit || item.unit || pUnit;
+                        const rate = Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1;
+                        const sQty = item.stockQty ?? (pQty * rate);
 
-                    return (
-                      <tr key={idx} className={`hover:bg-slate-50/70 transition-colors ${isEditingItems ? 'bg-amber-50/20 hover:bg-amber-50/50' : ''}`}>
-                        <td className="p-3 pl-4 text-center font-mono font-bold text-slate-400">
-                          {idx + 1}
-                        </td>
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            {item.code && (
-                              <span className="font-mono text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-semibold border border-slate-200/60 shrink-0">
-                                {item.code}
-                              </span>
-                            )}
-                            <div className="font-semibold text-slate-900 text-xs sm:text-sm leading-snug break-words max-w-sm" title={item.name}>
-                              {item.name}
-                            </div>
-                          </div>
-                          
-                          {item.onlineUrl && (
-                            <a href={item.onlineUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-1 text-[10px] text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/70 px-2 py-0.5 rounded-md transition-colors font-medium">
-                              <Globe className="w-3 h-3" />
-                              <span>ลิงก์สินค้า</span>
-                            </a>
-                          )}
+                        return (
+                          <tr key={idx} className={`hover:bg-slate-50/70 transition-colors ${isEditingItems ? 'bg-amber-50/20 hover:bg-amber-50/50' : ''}`}>
+                            <td className="py-2.5 px-2 w-[6%] text-center font-mono font-bold text-slate-400">
+                              {idx + 1}
+                            </td>
+                            <td className="py-2.5 px-2 w-[48%] text-left">
+                              <div className="flex flex-col gap-1 items-start text-left w-full">
+                                {/* แถวบนสุด (Eyebrow Row): รหัสสินค้า + ลิงก์สินค้า */}
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {(item.code || item.sku) && (
+                                    <span className="font-mono text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60 shrink-0">
+                                      {item.code || item.sku}
+                                    </span>
+                                  )}
+                                  {item.onlineUrl && (
+                                    <a
+                                      href={item.onlineUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200/80 px-2 py-0.5 rounded-md transition-colors"
+                                    >
+                                      <Globe className="w-3 h-3 text-slate-500" />
+                                      <span>ลิงก์สินค้า</span>
+                                    </a>
+                                  )}
+                                </div>
 
-                          {isEditingItems ? (
-                            <div className="flex items-center gap-1.5 text-xs text-amber-800 font-mono mt-1.5 bg-amber-50 p-1.5 rounded-lg border border-amber-200 w-fit">
-                              <span>1</span>
-                              <input
-                                type="text"
-                                value={item.purchaseUnit || ''}
-                                onChange={e => handleItemFieldChange(idx, 'purchaseUnit', e.target.value)}
-                                placeholder="หน่วยซื้อ"
-                                className="w-16 bg-white border border-amber-300 rounded px-1.5 py-0.5 text-center font-bold text-xs"
-                              />
-                              <span>=</span>
-                              <input
-                                type="number"
-                                min="0.001"
-                                step="any"
-                                value={item.conversionRate ?? 1}
-                                onChange={e => handleItemFieldChange(idx, 'conversionRate', e.target.value)}
-                                placeholder="อัตราแปลง"
-                                className="w-14 bg-white border border-amber-300 rounded px-1.5 py-0.5 text-center font-bold text-indigo-700 text-xs"
-                              />
-                              <span>{sUnit}</span>
-                            </div>
-                          ) : (
-                            rate > 1 && (
-                              <div className="text-[11px] text-indigo-600 font-medium mt-0.5">
-                                อัตราแปลง: 1 {pUnit} = {rate} {sUnit}
+                                {/* แถวกลาง (Main Title): แสดงชื่อสินค้าเต็มความกว้าง 100% */}
+                                <div className="font-semibold text-slate-900 text-xs sm:text-sm leading-snug break-words w-full" title={item.name}>
+                                  {item.name}
+                                </div>
+
+                                {/* แถวล่าง (Unit Meta): ชิปอัตราแปลงหน่วย */}
+                                {rate > 1 && (
+                                  <div className="mt-0.5">
+                                    <span className="text-[11px] font-mono text-slate-500 bg-slate-100/90 px-2 py-0.5 rounded-md inline-block border border-slate-200/60">
+                                      1 {pUnit} = {rate} {sUnit}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
-                            )
-                          )}
-                        </td>
-                        <td className="p-3 text-center whitespace-nowrap">
-                          {isEditingItems ? (
-                            <div className="flex items-center justify-center gap-1.5">
-                              <input
-                                type="number"
-                                step="any"
-                                min="0.001"
-                                value={item.purchaseQty ?? item.qty}
-                                onChange={e => handleItemFieldChange(idx, 'qty', e.target.value)}
-                                className="w-20 border border-amber-300 rounded-lg p-1 text-center font-bold text-xs bg-white focus:ring-2 focus:ring-amber-500 font-mono"
-                              />
-                              <span className="text-xs text-slate-600 font-semibold">{pUnit}</span>
-                            </div>
-                          ) : (
-                            <div>
-                              <span className="font-bold text-slate-900 font-mono text-xs sm:text-sm">{Number(pQty).toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>{' '}
-                              <span className="text-slate-500 text-xs font-medium">{pUnit}</span>
-                              {rate > 1 && (
-                                <div className="text-[11px] text-slate-400 font-mono font-normal mt-0.5">
-                                  (= {Number(sQty).toLocaleString()} {sUnit})
+                            </td>
+                            <td className="py-2.5 px-2 w-[14%] text-right font-mono text-xs whitespace-nowrap">
+                              {isEditingItems ? (
+                                <div className="flex items-center justify-end gap-1">
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    min="0.001"
+                                    value={item.purchaseQty ?? item.qty}
+                                    onChange={e => handleItemFieldChange(idx, 'qty', e.target.value)}
+                                    className="w-16 border border-amber-300 rounded p-1 text-center font-bold text-xs bg-white focus:ring-2 focus:ring-amber-500 font-mono"
+                                  />
+                                  <span className="text-[11px] text-slate-600 font-semibold">{pUnit}</span>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="font-bold text-slate-900 font-mono text-xs sm:text-sm">{Number(pQty).toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>{' '}
+                                  <span className="text-slate-500 text-[11px] font-medium">{pUnit}</span>
+                                  {rate > 1 && (
+                                    <div className="text-[10px] text-slate-400 font-mono font-normal">
+                                      (= {Number(sQty).toLocaleString()} {sUnit})
+                                    </div>
+                                  )}
                                 </div>
                               )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="p-3 text-right whitespace-nowrap">
-                          {isEditingItems ? (
-                            <div className="flex items-center justify-end gap-1">
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={item.price}
-                                onChange={e => handleItemFieldChange(idx, 'price', e.target.value)}
-                                className="w-24 border border-amber-300 rounded-lg p-1 text-right font-bold text-xs bg-white focus:ring-2 focus:ring-amber-500 font-mono"
-                              />
-                            </div>
-                          ) : (
-                            <span className="font-mono font-semibold text-slate-800 text-xs sm:text-sm">฿{Number(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-right font-mono font-bold text-slate-900 text-xs sm:text-sm pr-4 whitespace-nowrap tabular-nums">
-                          ฿{(Number(item.total) || ((Number(item.purchaseQty ?? item.qty) || 1) * (Number(item.price) || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Table Financial Breakdown / Grand Total Footer */}
-            {selectedPR.financials ? (
-              <div className="bg-slate-50/90 border-t border-slate-200/80 p-4 sm:px-5 space-y-2 text-xs">
-                <div className="flex justify-between items-center text-slate-600">
-                  <span>ยอดรวมสินค้า (Subtotal):</span>
-                  <span className="font-mono font-semibold text-slate-800 tabular-nums">฿{Number(selectedPR.financials.subtotal || calculatedTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </td>
+                            <td className="py-2.5 px-2 w-[16%] text-right font-mono text-xs whitespace-nowrap">
+                              {isEditingItems ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={item.price}
+                                  onChange={e => handleItemFieldChange(idx, 'price', e.target.value)}
+                                  className="w-20 border border-amber-300 rounded p-1 text-right font-bold text-xs bg-white focus:ring-2 focus:ring-amber-500 font-mono"
+                                />
+                              ) : (
+                                <span className="font-mono font-semibold text-slate-700 text-xs sm:text-sm">฿{Number(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-2 w-[16%] text-right font-mono text-xs font-bold text-slate-900 pr-3 whitespace-nowrap tabular-nums">
+                              ฿{(Number(item.total) || ((Number(item.purchaseQty ?? item.qty) || 1) * (Number(item.price) || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-                {selectedPR.financials.totalDiscount > 0 && (
-                  <div className="flex justify-between items-center text-rose-600">
-                    <span>ส่วนลดรวม:</span>
-                    <span className="font-mono font-semibold tabular-nums">-฿{Number(selectedPR.financials.totalDiscount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-                {selectedPR.financials.vatAmount > 0 && (
-                  <div className="flex justify-between items-center text-indigo-700">
-                    <span>ภาษีมูลค่าเพิ่ม (VAT 7%):</span>
-                    <span className="font-mono font-semibold tabular-nums">+฿{Number(selectedPR.financials.vatAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-                {parseFloat(selectedPR.financials.roundingAdj || 0) !== 0 && (
-                  <div className="flex justify-between items-center text-amber-700">
-                    <span>ปรับเศษทศนิยม:</span>
-                    <span className="font-mono font-semibold tabular-nums">{parseFloat(selectedPR.financials.roundingAdj) > 0 ? `+฿${parseFloat(selectedPR.financials.roundingAdj).toFixed(2)}` : `-฿${Math.abs(parseFloat(selectedPR.financials.roundingAdj)).toFixed(2)}`}</span>
-                  </div>
-                )}
-                <div className="pt-2.5 border-t border-slate-200 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wider">ยอดรวมสุทธิ (Grand Total):</span>
-                    {selectedPR.financials.vatAmount > 0 && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">รวม VAT แล้ว</span>
-                    )}
-                  </div>
-                  <span className="text-base sm:text-lg font-black font-mono text-indigo-700 tabular-nums">
-                    ฿{Number(selectedPR.financials.grandTotal || calculatedTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-slate-50/90 border-t border-slate-200/80 px-4 sm:px-5 py-3 flex items-center justify-between">
-                <span className="text-xs sm:text-sm font-bold text-slate-700">ยอดรวมประเมินทั้งสิ้น:</span>
-                <span className="text-base sm:text-lg font-black font-mono text-indigo-700 tabular-nums">
-                  ฿{calculatedTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </div>
-            )}
-          </div>
 
-          {/* ── 4. Secondary Section: Context & Supporting Details (Compact 2-Col Grid) ── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
-            
-            {/* Left Card: Reason */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs space-y-2 flex flex-col justify-between">
-              <div>
-                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>เหตุผล / วัตถุประสงค์การขอซื้อ</span>
-                </span>
-                <p className="text-slate-800 text-xs sm:text-sm font-normal leading-relaxed whitespace-pre-wrap mt-2">
-                  {selectedPR.note || selectedPR.remarks ? (
-                    selectedPR.note || selectedPR.remarks
+                {/* Clean Financial Summary Strip (Linear / Stripe Vibe) */}
+                <div className="bg-slate-50/80 border-t border-slate-200/80 p-4 rounded-b-2xl flex flex-col gap-1.5 text-xs">
+                  {selectedPR.financials ? (
+                    <>
+                      <div className="flex justify-between items-center text-slate-500 font-medium">
+                        <span>ยอดรวมสินค้า (Subtotal)</span>
+                        <span className="font-mono font-semibold text-slate-800 tabular-nums">฿{Number(selectedPR.financials.subtotal || calculatedTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                      {selectedPR.financials.totalDiscount > 0 && (
+                        <div className="flex justify-between items-center text-rose-600 font-medium">
+                          <span>ส่วนลดรวม</span>
+                          <span className="font-mono font-semibold tabular-nums">-฿{Number(selectedPR.financials.totalDiscount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                      )}
+                      {selectedPR.financials.vatAmount > 0 && (
+                        <div className="flex justify-between items-center text-slate-500 font-medium">
+                          <span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span>
+                          <span className="font-mono font-semibold text-slate-800 tabular-nums">+฿{Number(selectedPR.financials.vatAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                      )}
+                      {parseFloat(selectedPR.financials.roundingAdj || 0) !== 0 && (
+                        <div className="flex justify-between items-center text-amber-700 font-medium">
+                          <span>ปรับเศษทศนิยม</span>
+                          <span className="font-mono font-semibold tabular-nums">{parseFloat(selectedPR.financials.roundingAdj) > 0 ? `+฿${parseFloat(selectedPR.financials.roundingAdj).toFixed(2)}` : `-฿${Math.abs(parseFloat(selectedPR.financials.roundingAdj)).toFixed(2)}`}</span>
+                        </div>
+                      )}
+                      <div className="pt-2.5 mt-1 border-t border-slate-200/80 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 font-mono">GRAND TOTAL</span>
+                          {selectedPR.financials.vatAmount > 0 && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">รวม VAT</span>
+                          )}
+                        </div>
+                        <span className="font-mono text-xl font-bold text-slate-900 tracking-tight tabular-nums">
+                          ฿{Number(selectedPR.financials.grandTotal || calculatedTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </>
                   ) : (
-                    <span className="text-slate-400 italic">- ไม่มีระบุ -</span>
-                  )}
-                </p>
-              </div>
-            </div>
-
-            {/* Right Card: Attachments */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs space-y-2 flex flex-col justify-between">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <Paperclip className="w-3.5 h-3.5 text-indigo-600" />
-                <span>เอกสารอ้างอิง & ไฟล์แนบ (Attachments)</span>
-              </span>
-              <div className="space-y-2 pt-1 flex-1 flex flex-col justify-center">
-                {selectedPR.attachments && selectedPR.attachments.length > 0 ? (
-                  selectedPR.attachments.map((att, attIdx) => (
-                    <button
-                      key={attIdx}
-                      type="button"
-                      onClick={() => setViewingAttachment({ file: att, title: att.name, url: att.previewUrl })}
-                      className="w-full text-left flex items-center gap-2.5 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200/80 p-2.5 rounded-xl transition-all group cursor-pointer"
-                    >
-                      <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-indigo-600 shadow-2xs shrink-0">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-xs text-slate-800 group-hover:text-indigo-700 truncate">{att.name}</p>
-                        <p className="text-[11px] text-slate-400">{att.category || 'เอกสารแนบ'} • คลิกเพื่อเปิดดู</p>
-                      </div>
-                    </button>
-                  ))
-                ) : selectedPR.specUrl ? (
-                  <button
-                    type="button"
-                    onClick={() => setViewingAttachment({ url: selectedPR.specUrl, title: 'เอกสารอ้างอิง / ลิงก์สินค้า' })}
-                    className="w-full text-left flex items-center gap-2.5 bg-indigo-50/50 hover:bg-indigo-100/50 border border-indigo-100 p-2.5 rounded-xl transition-colors group cursor-pointer"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-white flex items-center justify-center text-indigo-600 shadow-2xs shrink-0">
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-xs text-indigo-900 group-hover:text-indigo-700">ดูเอกสารประกอบ / ลิงก์สินค้า</p>
-                      <p className="text-[11px] text-indigo-600/80 truncate">{selectedPR.specUrl}</p>
-                    </div>
-                  </button>
-                ) : (
-                  <div className="text-center py-3 text-xs text-slate-400 flex flex-col items-center justify-center gap-1.5">
-                    <Paperclip className="w-4 h-4 text-slate-300" />
-                    <span>ไม่มีเอกสารแนบ</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-          </div>
-
-          {/* MEMO Section (if exists) */}
-          <MEMODetailsSection 
-            memo={selectedPR.memo} 
-            onViewAttachment={(att) => setViewingAttachment(att)}
-          />
-
-          {/* Activity Log Timeline */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3.5">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-              <History className="w-4 h-4 text-slate-500" />
-              <span>ประวัติการดำเนินงาน (Activity Timeline)</span>
-            </span>
-
-            <div className="relative pl-5 space-y-3.5 border-l border-slate-200 ml-2 pt-1">
-              {selectedPR.activityLog?.map((log, idx) => (
-                <div key={idx} className="relative group">
-                  <div className="absolute -left-[25px] top-1.5 w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white shadow-2xs" />
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
-                      <span>{log.action}</span>
-                      <span className="text-[11px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-medium">
-                        {log.role}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500 font-mono">GRAND TOTAL</span>
+                      <span className="font-mono text-xl font-bold text-slate-900 tracking-tight tabular-nums">
+                        ฿{calculatedTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400">โดย: <span className="font-medium text-slate-600">{log.user}</span> • {log.timestamp}</p>
-                    {log.note && (
-                      <p className="text-xs text-slate-700 mt-1.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200/80 leading-relaxed font-normal">
-                        {log.note}
-                      </p>
-                    )}
+                  )}
+                </div>
+              </div>
+
+              {/* MEMO Section (if exists) */}
+              <MEMODetailsSection 
+                memo={selectedPR.memo} 
+                onViewAttachment={(att) => setViewingAttachment(att)}
+              />
+            </div>
+
+            {/* ── คอลัมน์ขวา (Context & Activity Rail - col-span-5) ── */}
+            <div className="lg:col-span-5 space-y-4">
+              
+              {/* Context Bento Box: Clean Minimal Key-Value Pairs */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3.5">
+                <span className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-100">
+                  <User className="w-3.5 h-3.5 text-slate-500" />
+                  <span>ข้อมูลคำขอซื้อ (Request Details)</span>
+                </span>
+
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  <div>
+                    <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">ผู้ขอซื้อ</span>
+                    <p className="text-xs font-semibold text-slate-800 mt-0.5 truncate">
+                      {selectedPR.requestedBy}
+                    </p>
+                    <span className="text-slate-400 font-mono text-[11px] block">
+                      ฝ่าย {selectedPR.department}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">วันที่ขอซื้อ</span>
+                    <p className="text-xs font-semibold text-slate-800 font-mono mt-0.5 truncate">
+                      {selectedPR.requestedDate || selectedPR.createdAt || '-'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">ช่องทางจัดซื้อ</span>
+                    <p className="text-xs font-semibold text-slate-800 mt-0.5 truncate">
+                      {selectedPR.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์' : 'จัดซื้อเอง'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">สถานที่ใช้งาน</span>
+                    <p className="text-xs font-semibold text-slate-800 mt-0.5 truncate">
+                      {selectedPR.source === 'FACTORY' || !selectedPR.source || selectedPR.source === 'PD' ? 'โรงงาน (Factory)' : (selectedPR.source === 'OFFICE' ? 'สำนักงาน (Office)' : selectedPR.source)}
+                    </p>
                   </div>
                 </div>
-              ))}
+              </div>
+
+              {/* เหตุผลการขอซื้อ */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-2">
+                <span className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-slate-500" />
+                  <span>เหตุผล / วัตถุประสงค์</span>
+                </span>
+                {selectedPR.note || selectedPR.remarks ? (
+                  <p className="text-slate-800 text-xs font-medium leading-relaxed whitespace-pre-wrap bg-slate-50/70 p-3 rounded-xl border border-slate-100">
+                    {selectedPR.note || selectedPR.remarks}
+                  </p>
+                ) : (
+                  <div className="px-3 py-1.5 rounded-lg bg-slate-50 text-slate-400 text-xs italic border border-slate-100 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                    <span>ไม่ระบุเหตุผลประกอบ</span>
+                  </div>
+                )}
+              </div>
+
+              {/* ไฟล์แนบ & เอกสารอ้างอิง */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-2">
+                <span className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+                  <span>ไฟล์แนบ & เอกสารอ้างอิง</span>
+                </span>
+                <div>
+                  {selectedPR.attachments && selectedPR.attachments.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {selectedPR.attachments.map((att, attIdx) => (
+                        <button
+                          key={attIdx}
+                          type="button"
+                          onClick={() => setViewingAttachment({ file: att, title: att.name, url: att.previewUrl })}
+                          className="w-full text-left flex items-center gap-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 p-2 rounded-xl transition-all group cursor-pointer"
+                        >
+                          <div className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-2xs shrink-0">
+                            <ExternalLink className="w-3 h-3" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-xs text-slate-800 group-hover:text-slate-950 truncate">{att.name}</p>
+                            <p className="text-[10px] text-slate-400">{att.category || 'เอกสารแนบ'} • เปิดดู</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : selectedPR.specUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => setViewingAttachment({ url: selectedPR.specUrl, title: 'เอกสารอ้างอิง / ลิงก์สินค้า' })}
+                      className="w-full text-left flex items-center gap-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 p-2 rounded-xl transition-colors group cursor-pointer"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-2xs shrink-0">
+                        <ExternalLink className="w-3 h-3" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-xs text-slate-900 truncate">ดูเอกสารประกอบ / ลิงก์สินค้า</p>
+                        <p className="text-[10px] text-slate-400 truncate">{selectedPR.specUrl}</p>
+                      </div>
+                    </button>
+                  ) : (
+                    <div className="px-3 py-1.5 rounded-lg bg-slate-50 text-slate-400 text-xs italic border border-slate-100 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                      <span>ไม่มีไฟล์แนบ</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Activity Log Timeline (เส้นประ และ Dot มินิมอล) */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs space-y-3">
+                <span className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-slate-100">
+                  <History className="w-3.5 h-3.5 text-slate-500" />
+                  <span>ลำดับเหตุการณ์ (Activity Timeline)</span>
+                </span>
+
+                <div className="relative pl-4 space-y-3 border-l-2 border-dashed border-slate-200 ml-2 pt-1">
+                  {selectedPR.activityLog?.length > 0 ? (
+                    selectedPR.activityLog.map((log, idx) => (
+                      <div key={idx} className="relative group">
+                        <div className="absolute -left-[23px] top-1 w-2.5 h-2.5 rounded-full bg-slate-900 border-2 border-white shadow-xs" />
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
+                            <span>{log.action}</span>
+                            <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-medium">
+                              {log.role}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-400">โดย: <span className="font-medium text-slate-700">{log.user}</span> • {log.timestamp}</p>
+                          {log.note && (
+                            <p className="text-xs text-slate-700 mt-1 bg-slate-50 p-2 rounded-lg border border-slate-200/60 leading-relaxed font-normal">
+                              {log.note}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">ไม่มีบันทึกประวัติเพิ่มเติม</p>
+                  )}
+                </div>
+              </div>
+
             </div>
+
           </div>
 
         </div>
 
-        {/* ── 5. Sticky Action Footer (Non-scrollable) ── */}
-        <div className="shrink-0 px-6 py-4 bg-slate-50/90 border-t border-slate-100 sticky bottom-0 z-20">
+        {/* ── 5. Unified Command Footer Dock ── */}
+        <div className="shrink-0 border-t border-slate-200/80 bg-slate-50/70 p-4 sm:p-5 rounded-b-3xl flex flex-col gap-3.5 sticky bottom-0 z-20 backdrop-blur-md">
           {isRevising ? (
             /* Inline Revision Drawer */
             <div className="bg-white rounded-2xl border border-rose-200 p-4 shadow-sm space-y-3 animate-fade-in">
@@ -821,55 +824,105 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
               </div>
             </div>
           ) : (
-            /* Normal Action Footer */
+            /* Consolidated Action Dock */
             <div className="space-y-3">
-              {/* Action note field (Shown for Approvers/Reviewers when actionable) */}
+              {/* Elastic Multi-line Textarea (Shown for Approvers/Reviewers when actionable) */}
               {(['SUBMITTED', 'REVIEWED', 'REJECTED_TO_L2'].includes(selectedPR.status)) && 
                (workflowEngine.canAction(currentRole, selectedPR)) && (
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <MessageSquare className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input 
-                      type="text" 
-                      placeholder="ระบุความเห็น / หมายเหตุประกอบการอนุมัติ..." 
-                      className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs font-medium focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-2xs"
+                <div className="space-y-2">
+                  {/* Header เล็กเหนือน่องพิมพ์ */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
+                      <span>บันทึกกำกับ / เหตุผลประกอบ</span>
+                    </span>
+                    <kbd className="text-[10px] bg-slate-200/60 px-1.5 py-0.5 rounded text-slate-600 font-mono hidden sm:inline-block">
+                      ⌘ + Enter เพื่อตรวจผ่าน
+                    </kbd>
+                  </div>
+
+                  {/* Multi-line Textarea */}
+                  <div className="relative">
+                    <textarea 
+                      rows={2}
+                      placeholder="ระบุความเห็น ข้อเสนอแนะ หรือเหตุผลประกอบการพิจารณา..." 
+                      className={`w-full bg-white border rounded-2xl p-3.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none transition-all resize-none shadow-xs min-h-[68px] ${
+                        rejectValidationError 
+                          ? 'border-rose-400 ring-4 ring-rose-500/10' 
+                          : 'border-slate-200/90 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10'
+                      }`}
                       value={actionNote}
-                      onChange={e => setActionNote(e.target.value)}
+                      onChange={e => {
+                        setActionNote(e.target.value);
+                        if (rejectValidationError && e.target.value.trim()) {
+                          setRejectValidationError(false);
+                        }
+                      }}
+                      onKeyDown={e => {
+                        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                          e.preventDefault();
+                          if (selectedPR.status === 'REVIEWED') {
+                            handleWorkflowAction({ actionText: 'อนุมัติสั่งซื้อและสร้าง PO', nextStatus: 'APPROVED' });
+                          } else {
+                            handleWorkflowAction({ actionText: 'ตรวจสอบและส่งต่อให้ Plant Manager', nextStatus: 'REVIEWED' });
+                          }
+                        }
+                      }}
                     />
+
+                    {/* Contextual Validation Alert on Reject */}
+                    {rejectValidationError && (
+                      <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1 mt-1 pl-1">
+                        <AlertTriangle className="w-3 h-3 text-rose-500 shrink-0" />
+                        <span>กรุณาระบุเหตุผลการส่งกลับแก้ไข เพื่อให้ผู้ขอนำไปปรับปรุง</span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Quick Preset Chips (ชิปพิมพ์ด่วน) */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[
+                      { label: '✓ สั่งซื้อตามแผน', text: 'สั่งซื้อตามแผนที่กำหนด' },
+                      { label: '⚠️ เกินงบแต่จำเป็น', text: 'ยอดเกินงบประมาณแต่จำเป็นต่อการผลิต' },
+                      { label: '📎 ขอใบเทียบราคาเพิ่ม', text: 'ขอใบเสนอราคาเปรียบเทียบเพิ่มเติม' }
+                    ].map(chip => (
+                      <button
+                        key={chip.label}
+                        type="button"
+                        onClick={() => {
+                          setActionNote(chip.text);
+                          if (rejectValidationError) setRejectValidationError(false);
+                        }}
+                        className="text-[11px] font-medium text-slate-600 bg-white hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 border border-slate-200 px-2.5 py-1 rounded-full cursor-pointer transition-all shadow-2xs"
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
 
-              {/* Unified Action Button Strip */}
-              <div className="flex items-center justify-between flex-wrap gap-2">
+              {/* Action Buttons Strip */}
+              <div className="flex items-center justify-between flex-wrap gap-2 pt-1">
                 
-                {/* Left side: Cancel PR (Ghost Destructive) */}
-                <div className="flex items-center gap-2">
+                {/* ฝั่งซ้าย: ปุ่ม "ยกเลิกคำขอ" สไตล์ Ghost Red (แสดงเฉพาะผู้มีสิทธิ์) */}
+                <div>
                   {isPRCancellable && (
                     <button 
                       type="button"
                       onClick={handleCancelPR}
                       disabled={isCancelling}
-                      className="px-3.5 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                      className="px-3.5 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>{isCancelling ? 'กำลังยกเลิก...' : 'ยกเลิก PR'}</span>
+                      <span>{isCancelling ? 'กำลังยกเลิก...' : 'ยกเลิกคำขอ'}</span>
                     </button>
                   )}
                 </div>
 
-                {/* Right side: Actions */}
-                <div className="flex items-center gap-2 ml-auto">
+                {/* ฝั่งขวา: Action Group มีลำดับชั้นความสำคัญชัดเจน */}
+                <div className="flex items-center gap-2.5 ml-auto">
                   
-                  {/* Close Button */}
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="bg-white border border-slate-300/80 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-xl text-xs sm:text-sm font-medium shadow-xs transition-all cursor-pointer"
-                  >
-                    ปิดหน้าต่าง
-                  </button>
-
                   {/* Requester Actions (Draft / Rejected to Draft) */}
                   {(selectedPR.status === 'DRAFT' || selectedPR.status === 'REJECTED_TO_DRAFT') && 
                    (workflowEngine.canAction(currentRole, selectedPR)) && (
@@ -881,15 +934,15 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                             onClose();
                             onEditPR(selectedPR);
                           }}
-                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 font-semibold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer border border-slate-300/80"
                         >
-                          <Pencil className="w-3.5 h-3.5" />
-                          <span>แก้ไขใบขอซื้อ (Edit PR)</span>
+                          <Pencil className="w-3.5 h-3.5 text-slate-600" />
+                          <span>แก้ไขใบขอซื้อ</span>
                         </button>
                       )}
                       <button 
                         onClick={() => handleWorkflowAction({ actionText: 'ส่งใบ PR เข้าสู่ระบบ', nextStatus: null, isSubmit: true })}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+                        className="bg-slate-950 hover:bg-slate-900 text-white rounded-xl px-5 py-2.5 font-semibold text-xs shadow-lg shadow-slate-950/20 active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
                       >
                         <Send className="w-3.5 h-3.5" />
                         <span>ส่งใบขอซื้อ (Submit PR)</span>
@@ -901,23 +954,30 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                   {(selectedPR.status === 'SUBMITTED' || selectedPR.status === 'REJECTED_TO_L2') && 
                    (workflowEngine.canAction(currentRole, selectedPR)) && (
                     <>
+                      {/* ปุ่มรอง: ส่งกลับแก้ไข */}
                       <button 
                         type="button"
                         onClick={() => {
+                          if (!actionNote.trim()) {
+                            setRejectValidationError(true);
+                            return;
+                          }
+                          setRejectValidationError(false);
                           setIsRevising(true);
-                          if (actionNote) setRevisionReason(actionNote);
+                          setRevisionReason(actionNote.trim());
                         }}
-                        className="px-4 py-2 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 font-semibold text-xs sm:text-sm rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                        className="px-4 py-2.5 bg-rose-50/60 hover:bg-rose-100/70 text-rose-700 border border-rose-200/80 font-semibold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
                       >
                         <XCircle className="w-3.5 h-3.5 text-rose-600" />
                         <span>ส่งกลับแก้ไข (Reject)</span>
                       </button>
 
+                      {/* ปุ่มหลัก: ตรวจสอบผ่าน */}
                       <button 
                         onClick={() => handleWorkflowAction({ actionText: 'ตรวจสอบและส่งต่อให้ Plant Manager', nextStatus: 'REVIEWED' })}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+                        className="bg-slate-950 hover:bg-slate-900 text-white rounded-xl px-5 py-2.5 font-semibold text-xs shadow-lg shadow-slate-950/20 active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
                       >
-                        <ShieldCheck className="w-4 h-4" />
+                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
                         <span>ตรวจสอบผ่าน (ส่งต่อ Plant Mgr)</span>
                       </button>
                     </>
@@ -927,24 +987,31 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                   {selectedPR.status === 'REVIEWED' && 
                    (workflowEngine.canAction(currentRole, selectedPR)) && (
                     <>
+                      {/* ปุ่มรอง: ส่งกลับแก้ไข */}
                       <button 
                         type="button"
                         onClick={() => {
+                          if (!actionNote.trim()) {
+                            setRejectValidationError(true);
+                            return;
+                          }
+                          setRejectValidationError(false);
                           setIsRevising(true);
-                          if (actionNote) setRevisionReason(actionNote);
+                          setRevisionReason(actionNote.trim());
                         }}
-                        className="px-4 py-2 bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 font-semibold text-xs sm:text-sm rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                        className="px-4 py-2.5 bg-rose-50/60 hover:bg-rose-100/70 text-rose-700 border border-rose-200/80 font-semibold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
                         title="ส่งกลับให้ผู้ขอซื้อแก้ไข"
                       >
                         <XCircle className="w-3.5 h-3.5 text-rose-600" />
                         <span>ส่งกลับแก้ไข (Reject)</span>
                       </button>
 
+                      {/* ปุ่มหลัก: อนุมัติสั่งซื้อ */}
                       <button 
                         onClick={() => handleWorkflowAction({ actionText: 'อนุมัติสั่งซื้อและสร้าง PO', nextStatus: 'APPROVED' })}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-semibold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer"
+                        className="bg-slate-950 hover:bg-slate-900 text-white rounded-xl px-5 py-2.5 font-semibold text-xs shadow-lg shadow-slate-950/20 active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
                       >
-                        <CheckCircle2 className="w-4 h-4" />
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                         <span>อนุมัติสั่งซื้อ (Approve & ออก PO)</span>
                       </button>
                     </>

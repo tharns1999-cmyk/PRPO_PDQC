@@ -8,7 +8,6 @@ import {
   Info, 
   HelpCircle, 
   X, 
-  ArrowRight,
   MessageSquareQuote,
   Sparkles
 } from 'lucide-react';
@@ -85,7 +84,7 @@ export default function FeedbackModal() {
         return {
           icon: CheckCircle2,
           iconBg: 'bg-emerald-50 text-emerald-600 border border-emerald-200',
-          confirmBtn: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm',
+          confirmBtn: 'bg-slate-900 hover:bg-slate-800 text-white shadow-sm',
           defaultTitle: 'ดำเนินการสำเร็จ'
         };
       case 'error':
@@ -202,7 +201,7 @@ export default function FeedbackModal() {
               <button
                 type="button"
                 onClick={modalState.onCancel}
-                className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-semibold transition-all shadow-2xs cursor-pointer"
+                className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all shadow-2xs active:scale-95 cursor-pointer"
               >
                 {modalState.cancelText || 'ยกเลิก'}
               </button>
@@ -218,10 +217,9 @@ export default function FeedbackModal() {
                   modalState.onConfirm();
                 }
               }}
-              className={`px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm active:scale-[0.99] flex items-center gap-2 cursor-pointer ${variant.confirmBtn}`}
+              className={`px-5 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${variant.confirmBtn}`}
             >
               <span>{modalState.confirmText || 'ตกลง'}</span>
-              <ArrowRight className="w-4 h-4 opacity-80" />
             </button>
           </div>
         </div>

@@ -95,171 +95,115 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
         </div>
       </div>
 
-      {/* 1. Interactive Metric Filter Deck */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-5">
-        {/* Card 1: Pending Order */}
-        <button 
-          type="button"
-          onClick={() => setActiveTab('PENDING')}
-          className={`text-left p-5 sm:p-6 rounded-3xl transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
-            activeTab === 'PENDING' 
-              ? 'bg-white border-2 border-violet-600 shadow-md ring-2 ring-violet-500/10' 
-              : 'bg-white border border-slate-200/80 hover:border-slate-300 hover:shadow-sm'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${activeTab === 'PENDING' ? 'bg-violet-600 ring-2 ring-violet-200' : 'bg-slate-300'}`} />
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">รอดำเนินการ</p>
-              </div>
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono tabular-nums tracking-tight flex items-baseline gap-1.5">
-                {metrics.pending}
-                <span className="text-xs font-semibold text-slate-400 font-sans">รายการ</span>
-              </h3>
-            </div>
-            <div className="w-11 h-11 rounded-2xl bg-violet-50 text-violet-600 border border-violet-100 flex items-center justify-center shrink-0 shadow-2xs">
-              <Clock className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-400 font-medium">ขั้นตอน</span>
-            <span className={`font-semibold ${activeTab === 'PENDING' ? 'text-violet-700 font-bold' : 'text-slate-600'}`}>
-              ต้องระบุร้าน & สั่งซื้อ
+      {/* 1. Stage Pipeline Ribbon (Linear/Vercel Segmented Pipeline) */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="bg-slate-100/80 p-1.5 rounded-2xl inline-flex items-center gap-1 border border-slate-200/60 max-w-full overflow-x-auto custom-scrollbar">
+          {/* Step 1: Pending */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('PENDING')}
+            className={`transition-all duration-150 cursor-pointer rounded-xl px-4 py-2 text-xs flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'PENDING'
+                ? 'bg-white text-slate-900 shadow-sm font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
+            }`}
+          >
+            <Clock className={`w-3.5 h-3.5 ${activeTab === 'PENDING' ? 'text-violet-600' : 'text-slate-400'}`} />
+            <span>รอดำเนินการสั่งซื้อ</span>
+            <span className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold ${
+              metrics.pending > 0
+                ? 'bg-rose-500 text-white'
+                : 'bg-slate-200 text-slate-600'
+            }`}>
+              {metrics.pending}
             </span>
-          </div>
-        </button>
+          </button>
 
-        {/* Card 2: Ordered / In Transit */}
-        <button 
-          type="button"
-          onClick={() => setActiveTab('ORDERED')}
-          className={`text-left p-5 sm:p-6 rounded-3xl transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
-            activeTab === 'ORDERED' 
-              ? 'bg-white border-2 border-purple-600 shadow-md ring-2 ring-purple-500/10' 
-              : 'bg-white border border-slate-200/80 hover:border-slate-300 hover:shadow-sm'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${activeTab === 'ORDERED' ? 'bg-purple-600 ring-2 ring-purple-200' : 'bg-slate-300'}`} />
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">สั่งซื้อแล้ว</p>
-              </div>
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono tabular-nums tracking-tight flex items-baseline gap-1.5">
-                {metrics.ordered}
-                <span className="text-xs font-semibold text-slate-400 font-sans">รายการ</span>
-              </h3>
-            </div>
-            <div className="w-11 h-11 rounded-2xl bg-purple-50 text-purple-600 border border-purple-100 flex items-center justify-center shrink-0 shadow-2xs">
-              <Truck className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-400 font-medium">ขั้นตอน</span>
-            <span className={`font-semibold ${activeTab === 'ORDERED' ? 'text-purple-700 font-bold' : 'text-slate-600'}`}>
-              อยู่ระหว่างขนส่ง
+          {/* Step 2: Ordered / In Transit */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('ORDERED')}
+            className={`transition-all duration-150 cursor-pointer rounded-xl px-4 py-2 text-xs flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'ORDERED'
+                ? 'bg-white text-slate-900 shadow-sm font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
+            }`}
+          >
+            <Truck className={`w-3.5 h-3.5 ${activeTab === 'ORDERED' ? 'text-indigo-600' : 'text-slate-400'}`} />
+            <span>สั่งซื้อแล้ว / ระหว่างส่ง</span>
+            <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-bold bg-slate-200 text-slate-700">
+              {metrics.ordered}
             </span>
-          </div>
-        </button>
+          </button>
 
-        {/* Card 3: Claim / Problem */}
-        <button 
-          type="button"
-          onClick={() => setActiveTab('CLAIM')}
-          className={`text-left p-5 sm:p-6 rounded-3xl transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
-            activeTab === 'CLAIM' 
-              ? 'bg-white border-2 border-rose-600 shadow-md ring-2 ring-rose-500/10' 
-              : 'bg-white border border-slate-200/80 hover:border-slate-300 hover:shadow-sm'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${activeTab === 'CLAIM' ? 'bg-rose-600 ring-2 ring-rose-200 animate-pulse' : 'bg-slate-300'}`} />
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">รอดำเนินการเคลม</p>
-              </div>
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono tabular-nums tracking-tight flex items-baseline gap-1.5">
+          {/* Step 3: Claim */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('CLAIM')}
+            className={`transition-all duration-150 cursor-pointer rounded-xl px-4 py-2 text-xs flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'CLAIM'
+                ? 'bg-white text-slate-900 shadow-sm font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
+            }`}
+          >
+            <AlertTriangle className={`w-3.5 h-3.5 ${activeTab === 'CLAIM' ? 'text-amber-600' : 'text-slate-400'}`} />
+            <span>รอเคลม</span>
+            {metrics.claim > 0 && (
+              <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-bold bg-amber-500 text-white">
                 {metrics.claim}
-                <span className="text-xs font-semibold text-slate-400 font-sans">รายการ</span>
-              </h3>
-            </div>
-            <div className="w-11 h-11 rounded-2xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shrink-0 shadow-2xs">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-400 font-medium">ขั้นตอน</span>
-            <span className={`font-semibold ${activeTab === 'CLAIM' ? 'text-rose-700 font-bold' : 'text-slate-600'}`}>
-              รอติดต่อร้านค้า
-            </span>
-          </div>
-        </button>
+              </span>
+            )}
+            {metrics.claim === 0 && (
+              <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-bold bg-slate-200 text-slate-700">
+                0
+              </span>
+            )}
+          </button>
 
-        {/* Card 4: Closed */}
-        <button 
-          type="button"
-          onClick={() => setActiveTab('CLOSED')}
-          className={`text-left p-5 sm:p-6 rounded-3xl transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
-            activeTab === 'CLOSED' 
-              ? 'bg-white border-2 border-teal-600 shadow-md ring-2 ring-teal-500/10' 
-              : 'bg-white border border-slate-200/80 hover:border-slate-300 hover:shadow-sm'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${activeTab === 'CLOSED' ? 'bg-teal-600 ring-2 ring-teal-200' : 'bg-slate-300'}`} />
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">ปิดงานสำเร็จ</p>
-              </div>
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono tabular-nums tracking-tight flex items-baseline gap-1.5">
-                {metrics.closed}
-                <span className="text-xs font-semibold text-slate-400 font-sans">รายการ</span>
-              </h3>
-            </div>
-            <div className="w-11 h-11 rounded-2xl bg-teal-50 text-teal-600 border border-teal-100 flex items-center justify-center shrink-0 shadow-2xs">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-400 font-medium">ขั้นตอน</span>
-            <span className={`font-semibold ${activeTab === 'CLOSED' ? 'text-teal-700 font-bold' : 'text-slate-600'}`}>
-              แผนกตรวจรับเรียบร้อย
+          {/* Step 4: Closed */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('CLOSED')}
+            className={`transition-all duration-150 cursor-pointer rounded-xl px-4 py-2 text-xs flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'CLOSED'
+                ? 'bg-white text-slate-900 shadow-sm font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
+            }`}
+          >
+            <CheckCircle2 className={`w-3.5 h-3.5 ${activeTab === 'CLOSED' ? 'text-emerald-600' : 'text-slate-400'}`} />
+            <span>ปิดงานสำเร็จ</span>
+            <span className="px-2 py-0.5 rounded-full font-mono text-[11px] font-bold bg-slate-200 text-slate-700">
+              {metrics.closed}
             </span>
-          </div>
-        </button>
+          </button>
 
-        {/* Card 5: Total Value */}
-        <button 
-          type="button"
-          onClick={() => setActiveTab('ALL')}
-          className={`text-left p-5 sm:p-6 rounded-3xl transition-all duration-200 cursor-pointer flex flex-col justify-between group ${
-            activeTab === 'ALL' 
-              ? 'bg-white border-2 border-slate-900 shadow-md ring-2 ring-slate-900/10' 
-              : 'bg-white border border-slate-200/80 hover:border-slate-300 hover:shadow-sm'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1 pr-2">
-              <div className="flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${activeTab === 'ALL' ? 'bg-slate-800 ring-2 ring-slate-300' : 'bg-slate-300'}`} />
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider truncate">รวมทั้งหมด ({metrics.total} ฉบับ)</p>
-              </div>
-              <h3 className="text-2xl sm:text-3xl font-black text-slate-900 mt-2 font-mono tabular-nums tracking-tight truncate">
-                ฿{metrics.totalAmount.toLocaleString()}
-              </h3>
-            </div>
-            <div className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs">
-              <DollarSign className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between text-xs">
-            <span className="text-slate-400 font-medium">โหมดแสดงผล</span>
-            <span className={`font-semibold ${activeTab === 'ALL' ? 'text-slate-900 font-bold' : 'text-slate-600'}`}>
-              ดูทุกสถานะ (ทั้งหมด)
+          {/* All View */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('ALL')}
+            className={`transition-all duration-150 cursor-pointer rounded-xl px-3 py-2 text-xs flex items-center gap-1.5 whitespace-nowrap ${
+              activeTab === 'ALL'
+                ? 'bg-white text-slate-900 shadow-sm font-semibold'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-white/60 font-medium'
+            }`}
+          >
+            <span>ทั้งหมด</span>
+            <span className="font-mono text-[11px] text-slate-500 font-bold">({metrics.total})</span>
+          </button>
+        </div>
+
+        {/* Right side: Total Balance Capsule */}
+        <div className="flex items-center gap-3 px-3 py-1.5 bg-slate-50 rounded-xl border border-slate-200/70 shrink-0 self-start lg:self-auto">
+          <div className="text-right">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">มูลค่าคำขอในมือ</span>
+            <span className="font-mono font-bold text-slate-800 text-sm">
+              ฿{metrics.totalAmount.toLocaleString()}
             </span>
           </div>
-        </button>
+          <div className="w-8 h-8 rounded-lg bg-slate-200/60 text-slate-600 flex items-center justify-center font-mono text-xs font-bold">
+            {metrics.total}
+          </div>
+        </div>
       </div>
 
       {/* 2. Streamlined Search & Filter Utility Toolbar */}
@@ -589,93 +533,92 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
   const hasOnlineUrl = po.onlineUrl && po.onlineUrl.trim().length > 0;
 
   return (
-    <div className={`bg-white border rounded-sm shadow-xs overflow-hidden transition-all hover:shadow-md ${
-      isPending ? 'border-violet-200/90 ring-1 ring-violet-100' : 'border-slate-200/90'
+    <div className={`rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm mb-6 transition-all hover:shadow-md ${
+      isPending ? 'ring-1 ring-violet-200/80' : ''
     }`}>
-      {/* 1. Header Bar: Identity & Quick Actions */}
-      <div className="bg-white/90 border-b border-slate-100 p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {/* PO Number & Copy */}
-          <div className="flex items-center gap-1.5 bg-white border border-slate-200/80 px-3 py-1.5 rounded-sm shadow-2xs">
-            <span className="font-bold text-slate-800 text-sm font-mono">{po.poNo}</span>
+      {/* 1. Card Header Zone: Identity & Quick Links */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-5 border-b border-slate-100">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {/* PO Number */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-3 py-1.5 rounded-xl shadow-2xs">
+            <span className="font-mono font-bold text-slate-900 text-sm">{po.poNo}</span>
             <button 
               onClick={() => handleCopy(po.poNo)}
               title="คัดลอกเลขที่ PO"
-              className="text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 transition-colors"
+              className="text-slate-400 hover:text-slate-700 cursor-pointer p-0.5 transition-colors"
             >
               <Copy className="w-3.5 h-3.5" />
             </button>
           </div>
 
           {/* Department Badge */}
-          <span className={`text-xs font-bold px-2.5 py-1 rounded-sm border ${
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-xl border ${
             po.department === 'PD' 
-              ? 'bg-blue-50 text-blue-700 border-blue-200' 
-              : 'bg-amber-50 text-amber-700 border-amber-200'
+              ? 'bg-blue-50 text-blue-700 border-blue-200/80' 
+              : 'bg-amber-50 text-amber-700 border-amber-200/80'
           }`}>
-            {po.department === 'PD' ? 'ฝ่ายผลิต (PD)' : 'ฝ่าย QC'}
+            {po.department}
           </span>
+
+          {/* PR Reference */}
+          <div className="flex items-center gap-1 text-xs text-slate-500 font-medium pl-1">
+            <span>PR:</span>
+            <strong className="text-slate-800 font-mono font-semibold">{po.prNo}</strong>
+          </div>
 
           {/* Status Badge */}
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-sm border ${
-            isPending ? 'bg-violet-100/90 text-violet-800 border-violet-200' :
-            isOrdered ? 'bg-purple-100/90 text-purple-800 border-purple-200' :
-            'bg-teal-100/90 text-teal-800 border-teal-200'
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-xl border ${
+            isPending ? 'bg-violet-50 text-violet-800 border-violet-200/90' :
+            isOrdered ? 'bg-indigo-50 text-indigo-800 border-indigo-200/90' :
+            isClaim ? 'bg-rose-50 text-rose-800 border-rose-200/90' :
+            'bg-emerald-50 text-emerald-800 border-emerald-200/90'
           }`}>
             {isPending && <Clock className="w-3.5 h-3.5 text-violet-600 shrink-0" />}
-            {isOrdered && <Package className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
-            {!isPending && !isOrdered && <CheckCircle2 className="w-3.5 h-3.5 text-teal-600 shrink-0" />}
-            <span>{isPending ? 'รอดำเนินการสั่งซื้อ' : isOrdered ? 'สั่งซื้อแล้ว (รอจัดส่ง)' : 'ตรวจรับปิดงานแล้ว'}</span>
-          </span>
-
-          {/* PO Total Amount Pill */}
-          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-sm">
-            <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-            ยอดประเมินรวม: ฿{totalEstimatedAmount.toLocaleString()}
+            {isOrdered && <Truck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+            {isClaim && <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />}
+            {isClosed && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+            <span>
+              {isPending ? 'รอดำเนินการสั่งซื้อ' :
+               isOrdered ? 'สั่งซื้อแล้ว / ระหว่างส่ง' :
+               isClaim ? 'รอดำเนินการเคลม' :
+               'ตรวจรับปิดงานแล้ว'}
+            </span>
           </span>
 
           {/* Modification Indicator Badge */}
           {hasModifications && isPending && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-sm animate-pulse-slow">
-              <AlertTriangle className="w-3 h-3 text-amber-500" />
-              มีการปรับราคา/จำนวนจริง (ส่วนต่าง {priceDiff >= 0 ? '+' : ''}฿{priceDiff.toLocaleString()})
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200/90 px-2.5 py-0.5 rounded-lg">
+              <AlertTriangle className="w-3 h-3 text-amber-600" />
+              ปรับราคา/จำนวน (ส่วนต่าง {priceDiff >= 0 ? '+' : ''}฿{priceDiff.toLocaleString()})
             </span>
           )}
         </div>
 
-        {/* View Full PO Details Button */}
+        {/* Right: Ghost Minimal 'เปิดดู PO ฉบับเต็ม ↗' */}
         <button
+          type="button"
           onClick={() => onShowDetails(po)}
-          className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 hover:text-slate-900 px-4 py-2 rounded-sm transition-all cursor-pointer shadow-xs border border-slate-200/90 shrink-0 group self-start sm:self-auto"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 px-3.5 py-2 rounded-xl transition-all cursor-pointer border border-slate-200/70 shrink-0 self-start sm:self-auto"
         >
-          <FileText className="w-4 h-4 text-slate-500 group-hover:text-slate-700 transition-colors" />
-          <span>เปิดดูข้อมูล PO ฉบับเต็ม</span>
-          <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+          <span>เปิดดู PO ฉบับเต็ม</span>
+          <span className="text-slate-400 font-sans">↗</span>
         </button>
       </div>
 
-      {/* 2. Metadata Strip */}
-      <div className="px-5 sm:px-6 py-3 bg-white border-b border-slate-100 flex flex-wrap items-center gap-y-2 gap-x-4 text-xs text-slate-600">
-        <div className="flex items-center gap-1.5">
-          <FileText className="w-3.5 h-3.5 text-slate-400" />
-          <span>อ้างอิง PR:</span>
-          <strong className="text-slate-800 font-mono">{po.prNo}</strong>
-        </div>
-
-
-
+      {/* 2. Metadata Context Strip */}
+      <div className="py-3 flex flex-wrap items-center gap-y-2 gap-x-4 text-xs text-slate-500">
         {po.vendorName && po.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)' && (
           <div className="flex items-center gap-1.5">
             <Store className="w-3.5 h-3.5 text-violet-500" />
             <span>ร้านค้า:</span>
-            <strong className="text-violet-700">{po.vendorName}</strong>
+            <strong className="text-slate-800 font-semibold">{po.vendorName}</strong>
           </div>
         )}
 
         {po.remarks && (
-          <div className="flex items-center gap-1.5 text-slate-500 italic max-w-md truncate">
-            <span>หมายเหตุ PR:</span>
-            <span>"{po.remarks}"</span>
+          <div className="flex items-center gap-1.5 text-slate-500 max-w-md truncate">
+            <span>หมายเหตุ:</span>
+            <span className="text-slate-700">"{po.remarks}"</span>
           </div>
         )}
 
@@ -686,113 +629,48 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
               href={po.onlineUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 px-3 py-1 rounded-sm transition-colors border border-violet-200/80"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 bg-violet-50/80 hover:bg-violet-100/80 px-3 py-1 rounded-lg transition-colors border border-violet-200/80"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
-              เปิดลิงก์ Shopee / Lazada
+              <ExternalLink className="w-3 h-3" />
+              <span>ลิงก์คำขอซื้อออนไลน์</span>
             </a>
           )}
 
           {po.specUrl && (
             <button
               onClick={() => onViewAttachment({ name: 'เอกสาร/สเปกสินค้า', url: po.specUrl, type: 'link' })}
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1 rounded-sm transition-colors border border-indigo-200/80 cursor-pointer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1 rounded-lg transition-colors border border-slate-200 cursor-pointer"
             >
-              <FileText className="w-3.5 h-3.5" />
-              ดูสเปก/เอกสาร
+              <FileText className="w-3 h-3 text-slate-500" />
+              <span>สเปก/เอกสารแนบ</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* 3. Action Box (Only for Pending Orders) */}
-      {isPending && (
-        <div className="p-2 bg-gradient-to-r from-violet-50/90 via-purple-50/70 to-slate-50 border-b border-violet-100 flex flex-col gap-1.5.5">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-1.5.5">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-violet-600 text-white rounded-sm shadow-xs shrink-0">
-                <Store className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-violet-950">ระบุร้านค้าและยืนยันการสั่งซื้อสินค้า</p>
-                <p className="text-[11px] text-slate-500">
-                  คุณสามารถแก้ไขราคาต่อหน่วยและจำนวนที่สั่งซื้อได้ตามสต็อกจริงในตารางด้านล่างก่อนกดยืนยัน
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 shrink-0">
-              <input 
-                type="text" 
-                value={vendorName}
-                onChange={e => setVendorName(e.target.value)}
-                placeholder="ระบุร้าน เช่น Shopee ร้าน ABC, Lazada Official..."
-                className="text-xs bg-white border border-slate-300 rounded-sm px-3 py-1.5 w-full sm:w-60 focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all font-medium outline-none shadow-xs"
-              />
-              <button
-                onClick={handleAcknowledgeAndOrder}
-                disabled={isSubmitting}
-                className="bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-sm font-bold text-xs shadow-md shadow-violet-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] cursor-pointer whitespace-nowrap"
-              >
-                <Send className="w-3.5 h-3.5" />
-                {isSubmitting ? 'กำลังบันทึก...' : 'รับทราบและสั่งซื้อแล้ว'}
-              </button>
-            </div>
-          </div>
-
-          {/* Variance Note Input (Shows if price/qty modified) */}
-          {hasModifications && (
-            <div className="pt-2 border-t border-violet-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 bg-white/70 p-3 rounded-sm border border-amber-200/80">
-              <div className="flex items-center gap-2 text-xs text-amber-900 font-medium">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>ระบุเหตุผลการปรับปรุงยอด (ถ้ามี):</span>
-              </div>
-              <div className="flex items-center gap-2 flex-1 sm:max-w-lg">
-                <input
-                  type="text"
-                  value={varianceNote}
-                  onChange={e => setVarianceNote(e.target.value)}
-                  placeholder="เช่น สินค้าในร้านเหลือ 5 ชิ้น เลยกดซื้อมาก่อน, มีส่วนลดคูปอง..."
-                  className="w-full bg-white border border-amber-300 text-xs rounded-sm px-3 py-1.5 focus:ring-2 focus:ring-amber-500 outline-none text-slate-800"
-                />
-                <button
-                  type="button"
-                  onClick={handleResetAll}
-                  className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-sm text-xs font-semibold flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer"
-                  title="คืนค่าเดิมจากใบขอซื้อ PR ทั้งหมด"
-                >
-                  <RotateCcw className="w-3 h-3 text-slate-500" />
-                  <span>คืนค่าเดิม</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 3.5 Claim Action Strip */}
+      {/* 2.5 Claim Action Strip (When in Claim status) */}
       {isClaim && (
-        <div className="p-3 sm:p-4 bg-gradient-to-r from-rose-50/90 via-amber-50/70 to-slate-50 border-b border-rose-100 flex flex-col gap-3">
+        <div className="my-4 p-4 bg-rose-50/70 border border-rose-200/80 rounded-2xl flex flex-col gap-3">
           <div className="flex items-start gap-3">
-            <div className="p-2 bg-rose-600 text-white rounded-sm shadow-xs shrink-0 mt-0.5">
-              <AlertTriangle className="w-5 h-5" />
+            <div className="p-2 bg-rose-600 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
+              <AlertTriangle className="w-4 h-4" />
             </div>
             <div className="flex-1">
               <h4 className="text-sm font-bold text-rose-950 flex items-center gap-2">
                 <span>จัดการปัญหาการสั่งซื้อ / ติดต่อเคลมสินค้า</span>
                 {po.claimRound > 0 && (
-                  <span className="text-[10px] bg-rose-200 text-rose-800 px-2 py-0.5 rounded-sm font-mono font-bold">
+                  <span className="text-[10px] bg-rose-200 text-rose-800 px-2 py-0.5 rounded font-mono font-bold">
                     รอบที่ {po.claimRound}
                   </span>
                 )}
               </h4>
-              <p className="text-xs text-rose-800/80 mt-0.5 font-medium">
+              <p className="text-xs text-rose-800/90 mt-0.5 font-medium">
                 ปัญหา: {po.claimData?.reason} — {po.claimData?.description}
               </p>
 
               {/* Item-level Claim Breakdown Table if available */}
               {Array.isArray(po.claimData?.claimDetails?.items || po.claimDetails?.items) && (po.claimData?.claimDetails?.items || po.claimDetails?.items).length > 0 && (
-                <div className="mt-2.5 bg-white/90 border border-rose-200/90 rounded-sm p-2.5 space-y-1.5 shadow-2xs">
+                <div className="mt-2.5 bg-white/95 border border-rose-200 rounded-xl p-2.5 space-y-1.5 shadow-2xs">
                   <p className="text-[11px] font-bold text-rose-900 flex items-center gap-1.5">
                     <Package className="w-3.5 h-3.5 text-rose-600" />
                     <span>รายการสินค้าที่พบปัญหา / เคลม:</span>
@@ -815,22 +693,22 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
             </div>
           </div>
           
-          <div className="pl-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            <label className={`relative flex items-center gap-2.5 p-2.5 rounded-sm border cursor-pointer transition-colors ${claimResolutionType === 'RESEND' ? 'bg-white border-rose-400 shadow-2xs' : 'bg-white/50 border-slate-200 hover:bg-white'}`}>
+          <div className="pl-0 sm:pl-11 grid grid-cols-1 md:grid-cols-3 gap-2.5">
+            <label className={`relative flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors ${claimResolutionType === 'RESEND' ? 'bg-white border-rose-400 shadow-2xs' : 'bg-white/60 border-slate-200 hover:bg-white'}`}>
               <input type="radio" name="claimRes" value="RESEND" checked={claimResolutionType === 'RESEND'} onChange={() => setClaimResolutionType('RESEND')} className="text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer" />
               <div>
                 <p className="text-xs font-bold text-slate-800">ร้านจะส่งของให้ใหม่/เพิ่ม</p>
                 <p className="text-[10px] text-slate-500">รอรับสินค้าอีกครั้ง</p>
               </div>
             </label>
-            <label className={`relative flex items-center gap-2.5 p-2.5 rounded-sm border cursor-pointer transition-colors ${claimResolutionType === 'CLOSE_WITH_REFUND' ? 'bg-white border-rose-400 shadow-2xs' : 'bg-white/50 border-slate-200 hover:bg-white'}`}>
+            <label className={`relative flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors ${claimResolutionType === 'CLOSE_WITH_REFUND' ? 'bg-white border-rose-400 shadow-2xs' : 'bg-white/60 border-slate-200 hover:bg-white'}`}>
               <input type="radio" name="claimRes" value="CLOSE_WITH_REFUND" checked={claimResolutionType === 'CLOSE_WITH_REFUND'} onChange={() => setClaimResolutionType('CLOSE_WITH_REFUND')} className="text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer" />
               <div>
                 <p className="text-xs font-bold text-slate-800">ได้รับเงินคืนแล้ว</p>
                 <p className="text-[10px] text-slate-500">ปิดงาน จบเรื่อง</p>
               </div>
             </label>
-            <label className={`relative flex items-center gap-2.5 p-2.5 rounded-sm border cursor-pointer transition-colors ${claimResolutionType === 'CLOSE_NO_ACTION' ? 'bg-white border-rose-400 shadow-2xs' : 'bg-white/50 border-slate-200 hover:bg-white'}`}>
+            <label className={`relative flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors ${claimResolutionType === 'CLOSE_NO_ACTION' ? 'bg-white border-rose-400 shadow-2xs' : 'bg-white/60 border-slate-200 hover:bg-white'}`}>
               <input type="radio" name="claimRes" value="CLOSE_NO_ACTION" checked={claimResolutionType === 'CLOSE_NO_ACTION'} onChange={() => setClaimResolutionType('CLOSE_NO_ACTION')} className="text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer" />
               <div>
                 <p className="text-xs font-bold text-slate-800">ยอมรับสภาพ/ไม่ทำอะไร</p>
@@ -839,8 +717,8 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
             </label>
           </div>
 
-          <div className="pl-12 flex flex-col sm:flex-row sm:items-start gap-3">
-            <div className="flex-1 space-y-3 w-full">
+          <div className="pl-0 sm:pl-11 flex flex-col sm:flex-row sm:items-end gap-3">
+            <div className="flex-1 space-y-2 w-full">
               {claimResolutionType === 'RESEND' && (
                 <div>
                   <label className="text-[11px] font-bold text-slate-700 mb-1 block">วันที่คาดว่าจะได้รับสินค้าใหม่ <span className="text-rose-500">*</span></label>
@@ -848,7 +726,7 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
                     type="date"
                     value={claimExpectedDate}
                     onChange={e => setClaimExpectedDate(e.target.value)}
-                    className="w-full sm:w-auto bg-white border border-slate-300 text-xs rounded-sm px-3 py-1.5 focus:ring-2 focus:ring-rose-500 outline-none"
+                    className="w-full sm:w-auto bg-white border border-slate-200 text-xs rounded-xl px-3 py-1.5 focus:ring-2 focus:ring-rose-500 outline-none font-mono"
                   />
                 </div>
               )}
@@ -858,42 +736,41 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
                   type="text"
                   value={claimNote}
                   onChange={e => setClaimNote(e.target.value)}
-                  placeholder="เช่น ร้านยืนยันส่งของพรุ่งนี้, ได้เงินโอนคืนแล้ว..."
-                  className="w-full bg-white border border-slate-300 text-xs rounded-sm px-3 py-1.5 focus:ring-2 focus:ring-rose-500 outline-none"
+                  placeholder="เช่น ร้านค้ายืนยันส่งใหม่ทาง Kerry, ได้รับเงินโอนคืนแล้ว..."
+                  className="w-full bg-white border border-slate-200 text-xs rounded-xl px-3.5 py-2 focus:ring-2 focus:ring-rose-500 outline-none"
                 />
               </div>
             </div>
             <button
               onClick={handleResolveClaim}
               disabled={isSubmitting}
-              className="mt-4 sm:mt-5 bg-rose-600 hover:bg-rose-700 text-white px-5 py-2 rounded-sm font-bold text-xs shadow-md shadow-rose-500/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] cursor-pointer whitespace-nowrap"
+              className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl font-semibold text-xs shadow-sm flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
             >
-              <Check className="w-3.5 h-3.5" />
-              {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกสถานะเคลม'}
+              <Check className="w-4 h-4" />
+              <span>{isSubmitting ? 'กำลังบันทึก...' : 'บันทึกสถานะเคลม'}</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* 4. Items Table */}
-      <div className="p-2 overflow-x-auto overflow-y-auto max-h-[500px] custom-scrollbar relative">
-        <table className="w-full text-left text-sm">
-          <thead className="sticky top-0 z-20 bg-slate-100 shadow-xs border-b border-slate-200">
-            <tr className="text-slate-700 text-xs font-bold uppercase tracking-wider">
-              <th className="py-3 pl-3 bg-slate-100">รหัสสินค้า</th>
-              <th className="py-3 bg-slate-100">รายการสินค้าที่ต้องซื้อ</th>
-              <th className="py-3 text-right bg-slate-100">
-                {isPending ? 'ราคาซื้อจริง / หน่วย (฿)' : 'ราคาต่อหน่วย (฿)'}
+      {/* 3. Product Line Table (Clean & Ergonomic) */}
+      <div className="mt-2 overflow-x-auto rounded-2xl border border-slate-200/70">
+        <table className="w-full text-left text-xs sm:text-sm">
+          <thead className="bg-slate-50/90 border-b border-slate-200/70 text-slate-500 font-semibold text-[11px] uppercase tracking-wider">
+            <tr>
+              <th className="py-3 pl-4">รหัสสินค้า</th>
+              <th className="py-3 px-3">รายการสินค้า & สเปก</th>
+              <th className="py-3 px-3 text-right">
+                {isPending ? 'ราคาซื้อจริง / หน่วย' : 'ราคาต่อหน่วย'}
               </th>
-              <th className="py-3 text-center bg-slate-100">
-                {isPending ? 'จำนวนที่สั่งซื้อได้จริง' : 'จำนวนสั่งซื้อ (Qty)'}
+              <th className="py-3 px-3 text-center">
+                {isPending ? 'จำนวนที่สั่งได้จริง' : 'จำนวนสั่งซื้อ'}
               </th>
-              <th className="py-3 text-right bg-slate-100">ยอดรวมจริง (Line Total)</th>
-              <th className="py-3 text-center bg-slate-100">ยอดเข้าคลัง (Stock)</th>
-              <th className="py-3 text-right pr-3 bg-slate-100">การจัดการ</th>
+              <th className="py-3 px-3 text-right">รวมเงิน (Line Total)</th>
+              <th className="py-3 pr-4 text-right">คำสั่ง</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100/90">
+          <tbody className="divide-y divide-slate-100">
             {items.map((item, idx) => {
               const pQty = Number(item.purchaseQty) || 0;
               const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
@@ -908,27 +785,27 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
               const isItemModified = isPriceChanged || isQtyChanged;
 
               return (
-                <tr key={idx} className={`hover:bg-white/70 transition-colors ${isItemModified && isPending ? 'bg-amber-50/20' : ''}`}>
+                <tr key={idx} className={`hover:bg-slate-50/60 transition-colors ${isItemModified && isPending ? 'bg-amber-50/25' : ''}`}>
                   {/* Code & Thumbnail */}
-                  <td className="py-4 pl-3 font-mono font-medium text-slate-500 text-xs">
+                  <td className="py-3.5 pl-4 font-mono font-medium text-slate-500 text-xs whitespace-nowrap">
                     <div className="flex items-center gap-2.5">
                       {item.imageUrl ? (
-                        <div className="w-9 h-9 rounded-sm border border-slate-200 overflow-hidden shrink-0 shadow-2xs">
+                        <div className="w-9 h-9 rounded-xl border border-slate-200 overflow-hidden shrink-0 shadow-2xs">
                           <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                         </div>
                       ) : (
-                        <div className="w-9 h-9 rounded-sm border border-slate-200 bg-white flex items-center justify-center shrink-0 text-slate-400">
+                        <div className="w-9 h-9 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center shrink-0 text-slate-400">
                           <Package className="w-4 h-4" />
                         </div>
                       )}
                       <div>
-                        <span className="text-slate-700 font-semibold">{item.code}</span>
+                        <span className="text-slate-800 font-semibold">{item.code}</span>
                         {item.onlineUrl && (
                           <a 
                             href={item.onlineUrl} 
                             target="_blank" 
                             rel="noreferrer" 
-                            className="text-[10px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200/80 px-2 py-0.5 rounded-md mt-1 flex items-center gap-1 transition-colors w-fit"
+                            className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 mt-0.5 flex items-center gap-1 transition-colors"
                           >
                             <ExternalLink className="w-2.5 h-2.5" /> ลิงก์สินค้า
                           </a>
@@ -938,56 +815,52 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
                   </td>
 
                   {/* Name & Note */}
-                  <td className="py-4 font-semibold text-slate-800 max-w-sm">
-                    <div className="line-clamp-2 text-sm leading-snug" title={item.name}>{item.name}</div>
+                  <td className="py-3.5 px-3">
+                    <div className="font-semibold text-slate-900 leading-snug" title={item.name}>
+                      {item.name}
+                    </div>
                     {item.note && (
-                      <div className="text-xs text-slate-500 mt-1 flex items-center gap-1 font-normal">
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 text-amber-500 shrink-0" />
                         <span>{item.note}</span>
                       </div>
                     )}
                   </td>
 
-                  {/* Unit Price (Editable if Pending) */}
-                  <td className="py-4 text-right">
+                  {/* Unit Price (Modern Minimalist Input) */}
+                  <td className="py-3.5 px-3 text-right whitespace-nowrap">
                     {isPending ? (
                       <div className="inline-flex flex-col items-end">
                         <div className="relative inline-flex items-center">
-                          <span className="absolute left-2.5 text-xs text-slate-400 font-bold">฿</span>
+                          <span className="absolute left-2.5 text-xs text-slate-400 font-mono">฿</span>
                           <input
                             type="number"
                             min="0"
                             step="any"
                             value={item.unitPrice}
                             onChange={e => handlePriceChange(idx, e.target.value)}
-                            className={`w-28 pl-6 pr-2 py-1.5 bg-white border rounded-sm text-xs font-mono font-bold text-right text-slate-800 focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition-all shadow-2xs ${
-                              isPriceChanged ? 'border-amber-400 bg-amber-50/40 text-amber-900 ring-1 ring-amber-300' : 'border-slate-300'
+                            className={`w-28 pl-6 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl font-mono text-xs font-semibold text-right text-slate-900 transition-all shadow-2xs outline-none ${
+                              isPriceChanged ? 'border-amber-400 bg-amber-50/50 text-amber-900' : ''
                             }`}
-                            title="แก้ไขราคาต่อหน่วยจริงที่สั่งซื้อได้"
+                            placeholder="0.00"
+                            title="แก้ไขราคาต่อหน่วยจริง"
                           />
                         </div>
                         {isPriceChanged && (
-                          <div className="text-[10px] text-amber-600 mt-1 font-mono font-medium">
+                          <span className="text-[10px] text-amber-600 mt-0.5 font-mono">
                             เดิม: ฿{item.originalEstimatedPrice?.toLocaleString()}
-                          </div>
+                          </span>
                         )}
                       </div>
                     ) : (
-                      <div>
-                        <span className="text-xs font-semibold text-slate-700 font-mono">
-                          ฿{price.toLocaleString()} <span className="text-[10px] text-slate-400 font-sans">/ {pUnit}</span>
-                        </span>
-                        {isPriceChanged && (
-                          <div className="text-[10px] text-amber-600 line-through font-mono">
-                            เดิม ฿{item.originalEstimatedPrice?.toLocaleString()}
-                          </div>
-                        )}
+                      <div className="font-mono text-xs font-semibold text-slate-800">
+                        ฿{price.toLocaleString()} <span className="text-[10px] text-slate-400 font-sans">/ {pUnit}</span>
                       </div>
                     )}
                   </td>
 
-                  {/* Purchase Qty (Editable if Pending) */}
-                  <td className="py-4 text-center">
+                  {/* Purchase Qty (Modern Minimalist Input) */}
+                  <td className="py-3.5 px-3 text-center whitespace-nowrap">
                     {isPending ? (
                       <div className="inline-flex flex-col items-center">
                         <div className="inline-flex items-center gap-1.5">
@@ -997,63 +870,41 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
                             step="1"
                             value={item.purchaseQty}
                             onChange={e => handleQtyChange(idx, e.target.value)}
-                            className={`w-16 px-2 py-1.5 bg-white border rounded-sm text-xs font-mono font-bold text-center text-violet-700 focus:ring-2 focus:ring-violet-500 focus:border-violet-500 outline-none transition-all shadow-2xs ${
-                              isQtyChanged ? 'border-amber-400 bg-amber-50/40 text-amber-900 ring-1 ring-amber-300' : 'border-slate-300'
+                            className={`w-18 px-2 py-1.5 bg-slate-50 border border-slate-200 focus:bg-white focus:border-indigo-500 rounded-xl font-mono text-xs font-semibold text-center text-slate-900 transition-all shadow-2xs outline-none ${
+                              isQtyChanged ? 'border-amber-400 bg-amber-50/50 text-amber-900' : ''
                             }`}
-                            title="แก้ไขจำนวนที่สั่งซื้อจริงตามสต็อกร้านค้า"
+                            title="แก้ไขจำนวนที่สั่งซื้อได้จริง"
                           />
-                          <span className="text-xs font-medium text-slate-500">{pUnit}</span>
+                          <span className="text-xs text-slate-500 font-medium">{pUnit}</span>
                         </div>
                         {isQtyChanged && (
-                          <span className="text-[10px] text-amber-600 mt-1 font-mono font-medium">
+                          <span className="text-[10px] text-amber-600 mt-0.5 font-mono">
                             ขอมา: {item.originalPurchaseQty} {pUnit}
                           </span>
                         )}
                       </div>
                     ) : (
-                      <div>
-                        <span className="font-bold text-sm text-violet-700 font-mono">
-                          {pQty.toLocaleString()}
-                        </span>{' '}
-                        <span className="text-xs font-medium text-slate-500">{pUnit}</span>
-                        {isQtyChanged && (
-                          <div className="text-[10px] text-slate-400 font-mono">
-                            ขอมา: {item.originalPurchaseQty} {pUnit}
-                          </div>
-                        )}
+                      <div className="font-mono text-xs font-semibold text-slate-800">
+                        {pQty.toLocaleString()} <span className="text-slate-400 font-sans">{pUnit}</span>
                       </div>
                     )}
                   </td>
 
-                  {/* Line Total Price */}
-                  <td className="py-4 text-right">
-                    <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-sm ${
-                      isItemModified 
-                        ? 'text-amber-800 bg-amber-50 border border-amber-200/80 shadow-2xs' 
-                        : 'text-emerald-700 bg-emerald-50 border border-emerald-200/80'
-                    }`}>
-                      <DollarSign className="w-3 h-3 text-emerald-500" />
+                  {/* Line Total Price (Clean Slate Font, no bright green clutter) */}
+                  <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                    <span className="font-mono font-bold text-sm text-slate-900">
                       ฿{lineTotal.toLocaleString()}
                     </span>
                   </td>
 
-                  {/* Stock Qty */}
-                  <td className="py-4 text-center font-medium text-slate-600 text-xs">
-                    <span className="font-mono font-semibold">{sQty.toLocaleString()}</span>{' '}
-                    <span className="text-slate-400">{sUnit}</span>
-                    {rate > 1 && (
-                      <div className="text-[10px] text-slate-400">(อัตรา 1:{rate})</div>
-                    )}
-                  </td>
-
-                  {/* Actions (Copy + Revert) */}
-                  <td className="py-4 text-right pr-3">
+                  {/* 1-Click Copy & Item Revert */}
+                  <td className="py-3.5 pr-4 text-right whitespace-nowrap">
                     <div className="inline-flex items-center gap-1.5">
                       {isPending && isItemModified && (
                         <button
                           type="button"
                           onClick={() => handleResetItem(idx)}
-                          className="p-1.5 text-amber-600 hover:bg-amber-100 rounded-sm transition-colors cursor-pointer"
+                          className="p-1.5 text-amber-600 hover:bg-amber-100/70 rounded-lg transition-colors cursor-pointer"
                           title="คืนค่าเดิมของรายการนี้"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
@@ -1061,18 +912,19 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
                       )}
                       
                       <button
+                        type="button"
                         onClick={() => handleCopy(item.name)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-sm transition-colors cursor-pointer"
-                        title="คัดลอกชื่อสินค้าไปค้นหาใน Shopee/Lazada"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all cursor-pointer shadow-2xs active:scale-95"
+                        title="คัดลอกชื่อสินค้าไปค้นหาใน Shopee / Lazada"
                       >
                         {copiedCode === item.name ? (
                           <>
                             <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="text-emerald-600 font-bold">คัดลอกแล้ว</span>
+                            <span className="text-emerald-700 font-semibold">คัดลอกแล้ว</span>
                           </>
                         ) : (
                           <>
-                            <Copy className="w-3.5 h-3.5 text-slate-400" />
+                            <Copy className="w-3 h-3 text-slate-400" />
                             <span>คัดลอกชื่อ</span>
                           </>
                         )}
@@ -1083,51 +935,95 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
               );
             })}
           </tbody>
-          {/* Table Summary Footer */}
-          <tfoot>
-            <tr className="bg-white/90 font-bold border-t-2 border-slate-200/90 text-slate-800 text-xs">
-              <td colSpan={3} className="py-3.5 pl-3 text-slate-600">
-                <div className="flex items-center gap-2">
-                  <span>ยอดรวมประเมินทั้งฉบับ ({items.length} รายการ)</span>
-                  {hasModifications && isPending && (
-                    <span className="text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded font-bold">
-                      ยอดเดิม: ฿{originalTotalAmount.toLocaleString()}
-                    </span>
-                  )}
-                </div>
-              </td>
-              <td className="py-3.5 text-center text-xs font-mono font-bold text-violet-700">
-                {totalPurchaseQty.toLocaleString()} ชิ้น
-              </td>
-              <td className="py-3.5 text-right font-mono font-black text-sm text-emerald-700">
-                ฿{totalEstimatedAmount.toLocaleString()}
-              </td>
-              <td colSpan={2} className="py-3.5 text-right pr-3">
-                {hasModifications && isPending && (
-                  <span className="text-[11px] text-slate-500 font-mono font-semibold">
-                    ส่วนต่าง: {priceDiff >= 0 ? '+' : ''}฿{priceDiff.toLocaleString()}
-                  </span>
-                )}
-              </td>
-            </tr>
-          </tfoot>
         </table>
       </div>
-      
-      {/* 5. Footer Info Strip */}
-      <div className="bg-white/80 border-t border-slate-100 px-5 sm:px-6 py-3 flex items-center justify-between text-xs text-slate-600 flex-wrap gap-2">
-        <span className="flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-violet-600 shrink-0" />
-          <span>เมื่อกดสั่งซื้อแล้ว หน้าที่ตรวจรับของและบันทึกปิด PO จะส่งต่อให้แผนก <strong>{po.department}</strong> อัตโนมัติ</span>
-        </span>
-        <div className="flex items-center gap-1.5 font-mono">
-          <span>รวม {items.length} รายการ ({totalPurchaseQty.toLocaleString()} ชิ้น)</span>
-          <span>•</span>
-          <span className="font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-sm border border-emerald-200">
-            ยอดสั่งซื้อรวม ฿{totalEstimatedAmount.toLocaleString()}
-          </span>
+
+      {/* Variance Note Input (When price/qty is modified in pending mode) */}
+      {isPending && hasModifications && (
+        <div className="mt-3 p-3 bg-amber-50/70 rounded-2xl border border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2 text-xs text-amber-900 font-medium shrink-0">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>ระบุเหตุผลการปรับยอด (ถ้ามี):</span>
+          </div>
+          <div className="flex items-center gap-2 flex-1">
+            <input
+              type="text"
+              value={varianceNote}
+              onChange={e => setVarianceNote(e.target.value)}
+              placeholder="เช่น ร้านค้าเหลือ 5 ชิ้น, ได้รับคูปองส่วนลด..."
+              className="w-full bg-white border border-amber-300/80 text-xs rounded-xl px-3 py-1.5 focus:ring-2 focus:ring-amber-400 outline-none text-slate-800 shadow-2xs"
+            />
+            <button
+              type="button"
+              onClick={handleResetAll}
+              className="px-3 py-1.5 bg-white hover:bg-amber-100/60 text-slate-700 border border-amber-200 rounded-xl text-xs font-medium flex items-center gap-1 transition-colors whitespace-nowrap cursor-pointer shadow-2xs"
+              title="คืนค่าเดิมจากใบขอซื้อ PR ทั้งหมด"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+              <span>คืนค่าเดิมทั้งหมด</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* 4. Integrated Checkout Action Dock (Moved beneath the table) */}
+      {isPending ? (
+        <div className="mt-6 pt-5 border-t border-slate-100 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+          {/* Left: Vendor Input with storefront icon */}
+          <div className="w-full md:w-96">
+            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+              ร้านค้าออนไลน์ / ช่องทางที่สั่งซื้อ
+            </label>
+            <div className="relative flex items-center">
+              <Store className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
+              <input
+                type="text"
+                value={vendorName}
+                onChange={e => setVendorName(e.target.value)}
+                placeholder="เช่น Shopee: ร้าน ABC Official, Lazada Mall..."
+                className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-2xs"
+              />
+            </div>
+          </div>
+
+          {/* Right: Net Total & Purchase Trigger Button */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-end gap-5">
+            <div className="text-right">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                ยอดรวมสุทธิ ({items.length} รายการ)
+              </span>
+              <span className="font-mono text-2xl font-black text-slate-900 tracking-tight">
+                ฿{totalEstimatedAmount.toLocaleString()}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleAcknowledgeAndOrder}
+              disabled={isSubmitting}
+              className="bg-slate-950 hover:bg-indigo-600 text-white font-semibold text-xs px-6 py-3 rounded-xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap disabled:opacity-50"
+            >
+              <span>{isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันการสั่งซื้อเรียบร้อย'}</span>
+              <span className="font-mono text-sm">→</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Status Info Footer for Non-Pending Orders */
+        <div className="mt-5 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <div className="flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+            <span>คำสั่งซื้อนี้อยู่ในขั้นตอนการตรวจรับและจัดการโดยแผนก <strong>{po.department}</strong></span>
+          </div>
+          <div className="flex items-center gap-2 font-mono">
+            <span>รวม {items.length} รายการ ({totalPurchaseQty.toLocaleString()} ชิ้น)</span>
+            <span>•</span>
+            <span className="font-bold text-slate-900 text-sm">
+              ฿{totalEstimatedAmount.toLocaleString()}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -52,12 +52,17 @@ export default {
         'subtle-pulse': {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.6' },
+        },
+        'slide-in-left': {
+          '0%': { opacity: '0', transform: 'translateX(-100%)' },
+          '100%': { opacity: '1', transform: 'translateX(0)' },
         }
       },
       animation: {
         'fade-in-up': 'fade-in-up 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
         'zoom-in': 'zoom-in 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
         'subtle-pulse': 'subtle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'slide-in-left': 'slide-in-left 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
       }
     },
   },
