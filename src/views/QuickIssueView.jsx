@@ -9,7 +9,8 @@ import {
   BarChart2, Calendar, Filter, Search, Download, ChevronRight,
   LayoutGrid, ListFilter, SlidersHorizontal, DoorClosed, Briefcase,
   FileSpreadsheet, ArrowUpRight, ArrowDownRight, Tag, PieChart,
-  RefreshCw, TrendingUp, HelpCircle
+  RefreshCw, TrendingUp, HelpCircle,
+  Minus, Plus
 } from 'lucide-react';
 import SearchableSelect from '../components/common/SearchableSelect';
 import Pagination from '../components/common/Pagination';
@@ -657,12 +658,12 @@ export default function QuickIssueView({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
         {/* ── Left Column: Issue Form (7 cols = 60%) ── */}
-        <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-100 shadow-sm p-6 sm:p-7 space-y-6">
+        <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-100 shadow-sm p-6 sm:p-7 space-y-5">
           
           {/* Department Filter Toggle */}
           <div className="flex items-center justify-between gap-2 pb-3.5 border-b border-slate-100 flex-wrap">
             <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-indigo-600" />
+              <Layers className="w-4 h-4 text-slate-700" />
               <span>ระบุข้อมูลการเบิกจ่ายสินค้า</span>
             </span>
 
@@ -699,37 +700,35 @@ export default function QuickIssueView({
             )}
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* 0. Unit / Room Selector (Tactile Capsule Chips) */}
-            <div className="space-y-2.5">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* 0. Unit / Room Selector (Clean Segmented Switcher) */}
+            <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-                  <DoorClosed className="w-4 h-4 text-indigo-600" />
+                  <DoorClosed className="w-4 h-4 text-slate-600" />
                   <span>หน่วยที่เบิก / พื้นที่ใช้งาน (Location / Unit)</span>
                   <span className="text-rose-500">*</span>
                 </label>
                 <span className="text-[11px] text-slate-400 font-normal">เลือกห้องหรือพื้นที่ที่นำสินค้าไปใช้</span>
               </div>
 
-              {/* Visual Tactile Capsule Chips */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+              {/* Clean Segmented Switcher Capsule Bar */}
+              <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/80 rounded-2xl border border-slate-200/60">
                 {formUsageUnits.map(unit => {
                   const isSelected = productionUnit === unit.name;
-                  const dot = unit.dot || 'bg-slate-500';
-                  const color = unit.color || 'bg-slate-50 text-slate-700 border-slate-200/80';
                   return (
                     <button
                       key={unit.id || unit.name}
                       type="button"
                       onClick={() => setProductionUnit(unit.name)}
-                      className={`px-3.5 py-3 rounded-2xl text-xs font-semibold transition-all text-center flex items-center justify-center gap-2 cursor-pointer hover:-translate-y-0.5 ${
+                      className={`px-3.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
                         isSelected
-                          ? 'bg-slate-900 text-white shadow-md shadow-slate-900/15 ring-2 ring-slate-900/10'
-                          : `${color} hover:border-slate-300 shadow-2xs`
+                          ? 'bg-slate-950 text-white font-semibold shadow-sm'
+                          : 'px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 transition-all'
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${isSelected ? 'bg-emerald-400 shadow-xs ring-2 ring-white/20' : dot}`} />
-                      <span className="truncate">{unit.name}</span>
+                      {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
+                      <span>{unit.name}</span>
                     </button>
                   );
                 })}
@@ -758,7 +757,7 @@ export default function QuickIssueView({
               
               {/* Compact Micro-badge Info Strip */}
               {selectedProduct && (
-                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 font-normal px-1">
+                <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500 font-normal px-1">
                   <div className="flex items-center gap-2">
                     {rate > 1 && (
                       <span className="text-indigo-600 bg-indigo-50/80 px-2 py-0.5 rounded-md border border-indigo-100 font-mono text-[10px]">
@@ -777,108 +776,96 @@ export default function QuickIssueView({
               )}
             </div>
 
-            {/* 2. Modern Quantity Stepper & Stock Simulation */}
-            <div className="space-y-3 bg-slate-50/70 p-4 sm:p-5 rounded-2xl border border-slate-100">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-800 flex items-center gap-1">
+            {/* 2. Compact Ergonomic Quantity Stepper */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-800 flex items-center justify-between">
+                <span className="flex items-center gap-1">
                   <span>จำนวนที่ต้องการเบิก ({sUnit})</span>
                   <span className="text-rose-500">*</span>
-                </label>
-                
-                {/* Glassy Micro-pills Quick Steppers */}
+                </span>
+                {selectedProduct && (
+                  <span className="text-[11px] text-slate-400 font-normal">
+                    คงเหลือในคลัง: <strong className="font-mono text-slate-700 font-semibold">{Number(currentBalance).toLocaleString()} {sUnit}</strong>
+                  </span>
+                )}
+              </label>
+
+              {/* Compact Tactile Stepper Row */}
+              <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex items-center gap-1.5">
-                  {[1, 5, 10].map(n => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => handleQuickQty(n)}
-                      className="bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 cursor-pointer border border-slate-200/40 text-slate-600"
-                    >
-                      +{n}
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    onClick={() => handleQuickQty(-1)}
+                    disabled={qtyNumber <= 0.01}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/80 transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="ลด 1"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
+
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.001"
+                    max={Math.max(0.001, currentBalance)}
+                    value={issueQty}
+                    onChange={e => setIssueQty(e.target.value)}
+                    required
+                    placeholder="0"
+                    className="font-mono text-xl font-bold text-center w-20 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 outline-none transition-all text-slate-900"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => handleQuickQty(1)}
+                    disabled={currentBalance > 0 && qtyNumber >= currentBalance}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/80 transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="เพิ่ม 1"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+
+                  <span className="font-medium text-xs text-slate-500 px-2.5 py-1.5 bg-slate-100/80 rounded-xl border border-slate-200/60 font-mono shrink-0">
+                    {sUnit}
+                  </span>
+                </div>
+
+                {/* Helper Chips: [+1], [+5], [Max] with Ghost Border */}
+                <div className="flex items-center gap-1.5 ml-auto sm:ml-0">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickQty(1)}
+                    className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200/80 hover:border-slate-300 rounded-xl transition-all active:scale-95 cursor-pointer shadow-2xs font-mono"
+                  >
+                    +1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickQty(5)}
+                    className="px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 bg-white border border-slate-200/80 hover:border-slate-300 rounded-xl transition-all active:scale-95 cursor-pointer shadow-2xs font-mono"
+                  >
+                    +5
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleQuickQty('max')}
-                    className="bg-slate-100 hover:bg-amber-50 hover:text-amber-700 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all active:scale-95 cursor-pointer border border-slate-200/40 text-slate-700 flex items-center gap-1"
+                    className="px-2.5 py-1.5 text-xs font-semibold text-amber-700 hover:text-amber-800 bg-amber-50/60 hover:bg-amber-100/70 border border-amber-200/80 rounded-xl transition-all active:scale-95 cursor-pointer shadow-2xs font-mono"
                   >
-                    <span>⚡ Max</span>
+                    Max
                   </button>
                 </div>
               </div>
 
-              {/* Large Stepper Input (Center/Left High Contrast) */}
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-3 flex items-center justify-between shadow-xs focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-400 transition-all">
-                <input
-                  type="number"
-                  step="any"
-                  min="0.001"
-                  max={Math.max(0.001, currentBalance)}
-                  value={issueQty}
-                  onChange={e => setIssueQty(e.target.value)}
-                  required
-                  placeholder="0"
-                  className="w-full font-mono text-3xl font-bold text-slate-900 outline-none bg-transparent px-2"
-                />
-                <span className="font-medium text-xs text-slate-500 px-3 py-1 bg-slate-100 rounded-xl shrink-0">
-                  {sUnit}
-                </span>
-              </div>
-
-              {/* Live Simulation Bar: Current -> Post Issue */}
-              <div className="space-y-2 pt-1">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5 text-slate-500">
-                    <span>สต็อกเดิม:</span>
-                    <span className="font-mono font-medium text-slate-800">{Number(currentBalance).toLocaleString()} {sUnit}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400">→</span>
-                    <span className="text-slate-500">หลังเบิกจริง:</span>
-                    <span className={`font-mono font-bold ${postIssueBalance < 0 ? 'text-rose-600' : postIssueBalance <= reorderPoint ? 'text-amber-700' : 'text-emerald-700'}`}>
-                      {Number(postIssueBalance).toLocaleString(undefined, { maximumFractionDigits: 4 })} {sUnit}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Progress bar visualizer */}
-                <div className="w-full bg-slate-200/70 h-2 rounded-full overflow-hidden flex">
-                  <div 
-                    className={`h-full transition-all duration-300 ${
-                      postIssueBalance < 0 
-                        ? 'bg-rose-500' 
-                        : postIssueBalance <= reorderPoint 
-                          ? 'bg-amber-500' 
-                          : 'bg-emerald-500'
-                    }`}
-                    style={{ 
-                      width: `${currentBalance > 0 ? Math.max(0, Math.min(100, (postIssueBalance / currentBalance) * 100)) : 0}%` 
-                    }}
-                  />
-                  {qtyNumber > 0 && currentBalance > 0 && postIssueBalance >= 0 && (
-                    <div 
-                      className="h-full bg-slate-300 opacity-60 transition-all duration-300"
-                      style={{ 
-                        width: `${Math.min(100, (qtyNumber / currentBalance) * 100)}%` 
-                      }}
-                      title={`กำลังจะเบิกออก ${qtyNumber} ${sUnit}`}
-                    />
-                  )}
-                </div>
-              </div>
-
-              {/* Status alerts */}
+              {/* Micro Alert Strip */}
               {isOutOfStock ? (
-                <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-2 text-rose-800 text-xs font-normal">
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>จำนวนที่ขอเบิกเกินยอดคงเหลือในคลัง ({currentBalance} {sUnit})</span>
+                <div className="text-xs text-rose-700 bg-rose-50/80 border border-rose-200/70 px-3 py-1.5 rounded-xl flex items-center gap-2 mt-2 animate-fade-in">
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span>จำนวนที่ขอเบิกเกินยอดคงเหลือในคลัง ({Number(currentBalance).toLocaleString()} {sUnit})</span>
                 </div>
               ) : willTriggerROP ? (
-                <div className="p-3 bg-amber-50/70 border border-amber-100 rounded-xl flex items-start gap-2 text-amber-900 text-xs font-normal">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <span>
-                    หลังเบิกยอดจะเหลือ <strong>{postIssueBalance} {sUnit}</strong> ซึ่งแตะจุดสั่งซื้อ ROP ({reorderPoint} {sUnit})
-                  </span>
+                <div className="text-xs text-amber-700 bg-amber-50/80 border border-amber-200/70 px-3 py-1.5 rounded-xl flex items-center gap-2 mt-2 animate-fade-in">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>หลังเบิกยอดจะเหลือ <strong>{Number(postIssueBalance).toLocaleString()} {sUnit}</strong> ซึ่งแตะจุดสั่งซื้อ ROP ({Number(reorderPoint).toLocaleString()} {sUnit})</span>
                 </div>
               ) : null}
             </div>
@@ -891,7 +878,7 @@ export default function QuickIssueView({
               <select
                 value={reason}
                 onChange={e => setReason(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 cursor-pointer"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900 cursor-pointer"
               >
                 {ISSUE_REASONS.map(r => (
                   <option key={r} value={r}>{r}</option>
@@ -909,142 +896,171 @@ export default function QuickIssueView({
                 value={note}
                 onChange={e => setNote(e.target.value)}
                 placeholder="เช่น กะดึก, ซ่อมบำรุงเครื่องจักร No.3, หรืองานทดสอบพิเศษ..."
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-900"
               />
             </div>
 
-            {/* 5. Hero Action Button */}
+            {/* 5. Master Action Button */}
             <div className="pt-2">
               <button
                 type="submit"
                 disabled={isSubmitting || isOutOfStock}
-                className="w-full bg-slate-950 hover:bg-slate-900 text-white rounded-2xl py-4 font-semibold text-base shadow-xl shadow-slate-900/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                className="w-full bg-slate-950 hover:bg-slate-900 text-white py-3.5 rounded-2xl font-semibold text-xs shadow-lg shadow-slate-950/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <PackageCheck className="w-5 h-5 text-emerald-400" />
+                <PackageCheck className="w-4 h-4 text-emerald-400" />
                 <span>{isSubmitting ? 'กำลังบันทึกตัดยอด...' : `ยืนยันการเบิกจ่ายสินค้า (-OUT) สู่ ${productionUnit}`}</span>
               </button>
             </div>
           </form>
         </div>
 
-        {/* ── Right Column: Product Snapshot & Recent Logs (5 cols = 40%) ── */}
-        <div className="lg:col-span-5 space-y-6">
-          
-          {/* Card 1: Bento Card - Selected Product Inventory Snapshot */}
-          {selectedProduct && (
-            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
-              <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-800">
-                  <Boxes className="w-4 h-4 text-indigo-600" />
-                  <span>ข้อมูลสต็อกสินค้า</span>
+        {/* ── Right Column: Live Stock Impact Inspector (Single Bento Card) ── */}
+        <div className="lg:col-span-5">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 sm:p-6 space-y-4">
+            
+            {/* ส่วนบน: รหัส SKU Badge Monospace + ชื่ออะไหล่ + ป้ายตำแหน่งจัดเก็บ */}
+            {selectedProduct ? (
+              <div className="space-y-2 pb-4 border-b border-slate-100">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold bg-slate-900 text-white px-2.5 py-0.5 rounded-lg shadow-2xs">
+                      {selectedProduct.code}
+                    </span>
+                    <span className="text-[11px] font-medium text-slate-500 bg-slate-100/90 px-2 py-0.5 rounded-md border border-slate-200/50 flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-slate-400" />
+                      <span>{selectedProduct.locationName || 'คลังหลัก'}</span>
+                    </span>
+                  </div>
+                  {rate > 1 && (
+                    <span className="text-[10px] font-mono text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
+                      1 {pUnit} = {rate} {sUnit}
+                    </span>
+                  )}
                 </div>
-                <span className="font-mono text-[11px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">
-                  {selectedProduct.code}
-                </span>
-              </div>
 
-              <div>
-                <h4 className="font-semibold text-sm text-slate-900 leading-snug">
+                <h3 className="font-bold text-sm sm:text-base text-slate-900 leading-snug">
                   {selectedProduct.name}
-                </h4>
-
-                {/* 2-Column Pastel Bento Metrics */}
-                <div className="mt-3.5 grid grid-cols-2 gap-3 text-xs">
-                  <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-100">
-                    <span className="text-slate-500 block text-[11px]">คงเหลือปัจจุบัน</span>
-                    <span className="text-2xl font-bold text-slate-900 font-mono mt-1 block">
-                      {Number(currentBalance).toLocaleString()} <span className="text-xs font-normal text-slate-400 font-sans">{sUnit}</span>
-                    </span>
-                  </div>
-                  <div className="p-4 bg-amber-50/40 rounded-2xl border border-amber-100/60">
-                    <span className="text-amber-800 block text-[11px]">จุดสั่งซื้อ ROP</span>
-                    <span className="text-2xl font-bold text-amber-800 font-mono mt-1 block">
-                      {Number(reorderPoint).toLocaleString()} <span className="text-xs font-normal text-amber-600 font-sans">{sUnit}</span>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Stock Level Progress Indicator */}
-                <div className="mt-4 space-y-1.5">
-                  <div className="flex justify-between text-[11px] text-slate-500 font-medium">
-                    <span>ระดับสต็อก</span>
-                    <span className={currentBalance <= reorderPoint ? 'text-amber-700 font-medium' : 'text-emerald-700 font-medium'}>
-                      {currentBalance <= reorderPoint ? 'แตะจุดสั่งซื้อ (Low Stock)' : 'พร้อมใช้งานปกติ'}
-                    </span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        currentBalance <= reorderPoint ? 'bg-amber-500' : 'bg-emerald-500'
-                      }`}
-                      style={{ width: `${Math.min(100, Math.max(8, (currentBalance / Math.max(currentBalance, reorderPoint * 2)) * 100))}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Card 2: Bento Card - Recent Issue Activity Log */}
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-                <History className="w-4 h-4 text-slate-500" />
-                <span>ประวัติการเบิกจ่ายล่าสุด</span>
-              </span>
-              <span className="text-[11px] text-slate-400 font-normal">ล่าสุด {recentIssueLogs.length} รายการ</span>
-            </div>
-
-            {recentIssueLogs.length > 0 ? (
-              <div className="divide-y divide-slate-100/80">
-                {recentIssueLogs.map(log => {
-                  const logUnit = getLogUnit(log);
-                  const unitConf = usageUnitConfigMap[logUnit] || { color: 'bg-slate-100 text-slate-600 border-slate-200' };
-                  return (
-                    <div 
-                      key={log.id} 
-                      className="py-3 first:pt-0 last:pb-0 flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="min-w-0 space-y-1 flex-1">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${unitConf.color}`}>
-                            {logUnit}
-                          </span>
-                          <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                            {log.productCode}
-                          </span>
-                          <span className="font-medium text-slate-800 truncate block text-xs" title={log.productCode}>
-                            {products.find(p => p.id === log.productId || p.code === log.productCode)?.name || log.productCode}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 truncate leading-relaxed">
-                          {log.note || 'เบิกใช้งาน'}
-                        </p>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                          <span>{log.date}</span>
-                          <span>•</span>
-                          <span>{log.user || 'ผู้เบิก'}</span>
-                        </div>
-                      </div>
-
-                      <div className="text-right shrink-0">
-                        <span className="font-mono font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md text-xs">
-                          -{log.qty} {products.find(p => p.id === log.productId || p.code === log.productCode)?.stockUnit || products.find(p => p.id === log.productId || p.code === log.productCode)?.unit || log.unit || 'ชิ้น'}
-                        </span>
-                        <span className="block text-[10px] text-slate-400 mt-1 font-mono">คงเหลือ: {log.balance}</span>
-                      </div>
-                    </div>
-                  );
-                })}
+                </h3>
               </div>
             ) : (
-              <div className="py-8 text-center text-xs text-slate-400 space-y-1.5">
-                <PackageCheck className="w-7 h-7 mx-auto text-slate-300 stroke-[1.5]" />
-                <p className="font-normal text-slate-400">ยังไม่มีประวัติการเบิกจ่ายสินค้า</p>
+              <div className="pb-4 border-b border-slate-100 text-slate-400 text-xs italic">
+                กรุณาเลือกสินค้าเพื่อดูข้อมูลสต็อก
               </div>
             )}
-          </div>
 
+            {/* ส่วนกลาง (Stock Impact Metric) */}
+            {selectedProduct && (
+              <div className="space-y-3 pb-4 border-b border-slate-100">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-medium">จำลองผลกระทบสต็อก</span>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    ROP: {Number(reorderPoint).toLocaleString()} {sUnit}
+                  </span>
+                </div>
+
+                {/* การแสดงผลเปรียบเทียบแบบกระชับ: คงเหลือ X -> หลังเบิก Y */}
+                <div className="bg-slate-50/80 rounded-2xl p-3.5 border border-slate-100/90 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider block">คงเหลือ</span>
+                    <p className="font-mono text-base font-bold text-slate-800 tabular-nums mt-0.5">
+                      {Number(currentBalance).toLocaleString()} <span className="text-xs font-normal text-slate-500">{sUnit}</span>
+                    </p>
+                  </div>
+
+                  <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" />
+
+                  <div className="text-right">
+                    <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider block">หลังเบิก</span>
+                    <p className={`font-mono text-base font-bold tabular-nums mt-0.5 ${
+                      postIssueBalance < 0 
+                        ? 'text-rose-600' 
+                        : postIssueBalance <= reorderPoint 
+                          ? 'text-amber-600' 
+                          : 'text-emerald-600'
+                    }`}>
+                      {Number(postIssueBalance).toLocaleString(undefined, { maximumFractionDigits: 4 })} <span className="text-xs font-normal text-slate-500">{sUnit}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* หลอดความจุสต็อก: ความสูงมินิมอล h-1.5 rounded-full bg-slate-100 พร้อมแถบสีแจ้งเตือน */}
+                <div className="space-y-1.5">
+                  <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        postIssueBalance < 0 
+                          ? 'bg-rose-500' 
+                          : postIssueBalance <= reorderPoint 
+                            ? 'bg-amber-500' 
+                            : 'bg-emerald-500'
+                      }`}
+                      style={{ 
+                        width: `${currentBalance > 0 ? Math.max(4, Math.min(100, (postIssueBalance / Math.max(currentBalance, reorderPoint * 2)) * 100)) : 0}%` 
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                    <span>
+                      {postIssueBalance < 0 
+                        ? 'สินค้าไม่พอเบิก' 
+                        : postIssueBalance <= reorderPoint 
+                          ? 'สต็อกแตะจุดสั่งซื้อ ROP' 
+                          : 'ระดับสต็อกเพียงพอ'}
+                    </span>
+                    <span className="font-mono">
+                      -{qtyNumber} {sUnit}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ส่วนล่าง: ประวัติการเบิกล่าสุด หากยังไม่มี ให้แสดงเป็นข้อความบรรทัดเดียวสีเทาจาง */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                  <History className="w-3.5 h-3.5 text-slate-400" />
+                  <span>ประวัติการเบิกล่าสุด</span>
+                </span>
+                {recentIssueLogs.length > 0 && (
+                  <span className="text-[10px] text-slate-400 font-mono">{recentIssueLogs.length} รายการ</span>
+                )}
+              </div>
+
+              {recentIssueLogs.length > 0 ? (
+                <div className="divide-y divide-slate-100">
+                  {recentIssueLogs.slice(0, 4).map(log => {
+                    const logUnit = getLogUnit(log);
+                    return (
+                      <div key={log.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-2.5 text-xs">
+                        <div className="min-w-0 flex-1 space-y-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700">
+                              {logUnit}
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-400">
+                              {log.productCode}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            {log.note || 'เบิกใช้งาน'} • {log.date}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="font-mono font-bold text-slate-800 bg-slate-50 border border-slate-200/60 px-2 py-0.5 rounded-lg text-xs">
+                            -{log.qty}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 italic py-1">ยังไม่มีประวัติการเบิกจ่ายสินค้า</p>
+              )}
+            </div>
+
+          </div>
         </div>
 
       </div>

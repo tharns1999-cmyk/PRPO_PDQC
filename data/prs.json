@@ -44,7 +44,11 @@
       "grandTotal": 14500
     },
     "totalAmount": 14500,
+<<<<<<< HEAD
     "status": "IN_PROGRESS_ONLINE",
+=======
+    "status": "SUBMITTED",
+>>>>>>> 632164c142cedbb5811ba33a8acb71ff0076bbdf
     "requestedBy": "คุณวิชัย (PD)",
     "requestedByRole": "Requester (PD)",
     "requestedDept": "PD",
@@ -58,6 +62,7 @@
         "role": "Requester (PD)",
         "timestamp": "10/9/2569 05:48:15",
         "note": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
+<<<<<<< HEAD
       },
       {
         "action": "ตรวจสอบแล้ว (Level 1 - Asst Mgr)",
@@ -72,6 +77,8 @@
         "role": "Plant Manager",
         "timestamp": "10/9/2569 08:30:09",
         "note": "เปลี่ยนสถานะเป็น อนุมัติแล้ว (สร้าง PO)"
+=======
+>>>>>>> 632164c142cedbb5811ba33a8acb71ff0076bbdf
       }
     ]
   }
