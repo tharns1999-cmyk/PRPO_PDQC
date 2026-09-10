@@ -18,7 +18,7 @@
     "conversionRate": 200,
     "unit": "ลิตร",
     "price": 14500,
-    "stockBalance": 2400,
+    "stockBalance": 2600,
     "reorderPoint": 1000,
     "leadTimeDays": 5,
     "supplierId": null,

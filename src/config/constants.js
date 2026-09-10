@@ -235,7 +235,7 @@ export function resolveUserPermissions(user) {
     canReview: level >= 2,
     canViewBudget: level >= 2,
     canViewBudgetMenu: level >= 2,
-    canViewAllDepts: level >= 2 || dept === 'ALL',
+    canViewAllDepts: level >= 99 || level >= 3 || dept === 'ALL' || (Array.isArray(user.assignedDepartments) && (user.assignedDepartments.includes('ALL') || user.assignedDepartments.includes('*'))),
 
     // ─── LEVEL 3+ PERMISSIONS (ผู้จัดการ / ผู้อนุมัติขั้นสุดท้าย) ───
     canFinalApprove: level >= 3,
@@ -246,11 +246,87 @@ export function resolveUserPermissions(user) {
   };
 }
 
-// ─── DEPARTMENTS ──────────────────────────────────────────────────────────────
-export const DEPARTMENTS = {
-  PD:   { id: 'PD',   prefix: 'PD',   name: 'ฝ่ายผลิต (Production)',            monthlyBudget: 150000 },
-  QC:   { id: 'QC',   prefix: 'QC',   name: 'ฝ่ายควบคุมคุณภาพ (QC/R&D)',        monthlyBudget: 80000  },
-};
+// ─── INITIAL DEPARTMENTS MASTER DATA (PD, QC, WH, PUR, ENG) ───────────────────
+export const INITIAL_DEPARTMENTS = [
+  {
+    id: 'DEPT-PD',
+    code: 'PD',
+    name: 'ฝ่ายผลิต',
+    nameEn: 'Production',
+    prefix: 'PD',
+    description: 'รับผิดชอบกระบวนการแปรรูป ควบคุมการผลิต และดูแลไลน์ผลิตสินค้า',
+    monthlyBudget: 250000,
+    isActive: true,
+    color: 'blue',
+    managerName: 'คุณประเสริฐ ยิ่งยง',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'DEPT-QC',
+    code: 'QC',
+    name: 'ฝ่ายควบคุมคุณภาพ',
+    nameEn: 'Quality Control & Lab',
+    prefix: 'QC',
+    description: 'ตรวจสอบคุณภาพ วัตถุดิบ สารเคมี บรรจุภัณฑ์ และงานแล็บวิเคราะห์',
+    monthlyBudget: 150000,
+    isActive: true,
+    color: 'amber',
+    managerName: 'ดร. กรรณิการ์ จิตเจริญ',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'DEPT-WH',
+    code: 'WH',
+    name: 'ฝ่ายคลังสินค้า',
+    nameEn: 'Warehouse & Inventory',
+    prefix: 'WH',
+    description: 'บริหารคลังจัดเก็บสินค้า วัตถุดิบ ชิ้นส่วน และตรวจรับกระจายสต็อก',
+    monthlyBudget: 120000,
+    isActive: true,
+    color: 'emerald',
+    managerName: 'คุณสมคิด คลังทอง',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'DEPT-PUR',
+    code: 'PUR',
+    name: 'ฝ่ายจัดซื้อ',
+    nameEn: 'Procurement & Sourcing',
+    prefix: 'PUR',
+    description: 'จัดหาผู้จัดจำหน่าย เปรียบเทียบราคา จัดซื้อพัสดุและอุปกรณ์',
+    monthlyBudget: 100000,
+    isActive: true,
+    color: 'purple',
+    managerName: 'คุณสุดา จัดหาดี',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'DEPT-ENG',
+    code: 'ENG',
+    name: 'ฝ่ายวิศวกรรมและซ่อมบำรุง',
+    nameEn: 'Engineering & Maintenance',
+    prefix: 'ENG',
+    description: 'ดูแลรักษาเครื่องจักร ระบบสาธารณูปโภค และงานซ่อมบำรุงโรงงาน',
+    monthlyBudget: 180000,
+    isActive: true,
+    color: 'cyan',
+    managerName: 'วิศวกร ช่างทอง',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'
+  }
+];
+
+export const DEPARTMENTS = INITIAL_DEPARTMENTS.reduce((acc, d) => {
+  acc[d.code] = { id: d.code, prefix: d.prefix, name: `${d.name} (${d.code})`, monthlyBudget: d.monthlyBudget };
+  return acc;
+}, {
+  PD: { id: 'PD', prefix: 'PD', name: 'ฝ่ายผลิต (Production)', monthlyBudget: 250000 },
+  QC: { id: 'QC', prefix: 'QC', name: 'ฝ่ายควบคุมคุณภาพ (QC/R&D)', monthlyBudget: 150000 },
+});
 
 // ─── PR STATUS ────────────────────────────────────────────────────────────────
 // Workflow: DRAFT → SUBMITTED → REVIEWED → APPROVED → PO_ISSUED → IN_PROGRESS_ONLINE / CLOSED
@@ -357,6 +433,7 @@ export const STORAGE_KEYS = {
   VENDORS:             'prpo_vendors_data',
   STORAGE_LOCATIONS:   'prpo_storage_locations_data',
   USAGE_UNITS:         'prpo_usage_units_data',
+  DEPARTMENTS:         'prpo_departments_data',
   USERS:               'prpo_users_data',
   PRS:                 'prpo_prs_data',
   POS:                 'prpo_pos_data',

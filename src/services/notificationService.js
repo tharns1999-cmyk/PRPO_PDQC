@@ -127,6 +127,20 @@ export const NOTIFICATION_TYPES = {
 };
 
 export const notificationService = {
+  listeners: new Set(),
+
+  subscribe(callback) {
+    this.listeners.add(callback);
+    return () => this.listeners.delete(callback);
+  },
+
+  notify() {
+    const all = this.getAll();
+    this.listeners.forEach(cb => {
+      try { cb(all); } catch (e) { console.error(e); }
+    });
+  },
+
   // Read all notifications from local storage
   getAll() {
     try {
@@ -139,6 +153,7 @@ export const notificationService = {
 
   saveAll(notifications) {
     localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications));
+    this.notify();
   },
 
   // Helper to check if a notification is targeted for the current role
@@ -163,8 +178,17 @@ export const notificationService = {
         } else if (userLevel >= 3 && n.targetRoles.some(r => ['PLANT_MANAGER', 'APPROVER'].includes(r))) {
           roleMatches = true;
         } else if (userLevel === 1 && n.targetRoles.some(r => ['REQUESTER', 'REQUESTER_PD', 'REQUESTER_QC'].includes(r))) {
-          if (n.targetRoles.includes(`REQUESTER_${currentRole.department}`) || n.targetRoles.includes('REQUESTER')) {
+          // Match on unified REQUESTER role
+          if (n.targetRoles.includes('REQUESTER')) {
             roleMatches = true;
+          } else {
+            // Match on department-specific legacy roles
+            // Check user's assignedDepartments (new) or fallback to department field
+            const userDepts = Array.isArray(currentRole.assignedDepartments) && currentRole.assignedDepartments.length > 0
+              ? currentRole.assignedDepartments
+              : [currentRole.department || currentRole.primaryDepartment].filter(Boolean);
+            const deptMatch = userDepts.some(d => n.targetRoles.includes(`REQUESTER_${d}`));
+            if (deptMatch) roleMatches = true;
           }
         }
       }
@@ -192,43 +216,52 @@ export const notificationService = {
   },
 
   // Unread count
-  getUnreadCount(currentRole) {
+  getUnreadCountForRole(currentRole) {
     const list = this.getNotificationsForRole(currentRole);
-    return list.filter(n => !n.isRead).length;
+    return list.filter(n => !(n.isRead === true || n.read === true || n.status === 'read')).length;
   },
 
   // Mark a specific notification as read
-  markAsRead(id) {
+  async markAsRead(id) {
     const all = this.getAll();
-    const updated = all.map(n => n.id === id ? { ...n, isRead: true } : n);
+    const updated = all.map(n => (n.id === id || n._id === id) ? { ...n, isRead: true, read: true, status: 'read' } : n);
     this.saveAll(updated);
     try {
-      fetch(`http://localhost:3001/api/notifications/${id}`, {
+      await fetch(`http://localhost:3001/api/notifications/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isRead: true })
-      }).catch(() => {});
+        body: JSON.stringify({ isRead: true, read: true, status: 'read' })
+      });
     } catch (e) {}
     return updated;
   },
 
-  // Mark all notifications as read for role
-  markAllAsRead(currentRole) {
+  // Mark all notifications as read for role or specific item IDs
+  async markAllAsRead(currentRole, targetIds = null) {
     const all = this.getAll();
+    const idSet = Array.isArray(targetIds) && targetIds.length > 0 ? new Set(targetIds) : null;
+
     const updated = all.map(n => {
-      if (this.isNotificationTarget(n, currentRole)) {
-        return { ...n, isRead: true };
+      const shouldMark = idSet
+        ? idSet.has(n.id) || idSet.has(n._id)
+        : (!currentRole || this.isNotificationTarget(n, currentRole));
+
+      if (shouldMark) {
+        return { ...n, isRead: true, read: true, status: 'read' };
       }
       return n;
     });
+
     this.saveAll(updated);
+
     try {
-      fetch('http://localhost:3001/api/notifications', {
+      await fetch('http://localhost:3001/api/notifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
-      }).catch(() => {});
+      });
     } catch (e) {}
+
     return updated;
   },
 

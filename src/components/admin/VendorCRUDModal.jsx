@@ -3,15 +3,31 @@ import { createPortal } from 'react-dom';
 import { apiService } from '../../services/apiService';
 import { storageService } from '../../services/storageService';
 import { modalService } from '../../services/modalService';
+import { useAppContext } from '../../context/AppContext';
 import { 
   Store, X, Building2, Phone, User, FileText, 
   MapPin, Hash, Check, Sparkles, AlertTriangle 
 } from 'lucide-react';
 
-export default function VendorCRUDModal({ editVendor: propEditVendor, vendor, vendors = [], currentRole, onClose, onRefresh }) {
+export default function VendorCRUDModal({ 
+  editVendor: propEditVendor, 
+  vendor, 
+  vendors = [], 
+  departments: propDepartments,
+  currentRole, 
+  onClose, 
+  onRefresh 
+}) {
+  const context = useAppContext();
+  const rawDepartments = propDepartments || context?.departments;
+  const deptList = useMemo(() => {
+    const list = (rawDepartments && rawDepartments.length > 0) ? rawDepartments : (storageService.getDepartments?.() || []);
+    return (list || []).filter(d => d.status === 'active' || d.isActive !== false);
+  }, [rawDepartments]);
+
   const editVendor = propEditVendor || vendor;
-  const isSupervisor = !currentRole.canViewAllDepts;
-  const lockedDept = isSupervisor ? currentRole.department : null;
+  const isSupervisor = !currentRole?.canViewAllDepts;
+  const lockedDept = isSupervisor ? currentRole?.department : null;
   const [vendorCode, setVendorCode] = useState(editVendor?.code || '');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -34,6 +50,10 @@ export default function VendorCRUDModal({ editVendor: propEditVendor, vendor, ve
     setIsSaving(true);
     try {
       const formData = new FormData(e.target);
+      const formDept = formData.get('department');
+      const rawDept = lockedDept || formDept || 'ALL';
+      const department = (rawDept === 'BOTH' || !rawDept) ? 'ALL' : rawDept;
+
       const vendorObj = {
         id: editVendor?.id || '',
         code: (formData.get('code') || vendorCode)?.trim().toUpperCase(),
@@ -41,7 +61,7 @@ export default function VendorCRUDModal({ editVendor: propEditVendor, vendor, ve
         contactPerson: formData.get('contactPerson')?.trim(),
         phone: formData.get('phone')?.trim(),
         taxId: formData.get('taxId')?.trim(),
-        department: lockedDept || formData.get('department'),
+        department,
         address: formData.get('address')?.trim()
       };
 
@@ -56,7 +76,9 @@ export default function VendorCRUDModal({ editVendor: propEditVendor, vendor, ve
     }
   };
 
-  const dept = editVendor?.department || lockedDept || 'BOTH';
+  const rawCurrentDept = editVendor?.department || lockedDept || 'ALL';
+  const dept = (rawCurrentDept === 'BOTH' || !rawCurrentDept) ? 'ALL' : rawCurrentDept;
+  const deptObj = deptList.find(d => d.code === dept || d.id === dept);
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden">
@@ -74,7 +96,7 @@ export default function VendorCRUDModal({ editVendor: propEditVendor, vendor, ve
                   {editVendor ? 'แก้ไขข้อมูลผู้จัดจำหน่าย / คู่ค้า' : 'เพิ่มผู้จัดจำหน่ายใหม่'}
                 </h3>
                 <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                  {dept === 'BOTH' ? 'ใช้ร่วมกันทุกแผนก' : `แผนก ${dept}`}
+                  {dept === 'ALL' ? 'ใช้ร่วมกันทุกแผนก (ALL)' : (deptObj ? `${deptObj.name} (${deptObj.code})` : `แผนก ${dept}`)}
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-normal truncate mt-0.5">
@@ -140,11 +162,9 @@ export default function VendorCRUDModal({ editVendor: propEditVendor, vendor, ve
                     ขอบเขตแผนกที่ใช้ร่วม (Department Scope) <span className="text-rose-500">*</span>
                   </label>
                   {lockedDept ? (
-                    <div className={`h-11 border rounded-xl px-3.5 text-xs font-bold flex items-center gap-2 ${
-                      lockedDept === 'PD' ? 'bg-blue-50/80 border-blue-200 text-blue-800' : 'bg-amber-50/80 border-amber-200 text-amber-800'
-                    }`}>
+                    <div className="h-11 border border-indigo-200 bg-indigo-50/80 text-indigo-800 rounded-xl px-3.5 text-xs font-bold flex items-center gap-2">
                       <Building2 className="w-4 h-4 shrink-0" />
-                      <span>{lockedDept === 'PD' ? 'เฉพาะฝ่ายผลิต (PD)' : 'เฉพาะฝ่าย QC (QC)'}</span>
+                      <span>{deptObj ? `เฉพาะ${deptObj.name} (${deptObj.code})` : `เฉพาะแผนก ${lockedDept}`}</span>
                     </div>
                   ) : (
                     <div className="relative">
@@ -153,12 +173,15 @@ export default function VendorCRUDModal({ editVendor: propEditVendor, vendor, ve
                       </div>
                       <select
                         name="department"
-                        defaultValue={editVendor?.department || 'BOTH'}
+                        defaultValue={dept}
                         className="w-full h-11 pl-10 pr-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
                       >
-                        <option value="BOTH">ใช้ร่วมกันทุกแผนก (BOTH)</option>
-                        <option value="PD">เฉพาะฝ่ายผลิต (Production - PD)</option>
-                        <option value="QC">เฉพาะฝ่าย QC (Quality Control - QC)</option>
+                        <option value="ALL">ใช้ร่วมกันทุกแผนก (ALL)</option>
+                        {deptList.map(d => (
+                          <option key={d.code} value={d.code}>
+                            เฉพาะ{d.name} ({d.code})
+                          </option>
+                        ))}
                       </select>
                     </div>
                   )}

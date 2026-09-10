@@ -93,6 +93,21 @@ export const apiService = {
     }
     return storageService.getUsers();
   },
+  async getDepartments() {
+    try {
+      const res = await fetch('http://localhost:3001/api/departments');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          storageService.saveDepartments(data);
+          return data;
+        }
+      }
+    } catch (e) {
+      console.warn('[apiService] GET /api/departments fallback to storageService:', e.message);
+    }
+    return storageService.getDepartments();
+  },
   async getPRs() {
     try {
       const res = await fetch('http://localhost:3001/api/prs');
@@ -196,35 +211,82 @@ export const apiService = {
     return [];
   },
   
-  async updateBudget(department, newAmount, targetMonth = null) {
-    const budgets = await this.getBudgets();
-    if (!budgets[department]) budgets[department] = { monthlyBudget: 0, spent: 0, pending: 0, variance: 0, history: {} };
-    
-    budgets[department].monthlyBudget = newAmount;
-    
-    // Save to target month history to prevent changing past months
-    const today = new Date();
-    const monthKey = targetMonth || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-    if (!budgets[department].history) budgets[department].history = {};
-    budgets[department].history[monthKey] = newAmount;
-
+  async getBudgetTransactions() {
     try {
-      const res = await fetch('http://localhost:3001/api/budgets', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(budgets)
-      });
+      const res = await fetch('http://localhost:3001/api/budget-transactions');
       if (res.ok) {
-        const saved = await res.json();
-        storageService.saveBudgets(saved);
-        return saved[department] || budgets[department];
+        const data = await res.json();
+        storageService.saveBudgetTransactions(data);
+        return data;
       }
     } catch (e) {
-      console.warn('[apiService] PUT /api/budgets fallback to storageService:', e.message);
+      console.warn('[apiService] GET /api/budget-transactions fallback to storageService:', e.message);
+    }
+    return storageService.getBudgetTransactions();
+  },
+
+  async adjustBudget(params) {
+    try {
+      const res = await fetch('http://localhost:3001/api/budgets/adjust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.budgets) storageService.saveBudgets(data.budgets);
+        if (data.transactions) storageService.saveBudgetTransactions(data.transactions);
+        return data;
+      }
+    } catch (e) {
+      console.warn('[apiService] POST /api/budgets/adjust fallback to storageService:', e.message);
     }
 
+    // Local fallback
+    const { dept, action, newAmount, previousAmount, delta, reason, actor, targetMonth } = params;
+    const budgets = storageService.getBudgets();
+    if (!budgets[dept]) budgets[dept] = { monthlyBudget: 0, spent: 0, pending: 0, variance: 0, history: {}, historicalSpent: {} };
+    const prev = previousAmount !== undefined ? Number(previousAmount) : (Number(budgets[dept].monthlyBudget) || 0);
+    const finalAmount = action === 'TOP_UP' ? prev + Number(delta || 0) : Number(newAmount ?? prev);
+    budgets[dept].monthlyBudget = finalAmount;
+    budgets[dept].variance = finalAmount - (Number(budgets[dept].spent) || 0);
+    const today = new Date();
+    const monthKey = targetMonth || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    if (!budgets[dept].history) budgets[dept].history = {};
+    budgets[dept].history[monthKey] = finalAmount;
     storageService.saveBudgets(budgets);
-    return budgets[department];
+
+    const newTx = {
+      id: `BTX-${Date.now()}`,
+      date: today.toISOString().replace('T', ' ').slice(0, 19),
+      createdAt: today.toISOString(),
+      dept,
+      type: action || 'ADJUST',
+      typeLabel: action === 'SET_BUDGET' ? 'กำหนดงบประมาณประจำเดือน' : action === 'TOP_UP' ? 'เติมงบประมาณพิเศษ (Top-up)' : 'ปรับปรุงงบประมาณ',
+      previousAmount: prev,
+      newAmount: finalAmount,
+      amount: finalAmount - prev,
+      actor: actor || 'Staff',
+      note: reason || 'ปรับปรุงงบประมาณ',
+      targetMonth: monthKey
+    };
+    storageService.appendBudgetTransaction(newTx);
+    return { success: true, budget: budgets[dept], transaction: newTx, budgets };
+  },
+
+  async updateBudget(department, newAmount, targetMonth = null, actor = null, reason = null) {
+    const budgets = await this.getBudgets();
+    const prevAmount = budgets[department]?.monthlyBudget || 0;
+    return this.adjustBudget({
+      dept: department,
+      action: 'SET_BUDGET',
+      newAmount,
+      previousAmount: prevAmount,
+      delta: Number(newAmount) - Number(prevAmount),
+      reason: reason || 'ปรับยอดงบประมาณประจำเดือน',
+      actor: actor || 'ผู้ดูแลระบบ',
+      targetMonth
+    });
   },
 
   // --- Budget & Over-Budget Check ---
@@ -935,6 +997,84 @@ export const apiService = {
         docNo: target.id,
         docType: 'USER',
         details: `ลบผู้ใช้งาน "${target.name}" (${target.username}) ออกจากระบบ`
+      });
+    }
+
+    return true;
+  },
+
+  async saveDepartments(departments) {
+    storageService.saveDepartments(departments);
+    try {
+      await fetch('http://localhost:3001/api/departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(departments)
+      });
+    } catch (e) {}
+  },
+
+  async saveDepartment(deptPayload, actor = null) {
+    const isUpdate = Boolean(deptPayload.id);
+    try {
+      const url = isUpdate 
+        ? `http://localhost:3001/api/departments/${deptPayload.id}` 
+        : 'http://localhost:3001/api/departments';
+      const method = isUpdate ? 'PUT' : 'POST';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(deptPayload)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        const depts = storageService.getDepartments();
+        const updated = isUpdate ? depts.map(d => d.id === saved.id ? saved : d) : [...depts, saved];
+        storageService.saveDepartments(updated);
+
+        auditService.logAction({
+          action: isUpdate ? 'DEPARTMENT_UPDATED' : 'DEPARTMENT_CREATED',
+          actor: actor || 'Admin',
+          department: saved.code,
+          docNo: saved.id,
+          docType: 'DEPARTMENT',
+          details: `${isUpdate ? 'แก้ไขข้อมูลแผนก' : 'เพิ่มแผนกใหม่'} "${saved.name}" (${saved.code}) สถานะ: ${saved.isActive ? 'เปิดใช้งาน' : 'ระงับการใช้งาน'}`
+        });
+
+        return saved;
+      }
+    } catch (e) {
+      console.warn('[apiService] saveDepartment API fallback:', e.message);
+    }
+
+    const saved = storageService.saveDepartment(deptPayload);
+    auditService.logAction({
+      action: isUpdate ? 'DEPARTMENT_UPDATED' : 'DEPARTMENT_CREATED',
+      actor: actor || 'Admin',
+      department: saved.code,
+      docNo: saved.id,
+      docType: 'DEPARTMENT',
+      details: `${isUpdate ? 'แก้ไขข้อมูลแผนก' : 'เพิ่มแผนกใหม่'} "${saved.name}" (${saved.code}) สถานะ: ${saved.isActive ? 'เปิดใช้งาน' : 'ระงับการใช้งาน'}`
+    });
+    return saved;
+  },
+
+  async deleteDepartment(deptId, actor = null) {
+    try {
+      await fetch(`http://localhost:3001/api/departments/${deptId}`, { method: 'DELETE' });
+    } catch (e) {}
+    const depts = storageService.getDepartments();
+    const target = depts.find(d => d.id === deptId || d.code === deptId);
+    storageService.deleteDepartment(deptId);
+
+    if (target) {
+      auditService.logAction({
+        action: 'DEPARTMENT_DELETED',
+        actor: actor || 'Admin',
+        department: target.code,
+        docNo: target.id,
+        docType: 'DEPARTMENT',
+        details: `ลบแผนก "${target.name}" (${target.code}) ออกจากระบบ Master Data`
       });
     }
 

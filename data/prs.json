@@ -1,5 +1,138 @@
 [
   {
+    "id": "PR-1789040675492-2BP",
+    "prNo": "PD001/2026",
+    "department": "PD",
+    "source": "FACTORY",
+    "purchaseChannel": "SELF",
+    "specUrl": "",
+    "attachments": [],
+    "note": "",
+    "items": [
+      {
+        "productId": "PROD-PD-1789017724471",
+        "code": "  itm-001  ",
+        "name": "ถุงมือยางใหม่",
+        "purchaseUnit": "ชิ้น",
+        "stockUnit": "ชิ้น",
+        "conversionRate": 1,
+        "purchaseQty": 16,
+        "stockQty": 16,
+        "qty": 16,
+        "unit": "ชิ้น",
+        "price": 10554,
+        "discountPercent": 0,
+        "discountAmount": 0,
+        "onlineUrl": "",
+        "total": 168864,
+        "source": "FACTORY",
+        "isCustom": false,
+        "isUnitOverridden": false
+      },
+      {
+        "productId": "PROD-PD-005",
+        "code": "PD-CLN-IND",
+        "name": "น้ำยาทำความสะอาดคราบน้ำมันเครื่องจักร (Heavy Duty Degreaser Cleaner)",
+        "purchaseUnit": "แกลลอน (20L)",
+        "stockUnit": "ลิตร",
+        "conversionRate": 20,
+        "purchaseQty": 1,
+        "stockQty": 20,
+        "qty": 1,
+        "unit": "แกลลอน (20L)",
+        "price": 1850,
+        "discountPercent": 0,
+        "discountAmount": 0,
+        "total": 1850,
+        "source": "FACTORY",
+        "isCustom": false,
+        "isUnitOverridden": false
+      },
+      {
+        "productId": "PROD-PD-009",
+        "code": "PD-BRG-620",
+        "name": "ตลับลูกปืนเม็ดกลมร่องลึก (Deep Groove Ball Bearing 6205-2RS)",
+        "purchaseUnit": "ตลับ",
+        "stockUnit": "ตลับ",
+        "conversionRate": 1,
+        "purchaseQty": 1,
+        "stockQty": 1,
+        "qty": 1,
+        "unit": "ตลับ",
+        "price": 280,
+        "discountPercent": 0,
+        "discountAmount": 0,
+        "total": 280,
+        "source": "FACTORY",
+        "isCustom": false,
+        "isUnitOverridden": false
+      }
+    ],
+    "financials": {
+      "subtotal": 170994,
+      "itemDiscountTotal": 0,
+      "combinedDiscountType": "percent",
+      "combinedDiscountValue": 0,
+      "combinedDiscountAmount": 0,
+      "totalDiscount": 0,
+      "vatMode": "NONE",
+      "vatAmount": 0,
+      "roundingAdj": 0,
+      "shippingCost": 0,
+      "grandTotal": 170994
+    },
+    "totalAmount": 170994,
+    "status": "CANCELLED",
+    "requestedBy": "คุณวิชัย (PD)",
+    "requestedByRole": "Requester (PD)",
+    "requestedDept": "PD",
+    "createdAt": "10/9/2569 18:44:35",
+    "updatedAt": "10/9/2569 18:44:35",
+    "memo": {
+      "applicantDept": "PD",
+      "applicantName1": "คุณวิชัย (PD)",
+      "applicantName2": "-",
+      "date": "2026-09-10",
+      "approverManager": "-",
+      "approverConsultant": "-",
+      "approverGM": "คุณประเสริฐ",
+      "approverCFO": "-",
+      "approverBoD": "-",
+      "subject": "",
+      "purpose": "",
+      "background": "",
+      "estimatedCost": 170994,
+      "paymentTerm": "เครดิต 30 วัน",
+      "classification": "EXPENSE",
+      "remarkAttachedFile": "มีเอกสารแนบ",
+      "conclusion": "APPROVED",
+      "conclusionReason": ""
+    },
+    "activityLog": [
+      {
+        "action": "สร้างแบบร่าง PR (Draft Created)",
+        "user": "คุณวิชัย (PD)",
+        "role": "Requester (PD)",
+        "timestamp": "10/9/2569 18:44:35",
+        "note": "บันทึกแบบร่าง"
+      },
+      {
+        "action": "แก้ไขและบันทึกแบบร่าง (Draft Updated)",
+        "user": "คุณวิชัย (PD)",
+        "role": "Requester (PD)",
+        "timestamp": "10/9/2569 18:52:33",
+        "note": "ผู้ขอซื้อแก้ไขข้อมูลและบันทึกแบบร่าง"
+      },
+      {
+        "action": "ยกเลิกใบขอซื้อ (Cancelled PR)",
+        "user": "คุณวิชัย (PD)",
+        "role": "Requester (PD)",
+        "timestamp": "10/9/2569 18:57:29",
+        "note": "เหตุผลการยกเลิก: าสวเาดหเวสำาพเาพวเสาำวเสาหวสดเากวสเากวสาเวสเากวดสเากวสเวกสเากวสดเากวสเากวสเากสวดเกวเสาเด"
+      }
+    ]
+  },
+  {
     "id": "PR-1788994095116-HAA",
     "prNo": "PD002/2026",
     "department": "PD",
@@ -44,11 +177,9 @@
       "grandTotal": 14500
     },
     "totalAmount": 14500,
-<<<<<<< HEAD
-    "status": "IN_PROGRESS_ONLINE",
-=======
-    "status": "SUBMITTED",
->>>>>>> 632164c142cedbb5811ba33a8acb71ff0076bbdf
+    "status": "completed",
+    "poNumber": "PO-PD-2026-001",
+    "poNo": "PO-PD-2026-001",
     "requestedBy": "คุณวิชัย (PD)",
     "requestedByRole": "Requester (PD)",
     "requestedDept": "PD",
@@ -62,7 +193,6 @@
         "role": "Requester (PD)",
         "timestamp": "10/9/2569 05:48:15",
         "note": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
-<<<<<<< HEAD
       },
       {
         "action": "ตรวจสอบแล้ว (Level 1 - Asst Mgr)",
@@ -77,8 +207,13 @@
         "role": "Plant Manager",
         "timestamp": "10/9/2569 08:30:09",
         "note": "เปลี่ยนสถานะเป็น อนุมัติแล้ว (สร้าง PO)"
-=======
->>>>>>> 632164c142cedbb5811ba33a8acb71ff0076bbdf
+      },
+      {
+        "action": "ตรวจรับครบและปิด PO (Goods Received – Closed)",
+        "user": "คุณวิชัย (PD)",
+        "role": "Requester (PD)",
+        "timestamp": "10/9/2569 13:00:00",
+        "note": "PO PO-PD-2026-001 รับสินค้าครบแล้ว ปิดใบ PR อัตโนมัติ"
       }
     ]
   }

@@ -10,6 +10,7 @@ import { useAppContext } from '../context/AppContext';
 export default function MainLayout() {
   const {
     currentRole,
+    currentUser,
     prs,
     pos,
     isMobileSidebarOpen,
@@ -27,10 +28,11 @@ export default function MainLayout() {
   } = useAppContext();
 
   return (
-    <div className="min-h-screen flex bg-slate-50 font-sans text-slate-900">
+    <div className="min-h-screen flex flex-row overflow-hidden bg-slate-50 font-sans text-slate-900">
       {/* ── Fixed Sidebar Menu (Desktop) & Overlay Drawer (Mobile) with integrated Notifications & Profile ── */}
       <Sidebar
         currentRole={currentRole}
+        currentUser={currentUser}
         prs={prs}
         pos={pos}
         isMobileOpen={isMobileSidebarOpen}
@@ -42,35 +44,18 @@ export default function MainLayout() {
         onRefresh={refreshData}
       />
 
-      {/* ── Main Content Area (Clean layout starting from top edge) ── */}
-      <div className="flex-1 flex flex-col min-w-0 md:ml-64 transition-all duration-300">
-        
-        {/* Mobile Header Bar (Compact & Minimal - Only shown on small screens) */}
-        <header className="md:hidden sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-4 py-3 flex items-center justify-between no-print shadow-xs">
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setIsMobileSidebarOpen(true)}
-              className="p-2 -ml-1 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer active:scale-95"
-              aria-label="Open Navigation Menu"
-              title="เปิดเมนูการใช้งาน"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <div className="font-bold text-slate-900 text-sm tracking-tight truncate">
-              PR/PO & Inventory
-            </div>
-          </div>
-          {currentRole?.department && currentRole.department !== 'ALL' && (
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-              currentRole.department === 'PD' 
-                ? 'bg-blue-50 text-blue-700 border-blue-200/70' 
-                : 'bg-amber-50 text-amber-700 border-amber-200/70'
-            }`}>
-              {currentRole.department}
-            </span>
-          )}
-        </header>
+      {/* Floating Mobile Menu Button (Minimal non-intrusive button without white header strip) */}
+      <button 
+        onClick={() => setIsMobileSidebarOpen(true)}
+        className="md:hidden fixed top-3 left-3 z-30 p-2 text-slate-700 bg-white/90 backdrop-blur-md hover:text-indigo-600 hover:bg-white rounded-xl transition-all cursor-pointer shadow-sm border border-slate-200/80 active:scale-95 no-print"
+        aria-label="Open Navigation Menu"
+        title="เปิดเมนูการใช้งาน"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
 
+      {/* ── Main Content Area (Clean layout starting directly from top edge) ── */}
+      <div className="flex-1 flex flex-col min-w-0 md:ml-64 transition-all duration-300">
         {/* Dynamic Content View Area with maximized vertical space */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 w-full max-w-full mx-auto">
           <Outlet />

@@ -35,14 +35,21 @@ export const DEFAULT_USER = DEFAULT_EMPLOYEE_ACCOUNTS[0];
 const getInitialUserSession = () => {
   const existing = authService.getCurrentSession();
   if (existing) {
-    return existing;
+    const isAdmin = existing.roleId === 'ADMIN' || existing.level >= 99 || existing.username === 'admin' || existing.role === 'admin';
+    return {
+      ...existing,
+      role: isAdmin ? 'admin' : (typeof existing.role === 'string' ? existing.role : (existing.roleId || 'user').toLowerCase()),
+      rolePermissions: typeof existing.role === 'object' ? existing.role : resolveUserPermissions(existing)
+    };
   }
   // Auto-Login fallback: Default User enriched with permissions
   const permissions = resolveUserPermissions(DEFAULT_USER);
+  const isAdmin = DEFAULT_USER.roleId === 'ADMIN' || DEFAULT_USER.level >= 99 || DEFAULT_USER.username === 'admin';
   const sessionData = {
     ...DEFAULT_USER,
     ...permissions,
-    role: permissions
+    role: isAdmin ? 'admin' : (DEFAULT_USER.roleId || 'user').toLowerCase(),
+    rolePermissions: permissions
   };
   try {
     localStorage.setItem('prpo_auth_session', JSON.stringify(sessionData));
@@ -74,11 +81,13 @@ export function AppProvider({ children }) {
   const [vendors, setVendors] = useState([]);
   const [storageLocations, setStorageLocations] = useState([]);
   const [usageUnits, setUsageUnits] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [prs, setPRs] = useState([]);
   const [pos, setPOs] = useState([]);
   const [stockLogs, setStockLogs] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [budgetSummary, setBudgetSummary] = useState(null);
+  const [budgetTransactions, setBudgetTransactions] = useState([]);
 
   // 3. Selection, Modal & Draft States
   const [preselectedProduct, setPreselectedProduct] = useState(null);
@@ -102,7 +111,9 @@ export function AppProvider({ children }) {
         notisData,
         vendorsData,
         unitsData,
-        usersData
+        usersData,
+        deptsData,
+        txsData
       ] = await Promise.all([
         apiService.getProducts(),
         apiService.getPRs(),
@@ -113,7 +124,9 @@ export function AppProvider({ children }) {
         apiService.getNotifications(),
         apiService.getVendors(),
         apiService.getUsageUnits(),
-        apiService.getUsers()
+        apiService.getUsers(),
+        apiService.getDepartments(),
+        apiService.getBudgetTransactions()
       ]);
 
       if (Array.isArray(prodsData)) {
@@ -128,6 +141,12 @@ export function AppProvider({ children }) {
       if (Array.isArray(unitsData)) {
         setUsageUnits(unitsData);
       }
+      if (Array.isArray(deptsData)) {
+        setDepartments(deptsData);
+      }
+      if (Array.isArray(txsData)) {
+        setBudgetTransactions(txsData);
+      }
       if (Array.isArray(usersData) && usersData.length > 0) {
         setUsers(usersData);
         setCurrentUser(prevUser => {
@@ -135,7 +154,14 @@ export function AppProvider({ children }) {
           const fresh = usersData.find(u => u.id === prevUser.id || u.username === prevUser.username);
           if (fresh) {
             const permissions = resolveUserPermissions(fresh);
-            const updatedSession = { ...prevUser, ...fresh, ...permissions, role: permissions };
+            const isAdmin = fresh.roleId === 'ADMIN' || fresh.level >= 99 || fresh.username === 'admin';
+            const updatedSession = { 
+              ...prevUser, 
+              ...fresh, 
+              ...permissions, 
+              role: isAdmin ? 'admin' : (fresh.roleId || 'user').toLowerCase(),
+              rolePermissions: permissions 
+            };
             setCurrentRole(updatedSession);
             try { localStorage.setItem('prpo_auth_session', JSON.stringify(updatedSession)); } catch {}
             return updatedSession;
@@ -177,8 +203,24 @@ export function AppProvider({ children }) {
       }
 
       if (Array.isArray(notisData) && notisData.length > 0) {
-        setNotifications(notisData);
-        notificationService.saveAll(notisData);
+        // Merge backend notifications with local read statuses so local mark-as-read is preserved
+        const localNotifs = notificationService.getAll();
+        const localReadMap = new Map();
+        localNotifs.forEach(n => {
+          if (n.isRead === true || n.read === true || n.status === 'read') {
+            localReadMap.set(n.id || n._id, true);
+          }
+        });
+
+        const merged = notisData.map(n => {
+          if (localReadMap.has(n.id || n._id)) {
+            return { ...n, isRead: true, read: true, status: 'read' };
+          }
+          return n;
+        });
+
+        setNotifications(merged);
+        notificationService.saveAll(merged);
       } else {
         setNotifications(notificationService.getAll());
       }
@@ -281,10 +323,12 @@ export function AppProvider({ children }) {
     }
 
     const permissions = resolveUserPermissions(targetUser);
+    const isAdmin = targetUser.roleId === 'ADMIN' || targetUser.level >= 99 || targetUser.username === 'admin';
     const newSession = {
       ...targetUser,
       ...permissions,
-      role: permissions
+      role: isAdmin ? 'admin' : (targetUser.roleId || 'user').toLowerCase(),
+      rolePermissions: permissions
     };
 
     // 1. Update global state
@@ -419,11 +463,27 @@ export function AppProvider({ children }) {
   // Immutable PO updater in state
   const updatePO = useCallback((poId, updates) => {
     setPOs(prev => prev.map(item => 
-      (item.id === poId || item.poNo === poId) 
+      (item.id === poId || item.poNo === poId || item.poNumber === poId) 
         ? { ...item, ...updates } 
         : item
     ));
   }, []);
+
+  // Immutable PR updater in state with cascading support
+  const updatePR = useCallback((prId, updates, isDraft = false) => {
+    setPRs(prev => prev.map(item => 
+      (item.id === prId || item.prNo === prId || item.prNumber === prId) 
+        ? { ...item, ...(typeof updates === 'object' ? updates : {}) } 
+        : item
+    ));
+    if (typeof updates === 'object') {
+      if (updates.items) {
+        return apiService.updatePR(prId, updates, currentRole, isDraft).then(() => loadAllData()).catch(e => console.warn(e));
+      } else if (updates.status) {
+        return apiService.updatePRStatus(prId, updates.status, currentRole).then(() => loadAllData()).catch(e => console.warn(e));
+      }
+    }
+  }, [currentRole, loadAllData]);
 
   const handleReceiveGoods = useCallback(async (poId, receivingItems, note = '', options = {}) => {
     const grNumber = options?.grNumber || options?.grId || `GR-${poId}-${Date.now()}`;
@@ -487,6 +547,18 @@ export function AppProvider({ children }) {
     return result;
   }, [currentRole, currentUser, loadAllData]);
 
+  const handleSaveDepartment = useCallback(async (deptPayload) => {
+    const saved = await apiService.saveDepartment(deptPayload, currentUser?.name || currentRole?.name);
+    await loadAllData();
+    return saved;
+  }, [currentUser, currentRole, loadAllData]);
+
+  const handleDeleteDepartment = useCallback(async (deptId) => {
+    const result = await apiService.deleteDepartment(deptId, currentUser?.name || currentRole?.name);
+    await loadAllData();
+    return result;
+  }, [currentUser, currentRole, loadAllData]);
+
   const handleSaveUser = useCallback(async (userPayload) => {
     const saved = await apiService.saveUser(userPayload, currentUser?.name || currentRole?.name);
     await loadAllData();
@@ -505,15 +577,33 @@ export function AppProvider({ children }) {
     return updated;
   }, [loadAllData]);
 
-  const handleMarkNotificationAsRead = useCallback(async (id) => {
-    notificationService.markAsRead(id);
+  const handleAdjustBudget = useCallback(async (params) => {
+    const actor = currentUser?.name || currentRole?.name || 'ผู้ดูแลระบบ';
+    const result = await apiService.adjustBudget({ ...params, actor });
     await loadAllData();
-  }, [loadAllData]);
+    return result;
+  }, [currentUser, currentRole, loadAllData]);
 
-  const handleClearNotifications = useCallback(async () => {
-    notificationService.clearAll();
-    await loadAllData();
-  }, [loadAllData]);
+  const handleMarkNotificationAsRead = useCallback(async (id) => {
+    setNotifications(prev => prev.map(n => (n.id === id || n._id === id) ? { ...n, isRead: true, read: true, status: 'read' } : n));
+    if (notificationService?.markAsRead) {
+      await notificationService.markAsRead(id);
+    }
+  }, []);
+
+  const handleMarkAllNotificationsAsRead = useCallback(async () => {
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true, read: true, status: 'read' })));
+    if (notificationService?.markAllAsRead) {
+      await notificationService.markAllAsRead(currentRole);
+    }
+  }, [currentRole]);
+
+  const handleClearNotifications = useCallback(() => {
+    setNotifications([]);
+    if (notificationService?.clearAll) {
+      notificationService.clearAll();
+    }
+  }, []);
 
   const value = useMemo(() => ({
     currentUser,
@@ -544,7 +634,9 @@ export function AppProvider({ children }) {
     updatePO,
     setPOs,
     createPR: handleCreatePR,
-    updatePR: handleUpdatePR,
+    updatePR,
+    updatePRState: updatePR,
+    handleUpdatePR: updatePR,
     rejectPR: handleRejectPR,
     reviewPR: handleReviewPR,
     approvePR: handleApprovePR,
@@ -559,11 +651,18 @@ export function AppProvider({ children }) {
     deleteStorageLocation: handleDeleteStorageLocation,
     saveUsageUnit: handleSaveUsageUnit,
     deleteUsageUnit: handleDeleteUsageUnit,
+    departments,
+    saveDepartment: handleSaveDepartment,
+    deleteDepartment: handleDeleteDepartment,
     users,
     saveUser: handleSaveUser,
     deleteUser: handleDeleteUser,
     updateBudget: handleUpdateBudget,
+    budgetTransactions,
+    adjustBudget: handleAdjustBudget,
     markNotificationAsRead: handleMarkNotificationAsRead,
+    markAllNotificationsAsRead: handleMarkAllNotificationsAsRead,
+    setNotifications,
     clearNotifications: handleClearNotifications,
     preselectedProduct,
     setPreselectedProduct,
@@ -619,10 +718,15 @@ export function AppProvider({ children }) {
     handleDeleteStorageLocation,
     handleSaveUsageUnit,
     handleDeleteUsageUnit,
+    departments,
+    handleSaveDepartment,
+    handleDeleteDepartment,
     users,
     handleSaveUser,
     handleDeleteUser,
     handleUpdateBudget,
+    budgetTransactions,
+    handleAdjustBudget,
     handleMarkNotificationAsRead,
     handleClearNotifications,
     preselectedProduct,

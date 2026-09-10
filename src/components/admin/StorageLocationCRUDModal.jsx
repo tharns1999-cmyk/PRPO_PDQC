@@ -1,23 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { MapPin, X, Check, AlertCircle, Building2 } from 'lucide-react';
 import { apiService } from '../../services/apiService';
+import { storageService } from '../../services/storageService';
 import { modalService } from '../../services/modalService';
+import { useAppContext } from '../../context/AppContext';
 
 export default function StorageLocationCRUDModal({
   location = null,
   storageLocations = [],
+  departments: propDepartments,
   currentRole,
   onClose,
   onSaved,
   onCreated
 }) {
+  const context = useAppContext();
+  const rawDepartments = propDepartments || context?.departments;
+  const deptList = useMemo(() => {
+    const list = (rawDepartments && rawDepartments.length > 0) ? rawDepartments : (storageService.getDepartments?.() || []);
+    return (list || []).filter(d => d.status === 'active' || d.isActive !== false);
+  }, [rawDepartments]);
+
   const isEdit = Boolean(location && location.id);
 
+  // Normalize legacy 'BOTH' to 'ALL'
+  const initialDept = (() => {
+    const raw = location?.department;
+    if (raw === 'BOTH') return 'ALL';
+    if (raw) return raw;
+    return currentRole?.canViewAllDepts ? 'ALL' : (currentRole?.department || 'ALL');
+  })();
+
   const [name, setName] = useState(location?.name || '');
-  const [department, setDepartment] = useState(
-    location?.department || (currentRole.canViewAllDepts ? 'ALL' : currentRole.department)
-  );
+  const [department, setDepartment] = useState(initialDept);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -48,7 +64,7 @@ export default function StorageLocationCRUDModal({
       const payload = {
         id: location?.id || undefined,
         name: name.trim(),
-        department
+        department: department === 'BOTH' ? 'ALL' : department
       };
 
       const saved = await apiService.saveStorageLocation(payload, `${currentRole.name} (${currentRole.title})`);
@@ -143,40 +159,44 @@ export default function StorageLocationCRUDModal({
                 <Building2 className="w-3.5 h-3.5 text-indigo-600" />
                 <span>แผนกที่ใช้งานจุดเก็บนี้ <span className="text-rose-500">*</span></span>
               </label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => setDepartment('ALL')}
-                  className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                     department === 'ALL'
                       ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-2xs ring-1 ring-indigo-500/20'
                       : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  ทุกแผนก / กลาง
+                  <span>🌐 ทุกแผนก / กลาง (ALL)</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setDepartment('PD')}
-                  className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                    department === 'PD'
-                      ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-2xs ring-1 ring-blue-500/20'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  ฝ่ายผลิต (PD)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDepartment('QC')}
-                  className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                    department === 'QC'
-                      ? 'bg-amber-50 border-amber-200 text-amber-700 shadow-2xs ring-1 ring-amber-500/20'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  ฝ่าย QC
-                </button>
+                {deptList.map(d => {
+                  const isSelected = department === d.code || department === d.id;
+                  return (
+                    <button
+                      key={d.code || d.id}
+                      type="button"
+                      onClick={() => setDepartment(d.code || d.id)}
+                      className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-2xs ring-1 ring-blue-500/20'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          d.code === 'PD' ? 'bg-blue-500' :
+                          d.code === 'QC' ? 'bg-amber-500' :
+                          d.code === 'WH' ? 'bg-emerald-500' :
+                          d.code === 'PUR' ? 'bg-purple-500' :
+                          d.code === 'ENG' ? 'bg-cyan-500' : 'bg-slate-400'
+                        }`}
+                      />
+                      <span>{d.name} ({d.code})</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

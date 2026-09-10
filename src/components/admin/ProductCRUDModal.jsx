@@ -11,6 +11,7 @@ import {
 import SearchableSelect from '../common/SearchableSelect';
 import StorageLocationCRUDModal from './StorageLocationCRUDModal';
 import DeleteLocationModal from './DeleteLocationModal';
+import { useAppContext } from '../../context/AppContext';
 
 const COMMON_PURCHASE_UNITS = ['ถัง (200L)', 'แกลลอน (20L)', 'ลัง', 'กล่อง', 'ถุง', 'ม้วน', 'ชุด', 'ชิ้น'];
 const COMMON_STOCK_UNITS = ['ลิตร', 'มล.', 'กก.', 'กรัม', 'ชิ้น', 'คู่', 'แผ่น', 'ม้วน', 'ขวด', 'กระป๋อง'];
@@ -20,17 +21,25 @@ export default function ProductCRUDModal({
   product,
   products = [],
   vendors = [],
+  departments: propDepartments,
   storageLocations = [],
   currentRole,
   onClose,
   onRefresh
 }) {
+  const context = useAppContext();
+  const rawDepartments = propDepartments || context?.departments;
+  const deptList = useMemo(() => {
+    const list = (rawDepartments && rawDepartments.length > 0) ? rawDepartments : (storageService.getDepartments?.() || []);
+    return (list || []).filter(d => d.status === 'active' || d.isActive !== false);
+  }, [rawDepartments]);
+
   const editProd = propEditProd || product;
   const isSupervisor = !currentRole?.canViewAllDepts;
   const lockedCategory = isSupervisor ? currentRole?.department : null;
 
   const [itemCode, setItemCode] = useState(editProd?.code || '');
-  const [category, setCategory] = useState(editProd?.category || lockedCategory || 'PD');
+  const [category, setCategory] = useState(() => editProd?.category || lockedCategory || deptList[0]?.code || 'PD');
   const [purchaseUnit, setPurchaseUnit] = useState(editProd?.purchaseUnit || editProd?.unit || 'ชิ้น');
   const [stockUnit, setStockUnit] = useState(editProd?.stockUnit || editProd?.unit || 'ชิ้น');
   const [conversionRate, setConversionRate] = useState(editProd?.conversionRate ?? 1);
@@ -85,18 +94,21 @@ export default function ProductCRUDModal({
 
   // Filter locations visible to product category
   const locationOptions = useMemo(() => {
-    const activeCat = lockedCategory || category || 'PD';
+    const activeCat = lockedCategory || category || deptList[0]?.code || 'PD';
     const filtered = locsList.filter(l => (l.department === activeCat || l.department === 'ALL'));
     return [
       { value: '', label: '-- ยังไม่ระบุจุดจัดเก็บสินค้า --', subLabel: 'สามารถเลือกหรือระบุภายหลังได้' },
-      ...filtered.map(l => ({
-        value: l.id,
-        label: l.name,
-        badge: l.department === 'ALL' ? 'ส่วนกลาง' : (l.department === 'PD' ? 'ฝ่ายผลิต' : 'ฝ่าย QC'),
-        keywords: `${l.name} ${l.department}`
-      }))
+      ...filtered.map(l => {
+        const dObj = deptList.find(d => d.code === l.department || d.id === l.department);
+        return {
+          value: l.id,
+          label: l.name,
+          badge: l.department === 'ALL' ? 'ส่วนกลาง' : (dObj ? dObj.name : `แผนก ${l.department}`),
+          keywords: `${l.name} ${l.department}`
+        };
+      })
     ];
-  }, [locsList, lockedCategory, category]);
+  }, [locsList, lockedCategory, category, deptList]);
 
   const handleSaveProduct = async (e) => {
     e.preventDefault();
@@ -248,11 +260,14 @@ export default function ProductCRUDModal({
                       <div className="h-10 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-3.5 text-xs font-semibold flex items-center justify-between shadow-2xs select-none">
                         <div className="flex items-center gap-2">
                           <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
-                          <span>{lockedCategory === 'PD' ? 'ฝ่ายผลิต (Production - PD)' : 'ฝ่ายควบคุมคุณภาพ (Quality Control - QC)'}</span>
+                          <span>
+                            {(() => {
+                              const d = deptList.find(item => item.code === lockedCategory || item.id === lockedCategory);
+                              return d ? `${d.name} (${d.code})` : lockedCategory;
+                            })()}
+                          </span>
                         </div>
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                          lockedCategory === 'PD' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-indigo-50 text-indigo-700 border-indigo-200">
                           {lockedCategory}
                         </span>
                       </div>
@@ -264,8 +279,11 @@ export default function ProductCRUDModal({
                           onChange={e => setCategory(e.target.value)}
                           className="w-full h-10 px-3.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer shadow-2xs"
                         >
-                          <option value="PD">ฝ่ายผลิต (Production - PD)</option>
-                          <option value="QC">ฝ่ายควบคุมคุณภาพ (Quality Control - QC)</option>
+                          {deptList.map(d => (
+                            <option key={d.code} value={d.code}>
+                              {d.name} ({d.code})
+                            </option>
+                          ))}
                         </select>
                       </div>
                     )}
@@ -576,6 +594,7 @@ export default function ProductCRUDModal({
 
       {showCreateLocModal && (
         <StorageLocationCRUDModal
+          departments={deptList}
           storageLocations={locsList}
           currentRole={currentRole}
           onClose={() => setShowCreateLocModal(false)}
@@ -589,6 +608,7 @@ export default function ProductCRUDModal({
 
       {editLocItem && (
         <StorageLocationCRUDModal
+          departments={deptList}
           location={editLocItem}
           storageLocations={locsList}
           currentRole={currentRole}

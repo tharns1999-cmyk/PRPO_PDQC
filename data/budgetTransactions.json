@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "id": "BTX-1789034811923",
+    "date": "2026-09-10 10:06:51",
+    "createdAt": "2026-09-10T10:06:51.918Z",
+    "dept": "ENG",
+    "type": "TOP_UP",
+    "typeLabel": "เติมงบประมาณพิเศษ (Budget Top-up)",
+    "previousAmount": 180000,
+    "newAmount": 205000,
+    "amount": 25000,
+    "actor": "คุณสมชาย (Asst. Mgr)",
+    "note": "Emergency repair",
+    "targetMonth": "2026-09"
+  },
+  {
+    "id": "BTX-1789033736566",
+    "date": "2026-09-10 09:48:56",
+    "createdAt": "2026-09-10T09:48:56.562Z",
+    "dept": "WH",
+    "type": "TOP_UP",
+    "typeLabel": "เติมงบประมาณพิเศษ (Budget Top-up)",
+    "previousAmount": 120000,
+    "newAmount": 150000,
+    "amount": 30000,
+    "actor": "คุณประเสริฐ (Plant Mgr)",
+    "note": "รองรับสต็อกสินค้าโปรโมชั่นปลายปี",
+    "targetMonth": "2026-09"
+  }
+]

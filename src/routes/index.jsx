@@ -15,6 +15,7 @@ import QuickIssueView from '../views/QuickIssueView';
 import BudgetView from '../views/BudgetView';
 import MasterDataView from '../views/MasterDataView';
 import OnlineTaskView from '../views/OnlineTaskView';
+import UserMasterView from '../views/admin/UserMasterView';
 
 // Technical Loading Screen during initial session hydration
 function AppLoadingScreen() {
@@ -105,11 +106,12 @@ function MyWorkRoute() {
 }
 
 function PRListRoute() {
-  const { prs, currentRole, refreshData, onNavigate, handleEditPR } = useAppContext();
+  const { prs, currentRole, refreshData, onNavigate, handleEditPR, departments } = useAppContext();
   return (
     <PRListView
       prs={prs}
       currentRole={currentRole}
+      departments={departments}
       onRefresh={refreshData}
       onNavigate={onNavigate}
       onEditPR={handleEditPR}
@@ -118,10 +120,11 @@ function PRListRoute() {
 }
 
 function PRCreateRoute() {
-  const { products, currentRole, onNavigate, refreshData, preselectedProduct, clearPreselectedProduct, editingPR, clearEditingPR, createPR, updatePR } = useAppContext();
+  const { products, departments, currentRole, onNavigate, refreshData, preselectedProduct, clearPreselectedProduct, editingPR, clearEditingPR, createPR, updatePR } = useAppContext();
   return (
     <PRCreateView
       products={products}
+      departments={departments}
       currentRole={currentRole}
       onNavigate={onNavigate}
       onRefresh={refreshData}
@@ -136,26 +139,28 @@ function PRCreateRoute() {
 }
 
 function POListRoute() {
-  const { pos, products, vendors, currentRole, refreshData } = useAppContext();
+  const { pos, products, vendors, currentRole, refreshData, departments } = useAppContext();
   return (
     <POListView
       pos={pos}
       products={products}
       vendors={vendors}
       currentRole={currentRole}
+      departments={departments}
       onRefresh={refreshData}
     />
   );
 }
 
 function StockCardRoute() {
-  const { products, storageLocations, stockLogs, pos, currentRole, handleQuickPR, refreshData } = useAppContext();
+  const { products, storageLocations, stockLogs, pos, currentRole, handleQuickPR, refreshData, departments } = useAppContext();
   return (
     <StockCardView
       products={products}
       storageLocations={storageLocations}
       stockLogs={stockLogs}
       pos={pos}
+      departments={departments}
       currentRole={currentRole}
       onQuickPR={handleQuickPR}
       onRefresh={refreshData}
@@ -164,7 +169,7 @@ function StockCardRoute() {
 }
 
 function QuickIssueRoute() {
-  const { products, stockLogs, currentRole, currentUser, usageUnits, refreshData } = useAppContext();
+  const { products, stockLogs, currentRole, currentUser, usageUnits, departments, refreshData } = useAppContext();
   return (
     <QuickIssueView
       products={products}
@@ -172,20 +177,23 @@ function QuickIssueRoute() {
       currentRole={currentRole}
       currentUser={currentUser}
       usageUnits={usageUnits}
+      departments={departments}
       onRefresh={refreshData}
     />
   );
 }
 
 function BudgetRoute() {
-  const { budgetSummary, currentRole, prs, pos, refreshData } = useAppContext();
+  const { budgetSummary, currentRole, currentUser, prs, pos, departments, refreshData } = useAppContext();
   return (
     <RoleGuard allowed={(role) => role?.canViewBudget}>
       <BudgetView
         budgetSummary={budgetSummary}
         currentRole={currentRole}
+        currentUser={currentUser}
         prs={prs}
         pos={pos}
+        departments={departments}
         onRefresh={refreshData}
       />
     </RoleGuard>
@@ -193,23 +201,42 @@ function BudgetRoute() {
 }
 
 function MasterDataRoute() {
-  const { products, vendors, storageLocations, usageUnits, users, currentRole, refreshData, saveUsageUnit, deleteUsageUnit, saveUser, deleteUser } = useAppContext();
+  const { 
+    products, 
+    vendors, 
+    storageLocations, 
+    usageUnits, 
+    departments,
+    users, 
+    currentRole, 
+    currentUser,
+    refreshData, 
+    saveUsageUnit, 
+    deleteUsageUnit, 
+    saveDepartment,
+    deleteDepartment,
+    saveUser, 
+    deleteUser 
+  } = useAppContext();
+
   return (
-    <RoleGuard allowed={(role) => role?.canManageMaster}>
-      <MasterDataView
-        products={products}
-        vendors={vendors}
-        storageLocations={storageLocations}
-        usageUnits={usageUnits}
-        users={users}
-        currentRole={currentRole}
-        onRefresh={refreshData}
-        onSaveUsageUnit={saveUsageUnit}
-        onDeleteUsageUnit={deleteUsageUnit}
-        onSaveUser={saveUser}
-        onDeleteUser={deleteUser}
-      />
-    </RoleGuard>
+    <MasterDataView
+      products={products}
+      vendors={vendors}
+      storageLocations={storageLocations}
+      usageUnits={usageUnits}
+      departments={departments}
+      users={users}
+      currentRole={currentRole}
+      currentUser={currentUser}
+      onRefresh={refreshData}
+      onSaveUsageUnit={saveUsageUnit}
+      onDeleteUsageUnit={deleteUsageUnit}
+      onSaveDepartment={saveDepartment}
+      onDeleteDepartment={deleteDepartment}
+      onSaveUser={saveUser}
+      onDeleteUser={deleteUser}
+    />
   );
 }
 
@@ -222,6 +249,36 @@ function OnlineTaskRoute() {
         onRefresh={refreshData}
       />
     </RoleGuard>
+  );
+}
+
+function UserMasterRoute() {
+  const { users, departments, currentRole, currentUser, refreshData } = useAppContext();
+  const isAdmin = currentUser?.role === 'admin' || 
+                  currentUser?.roleId === 'ADMIN' || 
+                  currentRole?.role === 'admin' || 
+                  currentRole?.id === 'ADMIN';
+
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 bg-white rounded-3xl border border-slate-200 shadow-sm my-6">
+        <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mb-4 text-2xl font-bold">🔒</div>
+        <h2 className="text-xl font-bold text-slate-800 mb-2">สิทธิ์การเข้าถึงถูกจำกัด (Restricted Access)</h2>
+        <p className="text-sm text-slate-500 max-w-md">หน้าจัดการข้อมูลหลัก (Master Data) สงวนสิทธิ์สำหรับผู้ดูแลระบบ (System Admin) เท่านั้น</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full space-y-6 pb-10">
+      <UserMasterView 
+        users={users} 
+        departments={departments}
+        currentRole={currentRole} 
+        currentUser={currentUser}
+        onRefresh={refreshData}
+      />
+    </div>
   );
 }
 
@@ -264,6 +321,8 @@ export const router = createBrowserRouter([
           // Administrative & Business Control
           { path: 'budget', element: <BudgetRoute /> },
           { path: 'master-data', element: <MasterDataRoute /> },
+          { path: 'master-data/users', element: <UserMasterRoute /> },
+          { path: 'admin/users', element: <UserMasterRoute /> },
           { path: 'online-tasks', element: <OnlineTaskRoute /> },
 
           // 404 Inside Layout

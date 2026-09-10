@@ -8,12 +8,12 @@
     "requesterId": null,
     "department": "PD",
     "vendorId": null,
-    "vendorName": "Shopee / Lazada (ระบุร้านภายหลัง)",
+    "vendorName": "เกเกดเกดเกดเกดเกดเกดเกดเ",
     "purchaseChannel": "ONLINE",
     "onlineLink": null,
     "specUrl": null,
     "issueDate": "2026-09-10",
-    "status": "IN_PROGRESS_ONLINE",
+    "status": "CLOSED",
     "items": [
       {
         "productId": "PROD-PD-001",
@@ -35,11 +35,18 @@
         "isCustom": false,
         "isUnitOverridden": false,
         "orderedQty": 1,
-        "receivedQty": 0,
-        "receivedStockQty": 0,
+        "receivedQty": 1,
+        "receivedStockQty": 200,
         "receivedNgQty": 0,
-        "remainingQty": 1,
-        "actUnitPrice": null
+        "remainingQty": 0,
+        "actUnitPrice": null,
+        "originalEstimatedPrice": 14500,
+        "originalPurchaseQty": 1,
+        "unitPrice": 14500,
+        "estimatedPrice": 14500,
+        "actualPrice": 14500,
+        "actualQty": 1,
+        "lineTotal": 14500
       }
     ],
     "financials": {
@@ -65,7 +72,32 @@
         "role": "Plant Manager",
         "timestamp": "10/9/2569 08:30:09",
         "note": "อนุมัติสร้างเอกสาร PO เลขที่ PO-PD-2026-001"
+      },
+      {
+        "action": "รับทราบและสั่งซื้อออนไลน์แล้ว (Online Order Placed)",
+        "user": "คุณนัท (Online Purchaser)",
+        "role": "Online Purchaser (คุณนัท)",
+        "timestamp": "10/9/2569 12:42:58",
+        "note": "สั่งซื้อจาก: เกเกดเกดเกดเกดเกดเกดเกดเ — ส่งต่อให้แผนกต้นทางตรวจรับและปิด PO"
+      },
+      {
+        "action": "รับสินค้าบางส่วน (Partial Receiving)",
+        "user": "คุณวิชัย (PD)",
+        "role": "Requester (PD)",
+        "timestamp": "10/9/2569 13:14:18",
+        "note": "รับปกติ: น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68): 0.1 ถัง (200L)",
+        "grNumber": "GR-PO-PD-2026-001-1789020858113"
+      },
+      {
+        "action": "รับสินค้าครบและปิด PO (Goods Received – Closed)",
+        "user": "คุณวิชัย (PD)",
+        "role": "Requester (PD)",
+        "timestamp": "10/9/2569 13:29:51",
+        "note": "รับปกติ: น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68): 0.9 ถัง (200L)",
+        "grNumber": "GR-PO-PD-2026-001-1789021791323"
       }
-    ]
+    ],
+    "orderedAt": "2026-09-10T05:42:58.160Z",
+    "totalAmount": 14500
   }
 ]

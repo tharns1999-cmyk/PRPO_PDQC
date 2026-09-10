@@ -1,1 +1,30 @@
-[]
+[
+  {
+    "id": "LOG-1789021791330-5343",
+    "grNumber": "GR-PO-PD-2026-001-1789021791323",
+    "date": "10/9/2569 13:29:51",
+    "productId": "PROD-PD-001",
+    "productCode": "PD-OIL-068",
+    "type": "IN",
+    "docNo": "PO-PD-2026-001",
+    "qty": 180,
+    "unit": "ลิตร",
+    "balance": 2600,
+    "user": "คุณวิชัย (PD) (Requester (PD))",
+    "note": "รับสินค้า 0.9 ถัง (200L) (= 180 ลิตร) จาก PO PO-PD-2026-001"
+  },
+  {
+    "id": "LOG-1789020858149-1252",
+    "grNumber": "GR-PO-PD-2026-001-1789020858113",
+    "date": "10/9/2569 13:14:18",
+    "productId": "PROD-PD-001",
+    "productCode": "PD-OIL-068",
+    "type": "IN",
+    "docNo": "PO-PD-2026-001",
+    "qty": 20,
+    "unit": "ลิตร",
+    "balance": 2420,
+    "user": "คุณวิชัย (PD) (Requester (PD))",
+    "note": "รับสินค้า 0.1 ถัง (200L) (= 20 ลิตร) จาก PO PO-PD-2026-001"
+  }
+]

@@ -163,12 +163,28 @@ export const workflowEngine = {
 
     // 1. Process PRs
     prs.forEach(pr => {
-      const isDone = ['PO_ISSUED', 'APPROVED', 'CLOSED', 'CANCELLED'].includes(pr.status);
-      const canAction = !isDone && this.canAction(currentRole, pr);
+      // Find related PO for this PR
+      const relatedPO = pos.find(po =>
+        (po.prId && (po.prId === pr.id || po.prId === pr.prNo)) ||
+        (po.prNo && (po.prNo === pr.prNo || po.prNo === pr.id)) ||
+        (po.prNumber && (po.prNumber === pr.id || po.prNumber === pr.prNo || po.prNumber === pr.prNumber)) ||
+        (pr.poNo && (po.poNo === pr.poNo || po.id === pr.poNo)) ||
+        (pr.poNumber && (po.poNo === pr.poNumber || po.poNumber === pr.poNumber))
+      );
+      const hasPO = Boolean(relatedPO || pr.poNo || pr.poNumber);
+
+      const isPORelatedDone = relatedPO
+        ? ['closed', 'cancelled', 'received', 'completed', 'fully_received'].includes(String(relatedPO.status).toLowerCase())
+        : false;
+
+      const isDone = ['PO_ISSUED', 'APPROVED', 'CLOSED', 'CANCELLED', 'completed', 'received'].includes(pr.status) || isPORelatedDone;
+      const canAction = !isDone && !hasPO && this.canAction(currentRole, pr);
       const actedOn = hasDirectlyActedOn(pr);
 
       let isWaiting = false;
-      if (!canAction && !isDone) {
+      // DEDUPLICATION GATE: If PR has been converted to PO, DO NOT show it in waiting/In Progress!
+      // Status must only be tracked via the single PO card.
+      if (!hasPO && !canAction && !isDone) {
         if (isAdmin) {
           isWaiting = true;
         } else if (isPlantMgr) {
@@ -186,12 +202,12 @@ export const workflowEngine = {
         id: pr.id,
         type: 'PR',
         docNo: pr.prNo,
-        date: pr.requestedDate,
+        date: pr.requestedDate || pr.createdAt,
         title: pr.items?.map(i => i.name).join(', ') || 'ใบขอซื้อ',
-        status: pr.status,
+        status: isPORelatedDone ? 'CLOSED' : pr.status,
         amount: pr.totalAmount,
         raw: pr,
-        statusInfo: PR_STATUS[pr.status]
+        statusInfo: PR_STATUS[isPORelatedDone ? 'CLOSED' : pr.status] || PR_STATUS[pr.status] || PR_STATUS.CLOSED
       };
 
       if (canAction) {
@@ -199,7 +215,7 @@ export const workflowEngine = {
         prActionCount++;
       } else if (isWaiting) {
         waiting.push(taskItem);
-      } else if (isDone && actedOn) {
+      } else if (isDone && (actedOn || hasPO)) {
         completed.push(taskItem);
       }
     });
@@ -452,6 +468,8 @@ export const workflowEngine = {
 
     po.status = 'ORDERED_PENDING_DELIVERY';
     po.vendorName = vendorName.trim();
+    po.vendor = vendorName.trim();
+    po.shopName = vendorName.trim();
     po.orderedAt = new Date().toISOString();
     const timestamp = new Date().toLocaleString('th-TH');
 
@@ -1616,6 +1634,8 @@ export const workflowEngine = {
               unit: sUnit,
               balance: newBal,
               user: `${user.name} (${user.title})`,
+              locationId: prod?.locationId || '',
+              locationName: prod?.locationName || '',
               note: note || logNote
             });
           } else {
@@ -1631,6 +1651,8 @@ export const workflowEngine = {
               unit: sUnit,
               balance: currentBal,
               user: `${user.name} (${user.title})`,
+              locationId: prod?.locationId || '',
+              locationName: prod?.locationName || '',
               note: `[สินค้าชำรุด/NG] ${defectNote || reasonLabel}`
             });
           }
@@ -1820,9 +1842,20 @@ export const workflowEngine = {
       if (po.purchaseChannel === 'ONLINE') notifyRoles.push('ONLINE_PURCHASER');
 
       if (allFullyReceived) {
-        const pr = prs.find(p => p.id === po.prId);
+        po.status = 'CLOSED';
+        po.fullyReceivedAt = new Date().toISOString();
+        const pr = prs.find(p => 
+          (po.prId && (p.id === po.prId || p.prNo === po.prId)) ||
+          (po.prNo && (p.prNo === po.prNo || p.id === po.prNo)) ||
+          (po.prNumber && (p.prNo === po.prNumber || p.id === po.prNumber || p.prNo === po.prNo)) ||
+          (p.poNo && (p.poNo === po.poNo || p.id === po.poNo)) ||
+          (p.poNumber && (p.poNumber === po.poNo || p.poNumber === po.poNumber))
+        );
         if (pr) {
-          pr.status = 'CLOSED';
+          pr.status = 'completed';
+          pr.poStatus = 'completed';
+          pr.poNumber = po.poNo || po.poNumber || pr.poNumber;
+          pr.fullyReceivedAt = new Date().toISOString();
           pr.activityLog.push({
             action: 'ปิดเอกสาร (Closed)',
             user: user.name,
@@ -1912,24 +1945,27 @@ export const workflowEngine = {
 
     storageService.savePOs(pos);
 
-    if (po.prId) {
-      const pr = prs.find(p => p.id === po.prId);
-      if (pr) {
-        pr.activityLog.push({
-          action: 'ใบสั่งซื้อถูกปิดก่อนกำหนด (PO Short-Closed)',
-          user: user.name,
-          role: user.title,
-          timestamp,
-          note: noteMsg
-        });
+    const relatedPR = prs.find(p => 
+      (po.prId && (p.id === po.prId || p.prNo === po.prId)) ||
+      (po.prNo && (p.prNo === po.prNo || p.id === po.prNo)) ||
+      (po.prNumber && (p.prNo === po.prNumber || p.id === po.prNumber || p.prNo === po.prNo))
+    );
+    if (relatedPR) {
+      relatedPR.activityLog.push({
+        action: 'ใบสั่งซื้อถูกปิดก่อนกำหนด (PO Short-Closed)',
+        user: user.name,
+        role: user.title,
+        timestamp,
+        note: noteMsg
+      });
 
-        const siblingPOs = pos.filter(p => p.prId === pr.id);
-        const allSiblingClosed = siblingPOs.every(p => ['CLOSED', 'CANCELLED'].includes(p.status));
-        if (allSiblingClosed) {
-          pr.status = 'CLOSED';
-        }
-        storageService.savePRs(prs);
+      const siblingPOs = pos.filter(p => p.prId === relatedPR.id || p.prNo === relatedPR.prNo);
+      const allSiblingClosed = siblingPOs.every(p => ['CLOSED', 'CANCELLED'].includes(p.status));
+      if (allSiblingClosed) {
+        relatedPR.status = 'completed';
+        relatedPR.poStatus = 'completed';
       }
+      storageService.savePRs(prs);
     }
 
     auditService.logAction({
@@ -1998,6 +2034,8 @@ export const workflowEngine = {
 
     po.vendorId = vendorId;
     po.vendorName = vendorName;
+    po.vendor = vendorName;
+    po.shopName = vendorName;
     const timestamp = new Date().toLocaleString('th-TH');
 
     po.activityLog.push({
@@ -2324,6 +2362,8 @@ export const workflowEngine = {
             unit: sUnit,
             balance: newBal,
             user: `${user.name} (${user.title})`,
+            locationId: prod?.locationId || '',
+            locationName: prod?.locationName || '',
             note: note || noteDetail
           });
         }
@@ -2404,6 +2444,9 @@ export const workflowEngine = {
     product.stockBalance = newBal;
 
     const logNo = `REQ-${Date.now().toString().slice(-4)}`;
+    const masterUnits = storageService.getUsageUnits?.() || [];
+    const matchedUnit = masterUnits.find(u => u.name === issueUnit || u.id === issueUnit);
+
     stockLogs.unshift({
       id: `LOG-${Date.now()}`,
       date: timestamp,
@@ -2418,6 +2461,10 @@ export const workflowEngine = {
       balance: newBal,
       user: `${user.name} (${user.title})`,
       issueUnit: issueUnit || '',
+      unitId: matchedUnit?.id || '',
+      unitName: matchedUnit?.name || issueUnit || '',
+      locationId: product.locationId || '',
+      locationName: product.locationName || '',
       note: note || `เบิกสินค้าไปใช้งาน`
     });
 

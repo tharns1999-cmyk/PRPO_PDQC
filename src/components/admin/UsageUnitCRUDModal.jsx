@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { DoorClosed, X, Check, AlertCircle, Building2, Palette } from 'lucide-react';
 import { apiService } from '../../services/apiService';
+import { storageService } from '../../services/storageService';
 import { modalService } from '../../services/modalService';
+import { useAppContext } from '../../context/AppContext';
 
 const COLOR_PRESETS = [
   { id: 'blue', label: 'ฟ้า', dot: 'bg-blue-500', color: 'bg-blue-50 text-blue-700 border-blue-200/80', badgeBg: 'bg-blue-100 text-blue-800' },
@@ -19,23 +21,43 @@ const COLOR_PRESETS = [
 export default function UsageUnitCRUDModal({
   unit = null,
   usageUnits = [],
+  departments: propDepartments,
   currentRole,
   onClose,
   onSaved,
   onCreated
 }) {
+  const context = useAppContext();
+  const rawDepartments = propDepartments || context?.departments;
+  const deptList = useMemo(() => {
+    const list = (rawDepartments && rawDepartments.length > 0) ? rawDepartments : (storageService.getDepartments?.() || []);
+    return (list || []).filter(d => d.status === 'active' || d.isActive !== false);
+  }, [rawDepartments]);
+
   const isEdit = Boolean(unit && unit.id);
+  const defaultDeptCode = deptList[0]?.code || 'PD';
+
+  // Normalize legacy 'BOTH' to 'ALL'
+  const initialDept = (() => {
+    const raw = unit?.department;
+    if (raw === 'BOTH') return 'ALL';
+    if (raw) return raw;
+    return currentRole?.canViewAllDepts ? defaultDeptCode : (currentRole?.department || defaultDeptCode);
+  })();
 
   const [name, setName] = useState(unit?.name || '');
-  const [department, setDepartment] = useState(
-    unit?.department || (currentRole?.canViewAllDepts ? 'PD' : currentRole?.department || 'PD')
-  );
+  const [department, setDepartment] = useState(initialDept);
   const [selectedPreset, setSelectedPreset] = useState(() => {
     if (unit?.dot) {
       const match = COLOR_PRESETS.find(p => p.dot === unit.dot);
       if (match) return match;
     }
-    return department === 'QC' ? COLOR_PRESETS[4] : COLOR_PRESETS[0];
+    const currentDeptObj = deptList.find(d => d.code === initialDept);
+    if (currentDeptObj?.color) {
+      const matchColor = COLOR_PRESETS.find(p => p.id === currentDeptObj.color || (currentDeptObj.color === 'purple' && p.id === 'violet'));
+      if (matchColor) return matchColor;
+    }
+    return COLOR_PRESETS[0];
   });
   const [status, setStatus] = useState(unit?.status || 'ACTIVE');
   const [isSaving, setIsSaving] = useState(false);
@@ -70,7 +92,7 @@ export default function UsageUnitCRUDModal({
       const payload = {
         id: unit?.id || undefined,
         name: name.trim(),
-        department,
+        department: department === 'BOTH' ? 'ALL' : department,
         dot: selectedPreset.dot,
         color: selectedPreset.color,
         badgeBg: selectedPreset.badgeBg,
@@ -139,31 +161,44 @@ export default function UsageUnitCRUDModal({
               <span>แผนกที่ใช้งาน (Department Scope)</span>
               <span className="text-rose-500">*</span>
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setDepartment('PD')}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  department === 'PD'
-                    ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-xs ring-2 ring-blue-500/20'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-blue-500" />
-                <span>ฝ่ายผลิต (PD)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setDepartment('QC')}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                  department === 'QC'
-                    ? 'bg-amber-50 border-amber-500 text-amber-700 shadow-xs ring-2 ring-amber-500/20'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span>ฝ่าย QC (QC)</span>
-              </button>
+            <div className="flex flex-wrap gap-2">
+              {deptList.map(d => {
+                const isSelected = department === d.code || department === d.id;
+                const dotColorClass = 
+                  d.code === 'PD' ? 'bg-blue-500' :
+                  d.code === 'QC' ? 'bg-amber-500' :
+                  d.code === 'WH' ? 'bg-emerald-500' :
+                  d.code === 'PUR' ? 'bg-purple-500' :
+                  d.code === 'ENG' ? 'bg-cyan-500' :
+                  (d.color === 'blue' ? 'bg-blue-500' :
+                   d.color === 'amber' ? 'bg-amber-500' :
+                   d.color === 'emerald' ? 'bg-emerald-500' :
+                   d.color === 'purple' || d.color === 'violet' ? 'bg-violet-500' :
+                   d.color === 'cyan' ? 'bg-cyan-500' : 'bg-slate-400');
+
+                return (
+                  <button
+                    key={d.code || d.id}
+                    type="button"
+                    onClick={() => {
+                      const code = d.code || d.id;
+                      setDepartment(code);
+                      if (!isEdit) {
+                        const matchedPreset = COLOR_PRESETS.find(p => p.id === d.color || (d.color === 'purple' && p.id === 'violet'));
+                        if (matchedPreset) setSelectedPreset(matchedPreset);
+                      }
+                    }}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      isSelected
+                        ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-xs ring-2 ring-blue-500/20'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${dotColorClass}`} />
+                    <span>{d.name} ({d.code})</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -184,7 +219,7 @@ export default function UsageUnitCRUDModal({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder={department === 'PD' ? 'เช่น ห้อง K1, ห้องผลไม้, ห้องแพ็ค...' : 'เช่น Lab เคมี, Lab จุลชีววิทยา, ห้อง Sensory...'}
+              placeholder={`เช่น ห้องใช้งาน หรือพื้นที่สำหรับแผนก ${deptList.find(d => d.code === department)?.name || department}...`}
               className={`w-full px-3.5 py-2.5 rounded-xl border text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 transition-all ${
                 isNameDuplicate
                   ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500/20 bg-rose-50/20'

@@ -1,6 +1,36 @@
 [
   {
-    "id": "NOTI-1789017724707-587",
+    "id": "NOTI-1789041449992-190",
+    "type": "PR_CANCELLED",
+    "typeInfo": {
+      "id": "PR_CANCELLED",
+      "label": "PR ถูกยกเลิก",
+      "badgeColor": "bg-rose-100 text-rose-800 border-rose-200",
+      "icon": "XCircle",
+      "colorHex": "#E11D48",
+      "priority": "URGENT"
+    },
+    "title": "❌ ใบขอซื้อ (PR) ถูกยกเลิก",
+    "message": "ใบขอซื้อเลขที่ PD001/2026 แผนก PD ถูกยกเลิกโดย คุณวิชัย (PD): าสวเาดหเวสำาพเาพวเสาำวเสาหวสดเากวสเากวสาเวสเากวดสเากวสเวกสเากวสดเากวสเากวสเากสวดเกวเสาเด",
+    "docNo": "PD001/2026",
+    "refDocType": "PR",
+    "refDocId": "PR-1789040675492-2BP",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN",
+      "ASST_MANAGER"
+    ],
+    "amount": 170994,
+    "actor": "คุณวิชัย (PD)",
+    "timestamp": "2026-09-10T11:57:29.992Z",
+    "timeFormatted": "10/9/69 18:57",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
+    "id": "NOTI-1789039259010-765",
     "type": "PO_SHORT_CLOSED",
     "typeInfo": {
       "id": "PO_SHORT_CLOSED",
@@ -12,7 +42,7 @@
     "message": "ใบสั่งซื้อ PO-PD-2026-001 (PR PD001/2026) ถูกปิดโดย คุณวิชัย (PD): ร้านค้าแจ้งเลิกผลิตสินค้ารุ่นนี้แล้ว",
     "docNo": "PO-PD-2026-001",
     "refDocType": "PO",
-    "refDocId": "PO-1789017724683-1",
+    "refDocId": "PO-1789039258993-1",
     "department": "PD",
     "targetRoles": [
       "REQUESTER_PD",
@@ -21,12 +51,14 @@
     ],
     "amount": 200,
     "actor": "คุณวิชัย (PD)",
-    "timestamp": "2026-09-10T05:22:04.707Z",
-    "timeFormatted": "10/9/69 12:22",
-    "isRead": false
+    "timestamp": "2026-09-10T11:20:59.010Z",
+    "timeFormatted": "10/9/69 18:20",
+    "isRead": true,
+    "read": true,
+    "status": "read"
   },
   {
-    "id": "NOTI-1789017724704-545",
+    "id": "NOTI-1789039259009-673",
     "type": "GOODS_PARTIAL",
     "typeInfo": {
       "id": "GOODS_PARTIAL",
@@ -38,7 +70,7 @@
     "message": "PO PO-PD-2026-001 รับสินค้าบางส่วนแล้ว (รับปกติ: undefined: 5 ชิ้น) ยังมีรายการที่รอรับอยู่",
     "docNo": "PO-PD-2026-001",
     "refDocType": "PO",
-    "refDocId": "PO-1789017724683-1",
+    "refDocId": "PO-1789039258993-1",
     "department": "PD",
     "targetRoles": [
       "REQUESTER_PD",
@@ -46,40 +78,43 @@
     ],
     "amount": 200,
     "actor": "คุณวิชัย (PD)",
-    "timestamp": "2026-09-10T05:22:04.704Z",
-    "timeFormatted": "10/9/69 12:22",
-    "isRead": false
+    "timestamp": "2026-09-10T11:20:59.009Z",
+    "timeFormatted": "10/9/69 18:20",
+    "isRead": true,
+    "read": true,
+    "status": "read"
   },
   {
-    "id": "NOTI-1789017724683-797",
-    "type": "PR_APPROVED",
+    "id": "NOTI-1789039258992-80",
+    "type": "PR_REVIEWED",
     "typeInfo": {
-      "id": "PR_APPROVED",
-      "label": "PR ได้รับการอนุมัติ (ออก PO อัตโนมัติ)",
-      "badgeColor": "bg-emerald-100 text-emerald-800 border-emerald-200",
-      "icon": "CheckCircle2",
-      "colorHex": "#059669",
-      "priority": "INFO"
+      "id": "PR_REVIEWED",
+      "label": "PR ผ่านการตรวจ รออนุมัติ (Final Approve)",
+      "badgeColor": "bg-blue-100 text-blue-800 border-blue-200",
+      "icon": "ShieldCheck",
+      "colorHex": "#2563EB",
+      "priority": "URGENT"
     },
-    "title": "PR ได้รับการอนุมัติ & ออก PO อัตโนมัติเรียบร้อย",
-    "message": "ใบสั่งซื้อ PO-PD-2026-001 ถูกสร้างจาก PD001/2026 (ผู้ขาย: บริษัท วัสดุไทย จำกัด) ยอดเงิน ฿200",
-    "docNo": "PO-PD-2026-001",
-    "refDocType": "PO",
-    "refDocId": "PO-1789017724683-1",
+    "title": "PR ผ่านการตรวจสอบแล้ว รออนุมัติสั่งซื้อ (Final Approve)",
+    "message": "ใบขอซื้อเลขที่ PD001/2026 แผนก PD ยอดเงิน ฿200 ผ่านการตรวจ Level 1 แล้ว รอคุณประเสริฐ (Plant Manager) อนุมัติ",
+    "docNo": "PD001/2026",
+    "refDocType": "PR",
+    "refDocId": "PR-1789039258992-AIK",
     "department": "PD",
     "targetRoles": [
-      "REQUESTER_PD",
-      "ADMIN",
-      "ASST_MANAGER"
+      "PLANT_MANAGER",
+      "ADMIN"
     ],
     "amount": 200,
-    "actor": "คุณประเสริฐ (Plant Mgr)",
-    "timestamp": "2026-09-10T05:22:04.683Z",
-    "timeFormatted": "10/9/69 12:22",
-    "isRead": false
+    "actor": "คุณสมชาย (Asst. Mgr)",
+    "timestamp": "2026-09-10T11:20:58.992Z",
+    "timeFormatted": "10/9/69 18:20",
+    "isRead": true,
+    "read": true,
+    "status": "read"
   },
   {
-    "id": "NOTI-1789017724648-953",
+    "id": "NOTI-1789039258975-249",
     "type": "PR_APPROVED",
     "typeInfo": {
       "id": "PR_APPROVED",
@@ -93,7 +128,7 @@
     "message": "ใบสั่งซื้อ PO-PD-2026-001 ถูกสร้างจาก PD001/2026 (ผู้ขาย: บริษัท วัสดุไทย จำกัด) ยอดเงิน ฿50",
     "docNo": "PO-PD-2026-001",
     "refDocType": "PO",
-    "refDocId": "PO-1789017724648-1",
+    "refDocId": "PO-1789039258975-1",
     "department": "PD",
     "targetRoles": [
       "REQUESTER_PD",
@@ -102,12 +137,14 @@
     ],
     "amount": 50,
     "actor": "คุณประเสริฐ (Plant Mgr)",
-    "timestamp": "2026-09-10T05:22:04.648Z",
-    "timeFormatted": "10/9/69 12:22",
-    "isRead": false
+    "timestamp": "2026-09-10T11:20:58.975Z",
+    "timeFormatted": "10/9/69 18:20",
+    "isRead": true,
+    "read": true,
+    "status": "read"
   },
   {
-    "id": "NOTI-1789017724594-254",
+    "id": "NOTI-1789039258929-727",
     "type": "PR_APPROVED",
     "typeInfo": {
       "id": "PR_APPROVED",
@@ -121,7 +158,7 @@
     "message": "ใบสั่งซื้อ PO-PD-2026-001 ถูกสร้างจาก PD001/2026 (ผู้ขาย: บริษัท วัสดุไทย จำกัด) ยอดเงิน ฿100",
     "docNo": "PO-PD-2026-001",
     "refDocType": "PO",
-    "refDocId": "PO-1789017724594-1",
+    "refDocId": "PO-1789039258929-1",
     "department": "PD",
     "targetRoles": [
       "REQUESTER_PD",
@@ -130,12 +167,14 @@
     ],
     "amount": 100,
     "actor": "คุณประเสริฐ (Plant Mgr)",
-    "timestamp": "2026-09-10T05:22:04.594Z",
-    "timeFormatted": "10/9/69 12:22",
-    "isRead": false
+    "timestamp": "2026-09-10T11:20:58.929Z",
+    "timeFormatted": "10/9/69 18:20",
+    "isRead": true,
+    "read": true,
+    "status": "read"
   },
   {
-    "id": "NOTI-1789017724591-9",
+    "id": "NOTI-1789039258923-805",
     "type": "PR_REVIEWED",
     "typeInfo": {
       "id": "PR_REVIEWED",
@@ -149,7 +188,7 @@
     "message": "ใบขอซื้อเลขที่ PD001/2026 แผนก PD ยอดเงิน ฿100 ผ่านการตรวจ Level 1 แล้ว รอคุณประเสริฐ (Plant Manager) อนุมัติ",
     "docNo": "PD001/2026",
     "refDocType": "PR",
-    "refDocId": "PR-1789017724589-STF",
+    "refDocId": "PR-1789039258922-CSV",
     "department": "PD",
     "targetRoles": [
       "PLANT_MANAGER",
@@ -157,40 +196,14 @@
     ],
     "amount": 100,
     "actor": "คุณสมชาย (Asst. Mgr)",
-    "timestamp": "2026-09-10T05:22:04.591Z",
-    "timeFormatted": "10/9/69 12:22",
-    "isRead": false
+    "timestamp": "2026-09-10T11:20:58.923Z",
+    "timeFormatted": "10/9/69 18:20",
+    "isRead": true,
+    "read": true,
+    "status": "read"
   },
   {
-    "id": "NOTI-1789017724335-944",
-    "type": "PR_APPROVED",
-    "typeInfo": {
-      "id": "PR_APPROVED",
-      "label": "PR ได้รับการอนุมัติ (ออก PO อัตโนมัติ)",
-      "badgeColor": "bg-emerald-100 text-emerald-800 border-emerald-200",
-      "icon": "CheckCircle2",
-      "colorHex": "#059669",
-      "priority": "INFO"
-    },
-    "title": "PR ได้รับการอนุมัติ & ออก PO อัตโนมัติเรียบร้อย",
-    "message": "ใบสั่งซื้อ PO-PD-2026-001 ถูกสร้างจาก PD001/2026 (ผู้ขาย: บริษัท ซัพพลาย เอ จำกัด) ยอดเงิน ฿1,000",
-    "docNo": "PO-PD-2026-001",
-    "refDocType": "PO",
-    "refDocId": "PO-1789017724335-1",
-    "department": "PD",
-    "targetRoles": [
-      "REQUESTER_PD",
-      "ADMIN",
-      "ASST_MANAGER"
-    ],
-    "amount": 1000,
-    "actor": "คุณประเสริฐ (Plant Mgr)",
-    "timestamp": "2026-09-10T05:22:04.335Z",
-    "timeFormatted": "10/9/69 12:22",
-    "isRead": false
-  },
-  {
-    "id": "NOTI-1789017724334-826",
+    "id": "NOTI-1789039258517-641",
     "type": "PR_SUBMITTED",
     "typeInfo": {
       "id": "PR_SUBMITTED",
@@ -200,20 +213,22 @@
       "colorHex": "#D97706",
       "priority": "URGENT"
     },
-    "title": "มีการยื่นส่งใบขอซื้อ (PR) ที่แก้ไขใหม่",
-    "message": "ใบขอซื้อเลขที่ PD001/2026 (PD) ยอดเงิน ฿5,000 ได้รับการแก้ไขและส่งใหม่ รอตรวจสอบ",
+    "title": "PR รอตรวจสอบ",
+    "message": "ใบขอซื้อ PD001/2026 รอคุณสมชายตรวจสอบ",
     "docNo": "PD001/2026",
     "refDocType": "PR",
-    "refDocId": "PR-1789017724329-99H",
+    "refDocId": "PR-100",
     "department": "PD",
     "targetRoles": [
       "ASST_MANAGER",
       "ADMIN"
     ],
-    "amount": 5000,
+    "amount": 15000,
     "actor": "คุณวิชัย (PD)",
-    "timestamp": "2026-09-10T05:22:04.334Z",
-    "timeFormatted": "10/9/69 12:22",
-    "isRead": false
+    "timestamp": "2026-09-10T11:20:58.517Z",
+    "timeFormatted": "10/9/69 18:20",
+    "isRead": true,
+    "read": true,
+    "status": "read"
   }
 ]

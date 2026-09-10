@@ -1,5 +1,17 @@
 /* src/assets/styles/print.css */
 
+/* Thai Typography & PO Document Container Rules */
+.thai-doc-container,
+.thai-doc-container * {
+  font-family: 'Sarabun', 'TH Sarabun New', 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  letter-spacing: 0 !important;
+  font-variant-ligatures: normal !important;
+  font-feature-settings: "liga" 1, "kern" 1 !important;
+  text-rendering: optimizeLegibility !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+}
+
 @media print {
   /* Hide the rest of the application body when printing */
   body {
@@ -21,6 +33,18 @@
     box-shadow: none !important;
   }
 
+  /* Force Thai typography and zero letter-spacing on print */
+  .thai-doc-container,
+  .thai-doc-container * {
+    font-family: 'Sarabun', 'TH Sarabun New', 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    letter-spacing: 0 !important;
+    font-variant-ligatures: normal !important;
+    font-feature-settings: "liga" 1, "kern" 1 !important;
+    text-rendering: optimizeLegibility !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+  }
+
   /* Hide scrollbars during print */
   ::-webkit-scrollbar {
     display: none;
@@ -33,3 +57,4 @@
     print-color-adjust: exact;
   }
 }
+

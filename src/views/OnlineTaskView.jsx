@@ -50,10 +50,25 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
     if (onRefresh) onRefresh();
   }, [updatePO, onRefresh]);
 
-  const pendingTasks = useMemo(() => pos.filter(po => ['IN_PROGRESS_ONLINE', 'PENDING_ORDER', 'pending'].includes(po.status)), [pos]);
-  const orderedTasks = useMemo(() => pos.filter(po => ['ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'ordered', 'ORDERED'].includes(po.status)), [pos]);
-  const claimTasks = useMemo(() => pos.filter(po => ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(po.status)), [pos]);
-  const closedTasks = useMemo(() => pos.filter(po => ['CLOSED', 'RECEIVED'].includes(po.status)), [pos]);
+  const pendingTasks = useMemo(() => pos.filter(po => {
+    const s = String(po.status || '').toLowerCase();
+    return ['in_progress_online', 'pending_order', 'pending'].includes(s);
+  }), [pos]);
+
+  const orderedTasks = useMemo(() => pos.filter(po => {
+    const s = String(po.status || '').toLowerCase();
+    return ['ordered_pending_delivery', 'in_delivery', 'ordered', 'partial_received', 'partially_received'].includes(s);
+  }), [pos]);
+
+  const claimTasks = useMemo(() => pos.filter(po => {
+    const s = String(po.status || '').toLowerCase();
+    return s.includes('claim');
+  }), [pos]);
+
+  const closedTasks = useMemo(() => pos.filter(po => {
+    const s = String(po.status || '').toLowerCase();
+    return ['completed', 'received', 'fully_received', 'closed'].includes(s);
+  }), [pos]);
 
   // Overall Metrics for Purchaser
   const metrics = useMemo(() => {
@@ -74,10 +89,11 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
     return pos.filter(po => {
       // Tab filter
       let matchTab = true;
-      if (activeTab === 'PENDING') matchTab = ['IN_PROGRESS_ONLINE', 'PENDING_ORDER', 'pending'].includes(po.status);
-      else if (activeTab === 'ORDERED') matchTab = ['ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'ordered', 'ORDERED'].includes(po.status);
-      else if (activeTab === 'CLAIM') matchTab = ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(po.status);
-      else if (activeTab === 'CLOSED') matchTab = ['CLOSED', 'RECEIVED'].includes(po.status);
+      const s = String(po.status || '').toLowerCase();
+      if (activeTab === 'PENDING') matchTab = ['in_progress_online', 'pending_order', 'pending'].includes(s);
+      else if (activeTab === 'ORDERED') matchTab = ['ordered_pending_delivery', 'in_delivery', 'ordered', 'partial_received', 'partially_received'].includes(s);
+      else if (activeTab === 'CLAIM') matchTab = s.includes('claim');
+      else if (activeTab === 'CLOSED') matchTab = ['completed', 'received', 'fully_received', 'closed'].includes(s);
 
       // Dept filter
       const matchDept = deptFilter === 'ALL' || po.department === deptFilter;
@@ -360,18 +376,43 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
   );
 }
 
+const renderPOStatusBadge = (status) => {
+  const s = String(status || '').toLowerCase();
+  if (['pending_order', 'in_progress_online', 'pending'].includes(s)) {
+    return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700">รอดำเนินการสั่งซื้อ</span>;
+  }
+  if (s === 'partial_received' || s === 'partially_received') {
+    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">รับของแล้วบางส่วน (รอรับเพิ่ม)</span>;
+  }
+  if (['completed', 'received', 'fully_received', 'closed'].includes(s)) {
+    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">ตรวจรับครบ ปิดงานแล้ว</span>;
+  }
+  if (s.includes('claim')) {
+    return <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">รอเคลมสินค้า</span>;
+  }
+  return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">สั่งซื้อแล้ว (ระหว่างส่ง)</span>;
+};
+
 function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDetails }) {
-  const [vendorName, setVendorName] = useState(
-    po.vendorName && po.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)' ? po.vendorName : ''
-  );
+  const initialVendor = po.vendor || po.shopName || (po.vendorName && po.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)' ? po.vendorName : '');
+  const [vendorName, setVendorName] = useState(initialVendor);
   const [varianceNote, setVarianceNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedCode, setCopiedCode] = useState('');
 
-  const isPending = po.status === 'IN_PROGRESS_ONLINE';
-  const isOrdered = po.status === 'ORDERED_PENDING_DELIVERY';
-  const isClaim = ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(po.status);
-  const isClosed = po.status === 'CLOSED';
+  const isVendorValid = Boolean(vendorName && vendorName.trim().length >= 3);
+
+  useEffect(() => {
+    const v = po.vendor || po.shopName || (po.vendorName && po.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)' ? po.vendorName : '');
+    if (v) setVendorName(v);
+  }, [po.vendor, po.shopName, po.vendorName]);
+
+  const statusLower = String(po.status || '').toLowerCase();
+  const isPending = ['in_progress_online', 'pending_order', 'pending'].includes(statusLower);
+  const isPartialReceived = ['partial_received', 'partially_received'].includes(statusLower);
+  const isOrdered = ['ordered_pending_delivery', 'in_delivery', 'ordered'].includes(statusLower) || isPartialReceived;
+  const isClaim = statusLower.includes('claim');
+  const isClosed = ['completed', 'received', 'fully_received', 'closed'].includes(statusLower);
 
   // Claim resolution state
   const [claimResolutionType, setClaimResolutionType] = useState('RESEND');
@@ -471,8 +512,8 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
   };
 
   const handleAcknowledgeAndOrder = async () => {
-    if (!vendorName.trim()) {
-      return modalService.warning('กรุณาระบุชื่อร้านค้าออนไลน์ / ช่องทางที่สั่งซื้อ (เช่น Shopee ร้าน ABC, Lazada Official)');
+    if (!isVendorValid) {
+      return modalService.warning('กรุณาระบุชื่อร้านค้าออนไลน์ / ช่องทางที่สั่งซื้อ (อย่างน้อย 3 ตัวอักษร เช่น Shopee: ร้าน ABC, Lazada Mall)');
     }
 
     // Validate inputs
@@ -504,12 +545,15 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
 
     setIsSubmitting(true);
     try {
-      const updatedPO = await apiService.acknowledgeOnlineTask(po.id, vendorName.trim(), currentRole, items, varianceNote.trim());
+      const trimmedVendor = vendorName.trim();
+      const updatedPO = await apiService.acknowledgeOnlineTask(po.id, trimmedVendor, currentRole, items, varianceNote.trim());
       
-      const payload = updatedPO || {
-        ...po,
+      const payload = {
+        ...(updatedPO || po),
         status: 'ORDERED_PENDING_DELIVERY',
-        vendorName: vendorName.trim(),
+        vendor: trimmedVendor,
+        vendorName: trimmedVendor,
+        shopName: trimmedVendor,
         orderedAt: new Date().toISOString(),
         items: items.map(it => ({
           ...it,
@@ -600,23 +644,7 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
           </div>
 
           {/* Status Badge */}
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-xl border ${
-            isPending ? 'bg-violet-50 text-violet-800 border-violet-200/90' :
-            isOrdered ? 'bg-indigo-50 text-indigo-800 border-indigo-200/90' :
-            isClaim ? 'bg-rose-50 text-rose-800 border-rose-200/90' :
-            'bg-emerald-50 text-emerald-800 border-emerald-200/90'
-          }`}>
-            {isPending && <Clock className="w-3.5 h-3.5 text-violet-600 shrink-0" />}
-            {isOrdered && <Truck className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
-            {isClaim && <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />}
-            {isClosed && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
-            <span>
-              {isPending ? 'รอดำเนินการสั่งซื้อ' :
-               isOrdered ? 'สั่งซื้อแล้ว / ระหว่างส่ง' :
-               isClaim ? 'รอดำเนินการเคลม' :
-               'ตรวจรับปิดงานแล้ว'}
-            </span>
-          </span>
+          {renderPOStatusBadge(po.status)}
 
           {/* Modification Indicator Badge */}
           {hasModifications && isPending && (
@@ -640,11 +668,11 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
 
       {/* 2. Metadata Context Strip */}
       <div className="py-3 flex flex-wrap items-center gap-y-2 gap-x-4 text-xs text-slate-500">
-        {po.vendorName && po.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)' && (
+        {(po.vendor || po.shopName || (po.vendorName && po.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)')) && (
           <div className="flex items-center gap-1.5">
             <Store className="w-3.5 h-3.5 text-violet-500" />
             <span>ร้านค้า:</span>
-            <strong className="text-slate-800 font-semibold">{po.vendorName}</strong>
+            <strong className="text-slate-800 font-semibold">{po.vendor || po.shopName || po.vendorName}</strong>
           </div>
         )}
 
@@ -1002,8 +1030,26 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
       {/* 4. Integrated Checkout Action Dock (Moved beneath the table) */}
       {isPending ? (
         <div className="mt-6 pt-5 border-t border-slate-100 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-          {/* Left: Vendor Input with storefront icon */}
+          {/* Left: Vendor Input with storefront icon & Quick Platform Chips */}
           <div className="w-full md:w-96">
+            <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+              <span className="text-[11px] font-medium text-slate-400">ช่องทางด่วน:</span>
+              {[
+                { name: 'Shopee', prefix: 'Shopee: ' },
+                { name: 'Lazada', prefix: 'Lazada: ' },
+                { name: 'เว็บทางการ', prefix: 'Website: ' },
+                { name: 'สั่งทาง LINE', prefix: 'LINE: ' },
+              ].map(p => (
+                <button
+                  key={p.name}
+                  type="button"
+                  onClick={() => setVendorName(prev => (prev || '').startsWith(p.prefix) ? prev : `${p.prefix}${(prev || '').replace(/^(Shopee|Lazada|Website|LINE):\s*/, '')}`)}
+                  className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                >
+                  + {p.name}
+                </button>
+              ))}
+            </div>
             <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
               ร้านค้าออนไลน์ / ช่องทางที่สั่งซื้อ
             </label>
@@ -1030,23 +1076,43 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
               </span>
             </div>
 
-            <button
-              type="button"
-              onClick={handleAcknowledgeAndOrder}
-              disabled={isSubmitting}
-              className="bg-slate-950 hover:bg-indigo-600 text-white font-semibold text-xs px-6 py-3 rounded-xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap disabled:opacity-50"
-            >
-              <span>{isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันการสั่งซื้อเรียบร้อย'}</span>
-              <span className="font-mono text-sm">→</span>
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                type="button"
+                onClick={handleAcknowledgeAndOrder}
+                disabled={!isVendorValid || isSubmitting}
+                className={`text-xs px-6 py-3 rounded-xl transition-all flex items-center justify-center gap-2 whitespace-nowrap font-semibold ${
+                  !isVendorValid || isSubmitting
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                    : 'bg-slate-950 hover:bg-indigo-600 text-white cursor-pointer shadow-md active:scale-95'
+                }`}
+              >
+                <span>{isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันการสั่งซื้อเรียบร้อย'}</span>
+                <span className="font-mono text-sm">→</span>
+              </button>
+              {!isVendorValid && (
+                <span className="text-[10px] text-rose-500 font-medium tracking-tight">
+                  * กรุณาระบุชื่อร้านค้าก่อนยืนยัน
+                </span>
+              )}
+            </div>
           </div>
         </div>
       ) : (
         /* Status Info Footer for Non-Pending Orders */
         <div className="mt-5 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
           <div className="flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-            <span>คำสั่งซื้อนี้อยู่ในขั้นตอนการตรวจรับและจัดการโดยแผนก <strong>{po.department}</strong></span>
+            {isPartialReceived ? (
+              <span className="text-purple-700 font-medium flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                <span>สินค้าตรวจรับแล้วบางส่วน อยู่ระหว่างรอรับสินค้าที่เหลือให้ครบถ้วน</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                <span>คำสั่งซื้อนี้อยู่ในขั้นตอนการตรวจรับและจัดการโดยแผนก <strong>{po.department}</strong></span>
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 font-mono">
             <span>รวม {items.length} รายการ ({totalPurchaseQty.toLocaleString()} ชิ้น)</span>

@@ -12,13 +12,18 @@
     "allowedDepartments": [
       "PD"
     ],
-    "roleId": "REQUESTER_PD",
+    "roleId": "REQUESTER",
     "positionKey": "REQUESTER_PD",
     "title": "Requester (PD)",
     "level": 1,
     "status": "ACTIVE",
     "pictureUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-    "description": "สร้าง/ส่ง PR ฝ่ายผลิต, เบิกจ่ายสินค้า, ตรวจรับของเข้าสต็อก"
+    "description": "สร้าง/ส่ง PR ฝ่ายผลิต, เบิกจ่ายสินค้า, ตรวจรับของเข้าสต็อก",
+    "signature": null,
+    "updatedAt": "2026-09-10T09:41:27.106Z",
+    "assignedDepartments": [
+      "PD"
+    ]
   },
   {
     "id": "USR-0002",
@@ -33,13 +38,17 @@
     "allowedDepartments": [
       "QC"
     ],
-    "roleId": "REQUESTER_QC",
+    "roleId": "REQUESTER",
     "positionKey": "REQUESTER_QC",
     "title": "Requester (QC)",
     "level": 1,
     "status": "ACTIVE",
     "pictureUrl": "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80",
-    "description": "สร้าง/ส่ง PR ฝ่าย QC/Lab, เบิกจ่ายสารเคมี, ตรวจรับของ"
+    "description": "สร้าง/ส่ง PR ฝ่าย QC/Lab, เบิกจ่ายสารเคมี, ตรวจรับของ",
+    "signature": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANwAAABQCAYAAAByKBsiAAACFElEQVR4nO3aPY7bMBAGUJ2ENY+zB3LFJifJLdykS+syRZAiSBtgkSJIFyziQFxhfyybksXRe+ValIXPs8OxrGEAAAAAAAAAAAAAAAAAAAAAtien8iun8jWncsqpfMup/Mip/MmpHO99bV07B/szp/Kh+tshp/J7b+FWRfYwjDmc9lZoOZXP5xymNbG7LJp6KdjqteOeupos/pk2nRde/5/FYf2r69h7wQ7Pu1rogGUxyqk85lQ+vXPMLiegq73VzV85/qmzn5a/svu4pMiqY8Nmca6L41uNpzrWTnepnMr3nMrHGceHDfeS3W1yfOQsZjUTO90F5hZYtS5kuHN2t2rNrIbVg7lTT7UubANq4poCa7F2i+aMUJN14ZrPLU0k8ph9k2sLrFr/VGhfonSzG4ssTGe/duqp1ofJoqkWnShKN7u1yIZAO12LySVKFk01CjZEN2s1HkfIo9V30ghZNHPrODk5V9fdrGUWQ+e7viwW0vrOWs/dTBaj1v8gPWfRTIvvK6+ct7udThbPLXHnOdrNtdmWvJ3fW0eTxaj1ODk592GJ83Zh6R9qe5rbZTGK+AP+3S3Zxar36OJpelmM1shil9bqYj08Tb/W7iOLHVs72C1/kGs/mrblGynRHtPbjDsU2SZHqnuNUOf3lAUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMB6/gLwb8+JfuRftwAAAABJRU5ErkJggg==",
+    "assignedDepartments": [
+      "QC"
+    ]
   },
   {
     "id": "USR-0003",
@@ -48,11 +57,12 @@
     "password": "password123",
     "name": "คุณสมชาย (Asst. Mgr)",
     "employeeName": "คุณสมชาย มุ่งมั่น",
-    "displayName": "Somchai (Asst Mgr)",
-    "primaryDepartment": "ALL",
-    "department": "ALL",
+    "displayName": "คุณสมชาย (Asst. Mgr)",
+    "primaryDepartment": "PD",
+    "department": "PD",
     "allowedDepartments": [
-      "*"
+      "PD",
+      "QC"
     ],
     "roleId": "ASST_MANAGER",
     "positionKey": "REVIEWER",
@@ -60,7 +70,13 @@
     "level": 2,
     "status": "ACTIVE",
     "pictureUrl": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
-    "description": "ตรวจทาน PR (Level 1 Reviewer), ดูงบประมาณทุกแผนก"
+    "description": "ตรวจทาน PR (Level 1 Reviewer), ดูงบประมาณทุกแผนก",
+    "signature": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANwAAABQCAYAAAByKBsiAAAAW0lEQVR4nO3BMQEAAADCoPVPbQZ/oAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAwTXwABjTa6tQAAAABJRU5ErkJggg==",
+    "updatedAt": "2026-09-10T10:35:09.226Z",
+    "assignedDepartments": [
+      "PD",
+      "QC"
+    ]
   },
   {
     "id": "USR-0004",
@@ -81,7 +97,11 @@
     "level": 2,
     "status": "ACTIVE",
     "pictureUrl": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
-    "description": "จัดการสั่งซื้อออนไลน์ Shopee/Lazada, บันทึกราคาจริง"
+    "description": "จัดการสั่งซื้อออนไลน์ Shopee/Lazada, บันทึกราคาจริง",
+    "signature": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANwAAABQCAYAAAByKBsiAAABq0lEQVR4nO3YO07DQBQF0CxgVjMrYRGzjPSshF2kSUebkiKiQGkjIQqElAJFmmIUBfwbf2KdU0JsTxy/ue95swEAAAAAAAAAAAAAAAAAAAAAAAAAgO5CTF8hps8Q00+IaTf3emCVQkyvucjOIaZ9iOmg6GAEOdWOuciei7/vQkynENN23hXCSuRkO5aFdvP/bYjpW9LBQEWyPTV8TtJVlu/9pZiXzc1rl3/kfcvPSrpKiq7ivZiXzc1r1jbdbo5ZRNIVL3guj5YMTfd9KfeYiprmtoZjrw/3YZyVtbp++YKnTIjTIxRem65CN7EyIaaPENNLz2Nn24FzsZ3vbRT5IT0sOR26dBWSbiX6tJJ3ztG7YAdcs1Uqz53Af+nTVSz1u9BBlxcl/5xj0pbn0ZOh7ya3xO9CR7XSqUbhtrxOn2RYzAw0ZF7ezNRNUEn+8XdD2sniXNeH+m3M3XdI+zvVhtBiHYMKZorNIz8XUrS22jPB2DPGkKKZYkNosYbB8/Jm5Nay5iYMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwsl+vzgf927i6QgAAAABJRU5ErkJggg==",
+    "assignedDepartments": [
+      "ALL"
+    ]
   },
   {
     "id": "USR-0005",
@@ -102,7 +122,11 @@
     "level": 3,
     "status": "ACTIVE",
     "pictureUrl": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
-    "description": "อนุมัติสั่งซื้อ (Final Approver), ออก PO อัตโนมัติ, คุมงบประมาณ"
+    "description": "อนุมัติสั่งซื้อ (Final Approver), ออก PO อัตโนมัติ, คุมงบประมาณ",
+    "signature": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANwAAABQCAYAAAByKBsiAAADLElEQVR4nO3dTW7bMBCGYa15A56JN+sVfIleI8vsDHTTXYEAKQK0adFmUxilW0LRz1D817zPLnYgy+NPo5ENiNMEAAAAAAAAAAAAAAAAAJAx1n0x1r0Z666t96U1X4tvxrpX7fUw1n30dSAbufiivhjrfhrrvmoOmj/Yfhnrnox1z8a638pr8eLroD4bWQRF/eD/vvgC34p7ab1/NQWN5yF47KqxFtPf9347yz8Ff1/uzajtng1sXtTg8Vsne26zV20Y6z4b6x6lj5/ZvBEHj98Ouk8aG1CytaJOCjv7Ti1uIfuuaZRaa8ST0macbGl8WvgfNZ19K2CS58/EZ+O61Hwmhc04C8nBpKWz7wVsUjZKCbOhphkn2xqfFv739J3dWPdDMiJpGKWk2dDSjAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAwD8j3lRHw60zqitZ1NFuqiO5UVDi9oe6qc5o+zuE0kUd6UOrUIthGlDp5qNSjaKOcherWgEbqB6iu5QhQo2ijnLtUitgo1wXjbKfQ6lV1BHGSmrxH+NkATWLOsK1S60DgVooVbuoPV+71O7oPQc65o7bpzRbaTPLCpMtippjZJuttJlt9dHaXxDkaj6FsqHz2i0IV7jSZpYVJlsUNXWUWlhpM8vqo5IVgnJL/SKpcDa6PfsWMwvXw+y5S2rQWhX16OsGS/y+OyiC8B4K2qC1KJINtV+WSM5AR4PWsqhHRinhGnWHgtbyeuXoyjKR2Yg6g6r77S0YFaTLREWvtd2yqLFBiD0gDmy/6fVKzOsfzIb4gG4xWhfj38xmCLZGBcH2RWeOHooqDcLWGJlp+83HJ+l17dFs+Pe3e9Y/3TeTksKmdFvJeNlTUffORKmNYS9ofvtvPYxPkmaZKRtFstettc4bOyrsbH/1Oqa3oq4FLVdjWAtayiRRwlazzJyNYtnrVtB5w99Osn74sw8w/L2qq6Ju7Gf0GLnxGvegFdl+LrNmWSQbNbLXJf/Gw99Osr/Z4AMMf6/qrqg19tPXu+s63JXORo3sAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAd/4AXL7O+4+ScXQAAAAASUVORK5CYII=",
+    "assignedDepartments": [
+      "ALL"
+    ]
   },
   {
     "id": "USR-0006",
@@ -122,6 +146,10 @@
     "level": 99,
     "status": "ACTIVE",
     "pictureUrl": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
-    "description": "ผู้ดูแลระบบ สิทธิ์สูงสุดในการจัดการข้อมูลทุกส่วน"
+    "description": "ผู้ดูแลระบบ สิทธิ์สูงสุดในการจัดการข้อมูลทุกส่วน",
+    "signature": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANwAAABQCAYAAAByKBsiAAACpklEQVR4nO3YP27bMBQHYJ+EC2eeIhfoYTpmzxl6gN4iS7euWQp06FAUHbK0KIr+2woDGggjji2Zsfio7wMCxo5skOLTjw/Z7QAAAAAAAAAAAAAAAAAAAID+pFzep1z+pVy+pVy+Tr/frz2vzUu5/Ei5vKte36ZcftXvjSLl8jPl8inl8mp6fT8V4+3ac2upWudDyuVu2tMHD93KDguwen+/QR9HKsQp8fdrvTt4f7/WPyMV4mGIVu8PGTBhHNuY6W/7NHy4/qzaOxYs1d+P3odopmC5f2atX1Iub68/s407Y2OGScNTD9RIJ/qpoBzxRA/hnKQbJQ3PXOsQJ/o5p/VIJ3oIp1qs6rrwaXjqJK+uC3+iz1jrMCd6CHMSLnoazjm5op/oc+Yffa1hnJuC1fWh03BmuIRd67ldS3X9EC1095bc6KhpODdcdoELcW4nMkILHcKSFjFwEc4Oiqgt9MK1hgzSMJYk/i5oGs5tsarPhWsrL9jXcGsN5ZJEi5aGl5xUAde6uAOJ2r10b2kKVp8PlYYXhkuoIrwwXEK20N1rUURRCrFBuIRpobcWpGG0SLIoadgoXEK0lS3mGWWtoWxpYxqFS/fJv/QfQ098T4jOJYxL247qeyIUYZO17gIUYquOI1ILHULLwun9lGs5v95b6MZr7XpfQ2lZOD2nfqsWq/q+bouw5Um+C9K9AAAAAAAAAAAAAAAAAAAAAAAAAADAdqRcbqaf18fGtedILKfq6WC8WXu+VzMt+EPK5THl8jfl8v2J8XfK5c2MG+jBDerS/Z3Gfa18fqae6vFxqr/NPXStbuBzY7MHd6sPcuv71sk+b+dhO1dnG3q1B7mz8aXun05mVEELsZfxxYNl7fogiE5OoBcf177PAAAAAAAAAAAAAIzhP5/VLOCftKv9AAAAAElFTkSuQmCC",
+    "assignedDepartments": [
+      "ALL"
+    ]
   }
 ]

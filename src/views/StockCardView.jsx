@@ -18,10 +18,17 @@ export default function StockCardView({
   storageLocations = [], 
   stockLogs = [], 
   pos = [], 
+  departments: propDepartments = [],
   currentRole, 
   onQuickPR, 
   onRefresh 
 }) {
+  // Dynamic Departments from Master Data
+  const deptList = useMemo(() => {
+    const list = (propDepartments && propDepartments.length > 0) ? propDepartments : (storageService.getDepartments?.() || []);
+    return (list || []).filter(d => d.isActive !== false);
+  }, [propDepartments]);
+
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [remarkProduct, setRemarkProduct] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState(currentRole?.canViewAllDepts ? 'ALL' : (currentRole?.department || 'PD'));
@@ -300,26 +307,19 @@ export default function StockCardView({
                 >
                   ทั้งหมด
                 </button>
-                <button
-                  onClick={() => setCategoryFilter('PD')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                    categoryFilter === 'PD' 
-                      ? 'bg-white text-blue-700 shadow-2xs font-semibold' 
-                      : 'text-slate-500 hover:text-blue-700'
-                  }`}
-                >
-                  ผลิต (PD)
-                </button>
-                <button
-                  onClick={() => setCategoryFilter('QC')}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                    categoryFilter === 'QC' 
-                      ? 'bg-white text-amber-700 shadow-2xs font-semibold' 
-                      : 'text-slate-500 hover:text-amber-700'
-                  }`}
-                >
-                  QC
-                </button>
+                {deptList.map(d => (
+                  <button
+                    key={d.code}
+                    onClick={() => setCategoryFilter(d.code)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                      categoryFilter === d.code 
+                        ? 'bg-white text-indigo-700 shadow-2xs font-semibold' 
+                        : 'text-slate-500 hover:text-indigo-700'
+                    }`}
+                  >
+                    {d.name} ({d.code})
+                  </button>
+                ))}
               </div>
             ) : (
               <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-xl border border-slate-200/60 shrink-0 text-xs">

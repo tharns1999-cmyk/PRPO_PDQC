@@ -5,22 +5,44 @@ import VendorCRUDModal from '../components/admin/VendorCRUDModal';
 import StorageLocationCRUDModal from '../components/admin/StorageLocationCRUDModal';
 import DeleteLocationModal from '../components/admin/DeleteLocationModal';
 import UsageUnitCRUDModal from '../components/admin/UsageUnitCRUDModal';
+import DepartmentCRUDModal from '../components/admin/DepartmentCRUDModal';
 import UserCRUDModal from '../components/admin/UserCRUDModal';
+import UserMasterView from './admin/UserMasterView';
 import { storageService } from '../services/storageService';
 import { apiService } from '../services/apiService';
 import { modalService } from '../services/modalService';
 import Pagination from '../components/common/Pagination';
 
-export default function MasterDataView({
+export default function MasterDataView(props) {
+  const { currentUser, currentRole } = props;
+  const userRole = currentUser?.role || (currentRole?.roleId === 'ADMIN' || currentRole?.id === 'ADMIN' || Number(currentRole?.level) >= 99 ? 'admin' : (currentRole?.roleId || 'user').toLowerCase());
+  if (userRole !== 'admin') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 bg-white rounded-3xl border border-slate-200 shadow-sm my-6">
+        <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mb-4 text-2xl font-bold">🔒</div>
+        <h2 className="text-xl font-bold text-slate-800 mb-2">สิทธิ์การเข้าถึงถูกจำกัด (Restricted Access)</h2>
+        <p className="text-sm text-slate-500 max-w-md">หน้าจัดการข้อมูลหลัก (Master Data) สงวนสิทธิ์สำหรับผู้ดูแลระบบ (System Admin) เท่านั้น</p>
+      </div>
+    );
+  }
+
+  return <MasterDataContent {...props} />;
+}
+
+function MasterDataContent({
   products = [],
   vendors = [],
   storageLocations: initialLocations = [],
   usageUnits: initialUnits = [],
+  departments: initialDepartments = [],
   users: initialUsers = [],
   currentRole,
+  currentUser,
   onRefresh,
   onSaveUsageUnit,
   onDeleteUsageUnit,
+  onSaveDepartment,
+  onDeleteDepartment,
   onSaveUser,
   onDeleteUser
 }) {
@@ -29,11 +51,13 @@ export default function MasterDataView({
   const [showVendorModal, setShowVendorModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showUsageUnitModal, setShowUsageUnitModal] = useState(false);
+  const [showDeptModal, setShowDeptModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [editProd, setEditProd] = useState(null);
   const [editVendor, setEditVendor] = useState(null);
   const [editLocation, setEditLocation] = useState(null);
   const [editUsageUnit, setEditUsageUnit] = useState(null);
+  const [editDept, setEditDept] = useState(null);
   const [editUser, setEditUser] = useState(null);
   const [deleteLocationItem, setDeleteLocationItem] = useState(null);
   const [locsList, setLocsList] = useState(() => {
@@ -43,6 +67,10 @@ export default function MasterDataView({
   const [unitsList, setUnitsList] = useState(() => {
     if (initialUnits && initialUnits.length > 0) return initialUnits;
     return storageService.getUsageUnits?.() || [];
+  });
+  const [departmentsList, setDepartmentsList] = useState(() => {
+    if (initialDepartments && initialDepartments.length > 0) return initialDepartments;
+    return storageService.getDepartments?.() || [];
   });
   const [usersList, setUsersList] = useState(() => {
     if (initialUsers && initialUsers.length > 0) return initialUsers;
@@ -73,6 +101,14 @@ export default function MasterDataView({
     }
   }, [initialLocations, products]);
 
+  useEffect(() => {
+    if (initialDepartments && initialDepartments.length > 0) {
+      setDepartmentsList(initialDepartments);
+    } else {
+      setDepartmentsList(storageService.getDepartments?.() || []);
+    }
+  }, [initialDepartments]);
+
   // Search & Dept Filter States
   const [prodSearch, setProdSearch] = useState('');
   const [prodCategoryFilter, setProdCategoryFilter] = useState(currentRole?.canViewAllDepts ? 'ALL' : currentRole?.department || 'ALL');
@@ -82,6 +118,8 @@ export default function MasterDataView({
   const [locDeptFilter, setLocDeptFilter] = useState(currentRole?.canViewAllDepts ? 'ALL' : currentRole?.department || 'ALL');
   const [unitSearch, setUnitSearch] = useState('');
   const [unitDeptFilter, setUnitDeptFilter] = useState(currentRole?.canViewAllDepts ? 'ALL' : currentRole?.department || 'ALL');
+  const [deptSearch, setDeptSearch] = useState('');
+  const [deptStatusFilter, setDeptStatusFilter] = useState('ALL');
   const [userSearch, setUserSearch] = useState('');
   const [userDeptFilter, setUserDeptFilter] = useState('ALL');
   const [userRoleFilter, setUserRoleFilter] = useState('ALL');
@@ -95,6 +133,8 @@ export default function MasterDataView({
   const [locPageSize, setLocPageSize] = useState(10);
   const [unitPage, setUnitPage] = useState(1);
   const [unitPageSize, setUnitPageSize] = useState(10);
+  const [deptPage, setDeptPage] = useState(1);
+  const [deptPageSize, setDeptPageSize] = useState(10);
   const [userPage, setUserPage] = useState(1);
   const [userPageSize, setUserPageSize] = useState(10);
 
@@ -103,6 +143,7 @@ export default function MasterDataView({
   useEffect(() => { setVendorPage(1); }, [vendorDeptFilter, vendorSearch, vendorPageSize]);
   useEffect(() => { setLocPage(1); }, [locDeptFilter, locSearch, locPageSize]);
   useEffect(() => { setUnitPage(1); }, [unitDeptFilter, unitSearch, unitPageSize]);
+  useEffect(() => { setDeptPage(1); }, [deptStatusFilter, deptSearch, deptPageSize]);
   useEffect(() => { setUserPage(1); }, [userDeptFilter, userRoleFilter, userSearch, userPageSize]);
 
   const canSeeAll = currentRole?.canViewAllDepts;
@@ -228,20 +269,39 @@ export default function MasterDataView({
     return filteredUsers.slice(start, start + userPageSize);
   }, [filteredUsers, userPage, userPageSize]);
 
-  // Access check
-  if (!currentRole?.canManageMaster) {
-    return (
-      <div className="w-full my-12 text-center p-8 bg-white rounded-3xl border border-slate-200/80 shadow-sm space-y-4 animate-fade-in">
-        <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl w-16 h-16 mx-auto flex items-center justify-center border border-rose-100">
-          <ShieldAlert className="w-8 h-8" />
-        </div>
-        <h3 className="text-lg font-bold text-slate-900">ไม่มีสิทธิ์เข้าถึง (Access Restricted)</h3>
-        <p className="text-xs text-slate-500 max-w-md mx-auto">
-          บทบาท <b>{currentRole?.title}</b> ไม่ได้รับอนุญาตให้จัดการ Master Data
-        </p>
-      </div>
-    );
-  }
+  // Dynamic Department Filter Options (No Hardcoding)
+  const deptFilterOptions = useMemo(() => {
+    return [
+      { code: 'ALL', label: 'ทุกแผนก' },
+      ...departmentsList.filter(d => d.isActive).map(d => ({
+        code: d.code,
+        label: `${d.name} (${d.code})`
+      }))
+    ];
+  }, [departmentsList]);
+
+  // Filtered Departments
+  const filteredDepartments = useMemo(() => {
+    return departmentsList.filter(d => {
+      const matchesStatus = deptStatusFilter === 'ALL' || 
+        (deptStatusFilter === 'ACTIVE' ? d.isActive : !d.isActive);
+      const q = deptSearch.trim().toLowerCase();
+      const matchesSearch = !q || (
+        d.code?.toLowerCase().includes(q) ||
+        d.name?.toLowerCase().includes(q) ||
+        d.nameEn?.toLowerCase().includes(q) ||
+        d.managerName?.toLowerCase().includes(q) ||
+        d.description?.toLowerCase().includes(q)
+      );
+      return matchesStatus && matchesSearch;
+    });
+  }, [departmentsList, deptStatusFilter, deptSearch]);
+
+  const deptTotalPages = Math.ceil(filteredDepartments.length / deptPageSize) || 1;
+  const paginatedDepartments = useMemo(() => {
+    const start = (deptPage - 1) * deptPageSize;
+    return filteredDepartments.slice(start, start + deptPageSize);
+  }, [filteredDepartments, deptPage, deptPageSize]);
 
   const handleDeleteProduct = async (prod) => {
     if (!canDeleteMaster) return;
@@ -369,14 +429,15 @@ export default function MasterDataView({
   };
 
   const roleBadge = (user) => {
-    const roleId = user?.roleId || user?.positionKey;
+    const rawRoleId = user?.roleId || user?.positionKey;
+    // Normalize legacy department-coupled roleIds
+    const roleId = (rawRoleId === 'REQUESTER_PD' || rawRoleId === 'REQUESTER_QC') ? 'REQUESTER' : rawRoleId;
     const colors = {
       ADMIN: 'bg-purple-50 text-purple-700 border-purple-200/80',
       PLANT_MANAGER: 'bg-rose-50 text-rose-700 border-rose-200/80',
       ASST_MANAGER: 'bg-violet-50 text-violet-700 border-violet-200/80',
       ONLINE_PURCHASER: 'bg-cyan-50 text-cyan-700 border-cyan-200/80',
-      REQUESTER_PD: 'bg-blue-50 text-blue-700 border-blue-200/80',
-      REQUESTER_QC: 'bg-amber-50 text-amber-700 border-amber-200/80',
+      REQUESTER: 'bg-blue-50 text-blue-700 border-blue-200/80',
     };
     const title = user?.title || roleId || 'User';
     return (
@@ -387,19 +448,88 @@ export default function MasterDataView({
     );
   };
 
-  const deptBadge = (dept) => {
-    if (!dept) return null;
-    const colors = {
-      PD: 'bg-blue-50 text-blue-700 border-blue-200/80',
-      QC: 'bg-amber-50 text-amber-700 border-amber-200/80',
-      BOTH: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
-      ALL: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
-    };
+  const deptBadge = (deptCode) => {
+    if (!deptCode) return null;
+    if (deptCode === 'BOTH' || deptCode === 'ALL') {
+      return (
+        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200/80">
+          ส่วนกลาง (ALL)
+        </span>
+      );
+    }
+    const found = departmentsList.find(d => d.code === deptCode);
+    const color = found?.color;
+    const badgeStyle = color === 'amber'
+      ? 'bg-amber-50 text-amber-700 border-amber-200/80'
+      : color === 'emerald'
+      ? 'bg-emerald-50 text-emerald-700 border-emerald-200/80'
+      : color === 'purple'
+      ? 'bg-purple-50 text-purple-700 border-purple-200/80'
+      : color === 'cyan'
+      ? 'bg-cyan-50 text-cyan-700 border-cyan-200/80'
+      : 'bg-blue-50 text-blue-700 border-blue-200/80';
+
     return (
-      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${colors[dept] || 'bg-slate-100 text-slate-600'}`}>
-        {dept === 'BOTH' || dept === 'ALL' ? 'ส่วนกลาง (ALL)' : dept}
+      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeStyle}`}>
+        {found ? `${found.name} (${found.code})` : deptCode}
       </span>
     );
+  };
+
+  const handleSaveDepartment = async (deptData) => {
+    try {
+      if (onSaveDepartment) {
+        await onSaveDepartment(deptData);
+      } else {
+        await apiService.saveDepartment(deptData, currentUser?.name || currentRole?.name);
+      }
+      setDepartmentsList(storageService.getDepartments());
+      modalService.success(
+        deptData.id ? 'แก้ไขข้อมูลแผนกสำเร็จ' : 'เพิ่มแผนกใหม่สำเร็จ',
+        `บันทึกข้อมูลแผนก "${deptData.name}" (${deptData.code}) เรียบร้อยแล้ว`
+      );
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      modalService.error('เกิดข้อผิดพลาดในการบันทึกแผนก', err.message);
+    }
+  };
+
+  const handleToggleDeptStatus = async (dept) => {
+    const updated = { ...dept, isActive: !dept.isActive };
+    await handleSaveDepartment(updated);
+  };
+
+  const handleDeleteDepartment = async (dept) => {
+    const allUsers = storageService.getUsers?.() || [];
+    const assignedUsers = allUsers.filter(u => u.primaryDepartment === dept.code || u.department === dept.code);
+    if (assignedUsers.length > 0) {
+      return modalService.warning(
+        'ไม่สามารถลบแผนกนี้ได้',
+        `เนื่องจากมีผู้ใช้งานผูกอยู่กับแผนก ${dept.code} จำนวน ${assignedUsers.length} คน กรุณาย้ายแผนกของผู้ใช้ก่อน`
+      );
+    }
+
+    const confirmed = await modalService.confirm({
+      title: 'ยืนยันการลบแผนก',
+      message: `ต้องการลบแผนก "${dept.name}" (${dept.code}) ออกจากระบบ Master Data หรือไม่?`,
+      type: 'error',
+      confirmText: 'ลบแผนก',
+      cancelText: 'ยกเลิก'
+    });
+    if (!confirmed) return;
+
+    try {
+      if (onDeleteDepartment) {
+        await onDeleteDepartment(dept.id);
+      } else {
+        await apiService.deleteDepartment(dept.id, currentUser?.name || currentRole?.name);
+      }
+      setDepartmentsList(prev => prev.filter(d => d.id !== dept.id && d.code !== dept.code));
+      modalService.success('ลบแผนกสำเร็จ', `ลบแผนก "${dept.name}" เรียบร้อยแล้ว`);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      modalService.error('เกิดข้อผิดพลาดในการลบแผนก', err.message);
+    }
   };
 
   return (
@@ -462,13 +592,13 @@ export default function MasterDataView({
               <Plus className="w-4 h-4" />
               <span>เพิ่มหน่วยเบิกใหม่</span>
             </button>
-          ) : activeTab === 'users' ? (
+          ) : activeTab === 'departments' ? (
             <button
-              onClick={() => { setEditUser(null); setShowUserModal(true); }}
+              onClick={() => { setEditDept(null); setShowDeptModal(true); }}
               className="bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white text-xs sm:text-sm font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-sm transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>เพิ่มผู้ใช้งานใหม่</span>
+              <span>เพิ่มแผนกใหม่</span>
             </button>
           ) : null}
         </div>
@@ -478,59 +608,88 @@ export default function MasterDataView({
       <div className="flex gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-2xs overflow-x-auto custom-scrollbar">
         <button
           onClick={() => setActiveTab('products')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'products'
               ? 'bg-white text-slate-900 shadow-xs font-bold'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
           <Package className="w-4 h-4 text-indigo-600" />
-          <span>แคตตาล็อกสินค้า ({filteredProducts.length})</span>
+          <span>แคตตาล็อกสินค้า</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
+            {filteredProducts.length}
+          </span>
         </button>
         <button
           onClick={() => setActiveTab('vendors')}
           aria-label="ผู้ขาย / Vendor"
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'vendors'
               ? 'bg-white text-slate-900 shadow-xs font-bold'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
           <Store className="w-4 h-4 text-emerald-600" />
-          <span>รายชื่อผู้ขาย / ร้านค้า ({filteredVendors.length})</span>
+          <span>รายชื่อผู้ขาย / ร้านค้า</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
+            {filteredVendors.length}
+          </span>
         </button>
         <button
           onClick={() => setActiveTab('locations')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'locations'
               ? 'bg-white text-slate-900 shadow-xs font-bold'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
           <MapPin className="w-4 h-4 text-violet-600" />
-          <span>จุดจัดเก็บสินค้า ({filteredLocations.length})</span>
+          <span>จุดจัดเก็บสินค้า</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
+            {filteredLocations.length}
+          </span>
         </button>
         <button
           onClick={() => setActiveTab('usageUnits')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'usageUnits'
               ? 'bg-white text-slate-900 shadow-xs font-bold'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
           <DoorClosed className="w-4 h-4 text-cyan-600" />
-          <span>หน่วยเบิกใช้งาน / ห้อง ({filteredUsageUnits.length})</span>
+          <span>หน่วยเบิกใช้งาน / ห้อง</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
+            {filteredUsageUnits.length}
+          </span>
         </button>
         <button
           onClick={() => setActiveTab('users')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap ${
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'users'
               ? 'bg-white text-slate-900 shadow-xs font-bold'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
           <Users className="w-4 h-4 text-sky-600" />
-          <span>👤 ผู้ใช้งานและสิทธิ์ ({filteredUsers.length})</span>
+          <span>ผู้ใช้งานและสิทธิ์</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
+            {filteredUsers.length}
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveTab('departments')}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === 'departments'
+              ? 'bg-white text-slate-900 shadow-xs font-bold'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <Building2 className="w-4 h-4 text-blue-600" />
+          <span>แผนก / ฝ่าย</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
+            {departmentsList.length}
+          </span>
         </button>
       </div>
 
@@ -539,18 +698,18 @@ export default function MasterDataView({
         <div className="space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {canSeeAll && (
-              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0">
-                {['ALL', 'PD', 'QC'].map(cat => (
+              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
+                {deptFilterOptions.map(cat => (
                   <button
-                    key={cat}
-                    onClick={() => setProdCategoryFilter(cat)}
+                    key={cat.code}
+                    onClick={() => setProdCategoryFilter(cat.code)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      prodCategoryFilter === cat
+                      prodCategoryFilter === cat.code
                         ? 'bg-white text-slate-900 shadow-xs font-bold'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    {cat === 'ALL' ? 'ทุกแผนก' : cat === 'PD' ? 'ฝ่ายผลิต (PD)' : 'ฝ่าย QC'}
+                    {cat.label}
                   </button>
                 ))}
               </div>
@@ -654,18 +813,18 @@ export default function MasterDataView({
         <div className="space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {canSeeAll && (
-              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0">
-                {['ALL', 'PD', 'QC'].map(cat => (
+              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
+                {deptFilterOptions.map(cat => (
                   <button
-                    key={cat}
-                    onClick={() => setVendorDeptFilter(cat)}
+                    key={cat.code}
+                    onClick={() => setVendorDeptFilter(cat.code)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      vendorDeptFilter === cat
+                      vendorDeptFilter === cat.code
                         ? 'bg-white text-slate-900 shadow-xs font-bold'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    {cat === 'ALL' ? 'ทุกแผนก' : cat === 'PD' ? 'ฝ่ายผลิต (PD)' : 'ฝ่าย QC'}
+                    {cat.label}
                   </button>
                 ))}
               </div>
@@ -748,18 +907,18 @@ export default function MasterDataView({
         <div className="space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {canSeeAll && (
-              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0">
-                {['ALL', 'PD', 'QC'].map(cat => (
+              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
+                {deptFilterOptions.map(cat => (
                   <button
-                    key={cat}
-                    onClick={() => setLocDeptFilter(cat)}
+                    key={cat.code}
+                    onClick={() => setLocDeptFilter(cat.code)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      locDeptFilter === cat
+                      locDeptFilter === cat.code
                         ? 'bg-white text-slate-900 shadow-xs font-bold'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    {cat === 'ALL' ? 'ทุกแผนก' : cat === 'PD' ? 'ฝ่ายผลิต (PD)' : 'ฝ่าย QC'}
+                    {cat.label}
                   </button>
                 ))}
               </div>
@@ -868,37 +1027,20 @@ export default function MasterDataView({
         <div className="space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {canSeeAll && (
-              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0">
-                <button
-                  onClick={() => setUnitDeptFilter('ALL')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    unitDeptFilter === 'ALL'
-                      ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  ทุกแผนก
-                </button>
-                <button
-                  onClick={() => setUnitDeptFilter('PD')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    unitDeptFilter === 'PD'
-                      ? 'bg-white text-blue-700 shadow-2xs font-bold'
-                      : 'text-slate-500 hover:text-blue-600'
-                  }`}
-                >
-                  ฝ่ายผลิต (PD)
-                </button>
-                <button
-                  onClick={() => setUnitDeptFilter('QC')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    unitDeptFilter === 'QC'
-                      ? 'bg-white text-amber-700 shadow-2xs font-bold'
-                      : 'text-slate-500 hover:text-amber-600'
-                  }`}
-                >
-                  ฝ่าย QC (QC)
-                </button>
+              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
+                {deptFilterOptions.map(cat => (
+                  <button
+                    key={cat.code}
+                    onClick={() => setUnitDeptFilter(cat.code)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      unitDeptFilter === cat.code
+                        ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
               </div>
             )}
 
@@ -1016,206 +1158,150 @@ export default function MasterDataView({
         </div>
       )}
 
-      {/* Tab 5: Users & Access Management */}
+      {/* Tab 5: Users & E-Signature Management */}
       {activeTab === 'users' && (
-        <div className="space-y-4">
-          {/* Filters and Search Bar */}
-          <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Dept filter pills */}
-              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0">
-                {['ALL', 'PD', 'QC'].map(dept => (
-                  <button
-                    key={dept}
-                    onClick={() => setUserDeptFilter(dept)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      userDeptFilter === dept
-                        ? 'bg-white text-slate-900 shadow-xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {dept === 'ALL' ? 'ทุกแผนก' : dept === 'PD' ? 'ฝ่ายผลิต (PD)' : 'ฝ่าย QC'}
-                  </button>
-                ))}
-              </div>
+        <UserMasterView 
+          users={usersList} 
+          departments={departmentsList}
+          currentRole={currentRole} 
+          currentUser={currentUser}
+          onRefresh={() => {
+            if (onRefresh) onRefresh();
+            setUsersList(storageService.getUsers() || []);
+          }} 
+        />
+      )}
 
-              {/* Role filter dropdown */}
-              <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl">
-                <Shield className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <select
-                  value={userRoleFilter}
-                  onChange={e => setUserRoleFilter(e.target.value)}
-                  className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+      {/* Tab 6: Departments Master Data */}
+      {activeTab === 'departments' && (
+        <div className="space-y-4">
+          <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            {/* Status Filter */}
+            <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0">
+              {[
+                { id: 'ALL', label: 'ทุกสถานะ' },
+                { id: 'ACTIVE', label: '✓ เปิดใช้งาน' },
+                { id: 'INACTIVE', label: '⚠️ ระงับการใช้งาน' }
+              ].map(st => (
+                <button
+                  key={st.id}
+                  onClick={() => setDeptStatusFilter(st.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    deptStatusFilter === st.id
+                      ? 'bg-white text-slate-900 shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
                 >
-                  <option value="ALL">ทุกบทบาทหน้าที่ (All Roles)</option>
-                  <option value="REQUESTER_PD">Requester (PD)</option>
-                  <option value="REQUESTER_QC">Requester (QC)</option>
-                  <option value="ASST_MANAGER">Reviewer (Asst. Manager)</option>
-                  <option value="PLANT_MANAGER">Approver (Plant Manager)</option>
-                  <option value="ONLINE_PURCHASER">Purchaser (Online)</option>
-                  <option value="ADMIN">System Admin</option>
-                </select>
-              </div>
+                  {st.label}
+                </button>
+              ))}
             </div>
 
-            {/* Search Input */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <div className="relative flex-1 sm:w-80 ml-auto">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                value={userSearch}
-                onChange={e => setUserSearch(e.target.value)}
-                placeholder="ค้นหาชื่อ, Username, รหัสพนักงาน, หรือตำแหน่ง..."
-                className="w-full bg-slate-50/70 hover:bg-slate-50 focus:bg-white text-slate-800 placeholder-slate-400 text-xs sm:text-sm pl-9 pr-8 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-all"
+                placeholder="ค้นหารหัสย่อ, ชื่อแผนก, ผู้จัดการ..."
+                value={deptSearch}
+                onChange={e => setDeptSearch(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-medium text-slate-800 placeholder:text-slate-400 shadow-2xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
               />
-              {userSearch && (
-                <button
-                  onClick={() => setUserSearch('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+              {deptSearch && (
+                <button onClick={() => setDeptSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-0.5">✕</button>
               )}
             </div>
           </div>
 
-          {/* Users Table */}
-          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+          {/* Departments Table Card */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs sm:text-sm">
-                <thead>
-                  <tr className="bg-slate-50/70 border-b border-slate-100 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="py-3.5 pl-6">ผู้ใช้งาน (User & Profile)</th>
-                    <th className="py-3.5 px-4">บทบาทและระดับสิทธิ์</th>
-                    <th className="py-3.5 px-4 text-center">แผนกหลัก</th>
-                    <th className="py-3.5 px-4">ขอบเขตแผนกที่ดูแล (Authorized Departments)</th>
-                    <th className="py-3.5 px-4 text-center">สถานะ</th>
+                <thead className="bg-slate-50/80 border-b border-slate-200/70 text-slate-500 font-bold text-[11px] uppercase tracking-wider">
+                  <tr>
+                    <th className="py-3.5 pl-6">รหัสย่อ (Code)</th>
+                    <th className="py-3.5 px-4">ชื่อแผนก / ฝ่าย (Department Name)</th>
+                    <th className="py-3.5 px-4">คำนำหน้า (Prefix)</th>
+                    <th className="py-3.5 px-4 text-right">งบประมาณ/เดือน</th>
+                    <th className="py-3.5 px-4">ผู้จัดการ / หัวหน้าฝ่าย</th>
+                    <th className="py-3.5 px-4 text-center">สถานะการใช้งาน</th>
                     <th className="py-3.5 pr-6 text-center">จัดการ</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100/80">
-                  {paginatedUsers.length === 0 ? (
+                <tbody className="divide-y divide-slate-100">
+                  {paginatedDepartments.length === 0 ? (
                     <tr>
-                      <td colSpan="6" className="py-12 text-center text-slate-400">
-                        <Users className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-                        <p className="font-semibold text-slate-600">ไม่พบข้อมูลผู้ใช้งาน</p>
-                        <p className="text-xs text-slate-400 mt-1">ลองเปลี่ยนคำค้นหาหรือกดปุ่มเพิ่มผู้ใช้งานใหม่</p>
+                      <td colSpan="7" className="py-12 text-center text-slate-400">
+                        <Building2 className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                        <p className="font-semibold text-slate-600 text-sm">ไม่พบข้อมูลแผนก / ฝ่าย</p>
+                        <p className="text-xs text-slate-400 mt-0.5">ลองปรับตัวกรองหรือเพิ่มแผนกใหม่เข้าสู่ระบบ</p>
                       </td>
                     </tr>
                   ) : (
-                    paginatedUsers.map(userItem => {
-                      const isSelf = currentRole?.id === userItem.id || currentRole?.username === userItem.username;
-                      const hasWildcard = Array.isArray(userItem.allowedDepartments) && (userItem.allowedDepartments.includes('*') || userItem.allowedDepartments.includes('ALL'));
-                      const deptsList = Array.isArray(userItem.allowedDepartments) && userItem.allowedDepartments.length > 0
-                        ? userItem.allowedDepartments
-                        : [userItem.department || 'PD'];
-
+                    paginatedDepartments.map(dept => {
                       return (
-                        <tr key={userItem.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-3.5 pl-6">
-                            <div className="flex items-center gap-3">
-                              {userItem.pictureUrl ? (
-                                <img
-                                  src={userItem.pictureUrl}
-                                  alt={userItem.name}
-                                  className="w-10 h-10 rounded-2xl object-cover border border-slate-200/80 shadow-2xs shrink-0"
-                                />
-                              ) : (
-                                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 border border-indigo-100 font-bold flex items-center justify-center shrink-0">
-                                  {(userItem.name || 'U').charAt(0).toUpperCase()}
-                                </div>
-                              )}
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-bold text-slate-900">{userItem.name}</span>
-                                  {isSelf && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                      <UserCheck className="w-3 h-3" />
-                                      บัญชีของคุณ
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
-                                  <span>{userItem.employeeId || '-'}</span>
-                                  <span>•</span>
-                                  <span className="font-mono text-slate-500">@{userItem.username}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <div className="space-y-1">
-                              {roleBadge(userItem)}
-                              <div className="text-[11px] text-slate-400 font-medium">
-                                Level: {userItem.level || 1} • {userItem.title || userItem.roleId}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4 text-center">
-                            {deptBadge(userItem.primaryDepartment || userItem.department)}
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              {hasWildcard ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
-                                  <ShieldCheck className="w-3.5 h-3.5" />
-                                  ทุกแผนก (*)
-                                </span>
-                              ) : (
-                                deptsList.map(dept => (
-                                  <span
-                                    key={dept}
-                                    className={`px-2 py-0.5 rounded-lg text-xs font-bold border shadow-2xs ${
-                                      dept === 'PD'
-                                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                        : dept === 'QC'
-                                        ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                        : 'bg-slate-100 text-slate-700 border-slate-200'
-                                    }`}
-                                  >
-                                    {dept}
-                                  </span>
-                                ))
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4 text-center">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                              userItem.status === 'INACTIVE'
-                                ? 'bg-slate-100 text-slate-600 border-slate-200'
-                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            }`}>
-                              {userItem.status === 'INACTIVE' ? 'ปิดใช้งาน' : 'ใช้งานปกติ'}
+                        <tr key={dept.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3.5 pl-6 font-mono font-bold text-xs">
+                            <span className="px-2.5 py-1 rounded-xl bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs">
+                              {dept.code}
                             </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div>
+                              <span className="font-bold text-slate-900 text-sm">{dept.name}</span>
+                              {dept.nameEn && (
+                                <p className="text-[11px] text-slate-400 font-normal">{dept.nameEn}</p>
+                              )}
+                              {dept.description && (
+                                <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">{dept.description}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 font-mono text-xs font-semibold text-slate-600">
+                            {dept.prefix || dept.code}
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-800">
+                            ฿{(Number(dept.monthlyBudget) || 0).toLocaleString()}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-700 text-xs">
+                            {dept.managerName ? (
+                              <span className="inline-flex items-center gap-1.5 font-medium">
+                                <UserCheck className="w-3.5 h-3.5 text-slate-400" />
+                                <span>{dept.managerName}</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleDeptStatus(dept)}
+                              title="คลิกเพื่อสลับสถานะเปิด/ปิด"
+                              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer active:scale-95 ${
+                                dept.isActive
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                                  : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                              }`}
+                            >
+                              {dept.isActive ? '✓ เปิดใช้งาน' : '⚠️ ระงับการใช้งาน'}
+                            </button>
                           </td>
                           <td className="py-3.5 pr-6 text-center whitespace-nowrap">
                             <div className="flex items-center justify-center gap-1.5">
                               <button
-                                onClick={() => { setEditUser(userItem); setShowUserModal(true); }}
+                                onClick={() => { setEditDept(dept); setShowDeptModal(true); }}
                                 className="p-2 hover:bg-slate-100 text-slate-600 hover:text-indigo-600 rounded-xl transition-colors cursor-pointer"
-                                title="แก้ไขผู้ใช้งานและสิทธิ์"
+                                title="แก้ไขแผนก"
                               >
                                 <Edit3 className="w-4 h-4" />
                               </button>
-                              {canDeleteMaster && (
-                                isSelf ? (
-                                  <button
-                                    disabled
-                                    className="p-2 text-slate-300 cursor-not-allowed rounded-xl"
-                                    title="ไม่สามารถลบบัญชีของตนเองได้ (Self-Lockout Guard)"
-                                  >
-                                    <Lock className="w-4 h-4" />
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => handleDeleteUser(userItem)}
-                                    className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-colors cursor-pointer"
-                                    title="ลบผู้ใช้งาน"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                )
-                              )}
+                              <button
+                                onClick={() => handleDeleteDepartment(dept)}
+                                className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-colors cursor-pointer"
+                                title="ลบแผนก"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1226,11 +1312,11 @@ export default function MasterDataView({
               </table>
             </div>
             <Pagination
-              currentPage={userPage}
-              totalPages={userTotalPages}
-              totalItems={filteredUsers.length}
-              pageSize={userPageSize}
-              onPageChange={setUserPage}
+              currentPage={deptPage}
+              totalPages={deptTotalPages}
+              totalItems={filteredDepartments.length}
+              pageSize={deptPageSize}
+              onPageChange={setDeptPage}
             />
           </div>
         </div>
@@ -1243,6 +1329,7 @@ export default function MasterDataView({
           product={editProd}
           products={products}
           vendors={vendors}
+          departments={departmentsList}
           storageLocations={locsList}
           currentRole={currentRole}
           onClose={() => { setShowProdModal(false); setEditProd(null); }}
@@ -1255,6 +1342,7 @@ export default function MasterDataView({
           editVendor={editVendor}
           vendor={editVendor}
           vendors={vendors}
+          departments={departmentsList}
           currentRole={currentRole}
           onClose={() => { setShowVendorModal(false); setEditVendor(null); }}
           onRefresh={onRefresh}
@@ -1266,6 +1354,7 @@ export default function MasterDataView({
           editLocation={editLocation}
           location={editLocation}
           storageLocations={locsList}
+          departments={departmentsList}
           currentRole={currentRole}
           onClose={() => { setShowLocationModal(false); setEditLocation(null); }}
           onSaved={(saved) => {
@@ -1297,6 +1386,7 @@ export default function MasterDataView({
         <UsageUnitCRUDModal
           unit={editUsageUnit}
           usageUnits={unitsList}
+          departments={departmentsList}
           currentRole={currentRole}
           onClose={() => { setShowUsageUnitModal(false); setEditUsageUnit(null); }}
           onSaved={(saved) => {
@@ -1314,6 +1404,7 @@ export default function MasterDataView({
         <UserCRUDModal
           user={editUser}
           users={usersList}
+          departments={departmentsList}
           currentRole={currentRole}
           onClose={() => { setShowUserModal(false); setEditUser(null); }}
           onSaved={(saved) => {
@@ -1326,6 +1417,14 @@ export default function MasterDataView({
             if (onSaveUser) onSaveUser(created);
             if (onRefresh) onRefresh();
           }}
+        />
+      )}
+      {showDeptModal && (
+        <DepartmentCRUDModal
+          department={editDept}
+          departments={departmentsList}
+          onClose={() => { setShowDeptModal(false); setEditDept(null); }}
+          onSave={handleSaveDepartment}
         />
       )}
     </div>

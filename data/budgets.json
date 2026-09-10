@@ -1,14 +1,45 @@
 {
   "PD": {
     "monthlyBudget": 250000,
-    "spent": 0,
+    "spent": 14500,
     "pending": 0,
-    "variance": 0
+    "variance": 235500,
+    "historicalSpent": {
+      "2026-09": 14500
+    }
   },
   "QC": {
     "monthlyBudget": 150000,
     "spent": 0,
     "pending": 0,
     "variance": 0
+  },
+  "WH": {
+    "monthlyBudget": 150000,
+    "spent": 0,
+    "pending": 0,
+    "variance": 150000,
+    "history": {
+      "2026-09": 150000
+    },
+    "historicalSpent": {}
+  },
+  "PUR": {
+    "monthlyBudget": 100000,
+    "spent": 0,
+    "pending": 0,
+    "variance": 100000,
+    "history": {},
+    "historicalSpent": {}
+  },
+  "ENG": {
+    "monthlyBudget": 205000,
+    "spent": 0,
+    "pending": 0,
+    "variance": 205000,
+    "history": {
+      "2026-09": 205000
+    },
+    "historicalSpent": {}
   }
 }

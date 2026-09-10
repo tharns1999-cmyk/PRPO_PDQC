@@ -1,0 +1,72 @@
+[
+  {
+    "id": "DEPT-PD",
+    "code": "PD",
+    "name": "ฝ่ายผลิต",
+    "nameEn": "Production",
+    "prefix": "PD",
+    "description": "รับผิดชอบกระบวนการแปรรูป ควบคุมการผลิต และดูแลไลน์ผลิตสินค้า",
+    "monthlyBudget": 250000,
+    "isActive": true,
+    "color": "blue",
+    "managerName": "คุณประเสริฐ ยิ่งยง",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "DEPT-QC",
+    "code": "QC",
+    "name": "ฝ่ายควบคุมคุณภาพ",
+    "nameEn": "Quality Control & Lab",
+    "prefix": "QC",
+    "description": "ตรวจสอบคุณภาพ วัตถุดิบ สารเคมี บรรจุภัณฑ์ และงานแล็บวิเคราะห์",
+    "monthlyBudget": 150000,
+    "isActive": true,
+    "color": "amber",
+    "managerName": "ดร. กรรณิการ์ จิตเจริญ",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "DEPT-WH",
+    "code": "WH",
+    "name": "ฝ่ายคลังสินค้า",
+    "nameEn": "Warehouse & Inventory",
+    "prefix": "WH",
+    "description": "บริหารคลังจัดเก็บสินค้า วัตถุดิบ ชิ้นส่วน และตรวจรับกระจายสต็อก",
+    "monthlyBudget": 150000,
+    "isActive": true,
+    "color": "emerald",
+    "managerName": "คุณสมคิด คลังทอง",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "DEPT-PUR",
+    "code": "PUR",
+    "name": "ฝ่ายจัดซื้อ",
+    "nameEn": "Procurement & Sourcing",
+    "prefix": "PUR",
+    "description": "จัดหาผู้จัดจำหน่าย เปรียบเทียบราคา จัดซื้อพัสดุและอุปกรณ์",
+    "monthlyBudget": 100000,
+    "isActive": true,
+    "color": "purple",
+    "managerName": "คุณสุดา จัดหาดี",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "DEPT-ENG",
+    "code": "ENG",
+    "name": "ฝ่ายวิศวกรรมและซ่อมบำรุง",
+    "nameEn": "Engineering & Maintenance",
+    "prefix": "ENG",
+    "description": "ดูแลรักษาเครื่องจักร ระบบสาธารณูปโภค และงานซ่อมบำรุงโรงงาน",
+    "monthlyBudget": 205000,
+    "isActive": true,
+    "color": "cyan",
+    "managerName": "วิศวกร ช่างทอง",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:00.000Z"
+  }
+]

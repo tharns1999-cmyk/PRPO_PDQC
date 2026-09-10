@@ -1,19 +1,25 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { NavLink } from 'react-router-dom';
 import { 
-  LayoutDashboard, ClipboardList, ShoppingBag, Warehouse, 
-  SendToBack, Wallet, Database, ShieldAlert, Factory, Sparkles, X,
+  LayoutDashboard, Sparkles, ScrollText, ReceiptText, Boxes, Zap, 
+  SlidersHorizontal, WalletCards, ShoppingBag, ShieldAlert, Factory, X,
   User, ArrowRightLeft
 } from 'lucide-react';
 import { workflowEngine } from '../../services/workflowEngine';
 import NotificationBell from './NotificationBell';
 import NotificationDrawer from './NotificationDrawer';
+import NotificationPopover from './NotificationPopover';
+import { notificationService } from '../../services/notificationService';
 import UserProfileModal from './UserProfileModal';
+import BudgetManagementModal from '../budget/BudgetManagementModal';
+import { useAppContext } from '../../context/AppContext';
 
 export default function Sidebar({ 
   activeView, 
   setActiveView, 
   currentRole, 
+  currentUser,
   prs = [], 
   pos = [],
   isMobileOpen = false,
@@ -26,8 +32,140 @@ export default function Sidebar({
 }) {
   const [showNotiDrawer, setShowNotiDrawer] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showBudgetModal, setShowBudgetModal] = useState(false);
+
+  // Pull dynamic departments and budget methods from AppContext
+  const context = useAppContext();
+  const departments = context?.departments || [];
+  const budgetSummary = context?.budgetSummary || null;
+  const budgetTransactions = context?.budgetTransactions || [];
+  const adjustBudget = context?.adjustBudget;
+
+  // Single-Click Instant Reactive Notification State (Role-scoped)
+  const [notifications, setNotifications] = useState(() => {
+    return notificationService.getNotificationsForRole(currentRole);
+  });
+
+  useEffect(() => {
+    const rawList = (context?.notifications && context.notifications.length > 0)
+      ? context.notifications
+      : notificationService.getAll();
+    const filtered = (rawList || []).filter(n => notificationService.isNotificationTarget(n, currentRole))
+      .sort((a, b) => new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0));
+    setNotifications(filtered);
+  }, [context?.notifications, currentRole]);
+
+  useEffect(() => {
+    const unsub = notificationService.subscribe?.(() => {
+      setNotifications(notificationService.getNotificationsForRole(currentRole));
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [currentRole]);
+
+  // Helper ตรวจสอบ Unread ให้ครอบคลุมทุกคีย์
+  const isUnread = (n) => {
+    if (!n) return false;
+    if (n.isRead === true || n.read === true || n.status === 'read') return false;
+    return true;
+  };
+
+  const unreadBadgeCount = notifications.filter(isUnread).length;
+
+  const handleMarkAllAsRead = async (itemsToMark) => {
+    const listToMark = Array.isArray(itemsToMark) && itemsToMark.length > 0 ? itemsToMark : notifications;
+    const ids = listToMark.map(n => n.id || n._id).filter(Boolean);
+
+    // 1. บังคับ Re-render ใน React State ทันทีแบบ Optimistic (Single-Click Instant Update)
+    setNotifications(prev => 
+      prev.map(n => ({
+        ...n,
+        isRead: true,
+        read: true,
+        status: 'read'
+      }))
+    );
+
+    // 2. อัปเดต AppContext ทันที
+    if (context?.setNotifications) {
+      context.setNotifications(prev =>
+        prev.map(n => {
+          if (ids.length === 0 || ids.includes(n.id) || ids.includes(n._id) || (!currentRole || notificationService.isNotificationTarget(n, currentRole))) {
+            return { ...n, isRead: true, read: true, status: 'read' };
+          }
+          return n;
+        })
+      );
+    }
+
+    // 3. สั่ง Service ทำงาน (Persist ลง Storage และ Backend)
+    if (notificationService?.markAllAsRead) {
+      await notificationService.markAllAsRead(currentRole, ids);
+    }
+  };
+
+  const handleMarkAsRead = async (id) => {
+    setNotifications(prev => 
+      prev.map(n => (n.id === id || n._id === id) ? { ...n, isRead: true, read: true, status: 'read' } : n)
+    );
+    if (context?.setNotifications) {
+      context.setNotifications(prev =>
+        prev.map(n => (n.id === id || n._id === id) ? { ...n, isRead: true, read: true, status: 'read' } : n)
+      );
+    }
+    if (notificationService?.markAsRead) {
+      await notificationService.markAsRead(id);
+    }
+  };
+
+  const handleNotificationClick = (item) => {
+    handleMarkAsRead(item.id);
+    if (isOnlinePurchaser) {
+      if (onNavigate) onNavigate('online-tasks');
+    } else if (item.refDocType === 'PR') {
+      if (onOpenPR && item.refDocId) {
+        onOpenPR(item.refDocId);
+      } else if (onNavigate) {
+        onNavigate('pr-list');
+      }
+    } else if (item.refDocType === 'PO') {
+      if (onOpenPO && item.refDocId) {
+        onOpenPO(item.refDocId);
+      } else if (onNavigate) {
+        onNavigate(item.type === 'ONLINE_TASK' ? 'online-tasks' : 'po-list');
+      }
+    } else if (item.refDocType === 'STOCK') {
+      if (onNavigate) onNavigate('stock-card');
+    }
+    setShowNotiDrawer(false);
+  };
 
   const isOnlinePurchaser = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER';
+  const isAdmin = currentUser?.role === 'admin' || 
+                  currentUser?.roleId === 'ADMIN' || 
+                  currentRole?.role === 'admin' || 
+                  currentRole?.roleId === 'ADMIN' || 
+                  currentRole?.id === 'ADMIN' || 
+                  (currentRole?.level && currentRole.level >= 99);
+
+  // Asst. Manager (คุณสมชาย / Level 2 / Reviewer)
+  const isAsstManager = currentRole?.roleId === 'ASST_MANAGER' || 
+                        currentRole?.id === 'ASST_MANAGER' || 
+                        currentRole?.positionKey === 'REVIEWER' ||
+                        (currentRole?.canReview && !currentRole?.canFinalApprove && !isOnlinePurchaser);
+
+  // Plant Manager (คุณประเสริฐ / Level 3 / Approver)
+  const isPlantManager = currentRole?.roleId === 'PLANT_MANAGER' || 
+                         currentRole?.id === 'PLANT_MANAGER' || 
+                         currentRole?.positionKey === 'APPROVER' ||
+                         currentRole?.canFinalApprove;
+
+  // Requester (Level 1 / PD / QC)
+  const isRequester = (currentRole?.level === 1 || currentRole?.roleId?.startsWith('REQUESTER')) && !isAdmin && !isAsstManager && !isPlantManager;
+
+  // Budget management permission: asst_mgr, plant_mgr, and admin have full access to manage/adjust budgets
+  const canManageBudget = !isOnlinePurchaser && !isRequester && (isAdmin || isPlantManager || isAsstManager || currentRole?.canViewBudget);
 
   // Calculate Task Counts for Badges (using unified workflowEngine task aggregator)
   const taskCounts = React.useMemo(() => {
@@ -55,6 +193,7 @@ export default function Sidebar({
           subLabel: '(Workspace)',
           ariaLabel: 'งานของฉัน (My Workspace)',
           icon: Sparkles, 
+          iconClassName: 'group-hover:text-amber-500 transition-colors',
           visible: !isOnlinePurchaser, 
           badge: taskCounts.total > 0 ? taskCounts.total : null 
         },
@@ -79,7 +218,7 @@ export default function Sidebar({
           label: 'ใบขอซื้อ',
           subLabel: '(PR)',
           ariaLabel: 'ใบขอซื้อ (PR Workflow)',
-          icon: ClipboardList, 
+          icon: ScrollText, 
           visible: !isOnlinePurchaser, 
           badge: taskCounts.prCount > 0 ? taskCounts.prCount : null 
         },
@@ -89,9 +228,18 @@ export default function Sidebar({
           label: isOnlinePurchaser ? 'ประวัติใบสั่งซื้อ' : 'ใบสั่งซื้อ',
           subLabel: '(PO)',
           ariaLabel: 'ใบสั่งซื้อ (PO / รับสินค้า)',
-          icon: isOnlinePurchaser ? ClipboardList : ShoppingBag, 
+          icon: ReceiptText, 
           visible: true, 
           badge: !isOnlinePurchaser && taskCounts.poCount > 0 ? taskCounts.poCount : null 
+        },
+        { 
+          id: 'budget', 
+          path: '/budget', 
+          label: 'งบประมาณ',
+          subLabel: '(Budget)',
+          ariaLabel: 'งบประมาณ (Budget)',
+          icon: WalletCards, 
+          visible: !isAdmin && !isOnlinePurchaser && currentRole?.canViewBudget 
         },
       ]
     },
@@ -104,7 +252,7 @@ export default function Sidebar({
           label: 'คลังสินค้า',
           subLabel: '(Stock)',
           ariaLabel: 'คลังสต็อก (Warehouse) คลังสินค้า (Stock)',
-          icon: Warehouse, 
+          icon: Boxes, 
           visible: true 
         },
         { 
@@ -113,13 +261,15 @@ export default function Sidebar({
           label: 'เบิกใช้งาน',
           subLabel: '(Quick Issue)',
           ariaLabel: 'เบิกสินค้า (Quick Issue) เบิกใช้งาน',
-          icon: SendToBack, 
+          icon: Zap, 
+          iconClassName: 'group-hover:text-amber-500 transition-colors',
           visible: !isOnlinePurchaser 
         },
       ]
     },
     {
       title: 'SYSTEM & ADMIN',
+      visible: isAdmin,
       items: [
         { 
           id: 'budget', 
@@ -127,8 +277,8 @@ export default function Sidebar({
           label: 'งบประมาณ',
           subLabel: '(Budget)',
           ariaLabel: 'งบประมาณ (Budget)',
-          icon: Wallet, 
-          visible: !isOnlinePurchaser && currentRole?.canViewBudget 
+          icon: WalletCards, 
+          visible: isAdmin 
         },
         { 
           id: 'master-data', 
@@ -136,8 +286,8 @@ export default function Sidebar({
           label: 'ข้อมูลหลัก',
           subLabel: '(Master Data)',
           ariaLabel: 'จัดการข้อมูลหลัก จัดการ Master Data ข้อมูลหลัก',
-          icon: Database, 
-          visible: !isOnlinePurchaser && currentRole?.canManageMaster 
+          icon: SlidersHorizontal, 
+          visible: isAdmin 
         },
       ]
     }
@@ -146,7 +296,7 @@ export default function Sidebar({
   const renderNavContent = (onItemClick = null) => (
     <div className="flex flex-col h-full">
       {/* ── 1. Top Section: Logo + System Name + Notification Bell ── */}
-      <div className="px-1 pt-1 pb-3.5 border-b border-slate-100 shrink-0">
+      <div className="px-1 pt-0 pb-3 border-b border-slate-100 shrink-0">
         <div className="flex items-center justify-between gap-2">
           {/* Logo & Title */}
           <div className="flex items-center gap-2.5 min-w-0">
@@ -178,6 +328,7 @@ export default function Sidebar({
           <div className="flex items-center gap-1 shrink-0 ml-1">
             <NotificationBell 
               currentRole={currentRole} 
+              count={unreadBadgeCount}
               onClick={() => setShowNotiDrawer(true)} 
             />
 
@@ -197,6 +348,7 @@ export default function Sidebar({
       {/* ── 2. Navigation Links (4-Tier Categorized Scrollable Center) ── */}
       <nav className="flex-1 overflow-y-auto py-2 pr-1 custom-scrollbar min-h-0 space-y-4">
         {menuCategories.map((category) => {
+          if (category.visible === false) return null;
           const visibleItems = category.items.filter(item => item.visible);
           if (visibleItems.length === 0) return null;
 
@@ -231,8 +383,14 @@ export default function Sidebar({
                       const isActive = navActive || activeView === item.id;
                       return (
                         <>
-                          <div className="flex items-center gap-3 overflow-hidden min-w-0">
-                            <Icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                          <div className="flex items-center gap-2.5 overflow-hidden min-w-0">
+                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all shadow-xs shrink-0 ${
+                              isActive 
+                                ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-600/20' 
+                                : 'bg-slate-100 group-hover:bg-white text-slate-500 group-hover:text-slate-900'
+                            }`}>
+                              <Icon size={17} strokeWidth={1.75} className={item.iconClassName || ''} />
+                            </span>
                             <div className="flex items-center gap-1.5 truncate">
                               <span className="truncate">{item.label}</span>
                               {item.subLabel && (
@@ -291,12 +449,58 @@ export default function Sidebar({
 
       {/* ── 3. Footer: User Profile & Role Card ── */}
       <div className="mt-auto pt-3 border-t border-slate-100 shrink-0 space-y-2">
-        {/* Permission status warning for restricted roles */}
-        {!isOnlinePurchaser && !currentRole?.canViewBudget && (
-          <div className="p-2.5 bg-slate-50/70 rounded-xl border border-slate-200/60 text-xs text-slate-500 flex items-center gap-2">
-            <ShieldAlert className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="leading-snug text-[10px]">งบประมาณถูกจำกัดสิทธิ์</span>
+        {/* ── Budget Access & Management Widget (Bottom Left) ── */}
+        {!canManageBudget ? (
+          <div 
+            id="sidebar-budget-widget-disabled"
+            data-testid="sidebar-budget-disabled"
+            className="p-2.5 bg-slate-50/80 rounded-2xl border border-slate-200/70 text-xs text-slate-400 flex items-center justify-between gap-2 cursor-not-allowed select-none opacity-85"
+            title="สิทธิ์ของคุณไม่สามารถเข้าถึงหรือจัดการงบประมาณได้ (เฉพาะ Asst. Mgr, Plant Mgr และ Admin)"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
+                <ShieldAlert size={17} strokeWidth={1.75} />
+              </div>
+              <div className="min-w-0 text-left">
+                <div className="font-semibold text-slate-600 text-[11px] truncate">
+                  🛡️ งบประมาณถูกจำกัดสิทธิ์
+                </div>
+                <div className="text-[10px] text-slate-400 truncate">
+                  Restricted Budget Access
+                </div>
+              </div>
+            </div>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-200/60 text-slate-500 shrink-0">
+              จำกัดสิทธิ์
+            </span>
           </div>
+        ) : (
+          <button
+            type="button"
+            id="sidebar-budget-widget-btn"
+            data-testid="sidebar-budget-btn"
+            onClick={() => setShowBudgetModal(true)}
+            className="w-full p-2.5 bg-gradient-to-r from-emerald-50/90 via-teal-50/70 to-indigo-50/60 hover:from-emerald-100/90 hover:to-indigo-100/80 rounded-2xl border border-emerald-200/90 hover:border-emerald-300 text-xs text-slate-700 flex items-center justify-between gap-2 transition-all cursor-pointer group shadow-2xs hover:shadow-xs"
+            title="คลิกเพื่อเปิดหน้าต่างจัดการงบประมาณแผนกและปรับยอดงบประมาณ"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shadow-emerald-600/30 group-hover:scale-105 transition-transform shrink-0">
+                <WalletCards size={17} strokeWidth={1.75} />
+              </div>
+              <div className="min-w-0 text-left">
+                <div className="font-bold text-slate-800 text-[11px] group-hover:text-emerald-900 transition-colors truncate">
+                  💼 จัดการงบประมาณแผนก
+                </div>
+                <div className="text-[10px] text-emerald-600 font-medium truncate flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>ตั้งค่า / เติมงบประมาณ</span>
+                </div>
+              </div>
+            </div>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0 group-hover:bg-emerald-200 transition-colors">
+              จัดการ
+            </span>
+          </button>
         )}
 
         {/* User Card with Avatar, Name, Title, and Fast Switcher Button */}
@@ -350,7 +554,7 @@ export default function Sidebar({
   return (
     <>
       {/* ── Desktop Sidebar (Fixed Left) ── */}
-      <aside className="w-64 bg-white border-r border-slate-200/80 shrink-0 h-screen fixed left-0 top-0 flex flex-col p-4 no-print z-40 hidden md:flex text-slate-900 shadow-sm">
+      <aside className="w-64 bg-white border-r border-slate-200/80 shrink-0 h-screen fixed left-0 top-0 flex flex-col px-4 pt-3 pb-4 no-print z-40 hidden md:flex text-slate-900 shadow-sm">
         {renderNavContent()}
       </aside>
 
@@ -367,16 +571,24 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* ── Integrated Notification Drawer Modal ── */}
-      <NotificationDrawer
-        isOpen={showNotiDrawer}
-        onClose={() => setShowNotiDrawer(false)}
-        currentRole={currentRole}
-        onNavigate={onNavigate}
-        onOpenPR={onOpenPR}
-        onOpenPO={onOpenPO}
-        onRefresh={onRefresh}
-      />
+      {/* ── Integrated Notification Popover Modal (Single-Click Instant Reactive) ── */}
+      {showNotiDrawer && createPortal(
+        <>
+          <div 
+            className="fixed inset-0 z-40 bg-slate-900/10 backdrop-blur-2xs no-print animate-fade-in" 
+            onClick={() => setShowNotiDrawer(false)} 
+          />
+          <NotificationPopover
+            notifications={notifications}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            markAllAsRead={handleMarkAllAsRead}
+            onMarkAsRead={handleMarkAsRead}
+            onClose={() => setShowNotiDrawer(false)}
+            onNotificationClick={handleNotificationClick}
+          />
+        </>,
+        document.body
+      )}
 
       {/* ── Integrated User Profile & Role Modal (with Fast Account Switcher) ── */}
       <UserProfileModal
@@ -384,6 +596,19 @@ export default function Sidebar({
         onClose={() => setShowProfileModal(false)}
         currentRole={currentRole}
         onLogout={onLogout}
+      />
+
+      {/* ── Integrated Budget Management Modal ── */}
+      <BudgetManagementModal
+        isOpen={showBudgetModal}
+        onClose={() => setShowBudgetModal(false)}
+        departments={departments}
+        currentRole={currentRole}
+        currentUser={currentUser}
+        budgetSummary={budgetSummary}
+        budgetTransactions={budgetTransactions}
+        onAdjustBudget={adjustBudget}
+        onRefresh={onRefresh}
       />
     </>
   );

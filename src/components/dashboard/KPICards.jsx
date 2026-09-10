@@ -12,24 +12,23 @@ export default function KPICards({ prs, pos, products, budgetSummary, currentRol
   const lowStockItems = products.filter(p => (currentRole.canViewAllDepts || p.category === currentRole.department) && p.stockBalance <= p.reorderPoint);
   const lowStockCount = lowStockItems.length;
 
-  const deptKey = currentRole.department === 'ALL' ? 'PD' : currentRole.department;
-  
+  const assigned = Array.isArray(currentRole.assignedDepartments) ? currentRole.assignedDepartments : [];
+  const hasAll = currentRole.roleId === 'ADMIN' || currentRole.roleId === 'PLANT_MANAGER' || currentRole.level >= 3 || currentRole.department === 'ALL' || assigned.includes('ALL') || assigned.includes('*');
+  const userDepts = hasAll ? Object.keys(budgetSummary || {}) : (assigned.length > 0 ? assigned : [currentRole.department || 'PD']);
+
   let totalSpent = 0;
   let totalAllocated = 0;
-  
-  if (currentRole.department === 'ALL') {
-    Object.values(budgetSummary || {}).forEach(dept => {
-      totalSpent += (dept.actualSpent || 0) + (dept.committed || 0);
-      totalAllocated += dept.allocated || 0;
-    });
-  } else {
-    const deptInfo = budgetSummary?.[deptKey];
-    totalSpent = (deptInfo?.actualSpent || 0) + (deptInfo?.committed || 0);
-    totalAllocated = deptInfo?.allocated || 0;
-  }
-  
+
+  userDepts.forEach(d => {
+    const deptInfo = budgetSummary?.[d];
+    if (deptInfo) {
+      totalSpent += (deptInfo.actualSpent || 0) + (deptInfo.committed || 0);
+      totalAllocated += deptInfo.allocated || 0;
+    }
+  });
+
   const budgetPercent = totalAllocated > 0 ? Math.round((totalSpent / totalAllocated) * 100) : 0;
-  const budgetLabel = currentRole.department === 'ALL' ? 'รวมทุกแผนก' : `ฝ่าย ${deptKey}`;
+  const budgetLabel = hasAll ? 'รวมทุกแผนก' : (userDepts.length > 1 ? `ฝ่าย ${userDepts.join(', ')}` : `ฝ่าย ${userDepts[0]}`);
 
   const handleLowStockClick = () => {
     if (lowStockCount > 0 && lowStockItems[0] && onQuickPR) {

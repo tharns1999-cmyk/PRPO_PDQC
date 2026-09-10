@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Users, X, Check, AlertCircle, Building2, Shield, 
@@ -6,21 +6,26 @@ import {
 } from 'lucide-react';
 import { apiService } from '../../services/apiService';
 import { modalService } from '../../services/modalService';
+import { storageService } from '../../services/storageService';
 
 const ROLE_OPTIONS = [
-  { id: 'REQUESTER_PD', label: 'Requester (PD) - ผู้ขอซื้อฝ่ายผลิต', level: 1, defaultDept: 'PD', title: 'Requester (PD)' },
-  { id: 'REQUESTER_QC', label: 'Requester (QC) - ผู้ขอซื้อฝ่าย QC/Lab', level: 1, defaultDept: 'QC', title: 'Requester (QC)' },
+  { id: 'REQUESTER', label: 'Requester - ผู้ขอซื้อ (ตามแผนกที่ได้รับมอบหมาย)', level: 1, defaultDept: null, title: 'Requester' },
   { id: 'ASST_MANAGER', label: 'Reviewer - ผู้ตรวจทาน (Asst. Manager)', level: 2, defaultDept: 'ALL', title: 'Assistant Manager' },
   { id: 'PLANT_MANAGER', label: 'Approver - ผู้อนุมัติ (Plant Manager)', level: 3, defaultDept: 'ALL', title: 'Plant Manager' },
   { id: 'ONLINE_PURCHASER', label: 'Purchaser - เจ้าหน้าที่จัดซื้อออนไลน์ (Online)', level: 2, defaultDept: 'ALL', title: 'Online Purchaser' },
   { id: 'ADMIN', label: 'Admin - ผู้ดูแลระบบสูงสุด (System Admin)', level: 99, defaultDept: 'ALL', title: 'System Administrator' },
 ];
 
-const PRESET_DEPTS = ['PD', 'QC'];
+function normalizeRoleId(rid) {
+  if (!rid) return 'REQUESTER';
+  if (rid === 'REQUESTER_PD' || rid === 'REQUESTER_QC') return 'REQUESTER';
+  return rid;
+}
 
 export default function UserCRUDModal({
   user = null,
   users = [],
+  departments = [],
   currentRole,
   onClose,
   onSaved,
@@ -32,8 +37,8 @@ export default function UserCRUDModal({
   const [name, setName] = useState(user?.name || user?.displayName || '');
   const [employeeName, setEmployeeName] = useState(user?.employeeName || user?.name || '');
   const [username, setUsername] = useState(user?.username || '');
-  const [selectedRoleId, setSelectedRoleId] = useState(user?.roleId || 'REQUESTER_PD');
-  const [primaryDept, setPrimaryDept] = useState(user?.primaryDepartment || user?.department || 'PD');
+  const [selectedRoleId, setSelectedRoleId] = useState(normalizeRoleId(user?.roleId));
+  const [primaryDept, setPrimaryDept] = useState(user?.primaryDepartment || user?.department || 'ALL');
   
   // Allowed departments multi-select
   const [allowedDepts, setAllowedDepts] = useState(() => {
@@ -54,7 +59,8 @@ export default function UserCRUDModal({
   const handleToggleDept = (dept) => {
     if (dept === '*') {
       if (allowedDepts.includes('*')) {
-        setAllowedDepts(primaryDept === 'ALL' ? ['PD'] : [primaryDept]);
+        const fallbackCode = deptList[0]?.code || 'PD';
+        setAllowedDepts(primaryDept === 'ALL' ? [fallbackCode] : [primaryDept]);
       } else {
         setAllowedDepts(['*']);
       }
@@ -117,11 +123,13 @@ export default function UserCRUDModal({
     setIsSaving(true);
     try {
       const selectedRole = ROLE_OPTIONS.find(r => r.id === selectedRoleId) || ROLE_OPTIONS[0];
+      const isAllDepts = allowedDepts.includes('*') || allowedDepts.includes('ALL') || selectedRole.defaultDept === 'ALL';
       const deptsToSave = allowedDepts.length > 0 ? allowedDepts : (primaryDept === 'ALL' ? ['*'] : [primaryDept]);
+      const assignedDepartments = isAllDepts ? ['ALL'] : deptsToSave;
 
       const payload = {
         id: user?.id || undefined,
-        employeeId: user?.employeeId || `EMP-${primaryDept}-${Date.now().toString().slice(-3)}`,
+        employeeId: user?.employeeId || `EMP-${primaryDept !== 'ALL' ? primaryDept : 'SYS'}-${Date.now().toString().slice(-3)}`,
         username: username.trim().toLowerCase(),
         password: user?.password || 'password123',
         name: name.trim(),
@@ -129,6 +137,7 @@ export default function UserCRUDModal({
         displayName: name.trim(),
         primaryDepartment: primaryDept,
         department: primaryDept,
+        assignedDepartments,
         allowedDepartments: deptsToSave,
         roleId: selectedRole.id,
         positionKey: selectedRole.id,
@@ -136,7 +145,7 @@ export default function UserCRUDModal({
         level: selectedRole.level,
         status,
         pictureUrl: user?.pictureUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        description: user?.description || `${selectedRole.title} ประจำแผนก ${primaryDept}`
+        description: user?.description || `${selectedRole.title} ประจำแผนก ${assignedDepartments.join(', ')}`
       };
 
       const saved = await apiService.saveUser(payload, `${currentRole?.name || 'Admin'}`);
@@ -156,12 +165,21 @@ export default function UserCRUDModal({
     }
   };
 
+  // Dynamic Departments from master data
+  const deptList = useMemo(() => {
+    const list = (departments && departments.length > 0) ? departments : storageService.getDepartments();
+    return (list || []).filter(d => d.isActive !== false);
+  }, [departments]);
+
   // Compute all unique available departments to display as chips
-  const allDeptChips = Array.from(new Set([
-    ...PRESET_DEPTS,
-    primaryDept,
-    ...allowedDepts.filter(d => d !== '*')
-  ])).filter(Boolean);
+  const allDeptChips = useMemo(() => {
+    const codes = deptList.map(d => d.code);
+    return Array.from(new Set([
+      ...codes,
+      primaryDept,
+      ...allowedDepts.filter(d => d !== '*')
+    ])).filter(Boolean);
+  }, [deptList, primaryDept, allowedDepts]);
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden overflow-y-auto">
@@ -289,42 +307,27 @@ export default function UserCRUDModal({
               <span>แผนกหลัก (Primary Department)</span>
               <span className="text-rose-500">*</span>
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setPrimaryDept('PD');
-                  if (!allowedDepts.includes('PD') && !allowedDepts.includes('*')) {
-                    setAllowedDepts(prev => [...prev, 'PD']);
-                  }
-                }}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  primaryDept === 'PD'
-                    ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-xs ring-2 ring-blue-500/20'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-blue-500" />
-                <span>ฝ่ายผลิต (PD)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setPrimaryDept('QC');
-                  if (!allowedDepts.includes('QC') && !allowedDepts.includes('*')) {
-                    setAllowedDepts(prev => [...prev, 'QC']);
-                  }
-                }}
-                className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  primaryDept === 'QC'
-                    ? 'bg-amber-50 border-amber-500 text-amber-700 shadow-xs ring-2 ring-amber-500/20'
-                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span>ฝ่าย QC (QC)</span>
-              </button>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {deptList.map(dept => (
+                <button
+                  key={dept.code}
+                  type="button"
+                  onClick={() => {
+                    setPrimaryDept(dept.code);
+                    if (!allowedDepts.includes(dept.code) && !allowedDepts.includes('*')) {
+                      setAllowedDepts(prev => [...prev, dept.code]);
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    primaryDept === dept.code
+                      ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-xs ring-2 ring-indigo-500/20'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-indigo-500" />
+                  <span className="truncate">{dept.name} ({dept.code})</span>
+                </button>
+              ))}
 
               <button
                 type="button"

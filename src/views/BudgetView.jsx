@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DEPARTMENTS } from '../config/constants';
 import { apiService } from '../services/apiService';
 import { storageService } from '../services/storageService';
@@ -23,10 +24,113 @@ const RANGE_OPTIONS = [
   { value: 24, label: '24 ด.' }
 ];
 
-export default function BudgetView({ budgetSummary, currentRole, prs = [], pos = [], onRefresh }) {
+export default function BudgetView({ budgetSummary, currentRole, currentUser, prs = [], pos = [], departments = [], onRefresh }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('overview');
   const [timeRange, setTimeRange] = useState(6);
-  const [selectedDept, setSelectedDept] = useState(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
+
+  const deptList = useMemo(() => {
+    return (departments && departments.length > 0) ? departments : storageService.getDepartments();
+  }, [departments]);
+
+  const deptMap = useMemo(() => {
+    return deptList.reduce((acc, d) => {
+      acc[d.code] = d;
+      return acc;
+    }, {});
+  }, [deptList]);
+
+  // 1. User Permission Scoping: Check if current user is Super Admin or Approver (Universal Access)
+  const isSuperAdminOrApprover = useMemo(() => {
+    const u = currentUser || currentRole;
+    if (!u) return false;
+    const roleId = String(u.roleId || u.id || '').toUpperCase();
+    const positionKey = String(u.positionKey || '').toUpperCase();
+    const roleStr = String(u.role || '').toLowerCase();
+    const level = Number(u.level || 0);
+
+    // Level 99 Admin or Level 3+ Plant Manager / Final Approver
+    if (roleId === 'ADMIN' || roleStr === 'admin' || level >= 99) return true;
+    if (roleId === 'PLANT_MANAGER' || positionKey === 'APPROVER' || u.canFinalApprove || level >= 3) return true;
+
+    // Explicit ALL/* in assignedDepartments or allowedDepartments
+    const assigned = Array.isArray(u.assignedDepartments) ? u.assignedDepartments : [];
+    const allowed = Array.isArray(u.allowedDepartments) ? u.allowedDepartments : [];
+    if (assigned.includes('ALL') || assigned.includes('*') || allowed.includes('ALL') || allowed.includes('*')) return true;
+    if (u.department === 'ALL' || u.primaryDepartment === 'ALL') return true;
+
+    return false;
+  }, [currentUser, currentRole]);
+
+  // 2. User Assigned Departments
+  const userAssignedDepts = useMemo(() => {
+    const u = currentUser || currentRole;
+    if (!u) return [];
+    if (isSuperAdminOrApprover) {
+      return deptList.map(d => d.code);
+    }
+
+    const rawList = Array.isArray(u.assignedDepartments) && u.assignedDepartments.length > 0
+      ? u.assignedDepartments
+      : (Array.isArray(u.allowedDepartments) && u.allowedDepartments.length > 0
+          ? u.allowedDepartments
+          : (Array.isArray(u.departments) && u.departments.length > 0
+              ? u.departments
+              : (u.department ? [u.department] : [])));
+
+    const validCodes = deptList.map(d => d.code);
+    const filtered = rawList.filter(code => validCodes.includes(code));
+    return filtered.length > 0 ? filtered : (u.department ? [u.department] : []);
+  }, [currentUser, currentRole, isSuperAdminOrApprover, deptList]);
+
+  // 3. Department Selection & Security Fallback
+  const queryDept = searchParams.get('dept');
+  const [selectedDept, setSelectedDept] = useState(() => {
+    if (queryDept) {
+      if (queryDept === 'ALL' && isSuperAdminOrApprover) return 'ALL';
+      if (queryDept === 'ALL' && !isSuperAdminOrApprover && userAssignedDepts.length > 1) return 'ALL';
+      if (isSuperAdminOrApprover || userAssignedDepts.includes(queryDept)) {
+        return queryDept;
+      }
+    }
+    if (isSuperAdminOrApprover) return 'ALL';
+    return userAssignedDepts.length > 1 ? 'ALL' : (userAssignedDepts[0] || 'ALL');
+  });
+
+  // Security Fallback: Automatically reset selectedDept if current value is not permitted
+  useEffect(() => {
+    const urlDept = searchParams.get('dept');
+    if (!isSuperAdminOrApprover) {
+      if (selectedDept === 'ALL') {
+        if (userAssignedDepts.length <= 1 && userAssignedDepts[0]) {
+          setSelectedDept(userAssignedDepts[0]);
+        }
+      } else if (!userAssignedDepts.includes(selectedDept)) {
+        const fallback = userAssignedDepts.length > 1 ? 'ALL' : (userAssignedDepts[0] || 'ALL');
+        setSelectedDept(fallback);
+        if (urlDept && urlDept !== fallback) {
+          const newParams = new URLSearchParams(searchParams);
+          newParams.set('dept', fallback);
+          setSearchParams(newParams, { replace: true });
+        }
+      }
+    }
+  }, [selectedDept, isSuperAdminOrApprover, userAssignedDepts, searchParams, setSearchParams]);
+
+  const handleDeptChange = (newDept) => {
+    if (!isSuperAdminOrApprover && newDept !== 'ALL' && !userAssignedDepts.includes(newDept)) {
+      return;
+    }
+    setSelectedDept(newDept);
+    const newParams = new URLSearchParams(searchParams);
+    if (newDept === 'ALL' && isSuperAdminOrApprover) {
+      newParams.delete('dept');
+    } else {
+      newParams.set('dept', newDept);
+    }
+    setSearchParams(newParams, { replace: true });
+  };
+
   const [editingBudget, setEditingBudget] = useState(null);
   const [editBaseValue, setEditBaseValue] = useState('');
 
@@ -108,25 +212,70 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
     setIsMonthPickerOpen(false);
   };
 
-  // Load budget transaction log (refund entries)
-  const budgetTransactions = useMemo(() => storageService.getBudgetTransactions(), [pos, prs]);
+  const currentMonthSummary = dynamicSummary?.current || {};
+
+  const deptsToShow = useMemo(() => {
+    if (selectedDept === 'ALL') {
+      return isSuperAdminOrApprover ? deptList.map(d => d.code) : userAssignedDepts;
+    }
+    if (isSuperAdminOrApprover || userAssignedDepts.includes(selectedDept)) {
+      return [selectedDept];
+    }
+    return userAssignedDepts.length > 0 ? [userAssignedDepts[0]] : [];
+  }, [selectedDept, isSuperAdminOrApprover, deptList, userAssignedDepts]);
+
+  // Overall Statistics for deptsToShow (for Scoped / Multi-Department KPI summary)
+  const summaryStats = useMemo(() => {
+    let totalBase = 0;
+    let totalActual = 0;
+    let totalCommitted = 0;
+
+    deptsToShow.forEach(dept => {
+      const rawData = currentMonthSummary[dept] || {};
+      const base = Number(rawData.baseAllocated ?? rawData.allocated) || (deptMap[dept]?.monthlyBudget || DEPARTMENTS[dept]?.monthlyBudget || 200000);
+      const actual = Number(rawData.actualSpent) || 0;
+      const committed = Number(rawData.committed) || 0;
+
+      totalBase += base;
+      totalActual += actual;
+      totalCommitted += committed;
+    });
+
+    const totalUsed = totalActual + totalCommitted;
+    const totalRemaining = totalBase - totalUsed;
+    const usedPercent = totalBase > 0 ? Math.round((totalUsed / totalBase) * 100) : 0;
+
+    return {
+      totalBase,
+      totalActual,
+      totalCommitted,
+      totalUsed,
+      totalRemaining,
+      usedPercent
+    };
+  }, [deptsToShow, currentMonthSummary, deptMap]);
+
+  // Load budget transaction log (refund entries) scoped to permitted departments
+  const budgetTransactions = useMemo(() => {
+    const allTxs = storageService.getBudgetTransactions() || [];
+    return allTxs.filter(tx => deptsToShow.includes(tx.dept));
+  }, [pos, prs, deptsToShow]);
 
   const handleEditSave = async (dept) => {
     if (!editBaseValue || isNaN(editBaseValue) || Number(editBaseValue) < 0) return;
+    if (!deptsToShow.includes(dept)) {
+      modalService.error('ปฏิเสธการเข้าถึง', 'คุณไม่มีสิทธิ์แก้ไขงบประมาณของแผนกนี้');
+      return;
+    }
     try {
-      await apiService.updateBudget(dept, Number(editBaseValue), selectedMonthKey);
+      const actorName = currentUser?.name || currentRole?.name || 'ผู้ดูแลระบบ';
+      await apiService.updateBudget(dept, Number(editBaseValue), selectedMonthKey, actorName, 'ปรับยอดงบประมาณประจำเดือน (Quick Edit)');
       setEditingBudget(null);
       if (onRefresh) onRefresh();
     } catch (e) {
       modalService.error('เกิดข้อผิดพลาด', 'ไม่สามารถบันทึกงบประมาณได้: ' + e.message);
     }
   };
-
-  const currentMonthSummary = dynamicSummary?.current || {};
-
-  const deptsToShow = selectedDept === 'ALL' 
-    ? Object.keys(DEPARTMENTS)
-    : [selectedDept];
 
   const canEditBudget = currentRole?.id === 'ADMIN' || currentRole?.canFinalApprove || currentRole?.canReview;
 
@@ -153,7 +302,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
         let committed = 0;
 
         Object.keys(data).forEach(dept => {
-          if (selectedDept === 'ALL' || dept === selectedDept) {
+          if (deptsToShow.includes(dept)) {
             allocated += data[dept]?.allocated || 0;
             actualSpent += data[dept]?.actualSpent || 0;
             committed += data[dept]?.committed || 0;
@@ -180,7 +329,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
           const prevData = dynamicSummary.trends[sliceMonths[idx - 1]] || {};
           let prevSpent = 0;
           Object.keys(prevData).forEach(dept => {
-            if (selectedDept === 'ALL' || dept === selectedDept) {
+            if (deptsToShow.includes(dept)) {
               prevSpent += (prevData[dept]?.actualSpent || 0) + (prevData[dept]?.committed || 0);
             }
           });
@@ -211,7 +360,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
     // Category Spending (Donut Chart)
     const itemMap = {};
     pos.forEach(po => {
-      if (DEPARTMENTS[po.department] && po.status !== 'CANCELLED' && (selectedDept === 'ALL' || po.department === selectedDept)) {
+      if ((deptMap[po.department] || DEPARTMENTS[po.department]) && po.status !== 'CANCELLED' && deptsToShow.includes(po.department)) {
         po.items.forEach(item => {
           const total = item.actUnitPrice ? item.actUnitPrice * item.qty : item.price * item.qty;
           if (!itemMap[item.name]) itemMap[item.name] = 0;
@@ -227,7 +376,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
     if (others > 0) categoryData.push({ name: 'อื่นๆ (Others)', value: others });
 
     return { trendData, tableData, categoryData };
-  }, [pos, selectedDept, dynamicSummary, selectedMonthKey, timeRange]);
+  }, [pos, selectedDept, dynamicSummary, selectedMonthKey, timeRange, deptsToShow]);
 
   if (!currentRole?.canViewBudget) {
     return (
@@ -427,7 +576,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
           </div>
 
           {/* Piece 2: Standalone Department Filter */}
-          {currentRole.canViewAllDepts && (
+          {(isSuperAdminOrApprover || userAssignedDepts.length > 1) && (
             <div className="flex flex-col justify-center">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 mb-1 hidden sm:block">
                 แผนก (Department)
@@ -435,12 +584,27 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
               <select
                 className="rounded-xl border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 shadow-xs hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all cursor-pointer h-[42px]"
                 value={selectedDept}
-                onChange={(e) => setSelectedDept(e.target.value)}
+                onChange={(e) => handleDeptChange(e.target.value)}
               >
-                <option value="ALL">ทุกแผนก (All Depts)</option>
-                {Object.keys(DEPARTMENTS).map(k => (
-                  <option key={k} value={k}>{DEPARTMENTS[k].name} ({k})</option>
-                ))}
+                {isSuperAdminOrApprover ? (
+                  <>
+                    <option value="ALL">ทุกแผนก (All Depts)</option>
+                    {deptList.map(d => (
+                      <option key={d.code} value={d.code}>{d.name} ({d.code})</option>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    {userAssignedDepts.length > 1 && (
+                      <option value="ALL">แผนกในความดูแลทั้งหมด ({userAssignedDepts.join(', ')})</option>
+                    )}
+                    {userAssignedDepts.map(code => (
+                      <option key={code} value={code}>
+                        {deptMap[code]?.name || DEPARTMENTS[code]?.name || code} ({code})
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </div>
           )}
@@ -491,10 +655,58 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
 
       {/* Tab 1: Bento Budget Cards */}
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
-          {deptsToShow.map(dept => {
+        <div className="space-y-5">
+          {/* Top Summary KPI Strip for Scoped / Multiple Departments */}
+          {deptsToShow.length > 1 && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 bg-white/90 p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                  งบประมาณรวม ({deptsToShow.length} แผนก)
+                </span>
+                <span className="text-lg font-mono font-bold text-slate-900 block mt-1 tabular-nums">
+                  ฿{summaryStats.totalBase.toLocaleString()}
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                  ใช้จ่ายจริงรวม
+                </span>
+                <span className="text-lg font-mono font-bold text-indigo-600 block mt-1 tabular-nums">
+                  ฿{summaryStats.totalActual.toLocaleString()}
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                  ผูกพันรอของรวม
+                </span>
+                <span className="text-lg font-mono font-bold text-amber-600 block mt-1 tabular-nums">
+                  ฿{summaryStats.totalCommitted.toLocaleString()}
+                </span>
+              </div>
+              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    คงเหลือสุทธิ
+                  </span>
+                  <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                    summaryStats.usedPercent >= 90 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {summaryStats.usedPercent}% ใช้ไป
+                  </span>
+                </div>
+                <span className={`text-lg font-mono font-bold block mt-1 tabular-nums ${
+                  summaryStats.totalRemaining < 0 ? 'text-rose-600' : 'text-emerald-600'
+                }`}>
+                  ฿{summaryStats.totalRemaining.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+            {deptsToShow.map(dept => {
             const rawData = currentMonthSummary[dept] || {};
-            const baseAllocated = Number(rawData.baseAllocated ?? rawData.allocated) || (DEPARTMENTS[dept]?.monthlyBudget || 200000);
+            const baseAllocated = Number(rawData.baseAllocated ?? rawData.allocated) || (deptMap[dept]?.monthlyBudget || DEPARTMENTS[dept]?.monthlyBudget || 200000);
             const actualSpent = Number(rawData.actualSpent) || 0;
             const committed = Number(rawData.committed) || 0;
             const totalSpent = actualSpent + committed;
@@ -523,7 +735,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
                         <Building2 className="w-5 h-5" />
                       </div>
                       <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-slate-900 text-base">{DEPARTMENTS[dept]?.name || dept}</h4>
+                        <h4 className="font-bold text-slate-900 text-base">{deptMap[dept]?.name || DEPARTMENTS[dept]?.name || dept}</h4>
                         <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60">
                           {dept}
                         </span>
@@ -676,6 +888,7 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
@@ -716,7 +929,9 @@ export default function BudgetView({ budgetSummary, currentRole, prs = [], pos =
                   </div>
 
                   <span className="px-3 py-1 bg-slate-100 rounded-xl text-xs font-semibold text-slate-700 w-fit">
-                    {selectedDept === 'ALL' ? 'รวมทุกแผนก' : `แผนก ${selectedDept}`}
+                    {selectedDept === 'ALL' 
+                      ? (isSuperAdminOrApprover ? 'รวมทุกแผนก' : `รวมแผนกในความดูแล (${userAssignedDepts.join(', ')})`) 
+                      : `แผนก ${selectedDept}`}
                   </span>
                 </div>
               </div>

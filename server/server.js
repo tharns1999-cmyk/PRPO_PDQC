@@ -42,8 +42,80 @@ const initialUsageUnits = [
   { id: 'UNIT-PD-005', name: 'ออฟฟิศ PD', department: 'PD', dot: 'bg-slate-500', color: 'bg-slate-100 text-slate-700 border-slate-200/80', status: 'ACTIVE' },
   { id: 'UNIT-QC-001', name: 'Lab เคมี', department: 'QC', dot: 'bg-cyan-500', color: 'bg-cyan-50 text-cyan-700 border-cyan-200/80', status: 'ACTIVE' },
   { id: 'UNIT-QC-002', name: 'Lab จุลชีววิทยา', department: 'QC', dot: 'bg-teal-500', color: 'bg-teal-50 text-teal-700 border-teal-200/80', status: 'ACTIVE' },
-  { id: 'UNIT-QC-003', name: 'ห้อง Sensory', department: 'QC', dot: 'bg-fuchsia-500', color: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200/80', status: 'ACTIVE' },
-  { id: 'UNIT-QC-004', name: 'ออฟฟิศ QC', department: 'QC', dot: 'bg-rose-500', color: 'bg-rose-50 text-rose-700 border-rose-200/80', status: 'ACTIVE' }
+  { id: 'UNIT-QC-003', name: 'ห้อง Sensory', department: 'QC', dot: 'bg-fuchsia-500', color: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200/80', status: 'ACTIVE' }
+];
+
+const initialDepartments = [
+  {
+    id: 'DEPT-PD',
+    code: 'PD',
+    name: 'ฝ่ายผลิต',
+    nameEn: 'Production',
+    prefix: 'PD',
+    description: 'รับผิดชอบกระบวนการแปรรูป ควบคุมการผลิต และดูแลไลน์ผลิตสินค้า',
+    monthlyBudget: 250000,
+    isActive: true,
+    color: 'blue',
+    managerName: 'คุณประเสริฐ ยิ่งยง',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'DEPT-QC',
+    code: 'QC',
+    name: 'ฝ่ายควบคุมคุณภาพ',
+    nameEn: 'Quality Control & Lab',
+    prefix: 'QC',
+    description: 'ตรวจสอบคุณภาพ วัตถุดิบ สารเคมี บรรจุภัณฑ์ และงานแล็บวิเคราะห์',
+    monthlyBudget: 150000,
+    isActive: true,
+    color: 'amber',
+    managerName: 'ดร. กรรณิการ์ จิตเจริญ',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'DEPT-WH',
+    code: 'WH',
+    name: 'ฝ่ายคลังสินค้า',
+    nameEn: 'Warehouse & Inventory',
+    prefix: 'WH',
+    description: 'บริหารคลังจัดเก็บสินค้า วัตถุดิบ ชิ้นส่วน และตรวจรับกระจายสต็อก',
+    monthlyBudget: 120000,
+    isActive: true,
+    color: 'emerald',
+    managerName: 'คุณสมคิด คลังทอง',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'DEPT-PUR',
+    code: 'PUR',
+    name: 'ฝ่ายจัดซื้อ',
+    nameEn: 'Procurement & Sourcing',
+    prefix: 'PUR',
+    description: 'จัดหาผู้จัดจำหน่าย เปรียบเทียบราคา จัดซื้อพัสดุและอุปกรณ์',
+    monthlyBudget: 100000,
+    isActive: true,
+    color: 'purple',
+    managerName: 'คุณสุดา จัดหาดี',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'DEPT-ENG',
+    code: 'ENG',
+    name: 'ฝ่ายวิศวกรรมและซ่อมบำรุง',
+    nameEn: 'Engineering & Maintenance',
+    prefix: 'ENG',
+    description: 'ดูแลรักษาเครื่องจักร ระบบสาธารณูปโภค และงานซ่อมบำรุงโรงงาน',
+    monthlyBudget: 180000,
+    isActive: true,
+    color: 'cyan',
+    managerName: 'วิศวกร ช่างทอง',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z'
+  }
 ];
 
 const initialUsers = [
@@ -163,63 +235,19 @@ const initialUsers = [
 ];
 
 const initialBudgets = {
-  PD: {
-    monthlyBudget: 250000,
-    spent: 0,
-    pending: 0,
-    variance: 0,
-    history: {
-      "2024-10": 250000, "2024-11": 250000, "2024-12": 250000,
-      "2025-01": 250000, "2025-02": 250000, "2025-03": 250000,
-      "2025-04": 250000, "2025-05": 250000, "2025-06": 250000,
-      "2025-07": 250000, "2025-08": 250000, "2025-09": 250000,
-      "2025-10": 250000, "2025-11": 250000, "2025-12": 250000,
-      "2026-01": 250000, "2026-02": 250000, "2026-03": 250000,
-      "2026-04": 250000, "2026-05": 250000, "2026-06": 250000,
-      "2026-07": 250000, "2026-08": 250000, "2026-09": 250000
-    },
-    historicalSpent: {
-      "2024-10": 0, "2024-11": 0, "2024-12": 0,
-      "2025-01": 0, "2025-02": 0, "2025-03": 0,
-      "2025-04": 0, "2025-05": 0, "2025-06": 0,
-      "2025-07": 0, "2025-08": 0, "2025-09": 0,
-      "2025-10": 0, "2025-11": 0, "2025-12": 0,
-      "2026-01": 0, "2026-02": 0, "2026-03": 0,
-      "2026-04": 0, "2026-05": 0, "2026-06": 0,
-      "2026-07": 0, "2026-08": 0, "2026-09": 0
-    }
-  },
-  QC: {
-    monthlyBudget: 150000,
-    spent: 0,
-    pending: 0,
-    variance: 0,
-    history: {
-      "2024-10": 150000, "2024-11": 150000, "2024-12": 150000,
-      "2025-01": 150000, "2025-02": 150000, "2025-03": 150000,
-      "2025-04": 150000, "2025-05": 150000, "2025-06": 150000,
-      "2025-07": 150000, "2025-08": 150000, "2025-09": 150000,
-      "2025-10": 150000, "2025-11": 150000, "2025-12": 150000,
-      "2026-01": 150000, "2026-02": 150000, "2026-03": 150000,
-      "2026-04": 150000, "2026-05": 150000, "2026-06": 150000,
-      "2026-07": 150000, "2026-08": 150000, "2026-09": 150000
-    },
-    historicalSpent: {
-      "2024-10": 0, "2024-11": 0, "2024-12": 0,
-      "2025-01": 0, "2025-02": 0, "2025-03": 0,
-      "2025-04": 0, "2025-05": 0, "2025-06": 0,
-      "2025-07": 0, "2025-08": 0, "2025-09": 0,
-      "2025-10": 0, "2025-11": 0, "2025-12": 0,
-      "2026-01": 0, "2026-02": 0, "2026-03": 0,
-      "2026-04": 0, "2026-05": 0, "2026-06": 0,
-      "2026-07": 0, "2026-08": 0, "2026-09": 0
-    }
-  }
+  PD: { monthlyBudget: 250000, spent: 0, pending: 0, variance: 250000, history: {}, historicalSpent: {} },
+  QC: { monthlyBudget: 150000, spent: 0, pending: 0, variance: 150000, history: {}, historicalSpent: {} },
+  WH: { monthlyBudget: 120000, spent: 0, pending: 0, variance: 120000, history: {}, historicalSpent: {} },
+  PUR: { monthlyBudget: 100000, spent: 0, pending: 0, variance: 100000, history: {}, historicalSpent: {} },
+  ENG: { monthlyBudget: 180000, spent: 0, pending: 0, variance: 180000, history: {}, historicalSpent: {} }
 };
 
 const initialCounters = {
   PD: { PR: 0, PO: 0 },
-  QC: { PR: 0, PO: 0 }
+  QC: { PR: 0, PO: 0 },
+  WH: { PR: 0, PO: 0 },
+  PUR: { PR: 0, PO: 0 },
+  ENG: { PR: 0, PO: 0 }
 };
 
 // Seed product items from initial catalog (Only used if file does not exist on disk)
@@ -228,6 +256,7 @@ const defaultSeedCatalog = {
   'vendors.json': initialVendors,
   'storageLocations.json': initialStorageLocations,
   'usageUnits.json': initialUsageUnits,
+  'departments.json': initialDepartments,
   'users.json': initialUsers,
   'budgets.json': initialBudgets,
   'prCounters.json': initialCounters,
@@ -568,6 +597,91 @@ app.delete('/api/users/:id', async (req, res) => {
   }
 });
 
+// ── Departments Master Data ──
+app.get('/api/departments', async (req, res) => {
+  try {
+    const depts = await readFile('departments.json', initialDepartments);
+    res.json(depts);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/departments', async (req, res) => {
+  try {
+    const data = req.body;
+    if (Array.isArray(data)) {
+      await writeFile('departments.json', data);
+      return res.json(data);
+    }
+    const depts = await readFile('departments.json', initialDepartments);
+    const code = (data.code || '').toUpperCase().trim();
+    const newId = data.id || `DEPT-${code || Date.now().toString().slice(-4)}`;
+    const newDept = {
+      ...data,
+      id: newId,
+      code,
+      name: data.name || '',
+      nameEn: data.nameEn || '',
+      prefix: data.prefix || code,
+      description: data.description || '',
+      monthlyBudget: Number(data.monthlyBudget) || 0,
+      isActive: data.isActive !== undefined ? data.isActive : true,
+      color: data.color || 'blue',
+      managerName: data.managerName || '',
+      createdAt: data.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    depts.push(newDept);
+    await writeFile('departments.json', depts);
+    res.json(newDept);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/departments/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = req.body;
+    const depts = await readFile('departments.json', initialDepartments);
+    const idx = depts.findIndex(d => d.id === id || d.code === id);
+    const existing = idx !== -1 ? depts[idx] : {};
+    const code = (updated.code || existing.code || id).toUpperCase().trim();
+    const merged = {
+      ...existing,
+      ...updated,
+      id: existing.id || id,
+      code,
+      name: updated.name !== undefined ? updated.name : existing.name,
+      isActive: updated.isActive !== undefined ? updated.isActive : (existing.isActive !== undefined ? existing.isActive : true),
+      monthlyBudget: updated.monthlyBudget !== undefined ? Number(updated.monthlyBudget) : (existing.monthlyBudget || 0),
+      updatedAt: new Date().toISOString()
+    };
+    if (idx !== -1) {
+      depts[idx] = merged;
+    } else {
+      depts.push(merged);
+    }
+    await writeFile('departments.json', depts);
+    res.json(merged);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/departments/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const depts = await readFile('departments.json', initialDepartments);
+    const filtered = depts.filter(d => d.id !== id && d.code !== id);
+    await writeFile('departments.json', filtered);
+    res.json({ success: true, id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── 3. Vendors ──
 app.get('/api/vendors', async (req, res) => {
   try {
@@ -896,6 +1010,8 @@ app.post(['/api/pos/:id/receive', '/api/receive-goods'], async (req, res) => {
               unit: sUnit,
               balance: newBal,
               user: `${user.name || 'System'} (${user.title || 'Requester'})`,
+              locationId: prod.locationId || '',
+              locationName: prod.locationName || '',
               note: note || logNote
             });
           } else {
@@ -911,6 +1027,8 @@ app.post(['/api/pos/:id/receive', '/api/receive-goods'], async (req, res) => {
               unit: sUnit,
               balance: currentBal,
               user: `${user.name || 'System'} (${user.title || 'Requester'})`,
+              locationId: prod.locationId || '',
+              locationName: prod.locationName || '',
               note: `[สินค้าชำรุด/NG] ${defectNote || reasonLabel}`
             });
           }
@@ -1079,6 +1197,28 @@ app.get('/api/budgets', async (req, res) => {
   try {
     const { year, month } = req.query;
     const budgets = await readFile('budgets.json', initialBudgets);
+    const departments = await readFile('departments.json', initialDepartments);
+    let changed = false;
+
+    // Ensure all departments from departments.json exist in budgets.json
+    departments.forEach(dept => {
+      if (!budgets[dept.code]) {
+        budgets[dept.code] = {
+          monthlyBudget: Number(dept.monthlyBudget) || 200000,
+          spent: 0,
+          pending: 0,
+          variance: Number(dept.monthlyBudget) || 200000,
+          history: {},
+          historicalSpent: {}
+        };
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      await writeFile('budgets.json', budgets);
+    }
+
     if (year && month) {
       const monthKey = `${year}-${String(month).padStart(2, '0')}`;
       const monthData = {};
@@ -1111,6 +1251,116 @@ app.put('/api/budgets', async (req, res) => {
   try {
     await writeFile('budgets.json', req.body);
     res.json(req.body);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── 7.1 Budget Adjustment & Top-up Endpoint (Writes budgets.json + budgetTransactions.json) ──
+app.post('/api/budgets/adjust', async (req, res) => {
+  try {
+    const { dept, action, newAmount, previousAmount, delta, reason, actor, targetMonth } = req.body;
+    if (!dept) {
+      return res.status(400).json({ error: 'Missing department code' });
+    }
+
+    const budgets = await readFile('budgets.json', initialBudgets);
+    const departments = await readFile('departments.json', initialDepartments);
+    const transactions = await readFile('budgetTransactions.json', []);
+
+    if (!budgets[dept]) {
+      budgets[dept] = { monthlyBudget: 0, spent: 0, pending: 0, variance: 0, history: {}, historicalSpent: {} };
+    }
+
+    const currentMonthly = Number(budgets[dept].monthlyBudget) || 0;
+    const prev = previousAmount !== undefined ? Number(previousAmount) : currentMonthly;
+    let finalAmount = prev;
+
+    if (action === 'TOP_UP') {
+      finalAmount = prev + Number(delta || 0);
+    } else if (action === 'SET_BUDGET' || action === 'ADJUST') {
+      finalAmount = Number(newAmount !== undefined ? newAmount : prev);
+    }
+
+    budgets[dept].monthlyBudget = finalAmount;
+    const spent = Number(budgets[dept].spent) || 0;
+    budgets[dept].variance = finalAmount - spent;
+
+    const today = new Date();
+    const monthKey = targetMonth || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    if (!budgets[dept].history) budgets[dept].history = {};
+    budgets[dept].history[monthKey] = finalAmount;
+
+    // 1. Write budgets.json
+    await writeFile('budgets.json', budgets);
+
+    // 2. Sync monthlyBudget to departments.json if present
+    const deptObj = departments.find(d => d.code === dept);
+    if (deptObj) {
+      deptObj.monthlyBudget = finalAmount;
+      await writeFile('departments.json', departments);
+    }
+
+    // 3. Create and append transaction log to budgetTransactions.json
+    const nowStr = today.toISOString().replace('T', ' ').slice(0, 19);
+    const amountDiff = finalAmount - prev;
+    const newTx = {
+      id: `BTX-${Date.now()}`,
+      date: nowStr,
+      createdAt: today.toISOString(),
+      dept,
+      type: action || 'ADJUST',
+      typeLabel: action === 'SET_BUDGET' 
+        ? 'กำหนดงบประมาณประจำเดือน (Monthly Allocation)' 
+        : action === 'TOP_UP' 
+          ? 'เติมงบประมาณพิเศษ (Budget Top-up)' 
+          : 'ปรับยอดงบประมาณ (Adjustment)',
+      previousAmount: prev,
+      newAmount: finalAmount,
+      amount: amountDiff,
+      actor: actor || 'ผู้ดูแลระบบ (Admin)',
+      note: reason || 'ปรับปรุงงบประมาณประจำเดือน',
+      targetMonth: monthKey
+    };
+
+    transactions.unshift(newTx);
+    await writeFile('budgetTransactions.json', transactions);
+
+    res.json({
+      success: true,
+      budget: budgets[dept],
+      transaction: newTx,
+      budgets,
+      transactions
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── 7.2 Budget Transactions Log Endpoints ──
+app.get('/api/budget-transactions', async (req, res) => {
+  try {
+    const transactions = await readFile('budgetTransactions.json', []);
+    res.json(transactions);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/budget-transactions', async (req, res) => {
+  try {
+    const transactions = await readFile('budgetTransactions.json', []);
+    const tx = req.body;
+    const newTx = {
+      id: tx.id || `BTX-${Date.now()}`,
+      date: tx.date || new Date().toISOString().replace('T', ' ').slice(0, 19),
+      createdAt: tx.createdAt || new Date().toISOString(),
+      ...tx
+    };
+    transactions.unshift(newTx);
+    await writeFile('budgetTransactions.json', transactions);
+    res.json(newTx);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

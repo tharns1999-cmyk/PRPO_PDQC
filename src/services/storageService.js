@@ -1,4 +1,4 @@
-import { STORAGE_KEYS, ROLES, INITIAL_USAGE_UNITS } from '../config/constants.js';
+import { STORAGE_KEYS, ROLES, INITIAL_USAGE_UNITS, INITIAL_DEPARTMENTS } from '../config/constants.js';
 import { initialProducts, initialVendors, initialStorageLocations, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
 import { DEFAULT_EMPLOYEE_ACCOUNTS } from './authService.js';
 
@@ -202,6 +202,49 @@ export const storageService = {
     return true;
   },
 
+  // Departments Master Data
+  getDepartments() {
+    const data = _getItem(STORAGE_KEYS.DEPARTMENTS);
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      this.saveDepartments(INITIAL_DEPARTMENTS);
+      return INITIAL_DEPARTMENTS;
+    }
+    return data;
+  },
+  saveDepartments(departments) {
+    _setItem(STORAGE_KEYS.DEPARTMENTS, departments);
+  },
+  saveDepartment(deptObj) {
+    const depts = [...this.getDepartments()];
+    let updatedDept = { ...deptObj };
+    const code = (updatedDept.code || '').toUpperCase().trim();
+    if (!updatedDept.id) {
+      updatedDept.id = `DEPT-${code || Date.now().toString().slice(-4)}`;
+      updatedDept.code = code;
+      updatedDept.isActive = updatedDept.isActive !== undefined ? updatedDept.isActive : true;
+      updatedDept.createdAt = new Date().toISOString();
+      updatedDept.updatedAt = new Date().toISOString();
+      depts.push(updatedDept);
+    } else {
+      const idx = depts.findIndex(d => d.id === updatedDept.id || d.code === updatedDept.code);
+      updatedDept.code = code;
+      updatedDept.updatedAt = new Date().toISOString();
+      if (idx !== -1) {
+        depts[idx] = { ...depts[idx], ...updatedDept };
+      } else {
+        depts.push(updatedDept);
+      }
+    }
+    this.saveDepartments(depts);
+    return updatedDept;
+  },
+  deleteDepartment(deptId) {
+    const depts = this.getDepartments();
+    const filtered = depts.filter(d => d.id !== deptId && d.code !== deptId);
+    this.saveDepartments(filtered);
+    return true;
+  },
+
   // Users & Access Management
   getUsers() {
     const data = _getItem(STORAGE_KEYS.USERS);
@@ -379,10 +422,48 @@ export const storageService = {
       return itemsMigrated ? { ...pr, items } : pr;
     });
 
+    // Auto-heal / cascade sync: if a PR has a PO that is already closed/completed, sync PR status to 'completed'
+    const posData = _getItem(STORAGE_KEYS.POS);
+    const pos = Array.isArray(posData) ? posData : [];
+    const syncedPRs = migrated.map(pr => {
+      // Fix known legacy PR PD002/2026 if still pending
+      if (pr.prNo === 'PD002/2026' && pr.status !== 'completed' && pr.status !== 'CLOSED') {
+        needsSave = true;
+        return {
+          ...pr,
+          status: 'completed',
+          poNumber: 'PO-PD-2026-001',
+          poNo: 'PO-PD-2026-001'
+        };
+      }
+
+      const relatedPO = pos.find(po =>
+        (po.prId && (po.prId === pr.id || po.prId === pr.prNo)) ||
+        (po.prNo && (po.prNo === pr.prNo || po.prNo === pr.id)) ||
+        (po.prNumber && (po.prNumber === pr.id || po.prNumber === pr.prNo)) ||
+        (pr.poNo && (po.poNo === pr.poNo || po.id === pr.poNo)) ||
+        (pr.poNumber && (po.poNo === pr.poNumber || po.poNumber === pr.poNumber))
+      );
+      if (relatedPO) {
+        const poIsDone = ['closed', 'cancelled', 'received', 'completed', 'fully_received'].includes(String(relatedPO.status).toLowerCase());
+        if (poIsDone && !['closed', 'cancelled', 'completed'].includes(String(pr.status).toLowerCase())) {
+          needsSave = true;
+          return {
+            ...pr,
+            status: 'completed',
+            poNumber: relatedPO.poNo || relatedPO.poNumber || pr.poNumber || pr.poNo,
+            poNo: relatedPO.poNo || relatedPO.poNumber || pr.poNumber || pr.poNo,
+            fullyReceivedAt: relatedPO.fullyReceivedAt || new Date().toISOString()
+          };
+        }
+      }
+      return pr;
+    });
+
     if (needsSave) {
-      _setItem(STORAGE_KEYS.PRS, migrated);
+      _setItem(STORAGE_KEYS.PRS, syncedPRs);
     }
-    return migrated;
+    return syncedPRs;
   },
   savePRs(prs) {
     _setItem(STORAGE_KEYS.PRS, prs);

@@ -6,7 +6,18 @@
 @tailwind utilities;
 
 @layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+  html, body, #root {
+    margin: 0;
+    padding: 0;
+  }
   body {
-    @apply bg-[#F8FAFC] text-slate-900 antialiased min-h-screen font-sans;
+    background-color: #F8FAFC;
+    color: #0f172a;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
   }
 }

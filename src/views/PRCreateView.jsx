@@ -1,17 +1,18 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiService } from '../services/apiService';
 import { 
-  FileText, ArrowLeft, Info, AlertTriangle, 
-  Plus, Trash2, Building2, Calendar, ShoppingBag, Globe, 
-  Sparkles, CheckCircle2, ShoppingCart, SlidersHorizontal, Repeat, ArrowRight, Factory, Building, Receipt, Package, HelpCircle, Layers, Paperclip, Loader2
+  ArrowLeft, AlertTriangle, Plus, Minus, Trash2, Building2, 
+  Globe, Sparkles, CheckCircle2, ShoppingCart, 
+  Factory, Building, Receipt, Loader2, Wallet
 } from 'lucide-react';
-import { PR_SOURCE, PURCHASE_CHANNEL, MEMO_THRESHOLD, DEPARTMENTS } from '../config/constants';
+import { MEMO_THRESHOLD, DEPARTMENTS } from '../config/constants';
 import FileUploader from '../components/common/FileUploader';
 import SearchableSelect from '../components/common/SearchableSelect';
 import { modalService } from '../services/modalService';
 
 export default function PRCreateView({ 
   products = [], 
+  departments = [],
   currentRole, 
   onNavigate, 
   onRefresh, 
@@ -25,15 +26,31 @@ export default function PRCreateView({
   // Submission Guard to prevent duplicate submissions
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Determine effective department (locked for PD/QC users, selectable for ALL)
+  // Dynamic Departments from context / master data
+  const deptList = useMemo(() => {
+    return (departments && departments.length > 0) ? departments : (DEPARTMENTS ? Object.values(DEPARTMENTS) : []);
+  }, [departments]);
+
+  const activeDepartments = useMemo(() => {
+    return deptList.filter(d => d.isActive !== false);
+  }, [deptList]);
+
+  const deptMap = useMemo(() => {
+    return deptList.reduce((acc, d) => {
+      acc[d.code] = d;
+      return acc;
+    }, {});
+  }, [deptList]);
+
+  // Determine effective department (locked for dept-specific users, selectable for ALL)
+  const defaultCode = activeDepartments[0]?.code || 'PD';
   const initialDept = editingPR 
     ? editingPR.department 
-    : (currentRole.department === 'ALL' 
-        ? (preselectedProduct?.category || 'PD') 
-        : currentRole.department);
+    : (currentRole?.department === 'ALL' 
+        ? (preselectedProduct?.category || defaultCode) 
+        : (currentRole?.department || defaultCode));
 
   const [department, setDepartment] = useState(initialDept);
-  const [source, setSource] = useState(editingPR?.source || 'FACTORY');
   const [purchaseChannel, setPurchaseChannel] = useState(editingPR?.purchaseChannel || 'SELF');
   
   // File attachments
@@ -47,12 +64,27 @@ export default function PRCreateView({
   
   const [note, setNote] = useState(editingPR?.note || '');
 
-  // Financial State for SELF Purchase Channel
+  // Financial State for Order Adjustments
   const [combinedDiscountType, setCombinedDiscountType] = useState(editingPR?.financials?.combinedDiscountType || 'percent'); // 'percent' | 'fixed'
   const [combinedDiscountValue, setCombinedDiscountValue] = useState(editingPR?.financials?.combinedDiscountValue ?? 0);
-  const [vatMode, setVatMode] = useState(editingPR?.financials?.vatMode || 'AFTER_DISCOUNT'); // 'AFTER_DISCOUNT' | 'BEFORE_DISCOUNT'
   const [roundingAdj, setRoundingAdj] = useState(editingPR?.financials?.roundingAdj ?? 0);
   const [shippingCost, setShippingCost] = useState(editingPR?.financials?.shippingCost ?? 0);
+
+  // VAT Toggle State: true = 7%, false = 0% (Directive 1)
+  const [hasVat, setHasVat] = useState(() => {
+    if (editingPR?.financials?.hasVat !== undefined) return Boolean(editingPR.financials.hasVat);
+    if (editingPR?.financials?.vatMode === 'NONE') return false;
+    return true;
+  });
+
+  // Toggle state for extra costs & adjustments (Directive 2: Hide shipping & rounding inputs by default)
+  const [showExtraAdjustments, setShowExtraAdjustments] = useState(() => {
+    return Boolean(
+      (parseFloat(editingPR?.financials?.shippingCost) || 0) > 0 ||
+      (parseFloat(editingPR?.financials?.roundingAdj) || 0) !== 0 ||
+      (parseFloat(editingPR?.financials?.combinedDiscountValue) || 0) > 0
+    );
+  });
 
   // Find return/reject reason if this PR was returned
   const returnReason = useMemo(() => {
@@ -75,18 +107,17 @@ export default function PRCreateView({
     return availableProducts.map(p => {
       const pUnit = p.purchaseUnit || p.unit || 'ชิ้น';
       const sUnit = p.stockUnit || p.unit || 'ชิ้น';
-      const rate = Number(p.conversionRate) > 0 ? Number(p.conversionRate) : 1;
       const pCat = p.category || p.department || 'PD';
       return {
         value: p.id,
         label: p.name,
         code: p.code,
         subLabel: `฿${Number(p.price || 0).toLocaleString()} / ${pUnit} • คงเหลือ: ${Number(p.stockBalance || 0).toLocaleString()} ${sUnit} • ROP: ${Number(p.reorderPoint || 0).toLocaleString()} ${sUnit}`,
-        badge: pCat === 'PD' ? 'ฝ่ายผลิต' : 'ฝ่าย QC',
+        badge: deptMap[pCat]?.name || pCat,
         keywords: `${p.code} ${p.name} ${pUnit} ${sUnit} ${pCat}`
       };
     });
-  }, [availableProducts]);
+  }, [availableProducts, deptMap]);
 
   // Initial PR Items state
   const [prItems, setPrItems] = useState(() => {
@@ -175,7 +206,7 @@ export default function PRCreateView({
     };
   });
 
-  // ── Financial Calculations ──
+  // ── Financial Calculations (Smart Standard VAT: (Subtotal - Discount) * 0.07) ──
   const isOnline = purchaseChannel === 'ONLINE';
 
   const subtotal = useMemo(() => {
@@ -206,11 +237,11 @@ export default function PRCreateView({
     return Math.max(0, subtotal - totalDiscount);
   }, [subtotal, totalDiscount]);
 
+  // Standard Automatic 7% VAT or 0% based on hasVat (Directive 1)
   const vatAmount = useMemo(() => {
-    if (purchaseChannel !== 'SELF') return 0;
-    const vatBase = vatMode === 'BEFORE_DISCOUNT' ? subtotal : netAfterAllDiscount;
-    return parseFloat((vatBase * 0.07).toFixed(2));
-  }, [purchaseChannel, vatMode, subtotal, netAfterAllDiscount]);
+    if (purchaseChannel !== 'SELF' || !hasVat) return 0;
+    return parseFloat((netAfterAllDiscount * 0.07).toFixed(2));
+  }, [purchaseChannel, hasVat, netAfterAllDiscount]);
 
   const grandTotal = useMemo(() => {
     if (purchaseChannel !== 'SELF') {
@@ -218,15 +249,42 @@ export default function PRCreateView({
     }
     const safeRounding = parseFloat(roundingAdj) || 0;
     const safeShipping = parseFloat(shippingCost) || 0;
-    if (vatMode === 'BEFORE_DISCOUNT') {
-      return parseFloat((subtotal + vatAmount - totalDiscount + safeRounding + safeShipping).toFixed(2));
-    } else {
-      return parseFloat((netAfterAllDiscount + vatAmount + safeRounding + safeShipping).toFixed(2));
-    }
-  }, [purchaseChannel, subtotal, totalDiscount, netAfterAllDiscount, vatMode, vatAmount, roundingAdj, shippingCost]);
+    return parseFloat((netAfterAllDiscount + vatAmount + safeRounding + safeShipping).toFixed(2));
+  }, [purchaseChannel, subtotal, netAfterAllDiscount, vatAmount, roundingAdj, shippingCost]);
 
-  const totalAmount = grandTotal;
-  const requiresMemo = totalAmount >= MEMO_THRESHOLD;
+  // Dynamic Memo Requirement Directive 3: const requiresMemo = grandTotal >= 20000;
+  const requiresMemo = grandTotal >= (MEMO_THRESHOLD || 20000);
+
+  // Department Budget Usage Bar (Directive 1)
+  const budgetInfo = useMemo(() => {
+    try {
+      const summary = apiService.calculateBudgetSummary();
+      const deptData = summary?.current?.[department];
+      if (!deptData) return null;
+      const allocated = Number(deptData.baseAllocated ?? deptData.allocated) || 0;
+      const actualSpent = Number(deptData.actualSpent ?? 0);
+      const committed = Number(deptData.committed ?? 0);
+      const spent = actualSpent + committed;
+      const prAmount = grandTotal || 0;
+      const projectedSpent = spent + prAmount;
+      const currentPercent = allocated > 0 ? Math.min(100, Math.round((spent / allocated) * 100)) : 0;
+      const projectedPercent = allocated > 0 ? Math.min(100, Math.round((projectedSpent / allocated) * 100)) : 0;
+      const remaining = allocated - projectedSpent;
+      const isOverBudget = projectedSpent > allocated;
+      return {
+        allocated,
+        spent,
+        prAmount,
+        projectedSpent,
+        currentPercent,
+        projectedPercent,
+        remaining,
+        isOverBudget
+      };
+    } catch {
+      return null;
+    }
+  }, [department, grandTotal]);
 
   const handleAddItemRow = () => {
     const defaultProd = availableProducts[0];
@@ -324,6 +382,18 @@ export default function PRCreateView({
     }
     
     setPrItems(updated);
+  };
+
+  // Quantity Stepper Handlers (Directive 4: [ - ] [ 1 ] [ + ])
+  const handleDecrementQty = (index) => {
+    const currentQty = parseFloat(prItems[index].qty) || 1;
+    const nextQty = Math.max(1, currentQty - 1);
+    handleItemChange(index, 'qty', nextQty);
+  };
+
+  const handleIncrementQty = (index) => {
+    const currentQty = parseFloat(prItems[index].qty) || 0;
+    handleItemChange(index, 'qty', currentQty + 1);
   };
 
   const handleCreateSubmit = async (e, isDraft) => {
@@ -433,7 +503,7 @@ export default function PRCreateView({
       if (requiresMemo) {
         finalMemo = {
           applicantDept: department,
-          applicantName1: editingPR?.requestedBy || currentRole.name,
+          applicantName1: editingPR?.requestedBy || currentRole?.name || 'Staff',
           applicantName2: '-',
           date: new Date().toISOString().split('T')[0],
           approverManager: '-',
@@ -444,7 +514,7 @@ export default function PRCreateView({
           subject: memoData.subject,
           purpose: memoData.purpose,
           background: memoData.background,
-          estimatedCost: totalAmount,
+          estimatedCost: grandTotal,
           paymentTerm: memoData.paymentTerm,
           classification: memoData.classification,
           remarkAttachedFile: memoData.remarkAttachedFile || 'มีเอกสารแนบ',
@@ -460,7 +530,8 @@ export default function PRCreateView({
         combinedDiscountValue: parseFloat(combinedDiscountValue) || 0,
         combinedDiscountAmount,
         totalDiscount,
-        vatMode,
+        hasVat,
+        vatMode: hasVat ? 'AFTER_DISCOUNT' : 'NONE',
         vatAmount,
         roundingAdj: parseFloat(roundingAdj) || 0,
         shippingCost: parseFloat(shippingCost) || 0,
@@ -472,6 +543,7 @@ export default function PRCreateView({
         combinedDiscountValue: 0,
         combinedDiscountAmount: 0,
         totalDiscount: 0,
+        hasVat: false,
         vatMode: 'NONE',
         vatAmount: 0,
         roundingAdj: 0,
@@ -482,6 +554,7 @@ export default function PRCreateView({
       const prPayload = {
         department,
         purchaseChannel,
+        hasVat: purchaseChannel === 'SELF' ? hasVat : false,
         specUrl: quotationFiles[0] ? quotationFiles[0].name : '',
         attachments: [
           ...quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, category: 'QUOTATION' })),
@@ -544,7 +617,7 @@ export default function PRCreateView({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                {editingPR ? `แก้ไขใบขอซื้อ (Edit PR: ${editingPR.prNo})` : 'สร้างใบขอซื้อใหม่ (New PR)'}
+                {editingPR ? `แก้ไขใบขอซื้อ (${editingPR.prNo})` : 'สร้างใบขอซื้อใหม่ (New PR)'}
               </h2>
               {editingPR?.status && (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
@@ -563,13 +636,11 @@ export default function PRCreateView({
         </div>
 
         {/* Scope Pill Badge */}
-        <div className="flex items-center gap-2 px-3.5 py-2 bg-white rounded-2xl border border-slate-200/60 shadow-sm w-fit self-start sm:self-auto">
+        <div className="flex items-center gap-2 px-3.5 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-sm w-fit self-start sm:self-auto">
           <Building2 className="w-4 h-4 text-slate-400" />
           <span className="text-xs text-slate-500 font-medium">สังกัดฝ่าย:</span>
-          <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-            department === 'PD' ? 'bg-blue-50 text-blue-700 border border-blue-200/80' : 'bg-amber-50 text-amber-700 border border-amber-200/80'
-          }`}>
-            {department === 'PD' ? 'ฝ่ายผลิต (PD)' : 'ฝ่าย QC'}
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/80">
+            {deptMap[department]?.name ? `${deptMap[department].name} (${department})` : department}
           </span>
         </div>
       </div>
@@ -591,178 +662,140 @@ export default function PRCreateView({
         </div>
       )}
 
-      {/* ── Main Form Formcard ── */}
-      <div className="bg-white rounded-3xl shadow-sm border border-slate-200/60 overflow-hidden">
-        <form className="divide-y divide-slate-100" onSubmit={e => e.preventDefault()}>
+      {/* ─────────────────────────────────────────────────────────────
+         2-COLUMN GRID ARCHITECTURE (Directive 1)
+         Left Column: lg:col-span-8 (Channel, Items, Compact Attachments, Conditional Memo)
+         Right Column: lg:col-span-4 (Payment Summary, Budget Usage Bar, Sticky Actions)
+         ───────────────────────────────────────────────────────────── */}
+      <form onSubmit={e => e.preventDefault()} className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        {/* ══════════════════════════════════════════════════════════════
+           LEFT COLUMN: Main Work Area (lg:col-span-8)
+           ══════════════════════════════════════════════════════════════ */}
+        <div className="lg:col-span-8 space-y-6">
           
-          {/* ─────────────────────────────────────────────────────────────
-             SECTION 1: ข้อมูลเบื้องต้น (General Information)
-             ───────────────────────────────────────────────────────────── */}
-          <div className="p-6 sm:p-8 space-y-6">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 text-xs font-bold text-slate-900 uppercase tracking-wider">
-                <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-mono font-bold text-xs border border-indigo-100">
-                  1
-                </span>
-                <span>ข้อมูลเบื้องต้นและช่องทางจัดซื้อ (General Info)</span>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Card 1: Channel & Department Info */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               
               {/* Department Selector */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 flex-1 max-w-xs">
                 <label className="text-xs font-bold text-slate-700 block">
                   ฝ่ายผู้ขอซื้อ (Department) <span className="text-rose-500">*</span>
                 </label>
-                {currentRole.department !== 'ALL' ? (
-                  <div className={`w-full border rounded-xl px-4 py-2.5 text-xs sm:text-sm font-semibold flex items-center justify-between gap-2 transition-all ${
-                    department === 'PD' ? 'bg-blue-50/60 border-blue-200 text-blue-800' : 'bg-amber-50/60 border-amber-200 text-amber-800'
-                  }`}>
+                {currentRole?.department !== 'ALL' ? (
+                  <div className="w-full border border-slate-200/80 bg-slate-50/60 rounded-xl px-3.5 py-2 text-xs font-semibold flex items-center justify-between gap-2 text-slate-800">
                     <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4 shrink-0 text-slate-500" />
-                      <span>{department === 'PD' ? 'ฝ่ายผลิต (PD - Production)' : 'ฝ่ายควบคุมคุณภาพ (QC - Lab)'}</span>
+                      <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{deptMap[department]?.name ? `${deptMap[department].name} (${department})` : department}</span>
                     </div>
-                    <span className="text-[11px] font-normal text-slate-400">(ตามสิทธิ์ของคุณ)</span>
+                    <span className="text-[10px] font-normal text-slate-400">(ตามสิทธิ์)</span>
                   </div>
                 ) : (
                   <select
                     value={department}
                     onChange={e => setDepartment(e.target.value)}
-                    className="w-full bg-slate-50/50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
+                    className="w-full bg-slate-50/50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
                   >
-                    <option value="PD">ฝ่ายผลิต (PD - Production)</option>
-                    <option value="QC">ฝ่ายควบคุมคุณภาพ (QC - Quality Control)</option>
+                    {activeDepartments.map(d => (
+                      <option key={d.code} value={d.code}>
+                        {d.name} ({d.code})
+                      </option>
+                    ))}
                   </select>
                 )}
-                <p className="text-[11px] text-slate-400">
-                  * แคตตาล็อกสินค้าจะแสดงเฉพาะสินค้าของแผนกนี้
-                </p>
               </div>
 
-              {/* Purchase Channel Selection (Self-buy vs Online) */}
+              {/* Purchase Channel: Modern Segmented Pill Switcher (Directive 2) */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-700 block">
                   ช่องทางจัดซื้อ (Purchase Channel) <span className="text-rose-500">*</span>
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {Object.values(PURCHASE_CHANNEL).map(ch => {
-                    const isChecked = purchaseChannel === ch.id;
-                    return (
-                      <label 
-                        key={ch.id} 
-                        className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-all duration-200 select-none ${
-                          isChecked 
-                            ? 'bg-indigo-50/70 border-indigo-500 ring-2 ring-indigo-500/10 text-indigo-950 font-semibold shadow-xs' 
-                            : 'bg-white border-slate-200/80 hover:bg-slate-50/80 hover:border-slate-300 text-slate-700 font-medium'
-                        }`}
-                      >
-                        <input 
-                          type="radio" 
-                          name="purchaseChannel" 
-                          value={ch.id} 
-                          checked={isChecked} 
-                          onChange={() => setPurchaseChannel(ch.id)} 
-                          className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 cursor-pointer" 
-                        />
-                        <div className="flex items-center gap-2 min-w-0">
-                          {ch.id === 'ONLINE' ? (
-                            <ShoppingCart className={`w-4 h-4 shrink-0 ${isChecked ? 'text-purple-600' : 'text-slate-400'}`} />
-                          ) : (
-                            <Building2 className={`w-4 h-4 shrink-0 ${isChecked ? 'text-indigo-600' : 'text-slate-400'}`} />
-                          )}
-                          <span className="text-xs sm:text-sm truncate">{ch.label}</span>
-                        </div>
-                      </label>
-                    );
-                  })}
+                <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/70 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => setPurchaseChannel('SELF')}
+                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      purchaseChannel === 'SELF'
+                        ? 'bg-white text-slate-900 shadow-2xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    <Building2 className={`w-3.5 h-3.5 ${purchaseChannel === 'SELF' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                    <span>🏢 สั่งซื้อภายใน</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPurchaseChannel('ONLINE')}
+                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      purchaseChannel === 'ONLINE'
+                        ? 'bg-white text-slate-900 shadow-2xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    <ShoppingCart className={`w-3.5 h-3.5 ${purchaseChannel === 'ONLINE' ? 'text-purple-600' : 'text-slate-400'}`} />
+                    <span>🛒 จัดซื้อออนไลน์</span>
+                  </button>
                 </div>
               </div>
 
             </div>
+
+            {/* Online Channel URL helper (if ONLINE is selected) */}
+            {purchaseChannel === 'ONLINE' && (
+              <div className="pt-2 border-t border-slate-100 flex items-center gap-2.5 animate-fade-in">
+                <Globe className="w-4 h-4 text-purple-600 shrink-0" />
+                <input
+                  type="url"
+                  value={onlineLink}
+                  onChange={e => setOnlineLink(e.target.value)}
+                  placeholder="ลิงก์ร้านค้าหรือหน้าตะกร้าหลัก (Shopee / Lazada / เว็บไซต์ผู้จำหน่าย)..."
+                  className="flex-1 bg-purple-50/30 border border-purple-200 rounded-xl px-3.5 py-2 text-xs text-purple-950 placeholder:text-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
+                />
+              </div>
+            )}
           </div>
 
-          {/* ─────────────────────────────────────────────────────────────
-             SECTION 2: รายการสินค้าที่ขอซื้อ (Items Selection)
-             ───────────────────────────────────────────────────────────── */}
-          <div className="p-6 sm:p-8 space-y-5 bg-slate-50/40">
-            
-            {/* Section Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1">
-              <div>
-                <div className="flex items-center gap-2.5 text-xs font-bold text-slate-900 uppercase tracking-wider">
-                  <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-mono font-bold text-xs border border-indigo-100">
-                    2
-                  </span>
-                  <span>รายการสินค้าที่ขอซื้อ (Items Selection)</span>
-                </div>
-                <p className="text-xs text-slate-500 mt-1 font-normal">
-                  เลือกสินค้าเฉพาะแผนก <span className="font-semibold text-slate-800 font-mono">[{department}]</span> (มีทั้งหมด {availableProducts.length} รายการ) • ระบุจำนวนและปลายทาง
-                </p>
-              </div>
-
-              {/* Status Badge in Top Right */}
-              <div className="self-start sm:self-auto flex items-center gap-2">
-                <span className="bg-white text-slate-700 text-xs px-3.5 py-1.5 rounded-full font-semibold border border-slate-200/80 shadow-xs flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
-                  <span>รวม</span>
-                  <strong className="font-bold font-mono text-slate-900">{prItems.length}</strong>
-                  <span>รายการ</span>
+          {/* Card 2: Minimalist Items Selection List (Directive 4) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between pb-1 px-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-slate-900">
+                  รายการสินค้าที่ขอซื้อ
+                </h3>
+                <span className="text-xs font-semibold text-slate-500 font-mono">
+                  ({availableProducts.length} ในแผนก {department})
                 </span>
               </div>
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 font-mono">
+                {prItems.length} รายการ
+              </span>
             </div>
 
-            {/* Item Rows Container */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-              
-              {/* Desktop Column Header */}
-              <div className={`hidden md:grid gap-3 px-5 py-3 bg-slate-50/90 text-xs font-semibold text-slate-500 uppercase tracking-wider items-center border-b border-slate-200/80 ${
-                purchaseChannel === 'SELF' 
-                  ? 'grid-cols-[36px_minmax(220px,1fr)_130px_150px_160px_130px_36px]' 
-                  : 'grid-cols-[36px_minmax(220px,1fr)_140px_160px_140px_36px]'
-              }`}>
-                <div className="text-center">#</div>
-                <div>รายการสินค้า / สเปก & ปลายทาง</div>
-                <div className="text-right">ราคา/หน่วย (฿)</div>
-                <div className="text-center">จำนวน & หน่วย</div>
-                {purchaseChannel === 'SELF' && (
-                  <div className="text-center">ส่วนลด (฿ / %)</div>
-                )}
-                <div className="text-right">รวมเงิน (฿)</div>
-                <div className="text-center"></div>
-              </div>
+            {/* List of Minimalist Card Items */}
+            <div className="space-y-3">
+              {prItems.map((item, idx) => {
+                const selProd = !item.isCustom ? (availableProducts.find(p => p.id === item.productId) || products.find(p => p.id === item.productId)) : null;
+                const itemGross = (parseFloat(item.price) || 0) * (parseFloat(item.qty) || 0);
+                const itemRowNet = Math.max(0, itemGross - (parseFloat(item.discountAmount) || 0));
 
-              {/* Rows List */}
-              <div className="divide-y divide-slate-100">
-                {prItems.map((item, idx) => {
-                  const selProd = !item.isCustom ? (availableProducts.find(p => p.id === item.productId) || products.find(p => p.id === item.productId)) : null;
-                  const itemGross = (parseFloat(item.price) || 0) * (parseFloat(item.qty) || 0);
-                  const itemRowNet = Math.max(0, itemGross - (parseFloat(item.discountAmount) || 0));
-
-                  return (
-                    <div 
-                      key={idx} 
-                      className="p-4 sm:p-5 hover:bg-slate-50/60 transition-colors space-y-3"
-                    >
-                      {/* Primary Input Grid */}
-                      <div className={`grid grid-cols-1 gap-3 items-center ${
-                        purchaseChannel === 'SELF' 
-                          ? 'md:grid-cols-[36px_minmax(220px,1fr)_130px_150px_160px_130px_36px]' 
-                          : 'md:grid-cols-[36px_minmax(220px,1fr)_140px_160px_140px_36px]'
-                      }`}>
-                        
-                        {/* Col 1: # Index */}
-                        <div className="flex items-center justify-center">
-                          <span className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200/80 text-slate-600 font-mono font-bold text-xs flex items-center justify-center">
-                            {idx + 1}
-                          </span>
-                        </div>
-
-                        {/* Col 2: Product Search / Custom Input */}
-                        <div className="min-w-0">
+                return (
+                  <div
+                    key={idx}
+                    className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 sm:p-5 shadow-sm transition-all space-y-3.5"
+                  >
+                    {/* Primary Row: Index, Product / Custom, Unit Price, Stepper Qty, Total, Trash */}
+                    <div className="flex flex-col md:flex-row md:items-center gap-3">
+                      
+                      {/* Left: Index & Searchable Product / Custom Input */}
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <span className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 font-mono font-bold text-xs flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
                           {item.isCustom ? (
                             <div className="flex items-center gap-2">
-                              <span className="px-2.5 py-1 bg-purple-50 text-purple-700 text-xs font-bold rounded-lg border border-purple-200 shrink-0 font-mono">
+                              <span className="px-2 py-1 bg-purple-50 text-purple-700 text-xs font-mono font-bold rounded-lg border border-purple-200 shrink-0">
                                 {item.customCode || 'NON-CAT'}
                               </span>
                               <input
@@ -770,7 +803,7 @@ export default function PRCreateView({
                                 value={item.customName || ''}
                                 onChange={e => handleItemChange(idx, 'customName', e.target.value)}
                                 placeholder="พิมพ์ชื่อสินค้า/สเปกที่ต้องการขอซื้อ (Non-Catalog)..."
-                                className="w-full h-[40px] bg-white border border-slate-300 rounded-xl px-3.5 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs transition-all"
+                                className="w-full h-9.5 bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-300 rounded-xl px-3 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                                 required
                               />
                             </div>
@@ -786,751 +819,396 @@ export default function PRCreateView({
                             />
                           )}
                         </div>
-
-                        {/* Col 3: Unit Price */}
-                        <div>
-                          <div className="md:hidden text-xs font-semibold text-slate-500 mb-1">ราคาต่อหน่วย (฿)</div>
-                          <div className="relative flex items-center rounded-xl bg-white border border-slate-300 shadow-2xs focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all">
-                            <span className="pl-3 pr-1 text-slate-400 text-xs font-bold font-mono pointer-events-none">฿</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={item.price}
-                              onChange={e => handleItemChange(idx, 'price', e.target.value)}
-                              className="w-full h-[40px] pr-3 text-right font-mono font-bold text-xs sm:text-sm text-slate-900 outline-none bg-transparent tabular-nums"
-                              placeholder="0.00"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Col 4: Quantity + Unit */}
-                        <div>
-                          <div className="md:hidden text-xs font-semibold text-slate-500 mb-1">จำนวนที่ขอซื้อ</div>
-                          <div className="flex items-center rounded-xl bg-white border border-slate-300 shadow-2xs focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all overflow-hidden">
-                            <input
-                              type="number"
-                              step="any"
-                              min="0.001"
-                              value={item.qty}
-                              onChange={e => handleItemChange(idx, 'qty', e.target.value)}
-                              required
-                              placeholder="1"
-                              className="w-16 flex-1 h-[40px] px-3 text-center font-mono font-bold text-indigo-700 text-xs sm:text-sm outline-none bg-transparent tabular-nums"
-                            />
-                            {item.isCustom ? (
-                              <input
-                                type="text"
-                                value={item.customUnit || 'ชิ้น'}
-                                onChange={e => handleItemChange(idx, 'customUnit', e.target.value)}
-                                placeholder="หน่วย"
-                                className="h-[40px] w-16 px-2 bg-slate-50 border-l border-slate-200 text-xs font-semibold text-slate-700 text-center outline-none focus:bg-white shrink-0 transition-colors"
-                              />
-                            ) : (
-                              <span 
-                                className="h-[40px] px-3 flex items-center justify-center bg-slate-50 border-l border-slate-200 text-xs font-semibold text-slate-600 truncate max-w-[90px] shrink-0"
-                                title={selProd?.purchaseUnit || selProd?.unit || 'หน่วย'}
-                              >
-                                {selProd?.purchaseUnit || selProd?.unit || 'หน่วย'}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Col 5: Discount (for SELF channel) */}
-                        {purchaseChannel === 'SELF' && (
-                          <div>
-                            <div className="md:hidden text-xs font-semibold text-slate-500 mb-1 text-right">ส่วนลด (฿ / %)</div>
-                            <div className="flex items-center gap-1.5">
-                              <div className="flex-1 relative flex items-center rounded-xl bg-white border border-slate-300 shadow-2xs focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all min-w-[75px]">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={item.discountAmount || ''}
-                                  onChange={e => handleItemChange(idx, 'discountAmount', e.target.value)}
-                                  placeholder="0"
-                                  className="w-full h-[40px] pl-2 pr-5 text-right font-mono text-xs font-bold text-rose-600 outline-none bg-transparent tabular-nums"
-                                />
-                                <span className="absolute right-2 text-slate-400 text-xs font-bold font-mono pointer-events-none">฿</span>
-                              </div>
-                              <div className="w-16 relative flex items-center rounded-xl bg-white border border-slate-300 shadow-2xs focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all shrink-0">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="100"
-                                  step="0.1"
-                                  value={item.discountPercent || ''}
-                                  onChange={e => handleItemChange(idx, 'discountPercent', e.target.value)}
-                                  placeholder="0"
-                                  className="w-full h-[40px] pl-2 pr-4 text-center font-mono text-xs font-semibold text-slate-600 outline-none bg-transparent tabular-nums"
-                                />
-                                <span className="absolute right-1.5 text-slate-400 text-[10px] font-bold font-mono pointer-events-none">%</span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Col 6: Line Total */}
-                        <div>
-                          <div className="md:hidden text-xs font-semibold text-slate-500 mb-1 text-right">รวมเงิน (Line Total)</div>
-                          <div className="h-[40px] flex items-center justify-end px-3 bg-slate-50/90 rounded-xl border border-slate-200 font-mono font-bold text-slate-900 text-xs sm:text-sm tabular-nums shadow-2xs">
-                            ฿{itemRowNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </div>
-                        </div>
-
-                        {/* Col 7: Delete Action */}
-                        <div className="flex items-center justify-center h-[40px]">
-                          {prItems.length > 1 ? (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveItemRow(idx)}
-                              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-all cursor-pointer"
-                              title="ลบรายการนี้"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <span className="w-8"></span>
-                          )}
-                        </div>
-
                       </div>
 
-                      {/* Sub-line: Destination Toggle & Metadata Badges */}
-                      <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-2.5 border-t border-slate-100 md:pl-11">
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-slate-600">
-                          
-                          {/* Segmented Destination Toggle: Factory vs Office */}
-                          <div className="inline-flex items-center p-0.5 rounded-full bg-slate-100 border border-slate-200/60 shadow-2xs">
-                            <button
-                              type="button"
-                              onClick={() => handleItemChange(idx, 'source', 'FACTORY')}
-                              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                                item.source === 'FACTORY' || !item.source
-                                  ? 'bg-white text-slate-900 shadow-xs'
-                                  : 'text-slate-500 hover:text-slate-800'
-                              }`}
-                            >
-                              <Factory className="w-3.5 h-3.5 text-indigo-600" />
-                              <span>โรงงาน</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleItemChange(idx, 'source', 'OFFICE')}
-                              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                                item.source === 'OFFICE'
-                                  ? 'bg-white text-slate-900 shadow-xs'
-                                  : 'text-slate-500 hover:text-slate-800'
-                              }`}
-                            >
-                              <Building className="w-3.5 h-3.5 text-indigo-600" />
-                              <span>ออฟฟิศ</span>
-                            </button>
-                          </div>
-
-                          {selProd ? (
-                            <>
-                              {/* Stock Balance Badge */}
-                              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-medium border border-slate-200/60 text-xs">
-                                <span className="text-slate-400">คงเหลือ:</span>
-                                <span className="font-bold font-mono text-slate-900 tabular-nums">{selProd.stockBalance || 0} {selProd.stockUnit || selProd.unit}</span>
-                              </div>
-
-                              {/* ROP Badge */}
-                              <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-medium border text-xs ${
-                                (selProd.stockBalance <= selProd.reorderPoint)
-                                  ? 'bg-amber-50 text-amber-800 border-amber-200/80'
-                                  : 'bg-slate-50 text-slate-600 border-slate-200/60'
-                              }`}>
-                                <span className="text-slate-400">ROP:</span>
-                                <span className={`font-bold font-mono tabular-nums ${(selProd.stockBalance <= selProd.reorderPoint) ? 'text-amber-700' : 'text-slate-700'}`}>
-                                  {selProd.reorderPoint} {selProd.stockUnit || selProd.unit}
-                                </span>
-                              </div>
-
-                              {/* Effective Unit Conversion Calculation */}
-                              {(() => {
-                                const effectiveRate = (item.overrideUnit && Number(item.customRate) > 0)
-                                  ? Number(item.customRate)
-                                  : (Number(selProd.conversionRate) > 0 ? Number(selProd.conversionRate) : 1);
-                                const effectiveStockUnit = (item.overrideUnit && item.customStockUnit?.trim())
-                                  ? item.customStockUnit.trim()
-                                  : (selProd.stockUnit || selProd.unit || 'ชิ้น');
-
-                                if (effectiveRate > 1 || item.overrideUnit) {
-                                  return (
-                                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/70 text-xs font-semibold">
-                                      <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-                                      <span>
-                                        เข้าคลัง: {(Number(item.qty || 0) * effectiveRate).toLocaleString()} {effectiveStockUnit}
-                                      </span>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              })()}
-                            </>
-                          ) : item.isCustom ? (
-                            <span className="text-purple-700 bg-purple-50 border border-purple-200 px-3 py-1 rounded-full font-semibold flex items-center gap-1.5 text-xs">
-                              <Sparkles className="w-3.5 h-3.5" />
-                              สินค้านอกแคตตาล็อก
-                            </span>
-                          ) : null}
-                        </div>
-
-                        {/* Quick Action Toggles */}
-                        <div className="flex items-center gap-2">
-                          {selProd && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const next = !item.overrideUnit;
-                                handleItemChange(idx, 'overrideUnit', next);
-                                if (next && !item.customRate) {
-                                  handleItemChange(idx, 'customRate', selProd.conversionRate || 1);
-                                  handleItemChange(idx, 'customPurchaseUnit', selProd.purchaseUnit || selProd.unit);
-                                  handleItemChange(idx, 'customStockUnit', selProd.stockUnit || selProd.unit);
-                                }
-                              }}
-                              className={`flex items-center gap-1.5 px-3 py-1 rounded-full transition-all text-xs font-semibold cursor-pointer ${
-                                item.overrideUnit
-                                  ? 'bg-amber-100 text-amber-900 border border-amber-200 shadow-2xs'
-                                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
-                              }`}
-                            >
-                              <SlidersHorizontal className="w-3.5 h-3.5" />
-                              <span>{item.overrideUnit ? 'สเปคเฉพาะใบนี้ (เปิด)' : '⚙️ สเปคเฉพาะใบนี้'}</span>
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => handleToggleCustomItem(idx)}
-                            className="flex items-center gap-1.5 px-3 py-1 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors text-xs font-semibold cursor-pointer"
-                          >
-                            {item.isCustom ? '← เลือกสินค้าจากระบบ' : '+ เพิ่มสินค้านอกแคตตาล็อก'}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Collapsible Unit Mapping Override Panel */}
-                      {selProd && item.overrideUnit && (
-                        <div className="mt-2.5 md:ml-11 p-4 bg-slate-50/90 border border-slate-200 rounded-2xl animate-fade-in flex flex-col sm:flex-row sm:items-end gap-3 shadow-2xs">
-                          <div className="flex-1">
-                            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-1.5">หน่วยขอซื้อ</label>
-                            <input
-                              type="text"
-                              value={item.customPurchaseUnit || selProd.purchaseUnit || selProd.unit || ''}
-                              onChange={e => handleItemChange(idx, 'customPurchaseUnit', e.target.value)}
-                              placeholder="เช่น ถัง (50L)"
-                              className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            />
-                          </div>
-                          
-                          <div className="flex flex-col items-center justify-end pb-2 hidden sm:flex text-slate-400">
-                            <span className="text-xs font-bold mb-1">=</span>
-                            <ArrowRight className="w-4 h-4" />
-                          </div>
-
-                          <div className="flex-1">
-                            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-1.5">อัตราแปลงเป็นสต็อก</label>
-                            <input
-                              type="number"
-                              min="0.001"
-                              step="any"
-                              value={item.customRate ?? selProd.conversionRate ?? 1}
-                              onChange={e => handleItemChange(idx, 'customRate', e.target.value)}
-                              placeholder="เช่น 50"
-                              className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-indigo-700 text-center outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all tabular-nums"
-                            />
-                          </div>
-
-                          <div className="flex flex-col items-center justify-end pb-2 hidden sm:flex text-slate-400">
-                            <span className="text-xs font-bold mb-1">×</span>
-                            <ArrowRight className="w-4 h-4" />
-                          </div>
-
-                          <div className="flex-1">
-                            <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block mb-1.5">หน่วยเข้าคลัง</label>
-                            <input
-                              type="text"
-                              value={item.customStockUnit || selProd.stockUnit || selProd.unit || ''}
-                              onChange={e => handleItemChange(idx, 'customStockUnit', e.target.value)}
-                              placeholder="เช่น ลิตร"
-                              className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Online Link Input (If Online Channel) */}
-                      {purchaseChannel === 'ONLINE' && (
-                        <div className="mt-2.5 md:ml-11 p-3 bg-purple-50/50 border border-purple-200 rounded-xl animate-fade-in flex items-center gap-2.5 shadow-2xs">
-                          <Globe className="w-4 h-4 text-purple-600 shrink-0" />
-                          <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2">
-                            <span className="text-[11px] font-bold text-purple-900 whitespace-nowrap">
-                              ลิงก์สินค้า (Online Link) {!requiresMemo && <span className="text-rose-500">*</span>}
-                            </span>
-                            <input
-                              type="url"
-                              placeholder="https://shopee.co.th/... หรือ https://lazada.co.th/..."
-                              value={item.onlineUrl || ''}
-                              onChange={e => handleItemChange(idx, 'onlineUrl', e.target.value)}
-                              className="flex-1 bg-white border border-purple-200 rounded-xl px-3.5 py-2 text-xs text-purple-950 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 shadow-2xs"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Table Footer: Add Row & Items Subtotal Summary Bar */}
-              <div className="p-4 sm:p-6 bg-slate-50/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-t border-slate-200/80">
-                {/* Left: Outline Add Row Button */}
-                <button
-                  type="button"
-                  onClick={handleAddItemRow}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-dashed border-indigo-300 text-indigo-700 hover:bg-indigo-50 hover:border-indigo-500 active:scale-[0.99] font-semibold text-xs sm:text-sm rounded-xl shadow-2xs transition-all cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>+ เพิ่มรายการสินค้า (+ Add Item)</span>
-                </button>
-
-                {/* Right: Items Subtotal */}
-                <div className="flex flex-col items-end text-right">
-                  <div className="flex items-baseline gap-3">
-                    <span className="text-xs sm:text-sm font-semibold text-slate-600">
-                      ยอดรวมสินค้า (Items Subtotal):
-                    </span>
-                    <span className="text-lg sm:text-xl font-bold font-mono tabular-nums text-slate-900">
-                      ฿{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                  <span className="text-[11px] text-slate-400 font-normal mt-0.5">
-                    {purchaseChannel === 'SELF' 
-                      ? '(ยังไม่รวมส่วนลดท้ายบิล และภาษีมูลค่าเพิ่ม 7%)' 
-                      : '(ยอดรวมประเมินเบื้องต้น)'}
-                  </span>
-                </div>
-              </div>
-
-            </div>
-
-            {/* ── Financial Summary Card for SELF Purchase Channel ── */}
-            {purchaseChannel === 'SELF' && (
-              <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 sm:p-8 space-y-6 animate-fade-in">
-                {/* Section Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-100">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0 border border-indigo-100">
-                      <Receipt className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm sm:text-base font-bold text-slate-900">
-                        สรุปยอดเงิน ส่วนลด และภาษีมูลค่าเพิ่ม
-                      </h4>
-                      <p className="text-xs text-slate-500 font-normal mt-0.5">
-                        กำหนดค่าส่วนลดท้ายบิล ภาษีมูลค่าเพิ่ม 7% และค่าจัดส่ง
-                      </p>
-                    </div>
-                  </div>
-                  <span className="self-start sm:self-auto text-xs font-semibold px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200/60 rounded-full">
-                    จัดซื้อเอง (Self-buy Mode)
-                  </span>
-                </div>
-
-                {/* 2-Column Responsive Layout (60/40 Split: Settings & Summary) */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                  
-                  {/* Left Column: Calculation Controls (7 cols) */}
-                  <div className="lg:col-span-7 space-y-4">
-                    
-                    {/* 1. Order Discount Card */}
-                    <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/80 space-y-3">
-                      <label className="text-xs font-bold text-slate-800 block">
-                        ส่วนลดรวมท้ายบิล (Order Discount)
-                      </label>
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                        {/* Segmented Control */}
-                        <div className="inline-flex p-0.5 bg-slate-200/80 rounded-xl shrink-0 border border-slate-200/50">
-                          <button
-                            type="button"
-                            onClick={() => setCombinedDiscountType('percent')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                              combinedDiscountType === 'percent'
-                                ? 'bg-white text-slate-900 shadow-xs font-bold'
-                                : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                          >
-                            % เปอร์เซ็นต์
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setCombinedDiscountType('fixed')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                              combinedDiscountType === 'fixed'
-                                ? 'bg-white text-slate-900 shadow-xs font-bold'
-                                : 'text-slate-600 hover:text-slate-900'
-                            }`}
-                          >
-                            ฿ จำนวนบาท
-                          </button>
-                        </div>
-
-                        {/* Input Field */}
-                        <div className="relative flex-1">
+                      {/* Right: Price, Stepper Qty, Unit, Line Total, Trash */}
+                      <div className="flex items-center justify-between md:justify-end gap-2.5 flex-wrap sm:flex-nowrap pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
+                        
+                        {/* Unit Price */}
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-slate-400 font-mono">฿</span>
                           <input
                             type="number"
                             min="0"
                             step="0.01"
-                            value={combinedDiscountValue || ''}
-                            onChange={e => setCombinedDiscountValue(e.target.value)}
-                            placeholder={combinedDiscountType === 'percent' ? 'เช่น 5 (%)' : 'เช่น 500 (฿)'}
-                            className="w-full h-[40px] bg-white border border-slate-300 rounded-xl px-3.5 pr-8 text-right font-mono font-bold text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs transition-all tabular-nums"
+                            value={item.price}
+                            onChange={e => handleItemChange(idx, 'price', e.target.value)}
+                            placeholder="0.00"
+                            className="w-20 sm:w-24 h-9 bg-slate-50/60 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl px-2.5 text-right font-mono font-semibold text-xs sm:text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 tabular-nums transition-all"
+                            title="ราคาต่อหน่วย"
                           />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 font-mono pointer-events-none">
-                            {combinedDiscountType === 'percent' ? '%' : '฿'}
-                          </span>
                         </div>
-                      </div>
 
-                      {combinedDiscountAmount > 0 && (
-                        <p className="text-xs text-slate-500 text-right pt-0.5">
-                          คิดเป็นส่วนลดท้ายบิล: <strong className="font-bold text-rose-600 font-mono tabular-nums">-฿{combinedDiscountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                        </p>
-                      )}
-                    </div>
-
-                    {/* 2. VAT Calculation Method */}
-                    <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/80 space-y-3">
-                      <label className="text-xs font-bold text-slate-800 block">
-                        วิธีคิดภาษีมูลค่าเพิ่ม (VAT 7% Method)
-                      </label>
-                      <div className="space-y-2">
-                        {/* Option A: After Discount */}
-                        <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 select-none ${
-                          vatMode === 'AFTER_DISCOUNT'
-                            ? 'bg-indigo-50/70 border-indigo-500 ring-1 ring-indigo-500/20 shadow-2xs'
-                            : 'bg-white border-slate-200 hover:bg-slate-50/80 text-slate-700'
-                        }`}>
+                        {/* Stepper Qty Control: [ - ] [ 1 ] [ + ] (Directive 4) */}
+                        <div className="inline-flex items-center rounded-xl border border-slate-200/90 bg-slate-50/60 p-0.5 shadow-2xs">
+                          <button
+                            type="button"
+                            onClick={() => handleDecrementQty(idx)}
+                            disabled={Number(item.qty) <= 1}
+                            className="w-7 h-8 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-white rounded-lg disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
+                            title="ลดจำนวน"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
                           <input
-                            type="radio"
-                            name="vatMode"
-                            value="AFTER_DISCOUNT"
-                            checked={vatMode === 'AFTER_DISCOUNT'}
-                            onChange={() => setVatMode('AFTER_DISCOUNT')}
-                            className="mt-0.5 w-4 h-4 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            type="number"
+                            step="any"
+                            min="0.001"
+                            value={item.qty}
+                            onChange={e => handleItemChange(idx, 'qty', e.target.value)}
+                            required
+                            className="w-12 h-8 text-center font-mono font-bold text-xs sm:text-sm text-indigo-700 outline-none bg-transparent tabular-nums"
+                            title="ระบุจำนวน"
                           />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs sm:text-sm font-semibold text-slate-900">
-                              1. หักส่วนลดก่อน แล้วค่อยคิด VAT 7% (วิธีมาตรฐาน)
-                            </div>
-                            <div className="text-xs font-normal text-slate-500 mt-0.5">
-                              ฐานภาษี = (ยอดรวมสินค้า - ส่วนลด) × 7%
-                            </div>
-                          </div>
-                        </label>
+                          <button
+                            type="button"
+                            onClick={() => handleIncrementQty(idx)}
+                            className="w-7 h-8 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-white rounded-lg transition-all cursor-pointer"
+                            title="เพิ่มจำนวน"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
 
-                        {/* Option B: Before Discount */}
-                        <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 select-none ${
-                          vatMode === 'BEFORE_DISCOUNT'
-                            ? 'bg-indigo-50/70 border-indigo-500 ring-1 ring-indigo-500/20 shadow-2xs'
-                            : 'bg-white border-slate-200 hover:bg-slate-50/80 text-slate-700'
-                        }`}>
+                        {/* Unit Label */}
+                        <div 
+                          className="text-xs font-semibold text-slate-600 px-2.5 py-1 bg-slate-100 rounded-lg min-w-[44px] text-center shrink-0 truncate max-w-[85px]"
+                          title={item.isCustom ? (item.customUnit || 'ชิ้น') : (selProd?.purchaseUnit || selProd?.unit || 'ชิ้น')}
+                        >
+                          {item.isCustom ? (
+                            <input
+                              type="text"
+                              value={item.customUnit || 'ชิ้น'}
+                              onChange={e => handleItemChange(idx, 'customUnit', e.target.value)}
+                              className="w-10 bg-transparent text-center outline-none text-xs font-semibold text-slate-700"
+                              placeholder="หน่วย"
+                            />
+                          ) : (
+                            selProd?.purchaseUnit || selProd?.unit || 'ชิ้น'
+                          )}
+                        </div>
+
+                        {/* Line Total */}
+                        <div className="w-24 sm:w-28 text-right font-mono font-bold text-slate-900 text-xs sm:text-sm tabular-nums shrink-0">
+                          ฿{itemRowNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+
+                        {/* Remove Row Button */}
+                        {prItems.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveItemRow(idx)}
+                            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
+                            title="ลบรายการนี้"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <span className="w-8 shrink-0"></span>
+                        )}
+
+                      </div>
+                    </div>
+
+                    {/* Sub-row: Destination pill switcher & Minimalist Subtle Stock Chips */}
+                    <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-100 text-xs">
+                      <div className="flex flex-wrap items-center gap-2">
+                        
+                        {/* Destination Pill Switcher */}
+                        <div className="inline-flex p-0.5 bg-slate-100 rounded-lg border border-slate-200/60">
+                          <button
+                            type="button"
+                            onClick={() => handleItemChange(idx, 'source', 'FACTORY')}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                              item.source === 'FACTORY' || !item.source
+                                ? 'bg-white text-slate-900 shadow-2xs'
+                                : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            <Factory className="w-3 h-3 text-indigo-600" />
+                            <span>โรงงาน</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleItemChange(idx, 'source', 'OFFICE')}
+                            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                              item.source === 'OFFICE'
+                                ? 'bg-white text-slate-900 shadow-2xs'
+                                : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            <Building className="w-3 h-3 text-indigo-600" />
+                            <span>ออฟฟิศ</span>
+                          </button>
+                        </div>
+
+                        {/* Subtle Minimalist Stock Chips (Directive 4) */}
+                        {selProd && (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-medium border border-slate-200/60">
+                              <span className="text-slate-400">คงเหลือ:</span>
+                              <span className="font-mono font-semibold text-slate-800 tabular-nums">
+                                {selProd.stockBalance || 0} {selProd.stockUnit || selProd.unit}
+                              </span>
+                            </span>
+
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${
+                              (selProd.stockBalance <= selProd.reorderPoint)
+                                ? 'bg-amber-50 text-amber-800 border-amber-200/80'
+                                : 'bg-slate-100 text-slate-600 border-slate-200/60'
+                            }`}>
+                              <span className="text-slate-400">ROP:</span>
+                              <span className="font-mono font-semibold tabular-nums">
+                                {selProd.reorderPoint || 0} {selProd.stockUnit || selProd.unit}
+                              </span>
+                            </span>
+
+                            {(() => {
+                              const effectiveRate = (item.overrideUnit && Number(item.customRate) > 0)
+                                ? Number(item.customRate)
+                                : (Number(selProd.conversionRate) > 0 ? Number(selProd.conversionRate) : 1);
+                              const effectiveStockUnit = (item.overrideUnit && item.customStockUnit?.trim())
+                                ? item.customStockUnit.trim()
+                                : (selProd.stockUnit || selProd.unit || 'ชิ้น');
+
+                              if (effectiveRate > 1 || item.overrideUnit) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-medium border border-indigo-200/70">
+                                    <Sparkles className="w-3 h-3 text-indigo-500" />
+                                    <span>เข้าคลัง: {(Number(item.qty || 0) * effectiveRate).toLocaleString()} {effectiveStockUnit}</span>
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </>
+                        )}
+
+                        {item.isCustom && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[11px] font-medium border border-purple-200">
+                            <Sparkles className="w-3 h-3" />
+                            สินค้านอกแคตตาล็อก
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Customization & Non-catalog Toggles */}
+                      <div className="flex items-center gap-2 ml-auto">
+                        {selProd && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !item.overrideUnit;
+                              handleItemChange(idx, 'overrideUnit', next);
+                              if (next && !item.customRate) {
+                                handleItemChange(idx, 'customRate', selProd.conversionRate || 1);
+                                handleItemChange(idx, 'customPurchaseUnit', selProd.purchaseUnit || selProd.unit);
+                                handleItemChange(idx, 'customStockUnit', selProd.stockUnit || selProd.unit);
+                              }
+                            }}
+                            className={`text-[11px] font-medium px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
+                              item.overrideUnit ? 'bg-amber-100 text-amber-800' : 'text-slate-400 hover:text-slate-700'
+                            }`}
+                          >
+                            {item.overrideUnit ? 'สเปกเฉพาะใบนี้ (เปิด)' : '⚙️ สเปกเฉพาะ'}
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleCustomItem(idx)}
+                          className="text-[11px] font-medium text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
+                        >
+                          {item.isCustom ? '← เลือกจากระบบ' : '+ นอกแคตตาล็อก'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Collapsible Unit Mapping Override Panel */}
+                    {selProd && item.overrideUnit && (
+                      <div className="p-3 bg-slate-50/80 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-end gap-3 animate-fade-in">
+                        <div className="flex-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">หน่วยขอซื้อ</label>
                           <input
-                            type="radio"
-                            name="vatMode"
-                            value="BEFORE_DISCOUNT"
-                            checked={vatMode === 'BEFORE_DISCOUNT'}
-                            onChange={() => setVatMode('BEFORE_DISCOUNT')}
-                            className="mt-0.5 w-4 h-4 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            type="text"
+                            value={item.customPurchaseUnit || selProd.purchaseUnit || selProd.unit || ''}
+                            onChange={e => handleItemChange(idx, 'customPurchaseUnit', e.target.value)}
+                            placeholder="เช่น ถัง (50L)"
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
                           />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs sm:text-sm font-semibold text-slate-900">
-                              2. คิด VAT 7% ก่อน แล้วค่อยหักส่วนลดท้ายบิล
-                            </div>
-                            <div className="text-xs font-normal text-slate-500 mt-0.5">
-                              ฐานภาษี = ยอดรวมสินค้า × 7% (แล้วนำส่วนลดไปลบท้ายสุด)
-                            </div>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* 3. Rounding Adjustment (+/-) */}
-                    <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3">
-                      <div>
-                        <label className="text-xs font-bold text-slate-800 block">
-                          ปรับเศษทศนิยม (+/- ปรับให้ตรงใบกำกับภาษี)
-                        </label>
-                        <span className="text-xs text-slate-400">ใส่เครื่องหมาย + หรือ - เพื่อแก้เศษทศนิยม</span>
-                      </div>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={roundingAdj || ''}
-                        onChange={e => setRoundingAdj(e.target.value)}
-                        placeholder="+0.00"
-                        className="w-28 h-[40px] text-right font-mono font-bold text-xs sm:text-sm bg-white border border-slate-300 rounded-xl px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs transition-all tabular-nums"
-                      />
-                    </div>
-
-                    {/* 4. Shipping Cost */}
-                    <div className="p-4 sm:p-5 bg-slate-50/70 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3">
-                      <div>
-                        <label className="text-xs font-bold text-slate-800 block">
-                          ค่าจัดส่ง (Shipping Cost)
-                        </label>
-                        <span className="text-xs text-slate-400">ไม่นำไปคำนวณส่วนลดหรือ VAT 7%</span>
-                      </div>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={shippingCost || ''}
-                        onChange={e => setShippingCost(e.target.value)}
-                        placeholder="0.00"
-                        className="w-28 h-[40px] text-right font-mono font-bold text-xs sm:text-sm bg-white border border-slate-300 rounded-xl px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-2xs transition-all tabular-nums"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Right Column: Real-time Financial Summary Card (5 cols) */}
-                  <div className="lg:col-span-5 bg-slate-50/90 border border-slate-200/90 rounded-3xl p-6 shadow-sm h-fit space-y-4">
-                    {/* Summary Header */}
-                    <div className="flex items-center gap-2.5 pb-3 border-b border-slate-200/80">
-                      <Receipt className="w-4 h-4 text-indigo-600" />
-                      <span className="text-xs sm:text-sm font-bold text-slate-900">
-                        สรุปรายการชำระเงิน (Payment Summary)
-                      </span>
-                    </div>
-
-                    {/* Line Items Breakdown */}
-                    <div className="space-y-2.5 text-xs sm:text-sm">
-                      
-                      {/* Subtotal */}
-                      <div className="flex justify-between items-center text-slate-600">
-                        <span>ยอดรวมสินค้าก่อนลด (Subtotal)</span>
-                        <span className="font-mono font-semibold tabular-nums text-slate-900">
-                          ฿{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-
-                      {/* Item Discounts */}
-                      {itemDiscountTotal > 0 && (
-                        <div className="flex justify-between items-center text-rose-600">
-                          <span>ส่วนลดรายชิ้นรวม</span>
-                          <span className="font-mono font-semibold tabular-nums">
-                            -฿{itemDiscountTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
                         </div>
-                      )}
-
-                      {/* Order Discount */}
-                      {combinedDiscountAmount > 0 && (
-                        <div className="flex justify-between items-center text-rose-600">
-                          <span>ส่วนลดท้ายบิล</span>
-                          <span className="font-mono font-semibold tabular-nums">
-                            -฿{combinedDiscountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
+                        <div className="flex-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">อัตราแปลงเป็นสต็อก</label>
+                          <input
+                            type="number"
+                            min="0.001"
+                            step="any"
+                            value={item.customRate ?? selProd.conversionRate ?? 1}
+                            onChange={e => handleItemChange(idx, 'customRate', e.target.value)}
+                            placeholder="เช่น 50"
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-indigo-700 text-center outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
                         </div>
-                      )}
-
-                      {/* Total Discount Summary (if any) */}
-                      {totalDiscount > 0 && (
-                        <div className="flex justify-between items-center text-slate-500 pt-1 border-t border-slate-200/60 font-medium">
-                          <span>รวมส่วนลดทั้งหมด</span>
-                          <span className="font-mono font-bold tabular-nums text-rose-600">
-                            -฿{totalDiscount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
+                        <div className="flex-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">หน่วยเข้าคลัง</label>
+                          <input
+                            type="text"
+                            value={item.customStockUnit || selProd.stockUnit || selProd.unit || ''}
+                            onChange={e => handleItemChange(idx, 'customStockUnit', e.target.value)}
+                            placeholder="เช่น ลิตร"
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
                         </div>
-                      )}
-
-                      {/* Taxable Base Amount */}
-                      <div className="flex justify-between items-center text-slate-600 pt-1 border-t border-slate-200/60">
-                        <span>มูลค่าก่อนคิดภาษี (Tax Base)</span>
-                        <span className="font-mono font-medium tabular-nums text-slate-700">
-                          ฿{(vatMode === 'BEFORE_DISCOUNT' ? subtotal : netAfterAllDiscount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
                       </div>
+                    )}
 
-                      {/* VAT 7% */}
-                      <div className="flex justify-between items-center text-indigo-700">
-                        <span className="font-medium">ภาษีมูลค่าเพิ่ม (VAT 7%)</span>
-                        <span className="font-mono font-bold tabular-nums">
-                          +฿{vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
+                    {/* Online Link for item (If channel is ONLINE) */}
+                    {purchaseChannel === 'ONLINE' && (
+                      <div className="p-2.5 bg-purple-50/40 border border-purple-200/80 rounded-xl flex items-center gap-2 animate-fade-in">
+                        <Globe className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                        <input
+                          type="url"
+                          placeholder="ลิงก์สินค้าสำหรับรายการนี้ (Shopee / Lazada)..."
+                          value={item.onlineUrl || ''}
+                          onChange={e => handleItemChange(idx, 'onlineUrl', e.target.value)}
+                          className="flex-1 bg-white border border-purple-200 rounded-lg px-2.5 py-1 text-xs text-purple-950 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        />
                       </div>
-
-                      {/* Rounding Adjustment */}
-                      {parseFloat(roundingAdj) !== 0 && (
-                        <div className="flex justify-between items-center text-amber-700">
-                          <span>ปรับเศษทศนิยม</span>
-                          <span className="font-mono font-bold tabular-nums">
-                            {parseFloat(roundingAdj) > 0 ? `+฿${parseFloat(roundingAdj).toFixed(2)}` : `-฿${Math.abs(parseFloat(roundingAdj)).toFixed(2)}`}
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Shipping Cost */}
-                      {parseFloat(shippingCost) > 0 && (
-                        <div className="flex justify-between items-center text-slate-700">
-                          <span className="font-medium">ค่าจัดส่ง (Shipping Cost)</span>
-                          <span className="font-mono font-bold tabular-nums">
-                            +฿{parseFloat(shippingCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Grand Total Highlight Box */}
-                    <div className="mt-4 pt-4 border-t border-slate-200 bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-2xs space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                          ยอดรวมสุทธิ (Grand Total)
-                        </span>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          รวม VAT 7% แล้ว
-                        </span>
-                      </div>
-                      
-                      <div className="text-right">
-                        <span className="text-2xl sm:text-3xl font-black font-mono tabular-nums text-indigo-600 tracking-tight">
-                          ฿{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
-
-                      <div className="text-[11px] text-slate-400 text-right font-medium">
-                        ตรงตามใบกำกับภาษี / ใบเสร็จรับเงิน
-                      </div>
-                    </div>
+                    )}
 
                   </div>
+                );
+              })}
+            </div>
 
-                </div>
-              </div>
-            )}
-
+            {/* Dashed Button for Adding Items (Full width, clean - Directive 4) */}
+            <button
+              type="button"
+              onClick={handleAddItemRow}
+              className="w-full py-3 border border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/40 text-slate-600 hover:text-indigo-600 rounded-2xl text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-2xs group"
+            >
+              <Plus className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+              <span>+ เพิ่มรายการสินค้า</span>
+            </button>
           </div>
 
-          {/* ─────────────────────────────────────────────────────────────
-             SECTION 3: เอกสารประกอบ & แนบไฟล์ (Attachments & Note)
-             ───────────────────────────────────────────────────────────── */}
-          <div className="p-6 sm:p-8 space-y-6">
-            <div className="flex items-center gap-2.5 text-xs font-bold text-slate-900 uppercase tracking-wider">
-              <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center font-mono font-bold text-xs border border-indigo-100">
-                3
-              </span>
-              <span>เอกสารประกอบและรายละเอียดเพิ่มเติม (Attachments & Note)</span>
-            </div>
-            
-            {requiresMemo && (
-              <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-5 flex items-start gap-3.5 text-amber-900 animate-fade-in shadow-2xs">
-                <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600 mt-0.5" />
-                <div className="space-y-1">
-                  <h4 className="font-bold text-sm">ระบบบังคับแนบ MEMO ขออนุมัติและเอกสารคู่ขนาน</h4>
-                  <p className="text-xs sm:text-sm text-amber-800 leading-relaxed font-normal">
-                    เนื่องจากยอดรวมขอซื้อตั้งแต่ <span className="font-bold font-mono">฿20,000</span> ขึ้นไป (ยอดปัจจุบัน: ฿{totalAmount.toLocaleString()}) ระบบจำเป็นต้องให้แนบไฟล์ใบเสนอราคา (Quotation), รูปภาพสินค้า และกรอกแบบฟอร์ม MEMO ด้านล่าง
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <FileUploader
-                  label="ใบเสนอราคา (Quotation)"
-                  required={requiresMemo}
-                  accept="application/pdf,image/*"
-                  multiple={false}
-                  files={quotationFiles}
-                  setFiles={setQuotationFiles}
-                  helperText="รองรับไฟล์ PDF หรือรูปภาพเอกสาร"
-                />
-              </div>
-
-              <div>
-                <FileUploader
-                  label="รูปภาพประกอบสินค้า (Images)"
-                  required={requiresMemo}
-                  accept="image/*"
-                  multiple={true}
-                  files={imageFiles}
-                  setFiles={setImageFiles}
-                  helperText="สามารถแนบภาพตัวอย่างสินค้าได้หลายรูป"
-                />
-              </div>
+          {/* Card 3: Compact Attachments & PR Note (Directive 2: max height <= 70px) */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">
+                เอกสารประกอบและหมายเหตุ (Attachments & Note)
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                แนบใบเสนอราคาหรือรูปภาพสินค้าประกอบการจัดซื้อ
+              </p>
             </div>
 
-            {/* Note Textarea */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 block">หมายเหตุการขอซื้อ (PR Note)</label>
+            {/* Compact File Uploaders (height <= 70px) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FileUploader
+                label="ใบเสนอราคา (Quotation)"
+                required={requiresMemo}
+                accept="application/pdf,image/*"
+                multiple={false}
+                files={quotationFiles}
+                setFiles={setQuotationFiles}
+                compact={true}
+                helperText="คลิกหรือลากไฟล์ PDF/รูปภาพ"
+              />
+
+              <FileUploader
+                label="รูปภาพสินค้า (Images)"
+                required={requiresMemo}
+                accept="image/*"
+                multiple={true}
+                files={imageFiles}
+                setFiles={setImageFiles}
+                compact={true}
+                helperText="แนบรูปภาพตัวอย่างสินค้า"
+              />
+            </div>
+
+            {/* PR Note Textarea */}
+            <div className="space-y-1 pt-1">
+              <label className="text-xs font-semibold text-slate-700 block">
+                หมายเหตุการขอซื้อ (PR Note)
+              </label>
               <textarea
-                rows="3"
+                rows="2"
                 value={note}
                 onChange={e => setNote(e.target.value)}
                 placeholder="ระบุเหตุผลในการขอซื้อเพิ่มเติม วัตถุประสงค์ หรือความเร่งด่วน..."
-                className="w-full bg-white border border-slate-300 rounded-2xl p-3.5 text-xs sm:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none shadow-2xs"
+                className="w-full bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl p-3 text-xs sm:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all resize-none"
               />
             </div>
           </div>
 
-          {/* ─────────────────────────────────────────────────────────────
-             SECTION 4: ฟอร์ม MEMO ขออนุมัติ (เมื่อยอด ≥ 20,000)
-             ───────────────────────────────────────────────────────────── */}
+          {/* Card 4: Conditional Memo Section (Rule: grandTotal >= 20,000) (Directive 3) */}
           {requiresMemo && (
-            <div className="p-6 sm:p-8 space-y-6 bg-slate-50/50 border-t border-slate-200/80 animate-fade-in">
-              <div className="flex items-center gap-2.5 text-xs font-bold text-amber-900 uppercase tracking-wider">
-                <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-mono font-bold text-xs border border-amber-200">
-                  4
-                </span>
-                <span>แบบฟอร์ม MEMO ขออนุมัติซื้อ (Request For Approval)</span>
-              </div>
+            <div className="bg-amber-50/60 border border-amber-200/90 rounded-2xl p-5 sm:p-6 shadow-sm space-y-5 animate-fade-in">
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm">
+              {/* Amber Tint Alert Header (Directive 3) */}
+              <div className="flex items-start gap-3 text-amber-900 pb-2 border-b border-amber-200/60">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <h4 className="font-bold text-sm text-amber-950">
+                    ⚠️ ยอดสั่งซื้อตั้งแต่ ฿20,000 ขึ้นไป ต้องระบุรายละเอียด Memo แนบเพื่อเสนอผู้จัดการโรงงาน
+                  </h4>
+                  <p className="text-xs text-amber-800 font-normal">
+                    ยอดคำนวณสุทธิของใบขอซื้อนี้คือ <strong className="font-mono font-bold">฿{grandTotal.toLocaleString()}</strong> ซึ่งเข้าเกณฑ์ต้องกรอกข้อมูลและแนบเอกสารเพื่อเสนอขออนุมัติ
+                  </p>
+                </div>
+              </div>
+
+              {/* Memo Form Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2 space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 block">หัวข้อ / โครงการ (Subject) <span className="text-rose-500">*</span></label>
+                  <label className="text-xs font-bold text-slate-800 block">
+                    หัวข้อ / โครงการ (Subject) <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="text"
                     value={memoData.subject}
                     onChange={e => setMemoData({...memoData, subject: e.target.value})}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-2xs"
                     placeholder="เช่น ขออนุมัติติดตั้งระบบหล่อลื่นและเปลี่ยนถ่ายน้ำมันไฮดรอลิก..."
+                    className="w-full bg-white border border-amber-200/90 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
                   />
                 </div>
-                
+
                 <div className="md:col-span-2 space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 block">วัตถุประสงค์ (Purpose) <span className="text-rose-500">*</span></label>
+                  <label className="text-xs font-bold text-slate-800 block">
+                    วัตถุประสงค์ (Purpose) <span className="text-rose-500">*</span>
+                  </label>
                   <textarea
                     rows="2"
                     value={memoData.purpose}
                     onChange={e => setMemoData({...memoData, purpose: e.target.value})}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-3.5 text-xs sm:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none shadow-2xs"
-                    placeholder="ระบุวัตถุประสงค์ความจำเป็นในการจัดซื้อ..."
+                    placeholder="ระบุวัตถุประสงค์และความจำเป็นในการจัดซื้อครั้งนี้..."
+                    className="w-full bg-white border border-amber-200/90 focus:border-indigo-500 rounded-xl p-3 text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all resize-none"
                   />
                 </div>
 
                 <div className="md:col-span-2 space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 block">รายละเอียด / พื้นเพ (Background & Scope) <span className="text-rose-500">*</span></label>
+                  <label className="text-xs font-bold text-slate-800 block">
+                    รายละเอียด / พื้นเพความจำเป็น (Background & Scope) <span className="text-rose-500">*</span>
+                  </label>
                   <textarea
                     rows="2"
                     value={memoData.background}
                     onChange={e => setMemoData({...memoData, background: e.target.value})}
-                    className="w-full bg-white border border-slate-300 rounded-xl p-3.5 text-xs sm:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-none shadow-2xs"
                     placeholder="ระบุที่มา ข้อมูลเครื่องจักร หรือผลการตรวจสอบคุณภาพ..."
+                    className="w-full bg-white border border-amber-200/90 focus:border-indigo-500 rounded-xl p-3 text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all resize-none"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 block">ประเภทงบประมาณ (Classification)</label>
+                  <label className="text-xs font-bold text-slate-800 block">
+                    ประเภทงบประมาณ (Classification)
+                  </label>
                   <select
                     value={memoData.classification}
                     onChange={e => setMemoData({...memoData, classification: e.target.value})}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-2xs cursor-pointer"
+                    className="w-full bg-white border border-amber-200/90 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer"
                   >
                     <option value="EXPENSE">Expense (ค่าใช้จ่ายดำเนินงาน)</option>
                     <option value="ASSET">Asset (ทรัพย์สินถาวร)</option>
@@ -1539,61 +1217,352 @@ export default function PRCreateView({
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 block">เงื่อนไขการชำระเงิน (Payment Term)</label>
+                  <label className="text-xs font-bold text-slate-800 block">
+                    เงื่อนไขการชำระเงิน (Payment Term)
+                  </label>
                   <input
                     type="text"
                     value={memoData.paymentTerm}
                     onChange={e => setMemoData({...memoData, paymentTerm: e.target.value})}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-2xs"
                     placeholder="เช่น เครดิต 30 วัน, เงินสด"
+                    className="w-full bg-white border border-amber-200/90 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
                   />
+                </div>
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
+        {/* ══════════════════════════════════════════════════════════════
+           RIGHT COLUMN: Sticky Sidebar (lg:col-span-4)
+           Contains: Payment Summary, Department Budget Usage Bar, Actions
+           ══════════════════════════════════════════════════════════════ */}
+        <div className="lg:col-span-4 lg:sticky lg:top-6 space-y-5">
+          
+          {/* Box 1: Payment Summary Card (Directive 1 & 2) */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-slate-900">
+                <Receipt className="w-4 h-4 text-indigo-600" />
+                <h3 className="text-sm font-bold">สรุปรายการชำระเงิน</h3>
+              </div>
+              {purchaseChannel === 'SELF' ? (
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setHasVat(true)}
+                    className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                      hasVat ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    มี VAT 7%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHasVat(false)}
+                    className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer ${
+                      !hasVat ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    ไม่มี VAT (0%)
+                  </button>
+                </div>
+              ) : (
+                <span className="text-[10px] font-semibold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full font-mono">
+                  จัดซื้อออนไลน์
+                </span>
+              )}
+            </div>
+
+            {/* Financial Breakdown Items */}
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between items-center text-slate-600">
+                <span>ยอดรวมสินค้า (Subtotal)</span>
+                <span className="font-mono font-semibold text-slate-900 tabular-nums">
+                  ฿{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {itemDiscountTotal > 0 && (
+                <div className="flex justify-between items-center text-rose-600">
+                  <span>ส่วนลดรายชิ้น</span>
+                  <span className="font-mono font-semibold tabular-nums">
+                    -฿{itemDiscountTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+
+              {combinedDiscountAmount > 0 && (
+                <div className="flex justify-between items-center text-rose-600">
+                  <span>ส่วนลดท้ายบิล</span>
+                  <span className="font-mono font-semibold tabular-nums">
+                    -฿{combinedDiscountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+
+              {/* VAT Row (Directive 3) */}
+              {purchaseChannel === 'SELF' && (
+                <div className={`flex justify-between items-center pt-1 border-t border-slate-100 ${
+                  hasVat ? 'text-indigo-700' : 'text-slate-400'
+                }`}>
+                  <span className="font-medium">
+                    ภาษีมูลค่าเพิ่ม {hasVat ? '(VAT 7%)' : '(0%)'}
+                  </span>
+                  <span className="font-mono font-bold tabular-nums">
+                    {hasVat 
+                      ? `+฿${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                      : '฿0.00'}
+                  </span>
+                </div>
+              )}
+
+              {/* Extra Costs: Shipping & Rounding (if set) */}
+              {parseFloat(shippingCost) > 0 && (
+                <div className="flex justify-between items-center text-slate-700">
+                  <span>ค่าจัดส่ง</span>
+                  <span className="font-mono font-semibold tabular-nums">
+                    +฿{parseFloat(shippingCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+
+              {parseFloat(roundingAdj) !== 0 && (
+                <div className="flex justify-between items-center text-amber-700">
+                  <span>ปรับเศษทศนิยม</span>
+                  <span className="font-mono font-semibold tabular-nums">
+                    {parseFloat(roundingAdj) > 0 ? `+฿${parseFloat(roundingAdj).toFixed(2)}` : `-฿${Math.abs(parseFloat(roundingAdj)).toFixed(2)}`}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Clutter-Free Toggler for Shipping & Rounding & Order Discount (Directive 2) */}
+            {purchaseChannel === 'SELF' && (
+              <div className="pt-2 border-t border-slate-100">
+                {!showExtraAdjustments ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowExtraAdjustments(true)}
+                    className="w-full py-2 text-xs font-semibold text-slate-500 hover:text-indigo-600 hover:bg-indigo-50/50 rounded-xl border border-dashed border-slate-200 hover:border-indigo-300 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ เพิ่มค่าส่ง / ส่วนลดท้ายบิล</span>
+                  </button>
+                ) : (
+                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2.5 animate-fade-in">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        ส่วนลดท้ายบิล & ค่าจัดส่ง
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowExtraAdjustments(false)}
+                        className="text-[10px] text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        ซ่อน
+                      </button>
+                    </div>
+
+                    {/* Order Discount Input */}
+                    <div className="flex items-center gap-1.5">
+                      <div className="inline-flex p-0.5 bg-slate-200 rounded-lg text-[10px] shrink-0 font-semibold">
+                        <button
+                          type="button"
+                          onClick={() => setCombinedDiscountType('percent')}
+                          className={`px-1.5 py-0.5 rounded ${combinedDiscountType === 'percent' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'}`}
+                        >
+                          %
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCombinedDiscountType('fixed')}
+                          className={`px-1.5 py-0.5 rounded ${combinedDiscountType === 'fixed' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'}`}
+                        >
+                          ฿
+                        </button>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={combinedDiscountValue || ''}
+                        onChange={e => setCombinedDiscountValue(e.target.value)}
+                        placeholder="ส่วนลดท้ายบิล"
+                        className="w-full h-8 bg-white border border-slate-300 rounded-lg px-2.5 text-right font-mono text-xs font-semibold text-slate-900 outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    {/* Shipping Cost Input */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-slate-500">ค่าจัดส่ง (฿)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={shippingCost || ''}
+                        onChange={e => setShippingCost(e.target.value)}
+                        placeholder="0.00"
+                        className="w-24 h-8 bg-white border border-slate-300 rounded-lg px-2 text-right font-mono text-xs font-semibold text-slate-900 outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    {/* Rounding Adjustment Input */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-slate-500">ปรับเศษสตางค์ (฿)</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={roundingAdj || ''}
+                        onChange={e => setRoundingAdj(e.target.value)}
+                        placeholder="+/-0.00"
+                        className="w-24 h-8 bg-white border border-slate-300 rounded-lg px-2 text-right font-mono text-xs font-semibold text-slate-900 outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Grand Total Display Box */}
+            <div className="p-4 bg-slate-50 border border-slate-200/90 rounded-xl space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700">ยอดรวมสุทธิ (Grand Total)</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                  purchaseChannel === 'SELF'
+                    ? (hasVat 
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                        : 'bg-slate-100 text-slate-600 border-slate-200')
+                    : 'bg-purple-50 text-purple-700 border-purple-200'
+                }`}>
+                  {purchaseChannel === 'SELF'
+                    ? (hasVat ? 'รวม VAT 7% แล้ว' : 'ไม่มี VAT')
+                    : 'สุทธิ (ออนไลน์)'}
+                </span>
+              </div>
+              <div className="text-right">
+                <span className="text-2xl font-black font-mono text-indigo-600 tracking-tight tabular-nums">
+                  ฿{grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Box 2: Department Budget Usage Bar (Directive 1) */}
+          {budgetInfo && (
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Wallet className="w-4 h-4 text-slate-500" />
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    งบประมาณแผนก ({department})
+                  </h4>
+                </div>
+                <span className={`text-[11px] font-bold font-mono px-2 py-0.5 rounded-full ${
+                  budgetInfo.isOverBudget 
+                    ? 'bg-rose-50 text-rose-700 border border-rose-200' 
+                    : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                }`}>
+                  {budgetInfo.projectedPercent}%
+                </span>
+              </div>
+
+              {/* Multi-tier Progress Bar */}
+              <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden flex">
+                <div 
+                  className="bg-slate-400 transition-all duration-500"
+                  style={{ width: `${budgetInfo.currentPercent}%` }}
+                  title={`ใช้ไปแล้ว: ฿${budgetInfo.spent.toLocaleString()}`}
+                />
+                <div 
+                  className={`transition-all duration-500 ${budgetInfo.isOverBudget ? 'bg-rose-500' : 'bg-indigo-600'}`}
+                  style={{ width: `${Math.max(0, budgetInfo.projectedPercent - budgetInfo.currentPercent)}%` }}
+                  title={`PR ใบนี้: +฿${budgetInfo.prAmount.toLocaleString()}`}
+                />
+              </div>
+
+              {/* Budget Metrics Breakdown */}
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between items-center text-slate-500">
+                  <span>งบที่ได้รับจัดสรร</span>
+                  <span className="font-mono font-medium text-slate-800">
+                    ฿{budgetInfo.allocated.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-slate-500">
+                  <span>ใช้ไปแล้ว (Actual + Commit)</span>
+                  <span className="font-mono font-medium text-slate-800">
+                    ฿{budgetInfo.spent.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-indigo-600 font-semibold">
+                  <span>ใบนี้เพิ่ม (This PR)</span>
+                  <span className="font-mono tabular-nums">
+                    +฿{budgetInfo.prAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center pt-1.5 border-t border-slate-100">
+                  <span className={`font-semibold ${budgetInfo.isOverBudget ? 'text-rose-600' : 'text-slate-700'}`}>
+                    {budgetInfo.isOverBudget ? 'เกินงบประมาณ' : 'งบประมาณคงเหลือ'}
+                  </span>
+                  <span className={`font-mono font-bold tabular-nums ${budgetInfo.isOverBudget ? 'text-rose-600' : 'text-emerald-600'}`}>
+                    {budgetInfo.isOverBudget ? '-' : ''}฿{Math.abs(budgetInfo.remaining).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ─────────────────────────────────────────────────────────────
-             FOOTER ACTIONS
-             ───────────────────────────────────────────────────────────── */}
-          <div className="p-6 sm:p-8 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+          {/* Box 3: Main Action Buttons (Directive 1 & 5) */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-2.5">
+            {/* Primary Submit Button */}
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={(e) => handleCreateSubmit(e, false)}
+              className={`w-full py-3 rounded-xl font-semibold text-xs sm:text-sm text-white bg-indigo-600 hover:bg-indigo-700 shadow-md hover:shadow-lg active:scale-[0.99] transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                isSubmitting ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+              }`}
+            >
+              {isSubmitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4" />
+              )}
+              <span>
+                {isSubmitting 
+                  ? 'กำลังประมวลผล...' 
+                  : (editingPR ? 'บันทึกและส่งใบ PR ใหม่ (Resubmit)' : 'ส่งใบ PR เข้าสู่ระบบ')}
+              </span>
+            </button>
+
+            {/* Save Draft Button */}
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={(e) => handleCreateSubmit(e, true)}
+              className={`w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 shadow-2xs hover:shadow-xs transition-all cursor-pointer ${
+                isSubmitting ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+              }`}
+            >
+              {editingPR ? 'บันทึกแบบร่าง (Save Draft)' : 'บันทึกแบบร่าง (Draft)'}
+            </button>
+
+            {/* Cancel / Back Link */}
             <button
               type="button"
               onClick={handleCancelAndBack}
-              className="px-5 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-100 bg-white border border-slate-300 rounded-xl transition-all shadow-xs hover:shadow cursor-pointer"
+              className="w-full py-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors text-center cursor-pointer"
             >
-              ยกเลิก
+              ยกเลิกและย้อนกลับ
             </button>
-            <div className="flex items-center gap-3 ml-auto">
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={(e) => handleCreateSubmit(e, true)}
-                className={`px-5 py-2.5 text-xs sm:text-sm font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900 rounded-xl transition-all shadow-xs hover:shadow cursor-pointer ${
-                  isSubmitting ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
-                }`}
-              >
-                {editingPR ? 'บันทึกแบบร่าง (Save Draft)' : 'บันทึกแบบร่าง (Draft)'}
-              </button>
-              <button
-                type="button"
-                disabled={isSubmitting}
-                onClick={(e) => handleCreateSubmit(e, false)}
-                className={`px-7 py-2.5 text-xs sm:text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center gap-2 ${
-                  isSubmitting ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
-                }`}
-              >
-                {isSubmitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="w-4 h-4" />
-                )}
-                <span>{isSubmitting ? 'กำลังประมวลผล...' : (editingPR ? 'บันทึกและส่งใบ PR ใหม่ (Resubmit)' : 'ส่งใบ PR เข้าสู่ระบบ')}</span>
-              </button>
-            </div>
           </div>
 
-        </form>
-      </div>
+        </div>
+
+      </form>
     </div>
   );
 }

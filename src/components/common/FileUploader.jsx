@@ -6,9 +6,10 @@ export default function FileUploader({
   required, 
   accept = "image/*,application/pdf", 
   multiple = false, 
-  files, 
+  files = [], 
   setFiles,
-  helperText
+  helperText = '',
+  compact = false
 }) {
   const [isDragging, setIsDragging] = useState(false);
 
@@ -75,6 +76,86 @@ export default function FileUploader({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
+  if (compact) {
+    return (
+      <div className="w-full space-y-2">
+        <div
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}
+          className={`relative border border-dashed rounded-xl px-3.5 py-2.5 h-[62px] transition-all flex items-center justify-between gap-3 cursor-pointer group select-none ${
+            isDragging 
+              ? 'border-indigo-500 bg-indigo-50/70 shadow-xs ring-2 ring-indigo-500/10' 
+              : 'border-slate-300 bg-slate-50/50 hover:bg-white hover:border-indigo-300 shadow-2xs'
+          }`}
+        >
+          <input 
+            type="file" 
+            accept={accept}
+            multiple={multiple}
+            onChange={handleFileChange}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+          />
+          
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+              isDragging 
+                ? 'bg-indigo-600 text-white' 
+                : 'bg-white text-slate-400 group-hover:text-indigo-600 border border-slate-200 shadow-2xs'
+            }`}>
+              <UploadCloud className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-800 truncate">
+                {label} {required && <span className="text-rose-500">*</span>}
+              </p>
+              <p className="text-[11px] text-slate-400 truncate">
+                {helperText || `คลิกหรือลากไฟล์มาวาง (${accept.includes('pdf') ? 'PDF/รูป' : 'รูปภาพ'})`}
+              </p>
+            </div>
+          </div>
+
+          <span className="text-[11px] font-semibold text-indigo-600 bg-indigo-50/80 group-hover:bg-indigo-100/70 border border-indigo-100 px-2.5 py-1 rounded-lg shrink-0 transition-colors pointer-events-none">
+            แนบไฟล์
+          </span>
+        </div>
+
+        {/* Compact File Pills */}
+        {files && files.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {files.map(f => (
+              <div 
+                key={f.id || f.name} 
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs shadow-2xs group/item"
+              >
+                {f.isImage || (f.type && f.type.startsWith('image/')) ? (
+                  <ImageIcon className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                ) : (
+                  <FileIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                )}
+                <span className="font-medium text-slate-700 max-w-[140px] truncate" title={f.name}>
+                  {f.name}
+                </span>
+                {f.size ? (
+                  <span className="text-[10px] text-slate-400 font-mono">({formatSize(f.size)})</span>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
+                  className="w-4 h-4 flex items-center justify-center rounded-full text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer ml-0.5"
+                  title="ลบไฟล์นี้"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="w-full animate-fade-in">
       <div className="flex justify-between items-end mb-2">
@@ -135,7 +216,7 @@ export default function FileUploader({
               <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
                 <button 
                   onClick={(e) => { e.stopPropagation(); removeFile(f.id); }}
-                  className="self-end p-1.5 bg-rose-500 text-white rounded-full hover:bg-rose-600 shadow-sm transform hover:scale-110 transition-all"
+                  className="self-end p-1.5 bg-rose-500 text-white rounded-full hover:bg-rose-600 shadow-sm transform hover:scale-110 transition-all cursor-pointer"
                   title="ลบไฟล์"
                 >
                   <X className="w-3.5 h-3.5" />
