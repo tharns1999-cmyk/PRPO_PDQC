@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { apiService } from '../services/apiService';
+import { useAppContext } from '../context/AppContext';
 import { 
   ShoppingCart, CheckCircle2, Package, AlertCircle, Send, Check, 
   Search, ExternalLink, Copy, Clock, Sparkles, Building2, Eye, FileText, 
@@ -11,6 +12,7 @@ import PODetailsModal from '../components/po/PODetailsModal';
 import { modalService } from '../services/modalService';
 
 export default function OnlineTaskView({ currentRole, onRefresh }) {
+  const { updatePO } = useAppContext();
   const [pos, setPOs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('PENDING'); // PENDING | ORDERED | CLOSED | ALL
@@ -32,10 +34,26 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
     setLoading(false);
   };
 
-  const pendingTasks = useMemo(() => pos.filter(po => po.status === 'IN_PROGRESS_ONLINE'), [pos]);
-  const orderedTasks = useMemo(() => pos.filter(po => po.status === 'ORDERED_PENDING_DELIVERY'), [pos]);
+  // Immediate Immutable State Updater across Local & Central Context
+  const handleUpdatePO = useCallback((updatedPO) => {
+    if (updatedPO && (updatedPO.id || updatedPO.poNo)) {
+      setPOs(prev => prev.map(item => 
+        (item.id === updatedPO.id || item.poNo === updatedPO.poNo)
+          ? { ...item, ...updatedPO }
+          : item
+      ));
+      if (updatePO) {
+        updatePO(updatedPO.id || updatedPO.poNo, updatedPO);
+      }
+    }
+    fetchPOs();
+    if (onRefresh) onRefresh();
+  }, [updatePO, onRefresh]);
+
+  const pendingTasks = useMemo(() => pos.filter(po => ['IN_PROGRESS_ONLINE', 'PENDING_ORDER', 'pending'].includes(po.status)), [pos]);
+  const orderedTasks = useMemo(() => pos.filter(po => ['ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'ordered', 'ORDERED'].includes(po.status)), [pos]);
   const claimTasks = useMemo(() => pos.filter(po => ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(po.status)), [pos]);
-  const closedTasks = useMemo(() => pos.filter(po => po.status === 'CLOSED'), [pos]);
+  const closedTasks = useMemo(() => pos.filter(po => ['CLOSED', 'RECEIVED'].includes(po.status)), [pos]);
 
   // Overall Metrics for Purchaser
   const metrics = useMemo(() => {
@@ -56,10 +74,10 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
     return pos.filter(po => {
       // Tab filter
       let matchTab = true;
-      if (activeTab === 'PENDING') matchTab = po.status === 'IN_PROGRESS_ONLINE';
-      else if (activeTab === 'ORDERED') matchTab = po.status === 'ORDERED_PENDING_DELIVERY';
+      if (activeTab === 'PENDING') matchTab = ['IN_PROGRESS_ONLINE', 'PENDING_ORDER', 'pending'].includes(po.status);
+      else if (activeTab === 'ORDERED') matchTab = ['ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'ordered', 'ORDERED'].includes(po.status);
       else if (activeTab === 'CLAIM') matchTab = ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(po.status);
-      else if (activeTab === 'CLOSED') matchTab = po.status === 'CLOSED';
+      else if (activeTab === 'CLOSED') matchTab = ['CLOSED', 'RECEIVED'].includes(po.status);
 
       // Dept filter
       const matchDept = deptFilter === 'ALL' || po.department === deptFilter;
@@ -315,7 +333,7 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
               currentRole={currentRole}
               onViewAttachment={setViewingAttachment}
               onShowDetails={setSelectedPO}
-              onUpdate={() => { fetchPOs(); if (onRefresh) onRefresh(); }} 
+              onUpdate={handleUpdatePO} 
             />
           ))}
         </div>
@@ -335,7 +353,7 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
           selectedPO={selectedPO}
           currentRole={currentRole}
           onClose={() => setSelectedPO(null)}
-          onRefresh={() => { fetchPOs(); if (onRefresh) onRefresh(); }}
+          onRefresh={handleUpdatePO}
         />
       )}
     </div>
@@ -486,9 +504,24 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
 
     setIsSubmitting(true);
     try {
-      await apiService.acknowledgeOnlineTask(po.id, vendorName.trim(), currentRole, items, varianceNote.trim());
+      const updatedPO = await apiService.acknowledgeOnlineTask(po.id, vendorName.trim(), currentRole, items, varianceNote.trim());
+      
+      const payload = updatedPO || {
+        ...po,
+        status: 'ORDERED_PENDING_DELIVERY',
+        vendorName: vendorName.trim(),
+        orderedAt: new Date().toISOString(),
+        items: items.map(it => ({
+          ...it,
+          actualPrice: Number(it.unitPrice),
+          actualQty: Number(it.purchaseQty)
+        }))
+      };
+
+      // Immediate immutable state update so card leaves pending tab and badge updates instantly
+      onUpdate(payload);
+
       await modalService.success('บันทึกการสั่งซื้อเรียบร้อย', `บันทึกการสั่งซื้อสำหรับ PO ${po.poNo} เรียบร้อยแล้ว! ระบบแจ้งเตือนแผนก ${po.department} ให้รอตรวจรับสินค้า`);
-      onUpdate();
     } catch (err) {
       modalService.error('เกิดข้อผิดพลาดในการบันทึก', err.message);
     } finally {
@@ -516,13 +549,13 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
 
     setIsSubmitting(true);
     try {
-      await apiService.resolveOnlineClaim(po.id, {
+      const res = await apiService.resolveOnlineClaim(po.id, {
         type: claimResolutionType,
         note: claimNote.trim(),
         expectedDate: claimExpectedDate
       }, currentRole);
+      onUpdate(res);
       await modalService.success('ดำเนินการเรียบร้อย', 'บันทึกสถานะการเคลมสำเร็จ');
-      onUpdate();
     } catch (err) {
       modalService.error('เกิดข้อผิดพลาดในการบันทึก', err.message);
     } finally {

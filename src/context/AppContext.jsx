@@ -416,6 +416,15 @@ export function AppProvider({ children }) {
     return result;
   }, [currentRole, loadAllData]);
 
+  // Immutable PO updater in state
+  const updatePO = useCallback((poId, updates) => {
+    setPOs(prev => prev.map(item => 
+      (item.id === poId || item.poNo === poId) 
+        ? { ...item, ...updates } 
+        : item
+    ));
+  }, []);
+
   const handleReceiveGoods = useCallback(async (poId, receivingItems, note = '', options = {}) => {
     const grNumber = options?.grNumber || options?.grId || `GR-${poId}-${Date.now()}`;
     const enrichedOptions = { ...options, grNumber, grId: grNumber };
@@ -532,6 +541,8 @@ export function AppProvider({ children }) {
     refreshData,
     fetchPRs,
     fetchPOs,
+    updatePO,
+    setPOs,
     createPR: handleCreatePR,
     updatePR: handleUpdatePR,
     rejectPR: handleRejectPR,
@@ -593,6 +604,7 @@ export function AppProvider({ children }) {
     loadAllData,
     fetchPRs,
     fetchPOs,
+    updatePO,
     handleCreatePR,
     handleUpdatePR,
     handleRejectPR,

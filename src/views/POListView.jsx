@@ -232,23 +232,22 @@ export default function POListView({ pos = [], currentRole, onRefresh }) {
 
       {/* PO Table Card */}
       <div className="bg-white border border-slate-200/70 rounded-2xl overflow-hidden shadow-2xs">
-        <div className="overflow-x-auto overflow-y-auto max-h-[580px] custom-scrollbar relative">
-          <table className="w-full text-left text-xs sm:text-sm">
+        <div className="overflow-y-auto max-h-[580px] custom-scrollbar relative">
+          <table className="w-full table-fixed divide-y divide-slate-150 text-left text-xs sm:text-sm">
             <thead className="sticky top-0 z-20 shadow-2xs bg-slate-50/95 backdrop-blur-xs border-b border-slate-200/80 text-slate-500 font-semibold text-[11px] uppercase tracking-wider">
               <tr>
-                <th className="py-3 pl-5">เลขที่ PO</th>
-                <th className="py-3 px-4">อ้างอิง PR / ฝ่าย</th>
-                <th className="py-3 px-4">ผู้ขาย / ร้านค้า</th>
-                <th className="py-3 px-4 w-1/3">รายการสินค้า</th>
-                <th className="py-3 px-4 text-right">ยอดรวมสุทธิ</th>
-                <th className="py-3 px-4 text-center">สถานะ</th>
-                <th className="py-3 pr-5 text-center">จัดการ</th>
+                <th className="w-[20%] text-left pl-4 py-3">PO & ข้อมูลอ้างอิง</th>
+                <th className="w-[20%] text-left py-3">ร้านค้า / ผู้ขาย</th>
+                <th className="w-[24%] text-left py-3">รายการสินค้า</th>
+                <th className="w-[14%] text-right py-3">ยอดรวมสุทธิ</th>
+                <th className="w-[12%] text-center py-3">สถานะ</th>
+                <th className="w-[10%] text-right pr-4 py-3">จัดการ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredPOs.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-0">
+                  <td colSpan="6" className="p-0">
                     <EmptyState 
                       title="ไม่พบข้อมูลใบ PO" 
                       description="ลองเปลี่ยนตัวกรอง ค้นหาด้วยคำอื่น หรือกดล้างการค้นหา"
@@ -262,51 +261,60 @@ export default function POListView({ pos = [], currentRole, onRefresh }) {
 
                   return (
                     <tr key={po.id} className="group hover:bg-slate-50/80 transition-colors">
-                      <td className="p-4 pl-6 whitespace-nowrap">
-                        <span className="bg-slate-100 text-slate-800 font-mono font-bold text-xs px-2.5 py-1 rounded-md border border-slate-200/60">{po.poNo}</span>
-                        <div className="text-[11px] text-slate-400 mt-1 font-mono">{po.issuedDate || po.createdAt || '-'}</div>
-                      </td>
-                      <td className="p-4 whitespace-nowrap">
-                        <div className="font-mono font-semibold text-xs text-indigo-600">{po.prNo || '-'}</div>
-                        <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                          <Building2 className="w-3 h-3 text-slate-400" />
-                          <span>ฝ่าย {po.department}</span>
+                      {/* คอลัมน์ 1: PO & Ref Info (20%) */}
+                      <td className="w-[20%] pl-4 py-3 align-middle">
+                        <span className="font-mono text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60 inline-block">
+                          {po.poNo}
+                        </span>
+                        <div className="text-[11px] text-slate-500 mt-1 truncate">
+                          PR: {po.prNo || '-'} • {po.department}
                         </div>
                       </td>
-                      <td className="p-4 whitespace-nowrap">
-                        <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+
+                      {/* คอลัมน์ 2: ร้านค้า/ผู้ขาย (20%) */}
+                      <td className="w-[20%] py-3 pr-2 align-middle">
+                        <div className="text-xs font-medium text-slate-700 truncate flex items-center gap-1.5" title={po.vendorName || (po.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์ (Shopee/Lazada)' : 'ยังไม่ระบุ')}>
                           {po.purchaseChannel === 'ONLINE' ? (
                             <Store className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                           ) : (
                             <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           )}
-                          <span>{po.vendorName || (po.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์ (Shopee/Lazada)' : 'ยังไม่ระบุ')}</span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">{channel.label}</div>
-                      </td>
-                      <td className="p-4 text-slate-600">
-                        <div className="font-semibold text-slate-900 whitespace-nowrap font-mono">{po.items?.length || 0} รายการ</div>
-                        <div className="text-xs text-slate-500 truncate max-w-[240px]">
-                          {po.items?.map(i => i.name).join(', ')}
+                          <span className="truncate">{po.vendorName || (po.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์ (Shopee/Lazada)' : 'ยังไม่ระบุ')}</span>
                         </div>
                       </td>
-                      <td className="p-4 text-right font-bold font-mono text-slate-900 tabular-nums whitespace-nowrap text-sm">
+
+                      {/* คอลัมน์ 3: รายการสินค้า (24%) */}
+                      <td className="w-[24%] py-3 pr-2 align-middle">
+                        <div className="text-xs text-slate-600 truncate" title={po.items?.map(i => i.name).join(', ')}>
+                          <span className="font-semibold text-slate-900 font-mono mr-1.5">{po.items?.length || 0} รายการ:</span>
+                          <span className="text-slate-500">{po.items?.map(i => i.name).join(', ') || '-'}</span>
+                        </div>
+                      </td>
+
+                      {/* คอลัมน์ 4: ยอดรวมสุทธิ (14%) */}
+                      <td className="w-[14%] text-right py-3 align-middle font-mono text-sm font-bold text-slate-900 whitespace-nowrap">
                         ฿{(po.grandTotal || po.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
-                      <td className="p-4 text-center whitespace-nowrap">
-                        {getStatusBadge(po.status)}
+
+                      {/* คอลัมน์ 5: สถานะ (12%) */}
+                      <td className="w-[12%] text-center py-3 px-1 align-middle">
+                        <span className="inline-block scale-95 origin-center">
+                          {getStatusBadge(po.status)}
+                        </span>
                       </td>
-                      <td className="p-4 pr-6 text-center whitespace-nowrap">
+
+                      {/* คอลัมน์ 6: จัดการ (10%) */}
+                      <td className="w-[10%] text-right pr-4 py-3 align-middle">
                         <button 
                           onClick={() => setSelectedPO(po)}
-                          className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 whitespace-nowrap transition-all cursor-pointer inline-flex items-center gap-1.5 ${
                             isOperational && canAction 
-                              ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-sm' 
-                              : 'border-slate-200 hover:bg-slate-50 text-slate-700 bg-white shadow-2xs'
+                              ? 'bg-emerald-600! text-white! border-emerald-600! hover:bg-emerald-700! shadow-sm' 
+                              : 'shadow-2xs'
                           }`}
                         >
-                          <FileSearch className="w-3.5 h-3.5" />
-                          <span>{isOperational && canAction ? 'ตรวจรับ / จัดการ' : 'ดูรายละเอียด'}</span>
+                          <FileSearch className="w-3.5 h-3.5 shrink-0" />
+                          <span>{isOperational && canAction ? 'ตรวจรับ' : 'ดูข้อมูล'}</span>
                         </button>
                       </td>
                     </tr>

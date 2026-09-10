@@ -340,36 +340,96 @@ export const apiService = {
   },
 
   async cancelPO(poId, user, reason) {
-    return workflowEngine.cancelPO(poId, user, reason);
+    const cancelled = await workflowEngine.cancelPO(poId, user, reason);
+    try {
+      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cancelled)
+      });
+    } catch (e) {
+      console.warn('[apiService] Backend PUT /api/pos/:id fallback:', e.message);
+    }
+    return cancelled;
   },
 
   async acknowledgeOnlineTask(poId, vendorName, user, updatedItems = null, varianceNote = '') {
-    return workflowEngine.acknowledgeOnlineTask(poId, vendorName, user, updatedItems, varianceNote);
+    const updated = await workflowEngine.acknowledgeOnlineTask(poId, vendorName, user, updatedItems, varianceNote);
+    try {
+      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+    } catch (e) {
+      console.warn('[apiService] Backend PUT /api/pos/:id fallback:', e.message);
+    }
+    return updated;
   },
 
   // --- PO & Receive Goods Operations ---
   async assignVendor(poId, vendorId, customVendorName, user) {
-    return workflowEngine.assignVendor(poId, vendorId, customVendorName, user);
+    const updated = await workflowEngine.assignVendor(poId, vendorId, customVendorName, user);
+    try {
+      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+    } catch (e) {
+      console.warn('[apiService] Backend PUT /api/pos/:id fallback:', e.message);
+    }
+    return updated;
   },
 
   // Generic claim filing — supports both ONLINE and SELF-BUY channels
   async fileClaim(poId, claimData, user) {
-    return workflowEngine.fileClaim(poId, claimData, user);
+    const updated = await workflowEngine.fileClaim(poId, claimData, user);
+    try {
+      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+    } catch (e) {
+      console.warn('[apiService] Backend PUT /api/pos/:id fallback:', e.message);
+    }
+    return updated;
   },
   async fileOnlineClaim(poId, claimData, user) {
-    return workflowEngine.fileClaim(poId, claimData, user);
+    return this.fileClaim(poId, claimData, user);
   },
 
   // Generic claim resolution — supports both ONLINE and SELF-BUY channels
   async resolveClaim(poId, resolution, user) {
-    return workflowEngine.resolveClaim(poId, resolution, user);
+    const resolved = await workflowEngine.resolveClaim(poId, resolution, user);
+    try {
+      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resolved)
+      });
+    } catch (e) {
+      console.warn('[apiService] Backend PUT /api/pos/:id fallback:', e.message);
+    }
+    return resolved;
   },
   async resolveOnlineClaim(poId, resolution, user) {
-    return workflowEngine.resolveClaim(poId, resolution, user);
+    return this.resolveClaim(poId, resolution, user);
   },
 
   async updatePOStatus(poId, nextStatus, user, note = '') {
-    return workflowEngine.updatePOStatus(poId, nextStatus, user, note);
+    const updated = await workflowEngine.updatePOStatus(poId, nextStatus, user, note);
+    try {
+      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+    } catch (e) {
+      console.warn('[apiService] Backend PUT /api/pos/:id fallback:', e.message);
+    }
+    return updated;
   },
 
   async updateActualPrice(poId, itemIndex, actPrice, user) {

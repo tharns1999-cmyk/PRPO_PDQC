@@ -452,6 +452,7 @@ export const workflowEngine = {
 
     po.status = 'ORDERED_PENDING_DELIVERY';
     po.vendorName = vendorName.trim();
+    po.orderedAt = new Date().toISOString();
     const timestamp = new Date().toLocaleString('th-TH');
 
     let varianceDetails = [];
@@ -482,8 +483,10 @@ export const workflowEngine = {
             unitPrice: newPrice,
             estimatedPrice: newPrice,
             price: newPrice,
+            actualPrice: newPrice,
             purchaseQty: newQty,
             qty: newQty,
+            actualQty: newQty,
             stockQty: newStockQty,
             lineTotal: newPrice * newQty
           };

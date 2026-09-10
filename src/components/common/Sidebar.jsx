@@ -246,7 +246,19 @@ export default function Sidebar({
                           </div>
 
                           {item.badge && Number(item.badge) > 0 && (
-                            item.id === 'my-tasks' || item.id === 'my-workspace' ? (
+                            item.id === 'online-tasks' ? (
+                              <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                {/* Ping Radar Dot */}
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                                </span>
+                                {/* Micro Capsule Count */}
+                                <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200 shadow-2xs">
+                                  {item.badge}
+                                </span>
+                              </div>
+                            ) : item.id === 'my-tasks' || item.id === 'my-workspace' ? (
                               <span className="relative flex items-center justify-center ml-auto shrink-0">
                                 {/* วงแหวนเรดาร์สีสดแผ่ออก */}
                                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
@@ -259,8 +271,8 @@ export default function Sidebar({
                             ) : (
                               <span className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold tabular-nums transition-colors shrink-0 ml-1.5 ${
                                 isActive 
-                                  ? 'bg-indigo-600 text-white' 
-                                  : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200'
+                                   ? 'bg-indigo-600 text-white' 
+                                   : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200'
                               }`}>
                                 {item.badge}
                               </span>

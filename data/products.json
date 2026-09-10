@@ -1,5 +1,14 @@
 [
   {
+    "code": "  itm-001  ",
+    "name": "ถุงมือยางใหม่",
+    "category": "PD",
+    "price": 15,
+    "stockUnit": "ชิ้น",
+    "department": "PD",
+    "id": "PROD-PD-1789017724471"
+  },
+  {
     "id": "PROD-PD-001",
     "code": "PD-OIL-068",
     "name": "น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)",

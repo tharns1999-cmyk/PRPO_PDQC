@@ -409,6 +409,14 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     (currentRole?.canReceiveGoods || currentRole?.id === 'ADMIN' || currentRole?.roleId === 'ADMIN' ||
      currentRole?.department === selectedPO.department || currentRole?.canViewAllDepts);
 
+  // Lifecycle State Guard: ตรวจสอบว่าผ่านขั้นตอนสั่งซื้อไปแล้วหรือยัง (ต้องเริ่มจัดส่งหรือตรวจรับแล้วเท่านั้น)
+  const po = selectedPO;
+  const eligibleClaimStatuses = ['in_delivery', 'delivery', 'delivered', 'received', 'partial', 'partially_received', 'completed'];
+  const isDeliveredOrBeyond = eligibleClaimStatuses.some(st => String(po?.status).toLowerCase().includes(st));
+
+  // อนุญาตเฉพาะ Operational Role และสถานะต้องถึงขั้นส่งของ/รับของแล้วเท่านั้น
+  const canReportClaim = isOperational && isDeliveredOrBeyond && canFileClaim;
+
   // Whether the current user can resolve a Self-buy Claim on this PO
   const canResolveSelfClaim = isClaimStatus &&
     selectedPO.purchaseChannel === 'SELF' &&
@@ -889,7 +897,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
             )}
 
             {/* ── Claim Form (Inside Scrollable Body!) ── */}
-            {showClaimForm && canFileClaim && (
+            {showClaimForm && canReportClaim && (
               <div className="bg-rose-50/60 border border-rose-200 rounded-xl p-4 sm:p-5 space-y-3.5 animate-fade-in shadow-2xs">
                 <div className="flex items-center justify-between border-b border-rose-100 pb-2">
                   <div className="flex items-center gap-2 text-rose-900 font-bold text-xs sm:text-sm">
@@ -1714,7 +1722,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                       <span>{isResolvingSelfClaim ? 'กำลังบันทึก...' : 'ยืนยันการจัดการเคส'}</span>
                     </button>
                   </div>
-                ) : isOperational && showClaimForm ? (
+                ) : canReportClaim && showClaimForm ? (
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -1749,7 +1757,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                 ) : (
                   <>
                     {/* Claim / Problem button: ONLINE or SELF (when not in CLAIM status) */}
-                    {isOperational && canFileClaim && (
+                    {canReportClaim && (
                       <button
                         onClick={() => setShowClaimForm(p => !p)}
                         className={`px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -1790,9 +1798,13 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                           });
                           if (confirmed) {
                             try {
-                              await apiService.updatePOStatus(selectedPO.id, targetStatus, currentRole);
+                              const updated = await apiService.updatePOStatus(selectedPO.id, targetStatus, currentRole);
+                              const updatedPayload = updated || { ...selectedPO, status: targetStatus };
+                              if (context?.updatePO) {
+                                context.updatePO(selectedPO.id, updatedPayload);
+                              }
+                              if (onRefresh) onRefresh(updatedPayload);
                               await modalService.success('บันทึกสั่งซื้อแล้ว', `บันทึกสถานะ PO ${selectedPO.poNo} เป็นกำลังจัดส่งเรียบร้อย`);
-                              onRefresh();
                               onClose();
                             } catch (err) { modalService.error('เกิดข้อผิดพลาด', err.message); }
                           }
