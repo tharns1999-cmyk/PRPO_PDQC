@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { apiService } from '../../services/apiService';
 import { storageService } from '../../services/storageService';
@@ -12,6 +12,7 @@ import SearchableSelect from '../common/SearchableSelect';
 import StorageLocationCRUDModal from './StorageLocationCRUDModal';
 import DeleteLocationModal from './DeleteLocationModal';
 import { useAppContext } from '../../context/AppContext';
+import { getUserDepartments, canAccessDepartmentData } from '../../utils/permissions';
 
 const COMMON_PURCHASE_UNITS = ['ถัง (200L)', 'แกลลอน (20L)', 'ลัง', 'กล่อง', 'ถุง', 'ม้วน', 'ชุด', 'ชิ้น'];
 const COMMON_STOCK_UNITS = ['ลิตร', 'มล.', 'กก.', 'กรัม', 'ชิ้น', 'คู่', 'แผ่น', 'ม้วน', 'ขวด', 'กระป๋อง'];
@@ -24,6 +25,7 @@ export default function ProductCRUDModal({
   departments: propDepartments,
   storageLocations = [],
   currentRole,
+  currentUser,
   onClose,
   onRefresh
 }) {
@@ -35,11 +37,44 @@ export default function ProductCRUDModal({
   }, [rawDepartments]);
 
   const editProd = propEditProd || product;
-  const isSupervisor = !currentRole?.canViewAllDepts;
-  const lockedCategory = isSupervisor ? currentRole?.department : null;
+  const effectiveUser = currentUser || context?.currentUser;
+  const userDepts = getUserDepartments(currentRole || effectiveUser);
+  const canSelectAll = Boolean(
+    currentRole?.canViewAllDepts ||
+    currentRole?.id === 'ADMIN' ||
+    currentRole?.roleId === 'ADMIN' ||
+    currentRole?.role === 'admin' ||
+    effectiveUser?.role === 'admin' ||
+    effectiveUser?.roleId === 'ADMIN' ||
+    effectiveUser?.isAdmin === true ||
+    Number(currentRole?.level) >= 99 ||
+    Number(effectiveUser?.level) >= 99 ||
+    userDepts.includes('ALL') ||
+    userDepts.includes('*')
+  );
 
+  const selectableDepts = useMemo(() => {
+    if (canSelectAll) return deptList;
+    if (userDepts.length > 0) {
+      const filtered = deptList.filter(d => userDepts.some(ud => ud.toUpperCase() === d.code?.toUpperCase()));
+      return filtered.length > 0 ? filtered : deptList;
+    }
+    return deptList;
+  }, [deptList, canSelectAll, userDepts]);
+
+  const hasMultipleAllowedDepts = !canSelectAll && selectableDepts.length > 1;
+  const isSingleLockedDept = !canSelectAll && selectableDepts.length === 1;
+  const lockedCategory = isSingleLockedDept ? selectableDepts[0]?.code : null;
+
+  const skuInputRef = useRef(null);
   const [itemCode, setItemCode] = useState(editProd?.code || '');
-  const [category, setCategory] = useState(() => editProd?.category || lockedCategory || deptList[0]?.code || 'PD');
+  const [category, setCategory] = useState(() => {
+    if (editProd?.category) return editProd.category;
+    if (editProd?.department) return editProd.department;
+    if (lockedCategory) return lockedCategory;
+    if (selectableDepts.length > 0) return selectableDepts[0].code;
+    return 'PD';
+  });
   const [purchaseUnit, setPurchaseUnit] = useState(editProd?.purchaseUnit || editProd?.unit || 'ชิ้น');
   const [stockUnit, setStockUnit] = useState(editProd?.stockUnit || editProd?.unit || 'ชิ้น');
   const [conversionRate, setConversionRate] = useState(editProd?.conversionRate ?? 1);
@@ -59,24 +94,43 @@ export default function ProductCRUDModal({
     }
   }, [storageLocations]);
 
-  // Duplicate Item Code Check (Case-insensitive + trimmed)
+  // Combined master products from props, context, and storageService/localStorage for complete duplicate guard
   const allProducts = useMemo(() => {
-    return products.length > 0 ? products : storageService.getProducts();
-  }, [products]);
+    const fromProps = Array.isArray(products) ? products : [];
+    const fromContext = Array.isArray(context?.products) ? context.products : [];
+    const fromStorage = storageService.getProducts?.() || [];
+    const map = new Map();
+    [...fromStorage, ...fromContext, ...fromProps].forEach(p => {
+      if (p) {
+        const key = String(p.id || p.code || p.sku || Math.random());
+        map.set(key, p);
+      }
+    });
+    return Array.from(map.values());
+  }, [products, context?.products]);
 
-  const isCodeDuplicate = useMemo(() => {
-    const cleanCode = itemCode.trim().toUpperCase();
-    if (!cleanCode) return false;
-    return allProducts.some(p => p.id !== editProd?.id && (p.code || '').trim().toUpperCase() === cleanCode);
+  // Duplicate SKU / Item Code Check with Duplicate Item Name Resolution
+  const duplicateItem = useMemo(() => {
+    const cleanSku = itemCode.trim().toUpperCase();
+    if (!cleanSku) return null;
+    return allProducts.find(item => {
+      if (editProd && (item.id === editProd.id || (item.code && item.code.toUpperCase() === editProd.code?.toUpperCase()))) {
+        return false;
+      }
+      const existingSku = (item.sku || item.itemCode || item.code || item.id || '').trim().toUpperCase();
+      return existingSku === cleanSku;
+    }) || null;
   }, [itemCode, allProducts, editProd]);
 
-  // Filter vendors visible to this role
+  const isSkuDuplicate = Boolean(duplicateItem);
+  const isCodeDuplicate = isSkuDuplicate;
+
+  // Filter vendors visible to this user
   const visibleVendors = useMemo(() => {
     return vendors.filter(v => {
-      if (currentRole?.canViewAllDepts) return true;
-      return v.department === currentRole?.department || v.department === 'BOTH';
+      return canAccessDepartmentData(currentRole || effectiveUser, v.department);
     });
-  }, [vendors, currentRole]);
+  }, [vendors, currentRole, effectiveUser]);
 
   const supplierOptions = useMemo(() => {
     return [
@@ -94,7 +148,7 @@ export default function ProductCRUDModal({
 
   // Filter locations visible to product category
   const locationOptions = useMemo(() => {
-    const activeCat = lockedCategory || category || deptList[0]?.code || 'PD';
+    const activeCat = category || lockedCategory || deptList[0]?.code || 'PD';
     const filtered = locsList.filter(l => (l.department === activeCat || l.department === 'ALL'));
     return [
       { value: '', label: '-- ยังไม่ระบุจุดจัดเก็บสินค้า --', subLabel: 'สามารถเลือกหรือระบุภายหลังได้' },
@@ -112,8 +166,22 @@ export default function ProductCRUDModal({
 
   const handleSaveProduct = async (e) => {
     e.preventDefault();
-    if (isCodeDuplicate) {
-      return modalService.warning('รหัสสินค้านี้มีอยู่ในระบบแล้ว', 'กรุณาระบุรหัสสินค้าใหม่ที่ไม่ซ้ำกับสินค้าอื่น');
+    const cleanSku = itemCode.trim().toUpperCase();
+    if (!cleanSku) {
+      modalService.error('กรุณาระบุรหัสสินค้า', 'กรุณาระบุรหัสสินค้า (SKU / Item Code)');
+      skuInputRef.current?.focus();
+      return;
+    }
+
+    if (isSkuDuplicate) {
+      modalService.error(
+        'รหัสสินค้านี้ถูกใช้งานแล้วในระบบ',
+        duplicateItem 
+          ? `รหัส "${cleanSku}" ซ้ำกับสินค้า: ${duplicateItem.name}`
+          : 'กรุณาระบุรหัสสินค้าใหม่ที่ไม่ซ้ำกับสินค้าอื่น'
+      );
+      skuInputRef.current?.focus();
+      return;
     }
 
     setIsSaving(true);
@@ -139,7 +207,9 @@ export default function ProductCRUDModal({
         leadTimeDays: Number(formData.get('leadTimeDays')) || 7,
         supplierId: selectedSupplierId || null,
         locationId: selectedLocationId || null,
-        locationName: selectedLoc ? selectedLoc.name : (selectedLocationId ? selectedLocationId : null)
+        locationName: selectedLoc ? selectedLoc.name : (selectedLocationId ? selectedLocationId : null),
+        isActive: editProd?.isActive !== undefined ? editProd.isActive : true,
+        status: editProd?.status || (editProd?.isActive === false ? 'INACTIVE' : 'ACTIVE')
       };
 
       await apiService.saveProduct(prodObj);
@@ -226,29 +296,37 @@ export default function ProductCRUDModal({
                         <span>รหัสสินค้า (SKU / Item Code)</span>
                         <span className="text-rose-500">*</span>
                       </label>
-                      {isCodeDuplicate && (
+                      {isSkuDuplicate && (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse">
                           <AlertTriangle className="w-3 h-3 text-rose-500" /> รหัสซ้ำ!
                         </span>
                       )}
                     </div>
                     <div className="relative flex rounded-xl shadow-2xs">
-                      <span className="inline-flex items-center px-3 rounded-l-xl border border-r-0 border-slate-200 bg-slate-100 text-slate-600 text-xs font-mono font-bold select-none">
+                      <span className={`inline-flex items-center px-3 rounded-l-xl border border-r-0 text-xs font-mono font-bold select-none transition-colors ${
+                        isSkuDuplicate ? 'border-rose-500 bg-rose-50 text-rose-700' : 'border-slate-200 bg-slate-100 text-slate-600'
+                      }`}>
                         SKU
                       </span>
                       <input
+                        ref={skuInputRef}
                         name="code"
                         value={itemCode}
                         onChange={e => setItemCode(e.target.value)}
                         placeholder="เช่น PD-OIL-068"
                         required
-                        className={`w-full h-10 px-3.5 bg-white border rounded-r-xl text-xs sm:text-sm font-mono font-bold uppercase tracking-wide placeholder:font-normal placeholder:text-slate-400 focus:outline-none transition-all ${
-                          isCodeDuplicate 
-                            ? 'border-rose-400 text-rose-900 bg-rose-50/30 focus:ring-2 focus:ring-rose-500/20' 
-                            : 'border-slate-200 text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500'
+                        className={`w-full h-10 px-3.5 border rounded-r-xl text-xs sm:text-sm font-mono font-bold uppercase tracking-wide placeholder:font-normal placeholder:text-slate-400 focus:outline-none transition-all ${
+                          isSkuDuplicate 
+                            ? 'border-rose-500 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 bg-rose-50/20 text-rose-900' 
+                            : 'border-slate-200 text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white'
                         }`}
                       />
                     </div>
+                    {isSkuDuplicate && (
+                      <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1 font-medium">
+                        <span>⚠️</span> รหัสนี้ถูกใช้งานแล้วในระบบ {duplicateItem ? `(${duplicateItem.name})` : ''}
+                      </p>
+                    )}
                   </div>
 
                   {/* Department */}
@@ -272,19 +350,33 @@ export default function ProductCRUDModal({
                         </span>
                       </div>
                     ) : (
-                      <div className="relative">
-                        <select
-                          name="category"
-                          value={category}
-                          onChange={e => setCategory(e.target.value)}
-                          className="w-full h-10 px-3.5 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer shadow-2xs"
-                        >
-                          {deptList.map(d => (
-                            <option key={d.code} value={d.code}>
-                              {d.name} ({d.code})
-                            </option>
-                          ))}
-                        </select>
+                      <div className="flex flex-wrap gap-2">
+                        {selectableDepts.map(d => {
+                          const isSelected = category === d.code || category === d.id;
+                          return (
+                            <button
+                              key={d.code || d.id}
+                              type="button"
+                              onClick={() => setCategory(d.code || d.id)}
+                              className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                isSelected
+                                  ? (d.code === 'PD' ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-2xs ring-1 ring-blue-500/20' :
+                                     d.code === 'QC' ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-2xs ring-1 ring-amber-500/20' :
+                                     'bg-indigo-50 border-indigo-300 text-indigo-700 shadow-2xs ring-1 ring-indigo-500/20')
+                                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                d.code === 'PD' ? 'bg-blue-500' :
+                                d.code === 'QC' ? 'bg-amber-500' :
+                                d.code === 'WH' ? 'bg-emerald-500' :
+                                d.code === 'PUR' ? 'bg-purple-500' :
+                                d.code === 'ENG' ? 'bg-cyan-500' : 'bg-slate-400'
+                              }`} />
+                              <span>{d.name} ({d.code})</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -581,7 +673,7 @@ export default function ProductCRUDModal({
               <button
                 type="submit"
                 form="product-form"
-                disabled={isSaving || isCodeDuplicate}
+                disabled={isSaving || isSkuDuplicate || !itemCode.trim()}
                 className="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs rounded-xl flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Check className="w-4 h-4" />

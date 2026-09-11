@@ -47,14 +47,18 @@ export const DEFAULT_EMPLOYEE_ACCOUNTS = [
     name: 'คุณสมชาย (Asst. Mgr)',
     employeeName: 'คุณสมชาย มุ่งมั่น',
     displayName: 'Somchai (Asst Mgr)',
-    department: 'ALL',
+    department: 'PD',
+    primaryDepartment: 'PD',
+    departments: ['PD', 'QC'],
+    assignedDepartments: ['PD', 'QC'],
+    allowedDepartments: ['PD', 'QC'],
     roleId: 'ASST_MANAGER',
     positionKey: 'REVIEWER',
     title: 'Assistant Manager',
     level: 2,
     status: 'ACTIVE',
     pictureUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-    description: 'ตรวจทาน PR (Level 1 Reviewer), ดูงบประมาณทุกแผนก'
+    description: 'ตรวจทาน PR (Level 1 Reviewer), ดูแลฝ่ายผลิต (PD) และฝ่ายควบคุมคุณภาพ (QC)'
   },
   {
     id: 'USR-0004',
@@ -113,7 +117,20 @@ export const authService = {
   getRegisteredUsers() {
     try {
       const data = localStorage.getItem(REGISTERED_USERS_KEY);
-      return data ? JSON.parse(data) : DEFAULT_EMPLOYEE_ACCOUNTS;
+      if (!data) return DEFAULT_EMPLOYEE_ACCOUNTS;
+      const parsed = JSON.parse(data);
+      return parsed.map(u => {
+        const def = DEFAULT_EMPLOYEE_ACCOUNTS.find(d => d.id === u.id || d.username === u.username);
+        if (def && def.departments && (!u.departments || u.departments.length < def.departments.length)) {
+          return {
+            ...u,
+            departments: def.departments,
+            assignedDepartments: def.assignedDepartments || def.departments,
+            allowedDepartments: def.allowedDepartments || def.departments
+          };
+        }
+        return u;
+      });
     } catch {
       return DEFAULT_EMPLOYEE_ACCOUNTS;
     }
@@ -129,10 +146,17 @@ export const authService = {
       const data = localStorage.getItem(AUTH_SESSION_KEY);
       if (data) {
         const session = JSON.parse(data);
+        const def = DEFAULT_EMPLOYEE_ACCOUNTS.find(d => d.id === session.id || d.username === session.username);
+        const departments = (Array.isArray(session.departments) && session.departments.length > 1)
+          ? session.departments
+          : (def?.departments || (session.department ? [session.department] : ['PD']));
         // Enrich with fresh role permissions dynamically based on role/level
-        const rolePermissions = resolveUserPermissions(session);
+        const rolePermissions = resolveUserPermissions({ ...session, departments });
         return {
           ...session,
+          departments,
+          assignedDepartments: session.assignedDepartments || departments,
+          allowedDepartments: session.allowedDepartments || departments,
           ...rolePermissions,
           role: rolePermissions
         };
@@ -161,6 +185,7 @@ export const authService = {
     this.saveRegisteredUsers(users);
 
     const rolePermissions = resolveUserPermissions(matched);
+    const userDepts = rolePermissions.departments || matched.departments || matched.assignedDepartments || matched.allowedDepartments || [matched.department];
     const sessionData = {
       id: matched.id,
       username: matched.username,
@@ -168,7 +193,11 @@ export const authService = {
       name: matched.name,
       employeeName: matched.employeeName,
       displayName: matched.displayName,
+      primaryDepartment: matched.primaryDepartment || matched.department,
       department: matched.department,
+      departments: userDepts,
+      assignedDepartments: matched.assignedDepartments || userDepts,
+      allowedDepartments: matched.allowedDepartments || userDepts,
       roleId: matched.roleId,
       positionKey: matched.positionKey,
       title: matched.title,

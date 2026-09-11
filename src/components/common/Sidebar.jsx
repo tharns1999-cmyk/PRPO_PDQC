@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, Sparkles, ScrollText, ReceiptText, Boxes, Zap, 
-  SlidersHorizontal, WalletCards, ShoppingBag, ShieldAlert, Factory, X,
+  SlidersHorizontal, WalletCards, ShoppingBag, Factory, X,
   User, ArrowRightLeft
 } from 'lucide-react';
 import { workflowEngine } from '../../services/workflowEngine';
@@ -12,8 +12,8 @@ import NotificationDrawer from './NotificationDrawer';
 import NotificationPopover from './NotificationPopover';
 import { notificationService } from '../../services/notificationService';
 import UserProfileModal from './UserProfileModal';
-import BudgetManagementModal from '../budget/BudgetManagementModal';
 import { useAppContext } from '../../context/AppContext';
+import { getUserDepartments } from '../../utils/permissions';
 
 export default function Sidebar({ 
   activeView, 
@@ -32,14 +32,9 @@ export default function Sidebar({
 }) {
   const [showNotiDrawer, setShowNotiDrawer] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showBudgetModal, setShowBudgetModal] = useState(false);
 
-  // Pull dynamic departments and budget methods from AppContext
+  // App context for dynamic notifications
   const context = useAppContext();
-  const departments = context?.departments || [];
-  const budgetSummary = context?.budgetSummary || null;
-  const budgetTransactions = context?.budgetTransactions || [];
-  const adjustBudget = context?.adjustBudget;
 
   // Single-Click Instant Reactive Notification State (Role-scoped)
   const [notifications, setNotifications] = useState(() => {
@@ -149,24 +144,6 @@ export default function Sidebar({
                   currentRole?.id === 'ADMIN' || 
                   (currentRole?.level && currentRole.level >= 99);
 
-  // Asst. Manager (คุณสมชาย / Level 2 / Reviewer)
-  const isAsstManager = currentRole?.roleId === 'ASST_MANAGER' || 
-                        currentRole?.id === 'ASST_MANAGER' || 
-                        currentRole?.positionKey === 'REVIEWER' ||
-                        (currentRole?.canReview && !currentRole?.canFinalApprove && !isOnlinePurchaser);
-
-  // Plant Manager (คุณประเสริฐ / Level 3 / Approver)
-  const isPlantManager = currentRole?.roleId === 'PLANT_MANAGER' || 
-                         currentRole?.id === 'PLANT_MANAGER' || 
-                         currentRole?.positionKey === 'APPROVER' ||
-                         currentRole?.canFinalApprove;
-
-  // Requester (Level 1 / PD / QC)
-  const isRequester = (currentRole?.level === 1 || currentRole?.roleId?.startsWith('REQUESTER')) && !isAdmin && !isAsstManager && !isPlantManager;
-
-  // Budget management permission: asst_mgr, plant_mgr, and admin have full access to manage/adjust budgets
-  const canManageBudget = !isOnlinePurchaser && !isRequester && (isAdmin || isPlantManager || isAsstManager || currentRole?.canViewBudget);
-
   // Calculate Task Counts for Badges (using unified workflowEngine task aggregator)
   const taskCounts = React.useMemo(() => {
     const userTasks = workflowEngine.getUserTasks(currentRole, prs, pos);
@@ -269,7 +246,6 @@ export default function Sidebar({
     },
     {
       title: 'SYSTEM & ADMIN',
-      visible: isAdmin,
       items: [
         { 
           id: 'budget', 
@@ -287,7 +263,7 @@ export default function Sidebar({
           subLabel: '(Master Data)',
           ariaLabel: 'จัดการข้อมูลหลัก จัดการ Master Data ข้อมูลหลัก',
           icon: SlidersHorizontal, 
-          visible: isAdmin 
+          visible: !isOnlinePurchaser 
         },
       ]
     }
@@ -311,15 +287,21 @@ export default function Sidebar({
                 <span className="text-[11px] text-slate-500 font-normal">
                   {isOnlinePurchaser ? 'จัดซื้อออนไลน์' : 'ฝ่ายผลิต & QC'}
                 </span>
-                {currentRole?.department && currentRole.department !== 'ALL' && (
-                  <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md border ${
-                    currentRole.department === 'PD' 
-                      ? 'bg-blue-50 text-blue-700 border-blue-200/70' 
-                      : 'bg-amber-50 text-amber-700 border-amber-200/70'
-                  }`}>
-                    {currentRole.department}
-                  </span>
-                )}
+                {(() => {
+                  const userDepts = getUserDepartments(currentRole || currentUser).filter(d => d !== 'ALL' && d !== '*');
+                  if (userDepts.length === 0) return null;
+                  return userDepts.map(dept => (
+                    <span key={dept} className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md border ${
+                      dept === 'PD' 
+                        ? 'bg-blue-50 text-blue-700 border-blue-200/70' 
+                        : dept === 'QC'
+                        ? 'bg-amber-50 text-amber-700 border-amber-200/70'
+                        : 'bg-slate-50 text-slate-700 border-slate-200/70'
+                    }`}>
+                      {dept}
+                    </span>
+                  ));
+                })()}
               </div>
             </div>
           </div>
@@ -448,61 +430,7 @@ export default function Sidebar({
       </nav>
 
       {/* ── 3. Footer: User Profile & Role Card ── */}
-      <div className="mt-auto pt-3 border-t border-slate-100 shrink-0 space-y-2">
-        {/* ── Budget Access & Management Widget (Bottom Left) ── */}
-        {!canManageBudget ? (
-          <div 
-            id="sidebar-budget-widget-disabled"
-            data-testid="sidebar-budget-disabled"
-            className="p-2.5 bg-slate-50/80 rounded-2xl border border-slate-200/70 text-xs text-slate-400 flex items-center justify-between gap-2 cursor-not-allowed select-none opacity-85"
-            title="สิทธิ์ของคุณไม่สามารถเข้าถึงหรือจัดการงบประมาณได้ (เฉพาะ Asst. Mgr, Plant Mgr และ Admin)"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center shrink-0">
-                <ShieldAlert size={17} strokeWidth={1.75} />
-              </div>
-              <div className="min-w-0 text-left">
-                <div className="font-semibold text-slate-600 text-[11px] truncate">
-                  🛡️ งบประมาณถูกจำกัดสิทธิ์
-                </div>
-                <div className="text-[10px] text-slate-400 truncate">
-                  Restricted Budget Access
-                </div>
-              </div>
-            </div>
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-200/60 text-slate-500 shrink-0">
-              จำกัดสิทธิ์
-            </span>
-          </div>
-        ) : (
-          <button
-            type="button"
-            id="sidebar-budget-widget-btn"
-            data-testid="sidebar-budget-btn"
-            onClick={() => setShowBudgetModal(true)}
-            className="w-full p-2.5 bg-gradient-to-r from-emerald-50/90 via-teal-50/70 to-indigo-50/60 hover:from-emerald-100/90 hover:to-indigo-100/80 rounded-2xl border border-emerald-200/90 hover:border-emerald-300 text-xs text-slate-700 flex items-center justify-between gap-2 transition-all cursor-pointer group shadow-2xs hover:shadow-xs"
-            title="คลิกเพื่อเปิดหน้าต่างจัดการงบประมาณแผนกและปรับยอดงบประมาณ"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shadow-emerald-600/30 group-hover:scale-105 transition-transform shrink-0">
-                <WalletCards size={17} strokeWidth={1.75} />
-              </div>
-              <div className="min-w-0 text-left">
-                <div className="font-bold text-slate-800 text-[11px] group-hover:text-emerald-900 transition-colors truncate">
-                  💼 จัดการงบประมาณแผนก
-                </div>
-                <div className="text-[10px] text-emerald-600 font-medium truncate flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span>ตั้งค่า / เติมงบประมาณ</span>
-                </div>
-              </div>
-            </div>
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0 group-hover:bg-emerald-200 transition-colors">
-              จัดการ
-            </span>
-          </button>
-        )}
-
+      <div className="mt-auto pt-3 border-t border-slate-100 shrink-0">
         {/* User Card with Avatar, Name, Title, and Fast Switcher Button */}
         <div className="p-2.5 border border-slate-200/80 bg-white/70 backdrop-blur-sm hover:bg-slate-50/90 rounded-2xl transition-all flex items-center justify-between gap-2 shadow-xs">
           <button
@@ -526,14 +454,25 @@ export default function Sidebar({
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5"></span>
             </div>
 
-            <div className="overflow-hidden min-w-0">
-              <span className="font-bold text-slate-900 block leading-tight text-xs truncate group-hover:text-indigo-600 transition-colors">
-                {currentRole?.name || 'ผู้ใช้งาน'}
-              </span>
-              <span className="text-[10px] text-slate-500 block leading-tight font-normal truncate mt-0.5">
-                {currentRole?.title || 'Staff'} {currentRole?.department ? `(${currentRole.department})` : ''}
-              </span>
-            </div>
+            {(() => {
+              const userDepts = getUserDepartments(currentRole || currentUser).filter(d => d !== 'ALL' && d !== '*');
+              const rawTitle = currentRole?.title || 'Staff';
+              // If rawTitle already contains parentheses at the end, strip it so we can reformat cleanly
+              const baseTitle = rawTitle.replace(/\s*\([^)]*\)\s*$/, '').trim();
+              const deptText = userDepts.length > 0 ? `(${userDepts.join(', ')})` : '';
+              const displayTitle = deptText ? `${baseTitle} ${deptText}` : rawTitle;
+
+              return (
+                <div className="overflow-hidden min-w-0">
+                  <span className="font-bold text-slate-900 block leading-tight text-xs truncate group-hover:text-indigo-600 transition-colors">
+                    {currentRole?.name || 'ผู้ใช้งาน'}
+                  </span>
+                  <span className="text-[10px] text-slate-500 block leading-tight font-normal truncate mt-0.5" title={displayTitle}>
+                    {displayTitle}
+                  </span>
+                </div>
+              );
+            })()}
           </button>
 
           {/* Fast Switch User Button */}
@@ -596,19 +535,6 @@ export default function Sidebar({
         onClose={() => setShowProfileModal(false)}
         currentRole={currentRole}
         onLogout={onLogout}
-      />
-
-      {/* ── Integrated Budget Management Modal ── */}
-      <BudgetManagementModal
-        isOpen={showBudgetModal}
-        onClose={() => setShowBudgetModal(false)}
-        departments={departments}
-        currentRole={currentRole}
-        currentUser={currentUser}
-        budgetSummary={budgetSummary}
-        budgetTransactions={budgetTransactions}
-        onAdjustBudget={adjustBudget}
-        onRefresh={onRefresh}
       />
     </>
   );

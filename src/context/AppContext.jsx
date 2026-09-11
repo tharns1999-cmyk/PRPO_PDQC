@@ -7,6 +7,7 @@ import { workflowEngine } from '../services/workflowEngine';
 import { authService, DEFAULT_EMPLOYEE_ACCOUNTS } from '../services/authService';
 import { resolveUserPermissions } from '../config/constants';
 import { modalService } from '../services/modalService';
+import { getUserDepartments } from '../utils/permissions';
 
 const AppContext = createContext(null);
 
@@ -35,11 +36,19 @@ export const DEFAULT_USER = DEFAULT_EMPLOYEE_ACCOUNTS[0];
 const getInitialUserSession = () => {
   const existing = authService.getCurrentSession();
   if (existing) {
+    const permissions = typeof existing.role === 'object' ? existing.role : resolveUserPermissions(existing);
     const isAdmin = existing.roleId === 'ADMIN' || existing.level >= 99 || existing.username === 'admin' || existing.role === 'admin';
+    const cleanUserDepts = getUserDepartments(existing);
+    const userDepts = cleanUserDepts.length > 0 ? cleanUserDepts : (existing.department ? [existing.department] : ['PD']);
     return {
       ...existing,
+      departments: userDepts,
+      assignedDepartments: existing.assignedDepartments || userDepts,
+      allowedDepartments: existing.allowedDepartments || userDepts,
+      primaryDepartment: existing.primaryDepartment || userDepts[0] || 'PD',
+      department: existing.department || userDepts[0] || 'PD',
       role: isAdmin ? 'admin' : (typeof existing.role === 'string' ? existing.role : (existing.roleId || 'user').toLowerCase()),
-      rolePermissions: typeof existing.role === 'object' ? existing.role : resolveUserPermissions(existing)
+      rolePermissions: permissions
     };
   }
   // Auto-Login fallback: Default User enriched with permissions
@@ -155,10 +164,17 @@ export function AppProvider({ children }) {
           if (fresh) {
             const permissions = resolveUserPermissions(fresh);
             const isAdmin = fresh.roleId === 'ADMIN' || fresh.level >= 99 || fresh.username === 'admin';
+            const cleanDepts = getUserDepartments(fresh);
+            const userDepts = cleanDepts.length > 0 ? cleanDepts : (fresh.department ? [fresh.department] : ['PD']);
             const updatedSession = { 
               ...prevUser, 
               ...fresh, 
               ...permissions, 
+              departments: userDepts,
+              assignedDepartments: fresh.assignedDepartments || userDepts,
+              allowedDepartments: fresh.allowedDepartments || userDepts,
+              primaryDepartment: fresh.primaryDepartment || userDepts[0] || 'PD',
+              department: fresh.department || userDepts[0] || 'PD',
               role: isAdmin ? 'admin' : (fresh.roleId || 'user').toLowerCase(),
               rolePermissions: permissions 
             };
@@ -324,9 +340,16 @@ export function AppProvider({ children }) {
 
     const permissions = resolveUserPermissions(targetUser);
     const isAdmin = targetUser.roleId === 'ADMIN' || targetUser.level >= 99 || targetUser.username === 'admin';
+    const cleanUserDepts = getUserDepartments(targetUser);
+    const userDepts = cleanUserDepts.length > 0 ? cleanUserDepts : (targetUser.department ? [targetUser.department] : ['PD']);
     const newSession = {
       ...targetUser,
       ...permissions,
+      departments: userDepts,
+      assignedDepartments: targetUser.assignedDepartments || userDepts,
+      allowedDepartments: targetUser.allowedDepartments || userDepts,
+      primaryDepartment: targetUser.primaryDepartment || userDepts[0] || 'PD',
+      department: targetUser.department || userDepts[0] || 'PD',
       role: isAdmin ? 'admin' : (targetUser.roleId || 'user').toLowerCase(),
       rolePermissions: permissions
     };
@@ -495,24 +518,66 @@ export function AppProvider({ children }) {
   }, [currentRole, loadAllData]);
 
   const handleSaveProduct = useCallback(async (product) => {
+    const targetId = String(product.id || '').trim().toLowerCase();
+    const targetCode = String(product.code || '').trim().toLowerCase();
+    setProducts(prev => {
+      const idx = prev.findIndex(p => {
+        const pId = String(p.id || '').trim().toLowerCase();
+        const pCode = String(p.code || '').trim().toLowerCase();
+        return (targetId && pId === targetId) || (targetCode && pCode === targetCode);
+      });
+      if (idx !== -1) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...product };
+        return next;
+      }
+      return [product, ...prev];
+    });
     const saved = await apiService.saveProduct(product, currentRole);
     await loadAllData();
     return saved;
   }, [currentRole, loadAllData]);
 
   const handleDeleteProduct = useCallback(async (productId) => {
+    const targetStr = String(productId || '').trim().toLowerCase();
+    setProducts(prev => prev.filter(p => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || '').trim().toLowerCase();
+      return pId !== targetStr && pCode !== targetStr;
+    }));
     const result = await apiService.deleteProduct(productId, currentRole);
     await loadAllData();
     return result;
   }, [currentRole, loadAllData]);
 
   const handleSaveVendor = useCallback(async (vendor) => {
+    const targetId = String(vendor.id || '').trim().toLowerCase();
+    const targetCode = String(vendor.code || '').trim().toLowerCase();
+    setVendors(prev => {
+      const idx = prev.findIndex(v => {
+        const vId = String(v.id || '').trim().toLowerCase();
+        const vCode = String(v.code || '').trim().toLowerCase();
+        return (targetId && vId === targetId) || (targetCode && vCode === targetCode);
+      });
+      if (idx !== -1) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...vendor };
+        return next;
+      }
+      return [vendor, ...prev];
+    });
     const saved = await apiService.saveVendor(vendor, currentRole);
     await loadAllData();
     return saved;
   }, [currentRole, loadAllData]);
 
   const handleDeleteVendor = useCallback(async (vendorId) => {
+    const targetStr = String(vendorId || '').trim().toLowerCase();
+    setVendors(prev => prev.filter(v => {
+      const vId = String(v.id || '').trim().toLowerCase();
+      const vCode = String(v.code || '').trim().toLowerCase();
+      return vId !== targetStr && vCode !== targetStr;
+    }));
     const result = await apiService.deleteVendor(vendorId, currentRole);
     await loadAllData();
     return result;

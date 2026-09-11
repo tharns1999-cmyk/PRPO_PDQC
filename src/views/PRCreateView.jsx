@@ -95,10 +95,14 @@ export default function PRCreateView({
     return lastReject?.note || null;
   }, [editingPR]);
 
-  // Filter products by the active department
+  // Filter products by the active department (Exclude Deactivated/Inactive products)
   const availableProducts = useMemo(() => {
     return products
-      .filter(p => (p.category || p.department) === department)
+      .filter(p => {
+        const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
+        if (isInactive) return false;
+        return (p.category || p.department) === department;
+      })
       .sort((a, b) => (a.code || '').localeCompare(b.code || ''));
   }, [products, department]);
 
@@ -151,7 +155,10 @@ export default function PRCreateView({
         source: 'FACTORY'
       }];
     }
-    const initialList = products.filter(p => p.category === initialDept);
+    const initialList = products.filter(p => {
+      const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
+      return !isInactive && (p.category === initialDept || p.department === initialDept);
+    });
     return [{ 
       productId: initialList[0]?.id || '', 
       qty: 1, 

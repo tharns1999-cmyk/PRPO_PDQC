@@ -618,7 +618,7 @@ export const apiService = {
     }
 
     try {
-      const url = isUpdate ? `http://localhost:3001/api/products/${product.id}` : 'http://localhost:3001/api/products';
+      const url = isUpdate ? `http://localhost:3001/api/products/${encodeURIComponent(product.id)}` : 'http://localhost:3001/api/products';
       const method = isUpdate ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
@@ -627,7 +627,15 @@ export const apiService = {
       });
       if (res.ok) {
         const saved = await res.json();
-        const updatedList = isUpdate ? products.map(p => p.id === product.id ? saved : p) : [saved, ...products];
+        const targetId = String(product.id || '').trim().toLowerCase();
+        const targetCode = String(product.code || '').trim().toLowerCase();
+        const updatedList = isUpdate 
+          ? products.map(p => {
+              const pId = String(p.id || '').trim().toLowerCase();
+              const pCode = String(p.code || '').trim().toLowerCase();
+              return (pId === targetId || pCode === targetCode) ? saved : p;
+            }) 
+          : [saved, ...products];
         storageService.saveProducts(updatedList);
         
         auditService.logAction({
@@ -646,8 +654,15 @@ export const apiService = {
     }
 
     if (isUpdate) {
-      const idx = products.findIndex(p => p.id === product.id);
+      const targetId = String(product.id || '').trim().toLowerCase();
+      const targetCode = String(product.code || '').trim().toLowerCase();
+      const idx = products.findIndex(p => {
+        const pId = String(p.id || '').trim().toLowerCase();
+        const pCode = String(p.code || '').trim().toLowerCase();
+        return (targetId && pId === targetId) || (targetCode && pCode === targetCode);
+      });
       if (idx !== -1) products[idx] = { ...products[idx], ...product };
+      else products.unshift(product);
     } else {
       products.unshift(product);
     }
@@ -666,11 +681,28 @@ export const apiService = {
   },
 
   async deleteProduct(productId, user = null) {
+    const targetStr = String(productId || '').trim().toLowerCase();
     try {
-      await fetch(`http://localhost:3001/api/products/${productId}`, { method: 'DELETE' });
-    } catch (e) {}
-    const products = (await this.getProducts()).filter(p => p.id !== productId && p.code !== productId);
-    storageService.saveProducts(products);
+      await fetch(`http://localhost:3001/api/products/${encodeURIComponent(productId)}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('[apiService] Backend deleteProduct offline or failed:', e);
+    }
+    const currentProducts = storageService.getProducts();
+    const filtered = currentProducts.filter(p => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || '').trim().toLowerCase();
+      return pId !== targetStr && pCode !== targetStr;
+    });
+    storageService.saveProducts(filtered);
+
+    auditService.logAction({
+      action: 'PRODUCT_DELETED',
+      actor: typeof user === 'object' ? (user?.name || user?.username || 'Admin') : (user || 'Admin / Master Manager'),
+      docNo: productId,
+      docType: 'PRODUCT',
+      details: `ลบรายการสินค้า "${productId}" ออกจากระบบ`
+    });
+
     return true;
   },
 
@@ -691,7 +723,7 @@ export const apiService = {
     }
 
     try {
-      const url = isUpdate ? `http://localhost:3001/api/vendors/${vendor.id}` : 'http://localhost:3001/api/vendors';
+      const url = isUpdate ? `http://localhost:3001/api/vendors/${encodeURIComponent(vendor.id)}` : 'http://localhost:3001/api/vendors';
       const method = isUpdate ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
@@ -700,7 +732,15 @@ export const apiService = {
       });
       if (res.ok) {
         const saved = await res.json();
-        const updatedList = isUpdate ? vendors.map(v => v.id === vendor.id ? saved : v) : [saved, ...vendors];
+        const targetId = String(vendor.id || '').trim().toLowerCase();
+        const targetCode = String(vendor.code || '').trim().toLowerCase();
+        const updatedList = isUpdate 
+          ? vendors.map(v => {
+              const vId = String(v.id || '').trim().toLowerCase();
+              const vCode = String(v.code || '').trim().toLowerCase();
+              return (vId === targetId || vCode === targetCode) ? saved : v;
+            }) 
+          : [saved, ...vendors];
         storageService.saveVendors(updatedList);
         
         auditService.logAction({
@@ -719,8 +759,15 @@ export const apiService = {
     }
 
     if (isUpdate) {
-      const idx = vendors.findIndex(v => v.id === vendor.id);
+      const targetId = String(vendor.id || '').trim().toLowerCase();
+      const targetCode = String(vendor.code || '').trim().toLowerCase();
+      const idx = vendors.findIndex(v => {
+        const vId = String(v.id || '').trim().toLowerCase();
+        const vCode = String(v.code || '').trim().toLowerCase();
+        return (targetId && vId === targetId) || (targetCode && vCode === targetCode);
+      });
       if (idx !== -1) vendors[idx] = vendor;
+      else vendors.unshift(vendor);
     } else {
       vendors.unshift(vendor);
     }
@@ -739,11 +786,28 @@ export const apiService = {
   },
 
   async deleteVendor(vendorId, user = null) {
+    const targetStr = String(vendorId || '').trim().toLowerCase();
     try {
-      await fetch(`http://localhost:3001/api/vendors/${vendorId}`, { method: 'DELETE' });
-    } catch (e) {}
-    const vendors = (await this.getVendors()).filter(v => v.id !== vendorId);
-    storageService.saveVendors(vendors);
+      await fetch(`http://localhost:3001/api/vendors/${encodeURIComponent(vendorId)}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('[apiService] Backend deleteVendor offline or failed:', e);
+    }
+    const currentVendors = storageService.getVendors();
+    const filtered = currentVendors.filter(v => {
+      const vId = String(v.id || '').trim().toLowerCase();
+      const vCode = String(v.code || '').trim().toLowerCase();
+      return vId !== targetStr && vCode !== targetStr;
+    });
+    storageService.saveVendors(filtered);
+
+    auditService.logAction({
+      action: 'VENDOR_DELETED',
+      actor: typeof user === 'object' ? (user?.name || user?.username || 'Admin') : (user || 'Admin / Master Manager'),
+      docNo: vendorId,
+      docType: 'VENDOR',
+      details: `ลบข้อมูลผู้จัดจำหน่าย "${vendorId}" ออกจากระบบ`
+    });
+
     return true;
   },
 

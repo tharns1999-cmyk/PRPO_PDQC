@@ -1,14 +1,5 @@
 [
   {
-    "code": "  itm-001  ",
-    "name": "ถุงมือยางใหม่",
-    "category": "PD",
-    "price": 15,
-    "stockUnit": "ชิ้น",
-    "department": "PD",
-    "id": "PROD-PD-1789017724471"
-  },
-  {
     "id": "PROD-PD-001",
     "code": "PD-OIL-068",
     "name": "น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)",
@@ -18,14 +9,16 @@
     "conversionRate": 200,
     "unit": "ลิตร",
     "price": 14500,
-    "stockBalance": 2600,
+    "stockBalance": 0,
     "reorderPoint": 1000,
     "leadTimeDays": 5,
     "supplierId": null,
     "locationId": "LOC-PD-001",
     "locationName": "ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)",
     "department": "PD",
-    "remark": ""
+    "remark": "",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-PD-002",
@@ -37,13 +30,15 @@
     "conversionRate": 12,
     "unit": "กระป๋อง",
     "price": 9600,
-    "stockBalance": 25,
+    "stockBalance": 0,
     "reorderPoint": 10,
     "leadTimeDays": 3,
     "supplierId": null,
     "locationId": "LOC-PD-001",
     "locationName": "ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)",
-    "department": "PD"
+    "department": "PD",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-PD-003",
@@ -55,13 +50,15 @@
     "conversionRate": 1,
     "unit": "เส้น",
     "price": 620,
-    "stockBalance": 6,
+    "stockBalance": 0,
     "reorderPoint": 8,
     "leadTimeDays": 7,
     "supplierId": null,
     "locationId": "LOC-PD-002",
     "locationName": "ชั้นวาง A-02 (อะไหล่เครื่องจักร & สายพาน)",
-    "department": "PD"
+    "department": "PD",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-PD-004",
@@ -73,31 +70,15 @@
     "conversionRate": 100,
     "unit": "ชิ้น",
     "price": 320,
-    "stockBalance": 2000,
+    "stockBalance": 0,
     "reorderPoint": 750,
     "leadTimeDays": 3,
     "supplierId": null,
     "locationId": "LOC-PD-003",
     "locationName": "ตู้เก็บอุปกรณ์ความปลอดภัย (PPE)",
-    "department": "PD"
-  },
-  {
-    "id": "PROD-PD-005",
-    "code": "PD-CLN-IND",
-    "name": "น้ำยาทำความสะอาดคราบน้ำมันเครื่องจักร (Heavy Duty Degreaser Cleaner)",
-    "category": "PD",
-    "purchaseUnit": "แกลลอน (20L)",
-    "stockUnit": "ลิตร",
-    "conversionRate": 20,
-    "unit": "ลิตร",
-    "price": 1850,
-    "stockBalance": 360,
-    "reorderPoint": 120,
-    "leadTimeDays": 4,
-    "supplierId": null,
-    "locationId": "LOC-PD-001",
-    "locationName": "ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)",
-    "department": "PD"
+    "department": "PD",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-PD-006",
@@ -109,13 +90,15 @@
     "conversionRate": 10,
     "unit": "ชิ้น",
     "price": 4200,
-    "stockBalance": 30,
+    "stockBalance": 0,
     "reorderPoint": 12,
     "leadTimeDays": 5,
     "supplierId": null,
     "locationId": "LOC-PD-002",
     "locationName": "ชั้นวาง A-02 (อะไหล่เครื่องจักร & สายพาน)",
-    "department": "PD"
+    "department": "PD",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-PD-007",
@@ -127,13 +110,15 @@
     "conversionRate": 1,
     "unit": "ม้วน",
     "price": 980,
-    "stockBalance": 20,
+    "stockBalance": 0,
     "reorderPoint": 8,
     "leadTimeDays": 3,
     "supplierId": null,
     "locationId": "LOC-PD-004",
     "locationName": "ห้องแพ็คเกจจิ้ง",
-    "department": "PD"
+    "department": "PD",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-PD-008",
@@ -145,13 +130,15 @@
     "conversionRate": 6,
     "unit": "ม้วน",
     "price": 1100,
-    "stockBalance": 60,
+    "stockBalance": 0,
     "reorderPoint": 25,
     "leadTimeDays": 2,
     "supplierId": null,
     "locationId": "LOC-PD-004",
     "locationName": "ห้องแพ็คเกจจิ้ง",
-    "department": "PD"
+    "department": "PD",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-PD-009",
@@ -163,13 +150,15 @@
     "conversionRate": 1,
     "unit": "ตลับ",
     "price": 280,
-    "stockBalance": 22,
+    "stockBalance": 0,
     "reorderPoint": 10,
     "leadTimeDays": 5,
     "supplierId": null,
     "locationId": "LOC-PD-002",
     "locationName": "ชั้นวาง A-02 (อะไหล่เครื่องจักร & สายพาน)",
-    "department": "PD"
+    "department": "PD",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-PD-010",
@@ -181,13 +170,15 @@
     "conversionRate": 20,
     "unit": "ชิ้น",
     "price": 480,
-    "stockBalance": 700,
+    "stockBalance": 0,
     "reorderPoint": 300,
     "leadTimeDays": 3,
     "supplierId": null,
     "locationId": "LOC-PD-003",
     "locationName": "ตู้เก็บอุปกรณ์ความปลอดภัย (PPE)",
-    "department": "PD"
+    "department": "PD",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-QC-001",
@@ -205,7 +196,9 @@
     "supplierId": null,
     "locationId": "LOC-QC-001",
     "locationName": "ตู้เก็บสารเคมีทดสอบ (Lab 1)",
-    "department": "QC"
+    "department": "QC",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-QC-002",
@@ -223,7 +216,9 @@
     "supplierId": null,
     "locationId": "LOC-QC-001",
     "locationName": "ตู้เก็บสารเคมีทดสอบ (Lab 1)",
-    "department": "QC"
+    "department": "QC",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-QC-003",
@@ -241,7 +236,9 @@
     "supplierId": null,
     "locationId": "LOC-QC-001",
     "locationName": "ตู้เก็บสารเคมีทดสอบ (Lab 1)",
-    "department": "QC"
+    "department": "QC",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-QC-004",
@@ -259,7 +256,9 @@
     "supplierId": null,
     "locationId": "LOC-QC-002",
     "locationName": "ชั้นวางอาหารเลี้ยงเชื้อ (Media Shelf B)",
-    "department": "QC"
+    "department": "QC",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-QC-005",
@@ -277,7 +276,9 @@
     "supplierId": null,
     "locationId": "LOC-QC-002",
     "locationName": "ชั้นวางอาหารเลี้ยงเชื้อ (Media Shelf B)",
-    "department": "QC"
+    "department": "QC",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-QC-006",
@@ -295,7 +296,9 @@
     "supplierId": null,
     "locationId": "LOC-QC-003",
     "locationName": "ตู้ควบคุมอุณหภูมิ 4°C (Cold Storage)",
-    "department": "QC"
+    "department": "QC",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-QC-007",
@@ -313,7 +316,9 @@
     "supplierId": null,
     "locationId": "LOC-QC-001",
     "locationName": "ตู้เก็บสารเคมีทดสอบ (Lab 1)",
-    "department": "QC"
+    "department": "QC",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-QC-008",
@@ -331,7 +336,9 @@
     "supplierId": null,
     "locationId": "LOC-QC-001",
     "locationName": "ตู้เก็บสารเคมีทดสอบ (Lab 1)",
-    "department": "QC"
+    "department": "QC",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-QC-009",
@@ -349,7 +356,9 @@
     "supplierId": null,
     "locationId": "LOC-QC-001",
     "locationName": "ตู้เก็บสารเคมีทดสอบ (Lab 1)",
-    "department": "QC"
+    "department": "QC",
+    "isActive": false,
+    "status": "INACTIVE"
   },
   {
     "id": "PROD-QC-010",
@@ -367,6 +376,8 @@
     "supplierId": null,
     "locationId": "LOC-QC-001",
     "locationName": "ตู้เก็บสารเคมีทดสอบ (Lab 1)",
-    "department": "QC"
+    "department": "QC",
+    "isActive": false,
+    "status": "INACTIVE"
   }
 ]

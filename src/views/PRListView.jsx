@@ -10,7 +10,7 @@ import {
   CheckCircle2, Building2, Tag, ShoppingCart, Pencil, ArrowRight, 
   Calendar, ChevronDown, Eye, WalletCards 
 } from 'lucide-react';
-import { hasDepartmentAccess } from '../utils/permissions';
+import { hasDepartmentAccess, getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
 import { storageService } from '../services/storageService';
 
 const PR_TABS = [
@@ -161,18 +161,36 @@ export default function PRListView({
     return (list || []).filter(d => d.isActive !== false);
   }, [rawDepartments]);
 
+  const userDepts = getUserDepartments(currentRole);
+  const canSeeAll = Boolean(
+    currentRole?.canViewAllDepts ||
+    currentRole?.id === 'ADMIN' ||
+    currentRole?.roleId === 'ADMIN' ||
+    currentRole?.role === 'admin' ||
+    Number(currentRole?.level) >= 99 ||
+    userDepts.includes('ALL') ||
+    userDepts.includes('*')
+  );
+
+  const visibleFilterDepts = useMemo(() => {
+    if (canSeeAll) return deptList;
+    return deptList.filter(d => userDepts.some(ud => ud.toUpperCase() === d.code?.toUpperCase()));
+  }, [deptList, canSeeAll, userDepts]);
+
+  const hasMultipleDepts = canSeeAll || visibleFilterDepts.length > 1;
+
   const [selectedPR, setSelectedPR] = useState(null);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [selectedPeriod, setSelectedPeriod] = useState('current_month');
-  const [deptFilter, setDeptFilter] = useState(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
+  const [deptFilter, setDeptFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
   // Sync department filter whenever user switches role via Fast Switcher
   useEffect(() => {
-    setDeptFilter(currentRole.canViewAllDepts ? 'ALL' : currentRole.department);
-  }, [currentRole]);
+    setDeptFilter('ALL');
+  }, [currentRole?.id, currentRole?.username, currentRole?.department]);
 
   // Auto-reset page when filter, period or search changes
   useEffect(() => {
@@ -182,14 +200,14 @@ export default function PRListView({
   // Department-based access check
   const accessiblePRs = useMemo(() => {
     return (prs || []).filter(pr => {
-      return hasDepartmentAccess(currentRole, pr.department);
+      return canAccessDepartmentData(currentRole, pr.department);
     });
   }, [prs, currentRole]);
 
   // Scoped PRs by Department and Period
   const scopedPRs = useMemo(() => {
     return accessiblePRs.filter(pr => {
-      const matchesDept = deptFilter === 'ALL' || pr.department === deptFilter;
+      const matchesDept = deptFilter === 'ALL' || pr.department?.toUpperCase() === deptFilter.toUpperCase();
       const matchesTime = matchesPeriod(pr, selectedPeriod);
       return matchesDept && matchesTime;
     });
@@ -440,15 +458,17 @@ export default function PRListView({
               </div>
             </div>
 
-            {currentRole?.canViewAllDepts && (
+            {hasMultipleDepts && (
               <div className="relative">
                 <select
                   value={deptFilter}
                   onChange={e => setDeptFilter(e.target.value)}
                   className="h-10 text-sm px-3.5 rounded-xl border border-slate-200 bg-white font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer shadow-2xs"
                 >
-                  <option value="ALL">ทุกแผนก (All Depts)</option>
-                  {deptList.map(d => (
+                  <option value="ALL">
+                    {canSeeAll ? 'ทุกแผนก (All Depts)' : (visibleFilterDepts.length > 1 ? `ทุกแผนก (${visibleFilterDepts.map(d => d.code).join(', ')})` : 'ทุกแผนก')}
+                  </option>
+                  {visibleFilterDepts.map(d => (
                     <option key={d.code} value={d.code}>
                       {d.name} ({d.code})
                     </option>

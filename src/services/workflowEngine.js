@@ -2484,7 +2484,8 @@ export const workflowEngine = {
       actor: user.name
     });
 
-    if (newBal <= (product.reorderPoint || 0)) {
+    const isInactive = product.isActive === false || String(product.status || '').toUpperCase() === 'INACTIVE';
+    if (!isInactive && newBal <= (product.reorderPoint || 0)) {
       notificationService.dispatch({
         type: 'LOW_STOCK_ROP',
         title: '⚠️ แจ้งเตือน: สต๊อกสินค้าแตะจุดสั่งซื้อ (ROP Alert)',

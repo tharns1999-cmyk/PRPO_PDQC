@@ -60,6 +60,10 @@
     "displayName": "คุณสมชาย (Asst. Mgr)",
     "primaryDepartment": "PD",
     "department": "PD",
+    "departments": [
+      "PD",
+      "QC"
+    ],
     "allowedDepartments": [
       "PD",
       "QC"

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Warehouse, AlertTriangle, PlusCircle, History, Search, PackagePlus, 
   BarChart3, TrendingUp, Edit3, X, SlidersHorizontal, MapPin, 
-  FileText, ArrowUpRight, ArrowDownRight, Layers, Sparkles
+  FileText, ArrowUpRight, ArrowDownRight, Layers, Sparkles, Archive
 } from 'lucide-react';
 import StockMovementTable from '../components/stock/StockMovementTable';
 import ManualStockInModal from '../components/stock/ManualStockInModal';
@@ -12,6 +12,7 @@ import EmptyState from '../components/common/EmptyState';
 import { storageService } from '../services/storageService';
 import { modalService } from '../services/modalService';
 import Pagination from '../components/common/Pagination';
+import { getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
 
 export default function StockCardView({ 
   products = [], 
@@ -29,9 +30,27 @@ export default function StockCardView({
     return (list || []).filter(d => d.isActive !== false);
   }, [propDepartments]);
 
+  const userDepts = getUserDepartments(currentRole);
+  const canSeeAll = Boolean(
+    currentRole?.canViewAllDepts ||
+    currentRole?.id === 'ADMIN' ||
+    currentRole?.roleId === 'ADMIN' ||
+    currentRole?.role === 'admin' ||
+    Number(currentRole?.level) >= 99 ||
+    userDepts.includes('ALL') ||
+    userDepts.includes('*')
+  );
+
+  const visibleFilterDepts = useMemo(() => {
+    if (canSeeAll) return deptList;
+    return deptList.filter(d => userDepts.some(ud => ud.toUpperCase() === d.code?.toUpperCase()));
+  }, [deptList, canSeeAll, userDepts]);
+
+  const hasMultipleDepts = canSeeAll || visibleFilterDepts.length > 1;
+
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [remarkProduct, setRemarkProduct] = useState(null);
-  const [categoryFilter, setCategoryFilter] = useState(currentRole?.canViewAllDepts ? 'ALL' : (currentRole?.department || 'PD'));
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [selectedLocation, setSelectedLocation] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('stock-list');
@@ -41,18 +60,19 @@ export default function StockCardView({
   const [pageSize, setPageSize] = useState(10);
   const [ropPage, setRopPage] = useState(1);
   const [ropPageSize, setRopPageSize] = useState(10);
+  const [showDiscontinued, setShowDiscontinued] = useState(false);
 
   const isOnlinePurchaser = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER';
 
   useEffect(() => {
-    setCategoryFilter(currentRole?.canViewAllDepts ? 'ALL' : (currentRole?.department || 'PD'));
-  }, [currentRole]);
+    setCategoryFilter('ALL');
+  }, [currentRole?.id, currentRole?.username, currentRole?.department]);
 
   // Auto-reset page on filter or search changes
   useEffect(() => {
     setCurrentPage(1);
     setRopPage(1);
-  }, [categoryFilter, selectedLocation, searchQuery, activeTab]);
+  }, [categoryFilter, selectedLocation, searchQuery, activeTab, showDiscontinued]);
 
   // Available unique locations from Master Data & Products
   const availableLocations = useMemo(() => {
@@ -67,17 +87,36 @@ export default function StockCardView({
   const viewableProducts = useMemo(() => {
     return products.filter(p => {
       const pCat = p.category || p.department || 'PD';
-      return currentRole.canViewAllDepts || pCat === currentRole.department;
+      return canAccessDepartmentData(currentRole, pCat);
     });
   }, [products, currentRole]);
 
-  // Filter & Priority Sort with Location Filter
+  // Count of discontinued products with zero stock
+  const discontinuedCount = useMemo(() => {
+    return viewableProducts.filter(p => {
+      const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
+      return isInactive && Number(p.stockBalance || 0) <= 0;
+    }).length;
+  }, [viewableProducts]);
+
+  // Filter & Priority Sort with Location Filter & Inactive Lifecycle Guard
   const sortedAndFilteredProducts = useMemo(() => {
     return viewableProducts
       .filter(p => {
         const pCat = p.category || p.department || 'PD';
         const matchesCat = categoryFilter === 'ALL' || pCat === categoryFilter;
         const matchesLocation = selectedLocation === 'ALL' || p.locationName === selectedLocation;
+
+        const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
+        const stock = Number(p.stockBalance || 0);
+
+        // Directive 1:
+        // - Inactive with stock > 0: remain visible in stock table so user can issue them out
+        // - Inactive with stock <= 0: hidden by default, shown only if showDiscontinued === true
+        if (isInactive && stock <= 0 && !showDiscontinued) {
+          return false;
+        }
+
         const q = searchQuery.trim().toLowerCase();
         const matchesSearch = !q || 
           (p.name && p.name.toLowerCase().includes(q)) || 
@@ -87,15 +126,17 @@ export default function StockCardView({
         return matchesCat && matchesLocation && matchesSearch;
       })
       .sort((a, b) => {
-        const aLow = a.stockBalance <= a.reorderPoint ? 1 : 0;
-        const bLow = b.stockBalance <= b.reorderPoint ? 1 : 0;
+        const aInactive = a.isActive === false || String(a.status || '').toUpperCase() === 'INACTIVE';
+        const bInactive = b.isActive === false || String(b.status || '').toUpperCase() === 'INACTIVE';
+        const aLow = !aInactive && a.stockBalance <= a.reorderPoint ? 1 : 0;
+        const bLow = !bInactive && b.stockBalance <= b.reorderPoint ? 1 : 0;
         if (aLow !== bLow) return bLow - aLow;
         const aRatio = a.reorderPoint > 0 ? (a.stockBalance / a.reorderPoint) : 999;
         const bRatio = b.reorderPoint > 0 ? (b.stockBalance / b.reorderPoint) : 999;
         if (aRatio !== bRatio) return aRatio - bRatio;
         return (a.code || '').localeCompare(b.code || '');
       });
-  }, [viewableProducts, categoryFilter, selectedLocation, searchQuery]);
+  }, [viewableProducts, categoryFilter, selectedLocation, searchQuery, showDiscontinued]);
 
   // Pagination slicing
   const totalPages = Math.ceil(sortedAndFilteredProducts.length / pageSize) || 1;
@@ -104,18 +145,20 @@ export default function StockCardView({
     return sortedAndFilteredProducts.slice(start, start + pageSize);
   }, [sortedAndFilteredProducts, currentPage, pageSize]);
 
-  // Count of items requiring reorder
+  // Count of items requiring reorder (Directive 2: ONLY active products!)
   const lowStockCount = useMemo(() => {
-    return viewableProducts.filter(p => p.stockBalance <= p.reorderPoint).length;
+    return viewableProducts.filter(p => {
+      const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
+      if (isInactive) return false;
+      return p.stockBalance <= p.reorderPoint;
+    }).length;
   }, [viewableProducts]);
 
-  // ROP Analytics Computation
+  // ROP Analytics Computation (Directive 2: Exclude inactive products!)
   const ropAnalytics = useMemo(() => {
-    const viewable = currentRole.canViewAllDepts
-      ? products
-      : products.filter(p => p.category === currentRole.department);
+    const activeViewable = viewableProducts.filter(p => p.isActive !== false && String(p.status || '').toUpperCase() !== 'INACTIVE');
 
-    return viewable.map(prod => {
+    return activeViewable.map(prod => {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
@@ -240,7 +283,7 @@ export default function StockCardView({
           {onQuickPR && !isOnlinePurchaser && (
             <button
               onClick={() => {
-                const firstLow = sortedAndFilteredProducts.find(p => p.stockBalance <= p.reorderPoint);
+                const firstLow = sortedAndFilteredProducts.find(p => (p.isActive !== false && String(p.status || '').toUpperCase() !== 'INACTIVE') && p.stockBalance <= p.reorderPoint);
                 if (firstLow) onQuickPR(firstLow);
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-900/90 hover:bg-amber-950 active:scale-[0.98] text-amber-50 text-xs font-medium rounded-full transition-all cursor-pointer shrink-0 shadow-2xs self-end sm:self-auto"
@@ -295,9 +338,10 @@ export default function StockCardView({
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 lg:max-w-3xl justify-end flex-wrap">
             
             {/* Department Segmented Filter */}
-            {currentRole.canViewAllDepts ? (
+            {hasMultipleDepts ? (
               <div className="flex items-center p-1 bg-slate-100/70 rounded-xl shrink-0 border border-slate-200/50">
                 <button
+                  type="button"
                   onClick={() => setCategoryFilter('ALL')}
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                     categoryFilter === 'ALL' 
@@ -305,11 +349,12 @@ export default function StockCardView({
                       : 'text-slate-500 hover:text-slate-900'
                   }`}
                 >
-                  ทั้งหมด
+                  {canSeeAll ? 'ทั้งหมด' : (visibleFilterDepts.length > 1 ? `ทั้งหมด (${visibleFilterDepts.map(d => d.code).join(', ')})` : 'ทั้งหมด')}
                 </button>
-                {deptList.map(d => (
+                {visibleFilterDepts.map(d => (
                   <button
                     key={d.code}
+                    type="button"
                     onClick={() => setCategoryFilter(d.code)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                       categoryFilter === d.code 
@@ -325,7 +370,7 @@ export default function StockCardView({
               <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-xl border border-slate-200/60 shrink-0 text-xs">
                 <span className="text-slate-400 font-medium">แผนก:</span>
                 <span className="font-mono font-semibold text-slate-800">
-                  {currentRole.department}
+                  {visibleFilterDepts[0]?.name || currentRole?.department || 'PD'} ({visibleFilterDepts[0]?.code || currentRole?.department || 'PD'})
                 </span>
               </div>
             )}
@@ -348,6 +393,28 @@ export default function StockCardView({
                 </svg>
               </div>
             </div>
+
+            {/* Directive 1: Filter Toggle for Discontinued Items with zero stock */}
+            <button
+              type="button"
+              onClick={() => setShowDiscontinued(prev => !prev)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all cursor-pointer shrink-0 ${
+                showDiscontinued
+                  ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                  : 'bg-slate-50 text-slate-600 border-slate-200/70 hover:bg-slate-100/80'
+              }`}
+              title="สลับการแสดงผลรายการสินค้าที่ปิดใช้งานแล้วและสต็อกหมด (0)"
+            >
+              <Archive className="w-3.5 h-3.5" />
+              <span>แสดงที่ปิดใช้งานแล้ว</span>
+              {discontinuedCount > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  showDiscontinued ? 'bg-slate-700 text-slate-200' : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {discontinuedCount}
+                </span>
+              )}
+            </button>
 
             {/* Search Input with ⌘K Badge style */}
             <div className="relative flex-1 sm:w-60 md:w-64 min-w-[180px]">
@@ -406,11 +473,13 @@ export default function StockCardView({
                   </tr>
                 ) : (
                   paginatedProducts.map(prod => {
-                    const isLow = prod.stockBalance <= prod.reorderPoint;
+                    const isInactive = prod.isActive === false || String(prod.status || '').toUpperCase() === 'INACTIVE';
+                    const stock = Number(prod.stockBalance || 0);
+                    const isLow = !isInactive && stock <= prod.reorderPoint;
                     const sUnit = prod.stockUnit || prod.unit || 'ชิ้น';
                     const pUnit = prod.purchaseUnit || prod.unit || sUnit;
                     const rate = Number(prod.conversionRate) > 0 ? Number(prod.conversionRate) : 1;
-                    const purchaseEquiv = rate > 1 ? (Number(prod.stockBalance || 0) / rate) : null;
+                    const purchaseEquiv = rate > 1 ? (stock / rate) : null;
                     const purchaseEquivStr = purchaseEquiv !== null
                       ? (purchaseEquiv % 1 === 0 ? purchaseEquiv.toLocaleString() : purchaseEquiv.toFixed(1).replace(/\.0$/, ''))
                       : null;
@@ -420,13 +489,19 @@ export default function StockCardView({
                     return (
                       <tr 
                         key={prod.id} 
-                        className={`hover:bg-slate-50/70 transition-colors duration-100 ${
-                          isLow ? 'bg-amber-50/15' : ''
+                        className={`transition-colors duration-100 ${
+                          isInactive
+                            ? (stock > 0 ? 'bg-amber-50/20 hover:bg-amber-50/30' : 'opacity-60 bg-slate-50/50 hover:bg-slate-100/60')
+                            : (isLow ? 'bg-amber-50/15 hover:bg-slate-50/70' : 'hover:bg-slate-50/70')
                         }`}
                       >
                         {/* รหัสสินค้า (Developer Tag Style) */}
                         <td className="py-3 pl-5 whitespace-nowrap">
-                          <span className="font-mono text-xs text-slate-700 bg-slate-100/90 px-2 py-0.5 rounded-md border border-slate-200/50">
+                          <span className={`font-mono text-xs px-2 py-0.5 rounded-md border ${
+                            isInactive
+                              ? 'text-slate-500 bg-slate-100 border-slate-200/60 line-through decoration-slate-300'
+                              : 'text-slate-700 bg-slate-100/90 border-slate-200/50'
+                          }`}>
                             {prod.code}
                           </span>
                         </td>
@@ -477,9 +552,11 @@ export default function StockCardView({
                         {/* คงเหลือปัจจุบัน (Right aligned, monospace numbers) */}
                         <td className="py-3 px-4 text-right whitespace-nowrap">
                           <div className={`font-mono text-xs sm:text-sm font-semibold tabular-nums ${
-                            isLow ? 'text-amber-900' : 'text-slate-900'
+                            isInactive 
+                              ? 'text-slate-800' 
+                              : (isLow ? 'text-amber-900' : 'text-slate-900')
                           }`}>
-                            {Number(prod.stockBalance || 0).toLocaleString()}
+                            {stock.toLocaleString()}
                             <span className="font-sans font-normal text-slate-400 text-xs ml-1">
                               {sUnit}
                             </span>
@@ -501,7 +578,19 @@ export default function StockCardView({
 
                         {/* สถานะ (Soft Dot Badge สไตล์ Minimal) */}
                         <td className="py-3 px-4 text-center whitespace-nowrap">
-                          {isLow ? (
+                          {isInactive ? (
+                            stock > 0 ? (
+                              <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-0.5 rounded-full" title="สินค้านี้ยกเลิกใช้งานแล้ว แต่ยังมีสต็อกคงเหลือ ให้เบิกใช้งานจนหมด">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                ยกเลิกใช้งาน / รอเคลียร์สต็อก
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200 px-2.5 py-0.5 rounded-full">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                                ปิดใช้งานแล้ว
+                              </span>
+                            )
+                          ) : isLow ? (
                             <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 font-medium bg-amber-50/80 px-2.5 py-0.5 rounded-full border border-amber-200/60">
                               <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                               ถึงจุด ROP
@@ -517,8 +606,8 @@ export default function StockCardView({
                         {/* จัดการ (Actions Group) */}
                         <td className="py-3 pr-5 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center gap-1">
-                            {/* Quick PR Order Button */}
-                            {isLow && onQuickPR && !isOnlinePurchaser && (
+                            {/* Quick PR Order Button - NEVER shown for inactive/discontinued products */}
+                            {!isInactive && isLow && onQuickPR && !isOnlinePurchaser && (
                               <button
                                 type="button"
                                 onClick={() => onQuickPR(prod)}

@@ -9,8 +9,10 @@ import {
   Building2, BarChart3, History,
   Edit2, Save, X, ChevronLeft, ChevronRight, ChevronDown,
   ArrowUpRight, ArrowDownRight, Minus,
-  CheckCircle2, AlertTriangle, Layers, Calendar
+  CheckCircle2, AlertTriangle, Layers, Calendar, Plus, RotateCw
 } from 'lucide-react';
+import BudgetManagementModal from '../components/budget/BudgetManagementModal';
+import { useAppContext } from '../context/AppContext';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
@@ -25,9 +27,11 @@ const RANGE_OPTIONS = [
 ];
 
 export default function BudgetView({ budgetSummary, currentRole, currentUser, prs = [], pos = [], departments = [], onRefresh }) {
+  const context = useAppContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState('overview');
   const [timeRange, setTimeRange] = useState(6);
+  const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
 
   const deptList = useMemo(() => {
     return (departments && departments.length > 0) ? departments : storageService.getDepartments();
@@ -58,6 +62,36 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     const allowed = Array.isArray(u.allowedDepartments) ? u.allowedDepartments : [];
     if (assigned.includes('ALL') || assigned.includes('*') || allowed.includes('ALL') || allowed.includes('*')) return true;
     if (u.department === 'ALL' || u.primaryDepartment === 'ALL') return true;
+
+    return false;
+  }, [currentUser, currentRole]);
+
+  // RBAC Permission: Only Admin or Plant Manager (or Universal ALL privilege) can manage/adjust budget
+  const canManageBudget = useMemo(() => {
+    const u = currentUser || currentRole;
+    if (!u) return false;
+    const roleId = String(u.roleId || u.id || '').toUpperCase();
+    const positionKey = String(u.positionKey || '').toUpperCase();
+    const roleStr = String(u.role || '').toLowerCase();
+    const level = Number(u.level || 0);
+
+    // Online Purchaser has no budget management access
+    if (roleId === 'ONLINE_PURCHASER' || u.canOnlinePurchase) return false;
+
+    // Admin (level 99, role admin, id ADMIN)
+    if (roleId === 'ADMIN' || roleStr === 'admin' || level >= 99) return true;
+
+    // Plant Manager / Approver (Level 3+, canFinalApprove, PLANT_MANAGER, APPROVER)
+    if (roleId === 'PLANT_MANAGER' || roleId === 'APPROVER' || positionKey === 'APPROVER' || positionKey === 'PLANT_MANAGER' || u.canFinalApprove || level >= 3) return true;
+
+    // Explicit canSetBudget
+    if (u.canSetBudget === true) return true;
+
+    // Universal ALL permissions (assigned/allowed)
+    const assigned = Array.isArray(u.assignedDepartments) ? u.assignedDepartments : [];
+    const allowed = Array.isArray(u.allowedDepartments) ? u.allowedDepartments : [];
+    if (assigned.includes('ALL') || assigned.includes('*') || allowed.includes('ALL') || allowed.includes('*')) return true;
+    if ((u.department === 'ALL' || u.primaryDepartment === 'ALL') && (level >= 2 || u.canReview)) return true;
 
     return false;
   }, [currentUser, currentRole]);
@@ -606,6 +640,47 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                   </>
                 )}
               </select>
+            </div>
+          )}
+
+          {/* Piece 3: Refresh Button */}
+          <div className="flex flex-col justify-end">
+            <span className="text-[10px] font-bold text-transparent uppercase tracking-wider px-1 mb-1 hidden sm:block select-none pointer-events-none">
+              &nbsp;
+            </span>
+            <button
+              type="button"
+              id="budget-refresh-btn"
+              data-testid="budget-refresh-btn"
+              onClick={() => {
+                if (onRefresh) onRefresh();
+                if (context?.refreshData) context.refreshData();
+              }}
+              className="h-[42px] px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/80 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shadow-xs hover:shadow-sm transition-all cursor-pointer group"
+              title="รีเฟรชข้อมูล (Refresh Data)"
+            >
+              <RotateCw className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:rotate-180 transition-all duration-300" />
+              <span className="hidden xl:inline">รีเฟรช</span>
+            </button>
+          </div>
+
+          {/* Piece 4: Action Button: [+ ปรับยอด / เติมงบประมาณ] (RBAC restricted to Admin & Plant Manager / ALL) */}
+          {canManageBudget && (
+            <div className="flex flex-col justify-end">
+              <span className="text-[10px] font-bold text-transparent uppercase tracking-wider px-1 mb-1 hidden sm:block select-none pointer-events-none">
+                &nbsp;
+              </span>
+              <button
+                type="button"
+                id="btn-open-budget-modal"
+                data-testid="btn-open-budget-modal"
+                onClick={() => setIsBudgetModalOpen(true)}
+                className="h-[42px] px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 bg-[length:200%_auto] hover:bg-right text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm hover:shadow-md hover:shadow-emerald-600/25 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                title="คลิกเพื่อเปิดหน้าต่างปรับปรุงหรือเติมงบประมาณประจำเดือน"
+              >
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <span>+ ปรับยอด / เติมงบประมาณ</span>
+              </button>
             </div>
           )}
         </div>
@@ -1226,6 +1301,25 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
           </div>
         </div>
       )}
+
+      {/* ── Integrated Budget Management Modal ── */}
+      <BudgetManagementModal
+        isOpen={isBudgetModalOpen}
+        onClose={() => setIsBudgetModalOpen(false)}
+        departments={deptList}
+        currentRole={currentRole}
+        currentUser={currentUser}
+        budgetSummary={budgetSummary || context?.budgetSummary}
+        budgetTransactions={budgetTransactions}
+        onAdjustBudget={context?.adjustBudget || (async (params) => {
+          await apiService.adjustBudget(params);
+          if (onRefresh) onRefresh();
+        })}
+        onRefresh={() => {
+          if (onRefresh) onRefresh();
+          if (context?.refreshData) context.refreshData();
+        }}
+      />
     </div>
   );
 }

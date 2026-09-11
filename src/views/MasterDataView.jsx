@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Database, Plus, Edit3, Trash2, ShieldAlert, Building2, Search, X, Package, Store, PenTool, MapPin, Layers, Boxes, DoorClosed, Users, ShieldCheck, UserCheck, KeyRound, Lock, Shield } from 'lucide-react';
+import { Database, Plus, Edit3, Trash2, ShieldAlert, Building2, Search, X, Package, Store, PenTool, MapPin, Layers, Boxes, DoorClosed, Users, ShieldCheck, UserCheck, RotateCcw, Shield } from 'lucide-react';
 import ProductCRUDModal from '../components/admin/ProductCRUDModal';
+import DeactivateItemModal from '../components/admin/DeactivateItemModal';
 import VendorCRUDModal from '../components/admin/VendorCRUDModal';
 import StorageLocationCRUDModal from '../components/admin/StorageLocationCRUDModal';
 import DeleteLocationModal from '../components/admin/DeleteLocationModal';
@@ -11,34 +12,30 @@ import UserMasterView from './admin/UserMasterView';
 import { storageService } from '../services/storageService';
 import { apiService } from '../services/apiService';
 import { modalService } from '../services/modalService';
+import { useAppContext } from '../context/AppContext';
 import Pagination from '../components/common/Pagination';
+import { getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
 
 export default function MasterDataView(props) {
-  const { currentUser, currentRole } = props;
-  const userRole = currentUser?.role || (currentRole?.roleId === 'ADMIN' || currentRole?.id === 'ADMIN' || Number(currentRole?.level) >= 99 ? 'admin' : (currentRole?.roleId || 'user').toLowerCase());
-  if (userRole !== 'admin') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 bg-white rounded-3xl border border-slate-200 shadow-sm my-6">
-        <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mb-4 text-2xl font-bold">🔒</div>
-        <h2 className="text-xl font-bold text-slate-800 mb-2">สิทธิ์การเข้าถึงถูกจำกัด (Restricted Access)</h2>
-        <p className="text-sm text-slate-500 max-w-md">หน้าจัดการข้อมูลหลัก (Master Data) สงวนสิทธิ์สำหรับผู้ดูแลระบบ (System Admin) เท่านั้น</p>
-      </div>
-    );
-  }
-
   return <MasterDataContent {...props} />;
 }
 
 function MasterDataContent({
-  products = [],
-  vendors = [],
+  products: initialProductsList = [],
+  vendors: initialVendorsList = [],
   storageLocations: initialLocations = [],
   usageUnits: initialUnits = [],
   departments: initialDepartments = [],
   users: initialUsers = [],
+  prs: initialPRs = [],
+  pos: initialPOs = [],
   currentRole,
   currentUser,
   onRefresh,
+  onDeleteProduct,
+  onSaveProduct,
+  onDeleteVendor,
+  onSaveVendor,
   onSaveUsageUnit,
   onDeleteUsageUnit,
   onSaveDepartment,
@@ -46,6 +43,37 @@ function MasterDataContent({
   onSaveUser,
   onDeleteUser
 }) {
+  const context = useAppContext();
+
+  // Role and Admin evaluation defined right at top to eliminate Temporal Dead Zone (TDZ)
+  const effectiveRole = currentRole || context?.currentRole;
+  const effectiveUser = currentUser || context?.currentUser;
+  const targetUserObj = effectiveUser || effectiveRole;
+  const userDepts = getUserDepartments(targetUserObj);
+  const isAdmin = Boolean(
+    effectiveRole?.id === 'ADMIN' ||
+    effectiveRole?.roleId === 'ADMIN' ||
+    effectiveRole?.role === 'admin' ||
+    effectiveUser?.role === 'admin' ||
+    effectiveUser?.roleId === 'ADMIN' ||
+    effectiveUser?.isAdmin === true ||
+    Number(effectiveRole?.level) >= 99 ||
+    Number(effectiveUser?.level) >= 99 ||
+    userDepts.includes('ALL') ||
+    userDepts.includes('*')
+  );
+  const canSeeAll = Boolean(isAdmin || effectiveRole?.canViewAllDepts);
+  const myDept = effectiveRole?.department;
+  const canDeleteMaster = Boolean(
+    isAdmin ||
+    effectiveRole?.canDeleteMaster ||
+    effectiveUser?.canDeleteMaster ||
+    effectiveRole?.canManageMaster ||
+    effectiveUser?.canManageMaster ||
+    Number(effectiveRole?.level) >= 2 ||
+    Number(effectiveUser?.level) >= 2
+  );
+
   const [activeTab, setActiveTab] = useState('products');
   const [showProdModal, setShowProdModal] = useState(false);
   const [showVendorModal, setShowVendorModal] = useState(false);
@@ -60,6 +88,19 @@ function MasterDataContent({
   const [editDept, setEditDept] = useState(null);
   const [editUser, setEditUser] = useState(null);
   const [deleteLocationItem, setDeleteLocationItem] = useState(null);
+  const [deactivateItem, setDeactivateItem] = useState(null); // { product, reasons }
+  const [isDeactivating, setIsDeactivating] = useState(false);
+
+  // Dedicated React State for Products & Vendors to guarantee immediate UI mutation
+  const [productsList, setProductsList] = useState(() => {
+    if (initialProductsList && initialProductsList.length > 0) return initialProductsList;
+    return storageService.getProducts?.() || [];
+  });
+  const [vendorsList, setVendorsList] = useState(() => {
+    if (initialVendorsList && initialVendorsList.length > 0) return initialVendorsList;
+    return storageService.getVendors?.() || [];
+  });
+
   const [locsList, setLocsList] = useState(() => {
     if (initialLocations && initialLocations.length > 0) return initialLocations;
     return storageService.getStorageLocations?.() || [];
@@ -76,6 +117,22 @@ function MasterDataContent({
     if (initialUsers && initialUsers.length > 0) return initialUsers;
     return storageService.getUsers?.() || [];
   });
+
+  useEffect(() => {
+    if (initialProductsList && initialProductsList.length > 0) {
+      setProductsList(initialProductsList);
+    } else {
+      setProductsList(storageService.getProducts?.() || []);
+    }
+  }, [initialProductsList]);
+
+  useEffect(() => {
+    if (initialVendorsList && initialVendorsList.length > 0) {
+      setVendorsList(initialVendorsList);
+    } else {
+      setVendorsList(storageService.getVendors?.() || []);
+    }
+  }, [initialVendorsList]);
 
   useEffect(() => {
     if (initialUsers && initialUsers.length > 0) {
@@ -99,7 +156,7 @@ function MasterDataContent({
     } else {
       setLocsList(storageService.getStorageLocations?.() || []);
     }
-  }, [initialLocations, products]);
+  }, [initialLocations, productsList]);
 
   useEffect(() => {
     if (initialDepartments && initialDepartments.length > 0) {
@@ -110,14 +167,24 @@ function MasterDataContent({
   }, [initialDepartments]);
 
   // Search & Dept Filter States
+  // Search & Dept Filter States (Default to 'ALL' so multi-department users see all their accessible data)
   const [prodSearch, setProdSearch] = useState('');
-  const [prodCategoryFilter, setProdCategoryFilter] = useState(currentRole?.canViewAllDepts ? 'ALL' : currentRole?.department || 'ALL');
+  const [prodCategoryFilter, setProdCategoryFilter] = useState('ALL');
+  const [prodStatusFilter, setProdStatusFilter] = useState('ACTIVE'); // 'ACTIVE' | 'ALL' | 'INACTIVE'
   const [vendorSearch, setVendorSearch] = useState('');
-  const [vendorDeptFilter, setVendorDeptFilter] = useState(currentRole?.canViewAllDepts ? 'ALL' : currentRole?.department || 'ALL');
+  const [vendorDeptFilter, setVendorDeptFilter] = useState('ALL');
   const [locSearch, setLocSearch] = useState('');
-  const [locDeptFilter, setLocDeptFilter] = useState(currentRole?.canViewAllDepts ? 'ALL' : currentRole?.department || 'ALL');
+  const [locDeptFilter, setLocDeptFilter] = useState('ALL');
   const [unitSearch, setUnitSearch] = useState('');
-  const [unitDeptFilter, setUnitDeptFilter] = useState(currentRole?.canViewAllDepts ? 'ALL' : currentRole?.department || 'ALL');
+  const [unitDeptFilter, setUnitDeptFilter] = useState('ALL');
+
+  // Reset department filters to 'ALL' whenever active user switches
+  useEffect(() => {
+    setProdCategoryFilter('ALL');
+    setVendorDeptFilter('ALL');
+    setLocDeptFilter('ALL');
+    setUnitDeptFilter('ALL');
+  }, [targetUserObj?.id, targetUserObj?.username]);
   const [deptSearch, setDeptSearch] = useState('');
   const [deptStatusFilter, setDeptStatusFilter] = useState('ALL');
   const [userSearch, setUserSearch] = useState('');
@@ -139,24 +206,55 @@ function MasterDataContent({
   const [userPageSize, setUserPageSize] = useState(10);
 
   // Auto-resets on filter/search change
-  useEffect(() => { setProdPage(1); }, [prodCategoryFilter, prodSearch, prodPageSize]);
+  useEffect(() => { setProdPage(1); }, [prodCategoryFilter, prodStatusFilter, prodSearch, prodPageSize]);
   useEffect(() => { setVendorPage(1); }, [vendorDeptFilter, vendorSearch, vendorPageSize]);
   useEffect(() => { setLocPage(1); }, [locDeptFilter, locSearch, locPageSize]);
   useEffect(() => { setUnitPage(1); }, [unitDeptFilter, unitSearch, unitPageSize]);
   useEffect(() => { setDeptPage(1); }, [deptStatusFilter, deptSearch, deptPageSize]);
   useEffect(() => { setUserPage(1); }, [userDeptFilter, userRoleFilter, userSearch, userPageSize]);
 
-  const canSeeAll = currentRole?.canViewAllDepts;
-  const myDept = currentRole?.department;
-  const isAdmin = currentRole?.id === 'ADMIN' || currentRole?.roleId === 'ADMIN' || Number(currentRole?.level) >= 99;
-  const canDeleteMaster = currentRole?.canDeleteMaster || currentRole?.canManageMaster || isAdmin;
+  // Safety fallback: if non-admin user lands on restricted tabs, redirect to 'products'
+  useEffect(() => {
+    if (!isAdmin && (activeTab === 'users' || activeTab === 'departments')) {
+      setActiveTab('products');
+    }
+  }, [isAdmin, activeTab]);
 
+  // Status counts for Toolbar badges
+  const prodStatusCounts = useMemo(() => {
+    let active = 0;
+    let inactive = 0;
+    productsList.forEach(p => {
+      const itemDept = p.department || p.category;
+      const matchesDeptRole = canAccessDepartmentData(targetUserObj, itemDept);
+      const matchesCategory = prodCategoryFilter === 'ALL' || 
+        String(p.category || '').toUpperCase() === prodCategoryFilter.toUpperCase() || 
+        String(p.department || '').toUpperCase() === prodCategoryFilter.toUpperCase();
+      if (matchesDeptRole && matchesCategory) {
+        const isItemActive = p.isActive !== false && String(p.status || '').toUpperCase() !== 'INACTIVE';
+        if (isItemActive) active++;
+        else inactive++;
+      }
+    });
+    return { active, inactive, total: active + inactive };
+  }, [productsList, targetUserObj, prodCategoryFilter]);
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
-    return products.filter(p => {
-      const matchesDeptRole = canSeeAll || p.category === myDept;
-      const matchesCategory = prodCategoryFilter === 'ALL' || p.category === prodCategoryFilter;
+    return productsList.filter(p => {
+      const itemDept = p.department || p.category;
+      const matchesDeptRole = canAccessDepartmentData(targetUserObj, itemDept);
+      const matchesCategory = prodCategoryFilter === 'ALL' || 
+        String(p.category || '').toUpperCase() === prodCategoryFilter.toUpperCase() || 
+        String(p.department || '').toUpperCase() === prodCategoryFilter.toUpperCase();
+      
+      const isItemActive = p.isActive !== false && String(p.status || '').toUpperCase() !== 'INACTIVE';
+      const matchesStatus = prodStatusFilter === 'ALL' 
+        ? true 
+        : prodStatusFilter === 'ACTIVE' 
+          ? isItemActive 
+          : !isItemActive;
+
       const q = prodSearch.trim().toLowerCase();
       const matchesSearch = !q || (
         p.code?.toLowerCase().includes(q) ||
@@ -164,15 +262,18 @@ function MasterDataContent({
         p.category?.toLowerCase().includes(q) ||
         p.locationName?.toLowerCase().includes(q)
       );
-      return matchesDeptRole && matchesCategory && matchesSearch;
+      return matchesDeptRole && matchesCategory && matchesStatus && matchesSearch;
     });
-  }, [products, canSeeAll, myDept, prodCategoryFilter, prodSearch]);
+  }, [productsList, targetUserObj, prodCategoryFilter, prodStatusFilter, prodSearch]);
 
   // Filtered Vendors
   const filteredVendors = useMemo(() => {
-    return vendors.filter(v => {
-      const matchesDeptRole = canSeeAll || v.department === myDept || v.department === 'BOTH';
-      const matchesDeptFilter = vendorDeptFilter === 'ALL' || v.department === vendorDeptFilter || v.department === 'BOTH';
+    return vendorsList.filter(v => {
+      const matchesDeptRole = canAccessDepartmentData(targetUserObj, v.department);
+      const matchesDeptFilter = vendorDeptFilter === 'ALL' || 
+        v.department === 'BOTH' || 
+        v.department === 'ALL' || 
+        String(v.department || '').toUpperCase() === vendorDeptFilter.toUpperCase();
       const q = vendorSearch.trim().toLowerCase();
       const matchesSearch = !q || (
         v.code?.toLowerCase().includes(q) ||
@@ -183,20 +284,23 @@ function MasterDataContent({
       );
       return matchesDeptRole && matchesDeptFilter && matchesSearch;
     });
-  }, [vendors, canSeeAll, myDept, vendorDeptFilter, vendorSearch]);
+  }, [vendorsList, targetUserObj, vendorDeptFilter, vendorSearch]);
 
   // Filtered Storage Locations (Clean Simple by Name)
   const filteredLocations = useMemo(() => {
     return locsList.filter(l => {
-      const matchesDeptRole = canSeeAll || l.department === myDept || l.department === 'ALL';
-      const matchesDeptFilter = locDeptFilter === 'ALL' || l.department === locDeptFilter;
+      const matchesDeptRole = canAccessDepartmentData(targetUserObj, l.department);
+      const matchesDeptFilter = locDeptFilter === 'ALL' || 
+        l.department === 'ALL' || 
+        l.department === 'BOTH' || 
+        String(l.department || '').toUpperCase() === locDeptFilter.toUpperCase();
       const q = locSearch.trim().toLowerCase();
       const matchesSearch = !q || (
         l.name?.toLowerCase().includes(q)
       );
       return matchesDeptRole && matchesDeptFilter && matchesSearch;
     });
-  }, [locsList, canSeeAll, myDept, locDeptFilter, locSearch]);
+  }, [locsList, targetUserObj, locDeptFilter, locSearch]);
 
   // Paginated collections
   const prodTotalPages = Math.ceil(filteredProducts.length / prodPageSize) || 1;
@@ -220,8 +324,10 @@ function MasterDataContent({
   // Filtered Usage Units (Department-Scoped Rooms)
   const filteredUsageUnits = useMemo(() => {
     return unitsList.filter(u => {
-      const matchesDeptRole = canSeeAll || u.department === myDept;
-      const matchesDeptFilter = unitDeptFilter === 'ALL' || u.department === unitDeptFilter;
+      const matchesDeptRole = canAccessDepartmentData(targetUserObj, u.department);
+      const matchesDeptFilter = unitDeptFilter === 'ALL' || 
+        u.department === 'ALL' || 
+        String(u.department || '').toUpperCase() === unitDeptFilter.toUpperCase();
       const q = unitSearch.trim().toLowerCase();
       const matchesSearch = !q || (
         u.name?.toLowerCase().includes(q) ||
@@ -229,7 +335,7 @@ function MasterDataContent({
       );
       return matchesDeptRole && matchesDeptFilter && matchesSearch;
     });
-  }, [unitsList, canSeeAll, myDept, unitDeptFilter, unitSearch]);
+  }, [unitsList, targetUserObj, unitDeptFilter, unitSearch]);
 
   const unitTotalPages = Math.ceil(filteredUsageUnits.length / unitPageSize) || 1;
   const paginatedUsageUnits = useMemo(() => {
@@ -269,16 +375,39 @@ function MasterDataContent({
     return filteredUsers.slice(start, start + userPageSize);
   }, [filteredUsers, userPage, userPageSize]);
 
-  // Dynamic Department Filter Options (No Hardcoding)
+  // Dynamic Department Filter Options (Scoped to user's assigned departments if non-admin)
+  // Dynamic Department Filter Options (Scoped to user's assigned departments if non-admin)
   const deptFilterOptions = useMemo(() => {
+    const baseDepts = departmentsList.filter(d => d.isActive);
+    const visibleDepts = (isAdmin || canSeeAll)
+      ? baseDepts
+      : baseDepts.filter(d => userDepts.some(ud => ud.toUpperCase() === d.code?.toUpperCase()));
+
+    const allLabel = (isAdmin || canSeeAll)
+      ? 'ทุกแผนก'
+      : (userDepts.length > 1 ? 'ทั้งหมดของฉัน' : 'ทั้งหมด');
+
+    const deptNameMap = {
+      'PD': 'ฝ่ายผลิต',
+      'QC': 'ฝ่ายควบคุมคุณภาพ',
+      'WH': 'คลังสินค้า',
+      'PUR': 'จัดซื้อ',
+      'ENG': 'วิศวกรรม'
+    };
+
     return [
-      { code: 'ALL', label: 'ทุกแผนก' },
-      ...departmentsList.filter(d => d.isActive).map(d => ({
-        code: d.code,
-        label: `${d.name} (${d.code})`
-      }))
+      { code: 'ALL', label: allLabel },
+      ...visibleDepts.map(d => {
+        const name = d.name || deptNameMap[d.code] || d.code;
+        return {
+          code: d.code,
+          label: `${name} (${d.code})`
+        };
+      })
     ];
-  }, [departmentsList]);
+  }, [departmentsList, isAdmin, canSeeAll, userDepts]);
+
+  const showDeptFilterToolbar = Boolean(isAdmin || canSeeAll || userDepts.length > 1 || deptFilterOptions.length > 2);
 
   // Filtered Departments
   const filteredDepartments = useMemo(() => {
@@ -304,41 +433,253 @@ function MasterDataContent({
   }, [filteredDepartments, deptPage, deptPageSize]);
 
   const handleDeleteProduct = async (prod) => {
-    if (!canDeleteMaster) return;
+    const prodId = String(prod.id || prod.code || '').trim();
+    const prodCode = String(prod.code || prod.id || '').trim();
+    const prodName = prod.name || prodCode;
+
+    // ─── Requirement 4: Referential Integrity Guard ───
+    const stockQty = Number(prod.stockBalance ?? prod.currentStock ?? prod.stockRemaining ?? 0);
+    const hasRemainingStock = stockQty > 0;
+
+    // Check active PRs
+    const allPRs = (initialPRs && initialPRs.length > 0) ? initialPRs : (context?.prs || storageService.getPRs?.() || []);
+    const activePRs = allPRs.filter(pr => 
+      !['CANCELLED', 'REJECTED'].includes(pr.status) &&
+      Array.isArray(pr.items) &&
+      pr.items.some(item => {
+        const iId = String(item.productId || item.code || '').trim().toLowerCase();
+        const iCode = String(item.code || '').trim().toLowerCase();
+        const iName = String(item.name || '').trim().toLowerCase();
+        return iId === prodId.toLowerCase() || iId === prodCode.toLowerCase() ||
+               iCode === prodCode.toLowerCase() || iName === prodName.toLowerCase();
+      })
+    );
+
+    // Check active POs
+    const allPOs = (initialPOs && initialPOs.length > 0) ? initialPOs : (context?.pos || storageService.getPOs?.() || []);
+    const activePOs = allPOs.filter(po => 
+      !['CANCELLED', 'CLOSED'].includes(po.status) &&
+      Array.isArray(po.items) &&
+      po.items.some(item => {
+        const iId = String(item.productId || item.code || '').trim().toLowerCase();
+        const iCode = String(item.code || '').trim().toLowerCase();
+        const iName = String(item.name || '').trim().toLowerCase();
+        return iId === prodId.toLowerCase() || iId === prodCode.toLowerCase() ||
+               iCode === prodCode.toLowerCase() || iName === prodName.toLowerCase();
+      })
+    );
+
+    const hasActiveTransactions = hasRemainingStock || activePRs.length > 0 || activePOs.length > 0;
+
+    if (hasActiveTransactions) {
+      const reasons = [];
+      if (hasRemainingStock) reasons.push(`สต็อกคงเหลือ ${stockQty.toLocaleString()} ${prod.stockUnit || prod.unit || 'ชิ้น'}`);
+      if (activePRs.length > 0) reasons.push(`ผูกกับใบขอซื้อ PR ที่เปิดอยู่ ${activePRs.length} ฉบับ`);
+      if (activePOs.length > 0) reasons.push(`ผูกกับใบสั่งซื้อ PO ที่ยังไม่ปิดรอบ ${activePOs.length} ฉบับ`);
+
+      setDeactivateItem({ product: prod, reasons });
+      return;
+    }
+
+    // ─── Unlinked / Test Item: 100% Deletion Flow ───
     const confirmed = await modalService.confirm({
       title: 'ยืนยันการลบสินค้า',
-      message: `ต้องการลบรายการสินค้า "${prod.name}" (${prod.code}) ออกจากระบบหรือไม่?`,
+      message: `คุณต้องการลบรายการสินค้า "${prodName}" (รหัส SKU: ${prodCode}) ออกจากระบบถาวรใช่หรือไม่?\nข้อมูลจะถูกลบออกจากฐานข้อมูลทันที`,
       type: 'error',
-      confirmText: 'ลบสินค้า',
+      confirmText: 'ยืนยันการลบ',
       cancelText: 'ยกเลิก'
     });
     if (!confirmed) return;
-    const prods = storageService.getProducts().filter(p => p.id !== prod.id);
-    storageService.saveProducts(prods);
-    modalService.success('ลบสินค้าสำเร็จ', `ลบ "${prod.name}" เรียบร้อยแล้ว`);
-    onRefresh();
+
+    // 1. Optimistically mutate React state immediately so the row disappears without reload
+    setProductsList(prev => prev.filter(p => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || '').trim().toLowerCase();
+      return pId !== prodId.toLowerCase() && pCode !== prodCode.toLowerCase();
+    }));
+
+    // 2. Local Storage Persistence: update localStorage right away
+    const localProds = storageService.getProducts();
+    const updatedLocal = localProds.filter(p => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || '').trim().toLowerCase();
+      return pId !== prodId.toLowerCase() && pCode !== prodCode.toLowerCase();
+    });
+    storageService.saveProducts(updatedLocal);
+
+    // 3. Delete from backend API (server products.json)
+    try {
+      if (onDeleteProduct) {
+        await onDeleteProduct(prod.id || prod.code);
+      } else {
+        await apiService.deleteProduct(prod.id || prod.code, currentRole);
+      }
+    } catch (err) {
+      console.warn('[MasterData] Backend deleteProduct fallback:', err);
+    }
+
+    modalService.success('ลบสินค้าสำเร็จ', `ลบรายการ "${prodName}" เรียบร้อยแล้ว`);
+    if (onRefresh) onRefresh();
+  };
+
+  const handleConfirmDeactivate = async () => {
+    if (!deactivateItem?.product) return;
+    const prod = deactivateItem.product;
+    const prodName = prod.name || prod.code;
+    const prodId = String(prod.id || prod.code || '').trim();
+    const prodCode = String(prod.code || prod.id || '').trim();
+
+    setIsDeactivating(true);
+    try {
+      const updated = { ...prod, isActive: false, status: 'INACTIVE' };
+
+      // 1. Optimistically mutate local state
+      setProductsList(prev => prev.map(p => {
+        const pId = String(p.id || '').trim().toLowerCase();
+        const pCode = String(p.code || '').trim().toLowerCase();
+        return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
+      }));
+
+      // 2. Persist to storageService / localStorage
+      const localProds = storageService.getProducts();
+      const updatedLocal = localProds.map(p => {
+        const pId = String(p.id || '').trim().toLowerCase();
+        const pCode = String(p.code || '').trim().toLowerCase();
+        return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
+      });
+      storageService.saveProducts(updatedLocal);
+
+      // 3. Persist to API
+      try {
+        if (onSaveProduct) {
+          await onSaveProduct(updated);
+        } else {
+          await apiService.saveProduct(updated, currentRole);
+        }
+      } catch (err) {
+        console.warn('[MasterData] Deactivate API fallback:', err);
+      }
+
+      setDeactivateItem(null);
+      modalService.success('ปิดการใช้งานสำเร็จ', `ระงับการใช้งานสินค้า "${prodName}" เรียบร้อยแล้ว`);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.warn('[MasterData] Deactivate error:', err);
+      modalService.error('เกิดข้อผิดพลาดในการปิดใช้งาน', err.message);
+    } finally {
+      setIsDeactivating(false);
+    }
+  };
+
+  const handleReactivateProduct = async (prod) => {
+    const prodName = prod.name || prod.code;
+    const prodId = String(prod.id || prod.code || '').trim();
+    const prodCode = String(prod.code || prod.id || '').trim();
+
+    const confirmed = await modalService.confirm({
+      title: 'เปิดใช้งานสินค้าอีกครั้ง (Reactivate)',
+      message: `คุณต้องการเปิดใช้งานรายการสินค้า "${prodName}" (${prodCode}) กลับเข้าสู่ระบบใช่หรือไม่?\nสินค้าจะกลับมาให้เลือกสร้างใบขอซื้อและทำรายการเบิกได้ตามปกติ`,
+      type: 'info',
+      confirmText: 'เปิดใช้งานใหม่',
+      cancelText: 'ยกเลิก'
+    });
+    if (!confirmed) return;
+
+    const updated = { ...prod, isActive: true, status: 'ACTIVE' };
+
+    // 1. Optimistically mutate local state
+    setProductsList(prev => prev.map(p => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || '').trim().toLowerCase();
+      return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
+    }));
+
+    // 2. Persist to storageService / localStorage
+    const localProds = storageService.getProducts();
+    const updatedLocal = localProds.map(p => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || '').trim().toLowerCase();
+      return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
+    });
+    storageService.saveProducts(updatedLocal);
+
+    // 3. Persist to API
+    try {
+      if (onSaveProduct) {
+        await onSaveProduct(updated);
+      } else {
+        await apiService.saveProduct(updated, currentRole);
+      }
+    } catch (err) {
+      console.warn('[MasterData] Reactivate API fallback:', err);
+    }
+
+    modalService.success('เปิดใช้งานสำเร็จ', `เปิดใช้งานสินค้า "${prodName}" เรียบร้อยแล้ว`);
+    if (onRefresh) onRefresh();
   };
 
   const handleDeleteVendor = async (vendor) => {
-    if (!canDeleteMaster) return;
+    const vendorId = String(vendor.id || vendor.code || '').trim();
+    const vendorCode = String(vendor.code || vendor.id || '').trim();
+    const vendorName = vendor.name || vendorCode;
+
+    // Check active POs
+    const allPOs = (initialPOs && initialPOs.length > 0) ? initialPOs : (context?.pos || storageService.getPOs?.() || []);
+    const linkedPOs = allPOs.filter(po => 
+      !['CANCELLED', 'CLOSED'].includes(po.status) &&
+      (String(po.vendorId || '').trim().toLowerCase() === vendorId.toLowerCase() || 
+       String(po.vendor || '').trim().toLowerCase() === vendorName.toLowerCase())
+    );
+
+    if (linkedPOs.length > 0) {
+      modalService.warning(
+        'ไม่สามารถลบผู้จัดจำหน่ายนี้ได้',
+        `เนื่องจากผู้ขาย "${vendorName}" มีใบสั่งซื้อ (PO) ที่ยังดำเนินงานอยู่ ${linkedPOs.length} ฉบับ กรุณาจัดการปิดหรือยกเลิก PO ที่เกี่ยวข้องก่อน`
+      );
+      return;
+    }
+
     const confirmed = await modalService.confirm({
       title: 'ยืนยันการลบผู้ขาย',
-      message: `ต้องการลบข้อมูลผู้จัดจำหน่าย "${vendor.name}" ออกจากระบบหรือไม่?`,
+      message: `คุณต้องการลบข้อมูลผู้จัดจำหน่าย "${vendorName}" ออกจากระบบถาวรใช่หรือไม่?`,
       type: 'error',
-      confirmText: 'ลบผู้ขาย',
+      confirmText: 'ยืนยันการลบ',
       cancelText: 'ยกเลิก'
     });
     if (!confirmed) return;
-    const vends = storageService.getVendors().filter(v => v.id !== vendor.id);
-    storageService.saveVendors(vends);
-    modalService.success('ลบผู้ขายสำเร็จ', `ลบ "${vendor.name}" เรียบร้อยแล้ว`);
-    onRefresh();
+
+    // 1. Optimistic React state update
+    setVendorsList(prev => prev.filter(v => {
+      const vId = String(v.id || '').trim().toLowerCase();
+      const vCode = String(v.code || '').trim().toLowerCase();
+      return vId !== vendorId.toLowerCase() && vCode !== vendorCode.toLowerCase();
+    }));
+
+    // 2. Local Storage Persistence
+    const localVendors = storageService.getVendors().filter(v => {
+      const vId = String(v.id || '').trim().toLowerCase();
+      const vCode = String(v.code || '').trim().toLowerCase();
+      return vId !== vendorId.toLowerCase() && vCode !== vendorCode.toLowerCase();
+    });
+    storageService.saveVendors(localVendors);
+
+    // 3. Backend API delete
+    try {
+      if (onDeleteVendor) {
+        await onDeleteVendor(vendor.id || vendor.code);
+      } else {
+        await apiService.deleteVendor(vendor.id || vendor.code, currentRole);
+      }
+    } catch (err) {
+      console.warn('[MasterData] Backend deleteVendor fallback:', err);
+    }
+
+    modalService.success('ลบผู้ขายสำเร็จ', `ลบ "${vendorName}" เรียบร้อยแล้ว`);
+    if (onRefresh) onRefresh();
   };
 
   // ─── Requirement 1: Data Integrity Guardrail on Delete ───
   const handleDeleteLocation = async (loc) => {
-    if (!canDeleteMaster) return;
-    
     // Check if any product is assigned to this storage location
     const allProds = storageService.getProducts();
     const assigned = allProds.filter(p => p.locationId === loc.id);
@@ -369,7 +710,6 @@ function MasterDataContent({
   };
 
   const handleDeleteUsageUnit = async (unit) => {
-    if (!canDeleteMaster) return;
     const confirmed = await modalService.confirm({
       title: 'ยืนยันการลบหน่วยเบิกใช้งาน',
       message: `ต้องการลบหน่วยเบิกใช้งาน "${unit.name}" (${unit.department}) ออกจากระบบหรือไม่?`,
@@ -544,17 +884,17 @@ function MasterDataContent({
               </div>
               <span>จัดการข้อมูลหลัก (Master Data)</span>
             </h2>
-            {!canSeeAll && (
+            {!canSeeAll && userDepts.length > 0 && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-bold">
                 <Building2 className="w-4 h-4" />
-                แผนก {myDept}
+                แผนก {userDepts.join(', ')}
               </span>
             )}
           </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1 font-normal">
             {canSeeAll
               ? 'จัดการและค้นหารายการสินค้า ข้อมูลผู้ขาย (Vendor) และจุดจัดเก็บสินค้าในคลัง'
-              : `สิทธิ์เฉพาะแผนก ${myDept} — เพิ่ม/แก้ไขข้อมูลสินค้า จุดจัดเก็บ และ Vendor ของคุณ`}
+              : `สิทธิ์สำหรับแผนก: ${userDepts.join(', ')} — เพิ่ม/แก้ไขข้อมูลสินค้า จุดจัดเก็บ และ Vendor ของคุณ`}
           </p>
         </div>
 
@@ -592,7 +932,7 @@ function MasterDataContent({
               <Plus className="w-4 h-4" />
               <span>เพิ่มหน่วยเบิกใหม่</span>
             </button>
-          ) : activeTab === 'departments' ? (
+          ) : activeTab === 'departments' && isAdmin ? (
             <button
               onClick={() => { setEditDept(null); setShowDeptModal(true); }}
               className="bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white text-xs sm:text-sm font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-sm transition-all cursor-pointer"
@@ -663,57 +1003,117 @@ function MasterDataContent({
             {filteredUsageUnits.length}
           </span>
         </button>
-        <button
-          onClick={() => setActiveTab('users')}
-          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'users'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <Users className="w-4 h-4 text-sky-600" />
-          <span>ผู้ใช้งานและสิทธิ์</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
-            {filteredUsers.length}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('departments')}
-          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'departments'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <Building2 className="w-4 h-4 text-blue-600" />
-          <span>แผนก / ฝ่าย</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
-            {departmentsList.length}
-          </span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'users'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <Users className="w-4 h-4 text-sky-600" />
+            <span>ผู้ใช้งานและสิทธิ์</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
+              {filteredUsers.length}
+            </span>
+          </button>
+        )}
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('departments')}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'departments'
+                ? 'bg-white text-slate-900 shadow-xs font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+            }`}
+          >
+            <Building2 className="w-4 h-4 text-blue-600" />
+            <span>แผนก / ฝ่าย</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
+              {departmentsList.length}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Tab 1: Products */}
       {activeTab === 'products' && (
         <div className="space-y-4">
-          <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            {canSeeAll && (
-              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
-                {deptFilterOptions.map(cat => (
-                  <button
-                    key={cat.code}
-                    onClick={() => setProdCategoryFilter(cat.code)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      prodCategoryFilter === cat.code
-                        ? 'bg-white text-slate-900 shadow-xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
+          <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {showDeptFilterToolbar && (
+                <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
+                  {deptFilterOptions.map(cat => (
+                    <button
+                      key={cat.code}
+                      onClick={() => setProdCategoryFilter(cat.code)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        prodCategoryFilter === cat.code
+                          ? 'bg-white text-slate-900 shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Status Filter Toggle: Active / All / Inactive */}
+              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setProdStatusFilter('ACTIVE')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    prodStatusFilter === 'ACTIVE'
+                      ? 'bg-white text-slate-900 shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="แสดงเฉพาะสินค้าที่เปิดใช้งาน"
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span>เปิดใช้งาน</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-100 text-slate-600 font-bold">
+                    {prodStatusCounts.active}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProdStatusFilter('ALL')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    prodStatusFilter === 'ALL'
+                      ? 'bg-white text-slate-900 shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="แสดงรายการสินค้าทั้งหมดรวมที่ปิดใช้งาน"
+                >
+                  <span>ทั้งหมด</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-100 text-slate-600 font-bold">
+                    {prodStatusCounts.total}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProdStatusFilter('INACTIVE')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    prodStatusFilter === 'INACTIVE'
+                      ? 'bg-white text-slate-900 shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="แสดงสินค้าที่ถูกระงับ/ปิดการใช้งาน"
+                >
+                  <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                  <span>ปิดใช้งาน</span>
+                  {prodStatusCounts.inactive > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-200 text-slate-700 font-bold">
+                      {prodStatusCounts.inactive}
+                    </span>
+                  )}
+                </button>
               </div>
-            )}
+            </div>
+
             <div className="relative flex-1 sm:w-80 ml-auto">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -737,6 +1137,7 @@ function MasterDataContent({
                     <th className="py-3 pl-5">รหัสสินค้า</th>
                     <th className="py-3 px-4 w-1/3">ชื่อสินค้า / สเปก & จุดจัดเก็บ</th>
                     <th className="py-3 px-4">แผนก</th>
+                    <th className="py-3 px-4 text-center">สถานะ</th>
                     <th className="py-3 px-4 text-right">ราคาต่อหน่วย</th>
                     <th className="py-3 px-4 text-right">สต็อกคงเหลือ</th>
                     <th className="py-3 px-4 text-right">จุดสั่งซื้อ (ROP)</th>
@@ -744,55 +1145,95 @@ function MasterDataContent({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {paginatedProducts.map(p => (
-                    <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 pl-6 font-mono font-bold text-slate-800 text-xs">{p.code}</td>
-                      <td className="py-3.5 px-4">
-                        <div className="font-semibold text-slate-900">{p.name}</div>
-                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-50/80 text-indigo-700 border border-indigo-100">
-                            <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
-                            <span>{p.locationName || 'ไม่ระบุจุดจัดเก็บ'}</span>
-                          </span>
-                          {Number(p.conversionRate) > 1 && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
-                              1 {p.purchaseUnit || p.unit} = {p.conversionRate} {p.stockUnit || p.unit}
+                  {paginatedProducts.map(p => {
+                    const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
+                    return (
+                      <tr 
+                        key={p.id} 
+                        className={`transition-colors ${
+                          isInactive 
+                            ? 'opacity-60 bg-slate-50/50 hover:bg-slate-100/60' 
+                            : 'hover:bg-slate-50/80'
+                        }`}
+                      >
+                        <td className="py-3.5 pl-6 font-mono font-bold text-slate-800 text-xs">{p.code}</td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-semibold text-slate-900">{p.name}</div>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-50/80 text-indigo-700 border border-indigo-100">
+                              <MapPin className="w-3 h-3 text-indigo-500 shrink-0" />
+                              <span>{p.locationName || 'ไม่ระบุจุดจัดเก็บ'}</span>
+                            </span>
+                            {Number(p.conversionRate) > 1 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                                1 {p.purchaseUnit || p.unit} = {p.conversionRate} {p.stockUnit || p.unit}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">{deptBadge(p.category)}</td>
+                        <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                          {isInactive ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                              ปิดใช้งาน
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              เปิดใช้งาน
                             </span>
                           )}
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4">{deptBadge(p.category)}</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 tabular-nums">
-                        ฿{p.price?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-indigo-700 tabular-nums">
-                        {p.stockBalance || 0} <span className="text-xs text-slate-400 font-sans">{p.unit}</span>
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-mono text-slate-600 tabular-nums">
-                        {p.reorderPoint || 0} <span className="text-xs text-slate-400 font-sans">{p.unit}</span>
-                      </td>
-                      <td className="py-3.5 pr-6 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => { setEditProd(p); setShowProdModal(true); }}
-                            className="p-1.5 hover:bg-slate-100 text-slate-600 hover:text-indigo-600 rounded-lg transition-colors cursor-pointer"
-                            title="แก้ไขสินค้า"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          {canDeleteMaster && (
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 tabular-nums">
+                          ฿{p.price?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-indigo-700 tabular-nums">
+                          {p.stockBalance || 0} <span className="text-xs text-slate-400 font-sans">{p.unit}</span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono text-slate-600 tabular-nums">
+                          {p.reorderPoint || 0} <span className="text-xs text-slate-400 font-sans">{p.unit}</span>
+                        </td>
+                        <td className="py-3.5 pr-6 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-1.5">
                             <button
-                              onClick={() => handleDeleteProduct(p)}
-                              className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
-                              title="ลบสินค้า"
+                              type="button"
+                              onClick={() => { setEditProd(p); setShowProdModal(true); }}
+                              className="p-1.5 hover:bg-slate-100 text-slate-600 hover:text-indigo-600 rounded-lg transition-colors cursor-pointer"
+                              title="แก้ไขสินค้า"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Edit3 className="w-4 h-4" />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {isInactive ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleReactivateProduct(p);
+                                }}
+                                className="p-1.5 hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                                title="เปิดใช้งานใหม่ (Reactivate / Restore)"
+                              >
+                                <RotateCcw className="w-4 h-4 pointer-events-none" />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteProduct(p);
+                                }}
+                                className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                                title="ลบ / ปิดการใช้งานสินค้า"
+                              >
+                                <Trash2 className="w-4 h-4 pointer-events-none" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -812,7 +1253,7 @@ function MasterDataContent({
       {activeTab === 'vendors' && (
         <div className="space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            {canSeeAll && (
+            {showDeptFilterToolbar && (
               <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
                 {deptFilterOptions.map(cat => (
                   <button
@@ -874,15 +1315,17 @@ function MasterDataContent({
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
-                          {canDeleteMaster && (
-                            <button
-                              onClick={() => handleDeleteVendor(v)}
-                              className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
-                              title="ลบผู้ขาย"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteVendor(v);
+                            }}
+                            className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                            title="ลบผู้ขาย"
+                          >
+                            <Trash2 className="w-4 h-4 pointer-events-none" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -906,7 +1349,7 @@ function MasterDataContent({
       {activeTab === 'locations' && (
         <div className="space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            {canSeeAll && (
+            {showDeptFilterToolbar && (
               <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
                 {deptFilterOptions.map(cat => (
                   <button
@@ -959,7 +1402,7 @@ function MasterDataContent({
                     </tr>
                   ) : (
                     paginatedLocations.map((loc, idx) => {
-                      const assignedProducts = products.filter(p => p.locationId === loc.id);
+                      const assignedProducts = (productsList || []).filter(item => item.locationId === loc.id || item.storageLocation === loc.name || item.locationName === loc.name);
                       return (
                         <tr key={loc.id} className="hover:bg-slate-50/80 transition-colors">
                           <td className="py-3.5 pl-6 font-mono font-bold text-slate-400 text-xs whitespace-nowrap">
@@ -993,15 +1436,13 @@ function MasterDataContent({
                               >
                                 <Edit3 className="w-4 h-4" />
                               </button>
-                              {canDeleteMaster && (
-                                <button
-                                  onClick={() => setDeleteLocationItem(loc)}
-                                  className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-colors cursor-pointer"
-                                  title="ลบจุดจัดเก็บ"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
+                              <button
+                                onClick={() => setDeleteLocationItem(loc)}
+                                className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-colors cursor-pointer"
+                                title="ลบจุดจัดเก็บ"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1026,7 +1467,7 @@ function MasterDataContent({
       {activeTab === 'usageUnits' && (
         <div className="space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            {canSeeAll && (
+            {showDeptFilterToolbar && (
               <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
                 {deptFilterOptions.map(cat => (
                   <button
@@ -1129,15 +1570,13 @@ function MasterDataContent({
                               >
                                 <Edit3 className="w-4 h-4" />
                               </button>
-                              {canDeleteMaster && (
-                                <button
-                                  onClick={() => handleDeleteUsageUnit(unit)}
-                                  className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-colors cursor-pointer"
-                                  title="ลบหน่วยเบิก"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
+                              <button
+                                onClick={() => handleDeleteUsageUnit(unit)}
+                                className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-colors cursor-pointer"
+                                title="ลบหน่วยเบิก"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1159,7 +1598,7 @@ function MasterDataContent({
       )}
 
       {/* Tab 5: Users & E-Signature Management */}
-      {activeTab === 'users' && (
+      {activeTab === 'users' && isAdmin && (
         <UserMasterView 
           users={usersList} 
           departments={departmentsList}
@@ -1173,7 +1612,7 @@ function MasterDataContent({
       )}
 
       {/* Tab 6: Departments Master Data */}
-      {activeTab === 'departments' && (
+      {activeTab === 'departments' && isAdmin && (
         <div className="space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {/* Status Filter */}
@@ -1327,11 +1766,12 @@ function MasterDataContent({
         <ProductCRUDModal
           editProd={editProd}
           product={editProd}
-          products={products}
-          vendors={vendors}
+          products={productsList}
+          vendors={vendorsList}
           departments={departmentsList}
           storageLocations={locsList}
-          currentRole={currentRole}
+          currentRole={effectiveRole}
+          currentUser={effectiveUser}
           onClose={() => { setShowProdModal(false); setEditProd(null); }}
           onRefresh={onRefresh}
         />
@@ -1341,9 +1781,10 @@ function MasterDataContent({
         <VendorCRUDModal
           editVendor={editVendor}
           vendor={editVendor}
-          vendors={vendors}
+          vendors={vendorsList}
           departments={departmentsList}
-          currentRole={currentRole}
+          currentRole={effectiveRole}
+          currentUser={effectiveUser}
           onClose={() => { setShowVendorModal(false); setEditVendor(null); }}
           onRefresh={onRefresh}
         />
@@ -1355,7 +1796,8 @@ function MasterDataContent({
           location={editLocation}
           storageLocations={locsList}
           departments={departmentsList}
-          currentRole={currentRole}
+          currentRole={effectiveRole}
+          currentUser={effectiveUser}
           onClose={() => { setShowLocationModal(false); setEditLocation(null); }}
           onSaved={(saved) => {
             setLocsList(prev => prev.map(l => l.id === saved.id ? saved : l));
@@ -1371,9 +1813,10 @@ function MasterDataContent({
       {deleteLocationItem && (
         <DeleteLocationModal
           location={deleteLocationItem}
-          products={products}
+          products={productsList}
           storageLocations={locsList}
-          currentRole={currentRole}
+          currentRole={effectiveRole}
+          currentUser={effectiveUser}
           onClose={() => setDeleteLocationItem(null)}
           onDeleted={(deletedId) => {
             setLocsList(prev => prev.filter(l => l.id !== deletedId));
@@ -1382,12 +1825,23 @@ function MasterDataContent({
         />
       )}
 
+      {deactivateItem && (
+        <DeactivateItemModal
+          product={deactivateItem.product}
+          reasons={deactivateItem.reasons}
+          isProcessing={isDeactivating}
+          onClose={() => setDeactivateItem(null)}
+          onConfirm={handleConfirmDeactivate}
+        />
+      )}
+
       {showUsageUnitModal && (
         <UsageUnitCRUDModal
           unit={editUsageUnit}
           usageUnits={unitsList}
           departments={departmentsList}
-          currentRole={currentRole}
+          currentRole={effectiveRole}
+          currentUser={effectiveUser}
           onClose={() => { setShowUsageUnitModal(false); setEditUsageUnit(null); }}
           onSaved={(saved) => {
             setUnitsList(prev => prev.map(u => u.id === saved.id ? saved : u));
@@ -1405,7 +1859,8 @@ function MasterDataContent({
           user={editUser}
           users={usersList}
           departments={departmentsList}
-          currentRole={currentRole}
+          currentRole={effectiveRole}
+          currentUser={effectiveUser}
           onClose={() => { setShowUserModal(false); setEditUser(null); }}
           onSaved={(saved) => {
             setUsersList(prev => prev.map(u => u.id === saved.id ? saved : u));

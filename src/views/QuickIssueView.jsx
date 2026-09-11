@@ -141,10 +141,15 @@ export default function QuickIssueView({
     setCategoryFilter(hasMultiDeptAccess ? 'ALL' : (userAccessibleDepts[0] || user?.department || 'PD'));
   }, [user?.id, user?.username, hasMultiDeptAccess, userAccessibleDepts, user?.department]);
 
-  // Department and Category Filtered Products
+  // Department and Category Filtered Products (Allow Inactive products with remaining stock to be issued)
   const filteredProducts = useMemo(() => {
     return products
       .filter(p => {
+        const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
+        const stock = Number(p.stockBalance || 0);
+        // Directive 3: Inactive items with stock > 0 remain available to be issued until exhausted.
+        // Inactive items with stock <= 0 are excluded from quick issue.
+        if (isInactive && stock <= 0) return false;
         const pCat = p.category || p.department || 'PD';
         const matchesDept = hasDepartmentAccess(user, pCat);
         const matchesCat = categoryFilter === 'ALL' || pCat === categoryFilter;
@@ -156,6 +161,7 @@ export default function QuickIssueView({
   // Transform to SearchableSelect options
   const productOptions = useMemo(() => {
     return filteredProducts.map(p => {
+      const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
       const sUnit = p.stockUnit || p.unit || 'ชิ้น';
       const pUnit = p.purchaseUnit || p.unit || sUnit;
       const rate = Number(p.conversionRate) > 0 ? Number(p.conversionRate) : 1;
@@ -165,11 +171,12 @@ export default function QuickIssueView({
       const pCat = p.category || p.department || 'PD';
       return {
         value: p.id,
-        label: p.name,
+        label: isInactive ? `${p.name} (ยกเลิกใช้งาน/รอเคลียร์สต็อก)` : p.name,
         code: p.code,
-        subLabel: `จุดเก็บ: ${p.locationName || 'คลังหลัก'} • คงเหลือ: ${Number(p.stockBalance || 0).toLocaleString()} ${sUnit}${dualText} • ROP: ${Number(p.reorderPoint || 0).toLocaleString()} ${sUnit}`,
-        badge: pCat === 'PD' ? 'ฝ่ายผลิต' : 'ฝ่าย QC',
-        keywords: `${p.code} ${p.name} ${sUnit} ${pUnit} ${pCat} ${p.locationName || ''}`
+        subLabel: `จุดเก็บ: ${p.locationName || 'คลังหลัก'} • คงเหลือ: ${Number(p.stockBalance || 0).toLocaleString()} ${sUnit}${dualText}${isInactive ? ' • [ปิดใช้งาน/รอเคลียร์สต็อก]' : ` • ROP: ${Number(p.reorderPoint || 0).toLocaleString()} ${sUnit}`}`,
+        badge: isInactive ? 'รอเคลียร์สต็อก' : (pCat === 'PD' ? 'ฝ่ายผลิต' : 'ฝ่าย QC'),
+        badgeClass: isInactive ? 'bg-amber-100 text-amber-800 border-amber-200' : undefined,
+        keywords: `${p.code} ${p.name} ${sUnit} ${pUnit} ${pCat} ${p.locationName || ''} ${isInactive ? 'inactive ยกเลิก ปิดการใช้งาน เคลียร์สต็อก' : ''}`
       };
     });
   }, [filteredProducts]);
@@ -243,11 +250,12 @@ export default function QuickIssueView({
   }, [displayedUnits, statsUnitFilter]);
 
   // Post-issue balance calculation & ROP Warning logic
+  const isInactive = selectedProduct?.isActive === false || String(selectedProduct?.status || '').toUpperCase() === 'INACTIVE';
   const currentBalance = Number(selectedProduct?.stockBalance || 0);
   const qtyNumber = Number(issueQty || 0);
   const postIssueBalance = Math.round((currentBalance - qtyNumber) * 10000) / 10000;
   const reorderPoint = Number(selectedProduct?.reorderPoint || 0);
-  const willTriggerROP = selectedProduct && postIssueBalance <= reorderPoint && postIssueBalance >= 0;
+  const willTriggerROP = !isInactive && selectedProduct && postIssueBalance <= reorderPoint && postIssueBalance >= 0;
   const isOutOfStock = selectedProduct && postIssueBalance < 0;
 
   const sUnit = selectedProduct?.stockUnit || selectedProduct?.unit || 'ชิ้น';
@@ -875,6 +883,11 @@ export default function QuickIssueView({
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                   <span>หลังเบิกยอดจะเหลือ <strong>{Number(postIssueBalance).toLocaleString()} {sUnit}</strong> ซึ่งแตะจุดสั่งซื้อ ROP ({Number(reorderPoint).toLocaleString()} {sUnit})</span>
                 </div>
+              ) : isInactive ? (
+                <div className="text-xs text-amber-800 bg-amber-50/90 border border-amber-200 px-3 py-1.5 rounded-xl flex items-center gap-2 mt-2 animate-fade-in">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+                  <span>สินค้านี้<strong>ยกเลิกใช้งานแล้ว</strong> — สามารถเบิกสต็อกคงเหลือ ({Number(currentBalance).toLocaleString()} {sUnit}) จนหมดได้ โดยระบบจะไม่แจ้งเตือนสั่งซื้อ ROP ซ้ำ</span>
+                </div>
               ) : null}
             </div>
 
@@ -930,7 +943,7 @@ export default function QuickIssueView({
             {selectedProduct ? (
               <div className="space-y-2 pb-4 border-b border-slate-100">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-xs font-bold bg-slate-900 text-white px-2.5 py-0.5 rounded-lg shadow-2xs">
                       {selectedProduct.code}
                     </span>
@@ -938,6 +951,11 @@ export default function QuickIssueView({
                       <PackageCheck size={15} className="text-slate-400 shrink-0" />
                       <span>{selectedProduct.locationName || 'คลังหลัก'}</span>
                     </span>
+                    {isInactive && (
+                      <span className="text-[10px] font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                        ● ยกเลิกใช้งาน / รอเคลียร์สต็อก
+                      </span>
+                    )}
                   </div>
                   {rate > 1 && (
                     <span className="text-[10px] font-mono text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
@@ -982,9 +1000,11 @@ export default function QuickIssueView({
                     <p className={`font-mono text-base font-bold tabular-nums mt-0.5 ${
                       postIssueBalance < 0 
                         ? 'text-rose-600' 
-                        : postIssueBalance <= reorderPoint 
-                          ? 'text-amber-600' 
-                          : 'text-emerald-600'
+                        : isInactive
+                          ? 'text-amber-600'
+                          : postIssueBalance <= reorderPoint 
+                            ? 'text-amber-600' 
+                            : 'text-emerald-600'
                     }`}>
                       {Number(postIssueBalance).toLocaleString(undefined, { maximumFractionDigits: 4 })} <span className="text-xs font-normal text-slate-500">{sUnit}</span>
                     </p>
@@ -998,9 +1018,11 @@ export default function QuickIssueView({
                       className={`h-full rounded-full transition-all duration-300 ${
                         postIssueBalance < 0 
                           ? 'bg-rose-500' 
-                          : postIssueBalance <= reorderPoint 
-                            ? 'bg-amber-500' 
-                            : 'bg-emerald-500'
+                          : isInactive
+                            ? 'bg-amber-500'
+                            : postIssueBalance <= reorderPoint 
+                              ? 'bg-amber-500' 
+                              : 'bg-emerald-500'
                       }`}
                       style={{ 
                         width: `${currentBalance > 0 ? Math.max(4, Math.min(100, (postIssueBalance / Math.max(currentBalance, reorderPoint * 2)) * 100)) : 0}%` 
@@ -1011,9 +1033,11 @@ export default function QuickIssueView({
                     <span>
                       {postIssueBalance < 0 
                         ? 'สินค้าไม่พอเบิก' 
-                        : postIssueBalance <= reorderPoint 
-                          ? 'สต็อกแตะจุดสั่งซื้อ ROP' 
-                          : 'ระดับสต็อกเพียงพอ'}
+                        : isInactive
+                          ? 'ยกเลิกใช้งาน / รอเคลียร์สต็อก'
+                          : postIssueBalance <= reorderPoint 
+                            ? 'สต็อกแตะจุดสั่งซื้อ ROP' 
+                            : 'ระดับสต็อกเพียงพอ'}
                     </span>
                     <span className="font-mono">
                       -{qtyNumber} {sUnit}

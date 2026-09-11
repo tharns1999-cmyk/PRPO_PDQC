@@ -1,5 +1,296 @@
 [
   {
+    "id": "NOTI-1789092278756-195",
+    "type": "STOCK_ISSUED",
+    "typeInfo": {
+      "id": "STOCK_ISSUED",
+      "label": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+      "badgeColor": "bg-slate-100 text-slate-800 border-slate-200",
+      "icon": "ArrowDownRight",
+      "colorHex": "#475569",
+      "priority": "INFO"
+    },
+    "title": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+    "message": "เบิกจ่าย สายรัดพาเลทพลาสติก PP Band (15mm x 3000m) (PD-STP-015) จำนวน 20 ม้วน คงเหลือ 0 ม้วน",
+    "docNo": "REQ-8756",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-PD-007",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "คุณวิชัย (PD)",
+    "timestamp": "2026-09-11T02:04:38.756Z",
+    "timeFormatted": "11/9/69 09:04",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
+    "id": "NOTI-1789092277257-624",
+    "type": "STOCK_ISSUED",
+    "typeInfo": {
+      "id": "STOCK_ISSUED",
+      "label": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+      "badgeColor": "bg-slate-100 text-slate-800 border-slate-200",
+      "icon": "ArrowDownRight",
+      "colorHex": "#475569",
+      "priority": "INFO"
+    },
+    "title": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+    "message": "เบิกจ่าย ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m) (PD-STF-001) จำนวน 60 ม้วน คงเหลือ 0 ม้วน",
+    "docNo": "REQ-7256",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-PD-008",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "คุณวิชัย (PD)",
+    "timestamp": "2026-09-11T02:04:37.257Z",
+    "timeFormatted": "11/9/69 09:04",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
+    "id": "NOTI-1789092275852-17",
+    "type": "STOCK_ISSUED",
+    "typeInfo": {
+      "id": "STOCK_ISSUED",
+      "label": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+      "badgeColor": "bg-slate-100 text-slate-800 border-slate-200",
+      "icon": "ArrowDownRight",
+      "colorHex": "#475569",
+      "priority": "INFO"
+    },
+    "title": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+    "message": "เบิกจ่าย น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68) (PD-OIL-068) จำนวน 2600 ลิตร คงเหลือ 0 ลิตร",
+    "docNo": "REQ-5852",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-PD-001",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "คุณวิชัย (PD)",
+    "timestamp": "2026-09-11T02:04:35.852Z",
+    "timeFormatted": "11/9/69 09:04",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
+    "id": "NOTI-1789092274038-83",
+    "type": "STOCK_ISSUED",
+    "typeInfo": {
+      "id": "STOCK_ISSUED",
+      "label": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+      "badgeColor": "bg-slate-100 text-slate-800 border-slate-200",
+      "icon": "ArrowDownRight",
+      "colorHex": "#475569",
+      "priority": "INFO"
+    },
+    "title": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+    "message": "เบิกจ่าย หน้ากากป้องกันฝุ่นละอองและละอองสารเคมี N95 (PD-MSK-N95) จำนวน 700 ชิ้น คงเหลือ 0 ชิ้น",
+    "docNo": "REQ-4038",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-PD-010",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "คุณวิชัย (PD)",
+    "timestamp": "2026-09-11T02:04:34.038Z",
+    "timeFormatted": "11/9/69 09:04",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
+    "id": "NOTI-1789092272673-653",
+    "type": "STOCK_ISSUED",
+    "typeInfo": {
+      "id": "STOCK_ISSUED",
+      "label": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+      "badgeColor": "bg-slate-100 text-slate-800 border-slate-200",
+      "icon": "ArrowDownRight",
+      "colorHex": "#475569",
+      "priority": "INFO"
+    },
+    "title": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+    "message": "เบิกจ่าย จาระบีทนความร้อนสูงเกรดอาหาร (High-Temp Food Grade Grease NLGI 2) (PD-GRS-002) จำนวน 25 กระป๋อง คงเหลือ 0 กระป๋อง",
+    "docNo": "REQ-2673",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-PD-002",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "คุณวิชัย (PD)",
+    "timestamp": "2026-09-11T02:04:32.673Z",
+    "timeFormatted": "11/9/69 09:04",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
+    "id": "NOTI-1789092271420-122",
+    "type": "STOCK_ISSUED",
+    "typeInfo": {
+      "id": "STOCK_ISSUED",
+      "label": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+      "badgeColor": "bg-slate-100 text-slate-800 border-slate-200",
+      "icon": "ArrowDownRight",
+      "colorHex": "#475569",
+      "priority": "INFO"
+    },
+    "title": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+    "message": "เบิกจ่าย ถุงมือไนไตรล์ป้องกันสารเคมี (Nitrile Chemical Resistant Gloves Size L) (PD-GLV-NBR) จำนวน 2000 ชิ้น คงเหลือ 0 ชิ้น",
+    "docNo": "REQ-1420",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-PD-004",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "คุณวิชัย (PD)",
+    "timestamp": "2026-09-11T02:04:31.420Z",
+    "timeFormatted": "11/9/69 09:04",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
+    "id": "NOTI-1789092269846-400",
+    "type": "STOCK_ISSUED",
+    "typeInfo": {
+      "id": "STOCK_ISSUED",
+      "label": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+      "badgeColor": "bg-slate-100 text-slate-800 border-slate-200",
+      "icon": "ArrowDownRight",
+      "colorHex": "#475569",
+      "priority": "INFO"
+    },
+    "title": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+    "message": "เบิกจ่าย ไส้กรองน้ำมันระบบหล่อเย็น (Coolant Cartridge Filter 50 Micron) (PD-FLT-050) จำนวน 30 ชิ้น คงเหลือ 0 ชิ้น",
+    "docNo": "REQ-9845",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-PD-006",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "คุณวิชัย (PD)",
+    "timestamp": "2026-09-11T02:04:29.846Z",
+    "timeFormatted": "11/9/69 09:04",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
+    "id": "NOTI-1789092267184-256",
+    "type": "STOCK_ISSUED",
+    "typeInfo": {
+      "id": "STOCK_ISSUED",
+      "label": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+      "badgeColor": "bg-slate-100 text-slate-800 border-slate-200",
+      "icon": "ArrowDownRight",
+      "colorHex": "#475569",
+      "priority": "INFO"
+    },
+    "title": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+    "message": "เบิกจ่าย ตลับลูกปืนเม็ดกลมร่องลึก (Deep Groove Ball Bearing 6205-2RS) (PD-BRG-620) จำนวน 22 ตลับ คงเหลือ 0 ตลับ",
+    "docNo": "REQ-7184",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-PD-009",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "คุณวิชัย (PD)",
+    "timestamp": "2026-09-11T02:04:27.184Z",
+    "timeFormatted": "11/9/69 09:04",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
+    "id": "NOTI-1789092211837-649",
+    "type": "STOCK_ISSUED",
+    "typeInfo": {
+      "id": "STOCK_ISSUED",
+      "label": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+      "badgeColor": "bg-slate-100 text-slate-800 border-slate-200",
+      "icon": "ArrowDownRight",
+      "colorHex": "#475569",
+      "priority": "INFO"
+    },
+    "title": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+    "message": "เบิกจ่าย สายพานลำเลียงทนความร้อน (Timing Belt 380-5M-15) (PD-BLT-380) จำนวน 6 เส้น คงเหลือ 0 เส้น",
+    "docNo": "REQ-1836",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-PD-003",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "คุณวิชัย (PD)",
+    "timestamp": "2026-09-11T02:03:31.837Z",
+    "timeFormatted": "11/9/69 09:03",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
+    "id": "NOTI-1789091608940-590",
+    "type": "LOW_STOCK_ROP",
+    "typeInfo": {
+      "id": "LOW_STOCK_ROP",
+      "label": "แจ้งเตือนสต๊อกต่ำกว่าจุดสั่งซื้อ (ROP Alert)",
+      "badgeColor": "bg-rose-100 text-rose-800 border-rose-200",
+      "icon": "AlertTriangle",
+      "colorHex": "#E11D48",
+      "priority": "URGENT"
+    },
+    "title": "⚠️ แจ้งเตือน: สต๊อกสินค้าแตะจุดสั่งซื้อ (ROP Alert)",
+    "message": "สินค้า \"น้ำยาทำความสะอาดคราบน้ำมันเครื่องจักร (Heavy Duty Degreaser Cleaner)\" (PD-CLN-IND) มียอดคงเหลือ 0 ลิตร ซึ่งน้อยกว่าหรือเท่ากับจุด ROP (120 ลิตร) แนะนำให้เปิด PR สั่งซื้อเพิ่ม",
+    "docNo": "PD-CLN-IND",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-PD-005",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ASST_MANAGER",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "ระบบแจ้งเตือนสต๊อกอัตโนมัติ",
+    "timestamp": "2026-09-11T01:53:28.940Z",
+    "timeFormatted": "11/9/69 08:53",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
     "id": "NOTI-1789041449992-190",
     "type": "PR_CANCELLED",
     "typeInfo": {

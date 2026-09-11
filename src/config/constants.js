@@ -215,11 +215,25 @@ export function resolveUserPermissions(user) {
   const dept = user.department || 'PD';
   const isOnline = user.roleId === 'ONLINE_PURCHASER' || user.role_id === 'ONLINE_PURCHASER';
 
+  const userDepts = Array.isArray(user.departments) && user.departments.length > 0 ? user.departments : (
+    Array.isArray(user.assignedDepartments) && user.assignedDepartments.length > 0 ? user.assignedDepartments : (
+      Array.isArray(user.allowedDepartments) && user.allowedDepartments.length > 0 ? user.allowedDepartments : (
+        typeof user.departments === 'string' ? user.departments.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : (
+          dept ? [dept] : ['PD']
+        )
+      )
+    )
+  );
+  const deptDisplay = userDepts.length > 1 ? userDepts.join(', ') : dept;
+
   return {
     id: user.roleId || user.role_id || (level >= 99 ? 'ADMIN' : level >= 3 ? 'APPROVER' : level >= 2 ? (isOnline ? 'ONLINE_PURCHASER' : 'REVIEWER') : 'REQUESTER'),
-    title: user.title || (level >= 99 ? 'System Admin' : level >= 3 ? `Plant Manager (${dept})` : level >= 2 ? (isOnline ? 'Online Purchaser' : `Asst. Manager (${dept})`) : `Requester (${dept})`),
+    title: user.title || (level >= 99 ? 'System Admin' : level >= 3 ? `Plant Manager (${deptDisplay})` : level >= 2 ? (isOnline ? 'Online Purchaser' : `Asst. Manager (${deptDisplay})`) : `Requester (${deptDisplay})`),
     name: user.name || user.employee_name || user.employeeName || 'Staff',
     department: dept,
+    departments: userDepts,
+    assignedDepartments: user.assignedDepartments || userDepts,
+    allowedDepartments: user.allowedDepartments || userDepts,
     level: level,
 
     // ─── LEVEL 1+ PERMISSIONS (พนักงานทุกคน) ───
@@ -235,7 +249,7 @@ export function resolveUserPermissions(user) {
     canReview: level >= 2,
     canViewBudget: level >= 2,
     canViewBudgetMenu: level >= 2,
-    canViewAllDepts: level >= 99 || level >= 3 || dept === 'ALL' || (Array.isArray(user.assignedDepartments) && (user.assignedDepartments.includes('ALL') || user.assignedDepartments.includes('*'))),
+    canViewAllDepts: level >= 99 || level >= 3 || dept === 'ALL' || userDepts.includes('ALL') || userDepts.includes('*'),
 
     // ─── LEVEL 3+ PERMISSIONS (ผู้จัดการ / ผู้อนุมัติขั้นสุดท้าย) ───
     canFinalApprove: level >= 3,

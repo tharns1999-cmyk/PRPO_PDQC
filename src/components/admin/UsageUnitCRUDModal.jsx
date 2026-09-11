@@ -5,6 +5,7 @@ import { apiService } from '../../services/apiService';
 import { storageService } from '../../services/storageService';
 import { modalService } from '../../services/modalService';
 import { useAppContext } from '../../context/AppContext';
+import { getUserDepartments } from '../../utils/permissions';
 
 const COLOR_PRESETS = [
   { id: 'blue', label: 'ฟ้า', dot: 'bg-blue-500', color: 'bg-blue-50 text-blue-700 border-blue-200/80', badgeBg: 'bg-blue-100 text-blue-800' },
@@ -23,6 +24,7 @@ export default function UsageUnitCRUDModal({
   usageUnits = [],
   departments: propDepartments,
   currentRole,
+  currentUser,
   onClose,
   onSaved,
   onCreated
@@ -34,15 +36,43 @@ export default function UsageUnitCRUDModal({
     return (list || []).filter(d => d.status === 'active' || d.isActive !== false);
   }, [rawDepartments]);
 
+  const effectiveUser = currentUser || context?.currentUser;
+  const userDepts = getUserDepartments(currentRole || effectiveUser);
+  const canSelectAll = Boolean(
+    currentRole?.canViewAllDepts ||
+    currentRole?.id === 'ADMIN' ||
+    currentRole?.roleId === 'ADMIN' ||
+    currentRole?.role === 'admin' ||
+    effectiveUser?.role === 'admin' ||
+    effectiveUser?.roleId === 'ADMIN' ||
+    effectiveUser?.isAdmin === true ||
+    Number(currentRole?.level) >= 99 ||
+    Number(effectiveUser?.level) >= 99 ||
+    userDepts.includes('ALL') ||
+    userDepts.includes('*')
+  );
+
+  const selectableDepts = useMemo(() => {
+    if (canSelectAll) return deptList;
+    if (userDepts.length > 0) {
+      const filtered = deptList.filter(d => userDepts.some(ud => ud.toUpperCase() === d.code?.toUpperCase()));
+      return filtered.length > 0 ? filtered : deptList;
+    }
+    return deptList;
+  }, [deptList, canSelectAll, userDepts]);
+
+  const isSingleLockedDept = !canSelectAll && selectableDepts.length === 1;
+
   const isEdit = Boolean(unit && unit.id);
-  const defaultDeptCode = deptList[0]?.code || 'PD';
+  const defaultDeptCode = selectableDepts[0]?.code || 'PD';
 
   // Normalize legacy 'BOTH' to 'ALL'
   const initialDept = (() => {
     const raw = unit?.department;
     if (raw === 'BOTH') return 'ALL';
     if (raw) return raw;
-    return currentRole?.canViewAllDepts ? defaultDeptCode : (currentRole?.department || defaultDeptCode);
+    if (isSingleLockedDept) return selectableDepts[0]?.code;
+    return canSelectAll ? defaultDeptCode : (selectableDepts[0]?.code || defaultDeptCode);
   })();
 
   const [name, setName] = useState(unit?.name || '');
@@ -161,45 +191,57 @@ export default function UsageUnitCRUDModal({
               <span>แผนกที่ใช้งาน (Department Scope)</span>
               <span className="text-rose-500">*</span>
             </label>
-            <div className="flex flex-wrap gap-2">
-              {deptList.map(d => {
-                const isSelected = department === d.code || department === d.id;
-                const dotColorClass = 
-                  d.code === 'PD' ? 'bg-blue-500' :
-                  d.code === 'QC' ? 'bg-amber-500' :
-                  d.code === 'WH' ? 'bg-emerald-500' :
-                  d.code === 'PUR' ? 'bg-purple-500' :
-                  d.code === 'ENG' ? 'bg-cyan-500' :
-                  (d.color === 'blue' ? 'bg-blue-500' :
-                   d.color === 'amber' ? 'bg-amber-500' :
-                   d.color === 'emerald' ? 'bg-emerald-500' :
-                   d.color === 'purple' || d.color === 'violet' ? 'bg-violet-500' :
-                   d.color === 'cyan' ? 'bg-cyan-500' : 'bg-slate-400');
+            {isSingleLockedDept ? (
+              <div className="h-10 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl px-3.5 text-xs font-semibold flex items-center justify-between shadow-2xs select-none">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
+                  <span>{selectableDepts[0]?.name} ({selectableDepts[0]?.code})</span>
+                </div>
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-indigo-50 text-indigo-700 border-indigo-200">
+                  {selectableDepts[0]?.code}
+                </span>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {selectableDepts.map(d => {
+                  const isSelected = department === d.code || department === d.id;
+                  const dotColorClass = 
+                    d.code === 'PD' ? 'bg-blue-500' :
+                    d.code === 'QC' ? 'bg-amber-500' :
+                    d.code === 'WH' ? 'bg-emerald-500' :
+                    d.code === 'PUR' ? 'bg-purple-500' :
+                    d.code === 'ENG' ? 'bg-cyan-500' :
+                    (d.color === 'blue' ? 'bg-blue-500' :
+                     d.color === 'amber' ? 'bg-amber-500' :
+                     d.color === 'emerald' ? 'bg-emerald-500' :
+                     d.color === 'purple' || d.color === 'violet' ? 'bg-violet-500' :
+                     d.color === 'cyan' ? 'bg-cyan-500' : 'bg-slate-400');
 
-                return (
-                  <button
-                    key={d.code || d.id}
-                    type="button"
-                    onClick={() => {
-                      const code = d.code || d.id;
-                      setDepartment(code);
-                      if (!isEdit) {
-                        const matchedPreset = COLOR_PRESETS.find(p => p.id === d.color || (d.color === 'purple' && p.id === 'violet'));
-                        if (matchedPreset) setSelectedPreset(matchedPreset);
-                      }
-                    }}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                      isSelected
-                        ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-xs ring-2 ring-blue-500/20'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${dotColorClass}`} />
-                    <span>{d.name} ({d.code})</span>
-                  </button>
-                );
-              })}
-            </div>
+                  return (
+                    <button
+                      key={d.code || d.id}
+                      type="button"
+                      onClick={() => {
+                        const code = d.code || d.id;
+                        setDepartment(code);
+                        if (!isEdit) {
+                          const matchedPreset = COLOR_PRESETS.find(p => p.id === d.color || (d.color === 'purple' && p.id === 'violet'));
+                          if (matchedPreset) setSelectedPreset(matchedPreset);
+                        }
+                      }}
+                      className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        isSelected
+                          ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-xs ring-2 ring-blue-500/20'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${dotColorClass}`} />
+                      <span>{d.name} ({d.code})</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Name Input */}

@@ -165,16 +165,18 @@ const initialUsers = [
     name: 'คุณสมชาย (Asst. Mgr)',
     employeeName: 'คุณสมชาย มุ่งมั่น',
     displayName: 'Somchai (Asst Mgr)',
-    primaryDepartment: 'ALL',
-    department: 'ALL',
-    allowedDepartments: ['*'],
+    primaryDepartment: 'PD',
+    department: 'PD',
+    departments: ['PD', 'QC'],
+    assignedDepartments: ['PD', 'QC'],
+    allowedDepartments: ['PD', 'QC'],
     roleId: 'ASST_MANAGER',
     positionKey: 'REVIEWER',
     title: 'Assistant Manager',
     level: 2,
     status: 'ACTIVE',
     pictureUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-    description: 'ตรวจทาน PR (Level 1 Reviewer), ดูงบประมาณทุกแผนก'
+    description: 'ตรวจทาน PR (Level 1 Reviewer), ดูแลฝ่ายผลิต (PD) และฝ่ายควบคุมคุณภาพ (QC)'
   },
   {
     id: 'USR-0004',
@@ -362,16 +364,21 @@ app.post('/api/products', async (req, res) => {
 app.put('/api/products/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const targetId = decodeURIComponent(String(id || '')).trim().toLowerCase();
     const updated = req.body;
     const products = await readFile('products.json', []);
-    const idx = products.findIndex(p => p.id === id);
+    const idx = products.findIndex(p => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || '').trim().toLowerCase();
+      return pId === targetId || pCode === targetId;
+    });
     if (idx !== -1) {
       products[idx] = { ...products[idx], ...updated };
     } else {
-      products.push(updated);
+      products.unshift(updated);
     }
     await writeFile('products.json', products);
-    res.json(updated);
+    res.json(products[idx !== -1 ? idx : 0]);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -380,8 +387,13 @@ app.put('/api/products/:id', async (req, res) => {
 app.delete('/api/products/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const targetId = decodeURIComponent(String(id || '')).trim().toLowerCase();
     const products = await readFile('products.json', []);
-    const filtered = products.filter(p => p.id !== id && p.code !== id);
+    const filtered = products.filter(p => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || '').trim().toLowerCase();
+      return pId !== targetId && pCode !== targetId;
+    });
     await writeFile('products.json', filtered);
     res.json({ success: true, id });
   } catch (e) {
@@ -711,16 +723,21 @@ app.post('/api/vendors', async (req, res) => {
 app.put('/api/vendors/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const targetId = decodeURIComponent(String(id || '')).trim().toLowerCase();
     const updated = req.body;
     const vendors = await readFile('vendors.json', []);
-    const idx = vendors.findIndex(v => v.id === id);
+    const idx = vendors.findIndex(v => {
+      const vId = String(v.id || '').trim().toLowerCase();
+      const vCode = String(v.code || '').trim().toLowerCase();
+      return vId === targetId || vCode === targetId;
+    });
     if (idx !== -1) {
       vendors[idx] = { ...vendors[idx], ...updated };
     } else {
-      vendors.push(updated);
+      vendors.unshift(updated);
     }
     await writeFile('vendors.json', vendors);
-    res.json(updated);
+    res.json(vendors[idx !== -1 ? idx : 0]);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -729,8 +746,13 @@ app.put('/api/vendors/:id', async (req, res) => {
 app.delete('/api/vendors/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const targetId = decodeURIComponent(String(id || '')).trim().toLowerCase();
     const vendors = await readFile('vendors.json', []);
-    const filtered = vendors.filter(v => v.id !== id);
+    const filtered = vendors.filter(v => {
+      const vId = String(v.id || '').trim().toLowerCase();
+      const vCode = String(v.code || '').trim().toLowerCase();
+      return vId !== targetId && vCode !== targetId;
+    });
     await writeFile('vendors.json', filtered);
     res.json({ success: true, id });
   } catch (e) {

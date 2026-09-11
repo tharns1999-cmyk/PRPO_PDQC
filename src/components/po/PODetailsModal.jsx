@@ -536,40 +536,52 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
       </div>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden">
         <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in">
-          <div className="shrink-0 px-6 py-4 border-b border-slate-100 bg-white flex flex-col gap-3 sticky top-0 z-20">
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-3 flex-1 min-w-0">
+          {/* ── ZONE 1: Modern High-End Header & Segmented Ribbon (Linear / Raycast Style) ── */}
+          <div className="shrink-0 px-6 py-4 border-b border-slate-100 bg-white sticky top-0 z-20">
+            {/* Top Action Bar: PO ID & Subtitle on Left, Controls on Right */}
+            <div className="flex items-start sm:items-center justify-between gap-3">
+              <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-slate-800">{selectedPO.poNo}</span>
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border shadow-2xs ${statusInfo.color}`}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-current opacity-75"></span>
+                  <h2 className="text-xl font-black font-mono tracking-tight text-slate-900">
+                    {selectedPO.poNo || selectedPO.id}
+                  </h2>
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                    selectedPO.status === 'CLOSED'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs'
+                      : `${statusInfo.color} shadow-2xs`
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      selectedPO.status === 'CLOSED' ? 'bg-emerald-500' : 'bg-current opacity-80'
+                    } animate-pulse`}></span>
                     {statusInfo.label}
                   </span>
                 </div>
-                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div>
-                    <p className="text-[11px] font-medium text-slate-400">อ้างอิง PR</p>
-                    <p className="text-xs font-semibold text-slate-800 truncate">{selectedPO.prNo}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-medium text-slate-400">แผนก</p>
-                    <p className="text-xs font-semibold text-slate-800 truncate">ฝ่าย {selectedPO.department}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-medium text-slate-400">วันที่ออก PO</p>
-                    <p className="text-xs font-semibold text-slate-800 font-mono">{selectedPO.issueDate}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-medium text-slate-400">ช่องทาง</p>
-                    <p className="text-xs font-semibold text-slate-800">{selectedPO.purchaseChannel === 'ONLINE' ? 'ออนไลน์' : 'ทั่วไป'}</p>
-                  </div>
-                </div>
+                <p className="mt-1 text-xs font-medium text-slate-500 flex items-center gap-2 flex-wrap">
+                  <span>อ้างอิง {selectedPO.prNo || '-'}</span>
+                  <span className="text-slate-300">•</span>
+                  <span>ฝ่าย {selectedPO.department}</span>
+                  <span className="text-slate-300">•</span>
+                  {selectedPO.purchaseChannel === 'ONLINE' ? (
+                    <span className="text-purple-600 font-semibold">จัดซื้อออนไลน์</span>
+                  ) : (
+                    <span className="text-slate-600 font-semibold">จัดซื้อทั่วไป</span>
+                  )}
+                  {selectedPO.issueDate && (
+                    <>
+                      <span className="text-slate-300">•</span>
+                      <span className="font-mono text-slate-400">{selectedPO.issueDate}</span>
+                    </>
+                  )}
+                </p>
               </div>
+
+              {/* Action Buttons */}
               <div className="flex items-center gap-2 shrink-0">
                 <button 
+                  type="button"
                   onClick={handlePrint} 
                   disabled={isGeneratingPdf}
-                  className="flex items-center gap-1.5 bg-white hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed text-slate-700 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 shadow-2xs transition-all cursor-pointer"
+                  className="h-8 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed text-xs font-semibold text-slate-700 transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
                   title="พิมพ์ PO / ดาวน์โหลด PDF"
                 >
                   {isGeneratingPdf ? (
@@ -579,63 +591,94 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                     </>
                   ) : (
                     <>
-                      <Printer className="w-4 h-4 text-slate-600" />
+                      <Printer className="w-3.5 h-3.5 text-slate-600" />
                       <span className="hidden sm:inline">พิมพ์ PO</span>
                     </>
                   )}
                 </button>
-                <button onClick={onClose} className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-all cursor-pointer">
-                  <X className="w-5 h-5" />
+                <button 
+                  type="button"
+                  onClick={onClose} 
+                  className="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                  aria-label="Close modal"
+                >
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
-          </div>
 
-          {/* ── Lifecycle Progress Strip ── */}
-          {!isSpecial && (
-            <div className="shrink-0 px-5 pb-3 border-b border-slate-100 bg-white">
-              <div className="flex items-center">
-                {lifecycleSteps.map((step, i) => {
-                  const isDone = currentStepIndex >= 0 && i < currentStepIndex;
-                  const isCurrent = i === currentStepIndex;
-                  const isLast = i === lifecycleSteps.length - 1;
-                  return (
-                    <div key={step.key} className="flex items-center flex-1 min-w-0">
-                      <div className="flex flex-col items-center gap-1 flex-1 min-w-0">
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
-                          isCurrent ? 'bg-indigo-600 border-indigo-600 shadow-sm shadow-indigo-300' :
-                          isDone    ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-200'
-                        }`}>
-                          {isDone && <Check className="w-2.5 h-2.5 text-white" />}
-                          {isCurrent && <span className="w-2 h-2 rounded-full bg-white" />}
+            {/* Modern Segmented Progress Ribbon */}
+            {!isSpecial && (
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 mt-4 overflow-x-auto scrollbar-none">
+                <div className="flex items-center justify-between gap-1 min-w-[500px] sm:min-w-0">
+                  {lifecycleSteps.map((step, i) => {
+                    const isAllCompleted = selectedPO.status === 'CLOSED';
+                    const isDone = isAllCompleted || (currentStepIndex >= 0 && i < currentStepIndex);
+                    const isCurrent = !isAllCompleted && (i === currentStepIndex);
+                    const isLast = i === lifecycleSteps.length - 1;
+
+                    return (
+                      <React.Fragment key={step.key}>
+                        <div 
+                          className={`flex items-center justify-center gap-1.5 px-2 py-1 rounded-xl transition-all flex-1 min-w-0 ${
+                            isCurrent 
+                              ? 'bg-white shadow-2xs border border-indigo-200/90' 
+                              : isDone 
+                                ? 'bg-emerald-50/70 border border-emerald-100/80' 
+                                : 'bg-slate-100/60 border border-transparent'
+                          }`}
+                        >
+                          {isDone ? (
+                            <div className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                              <Check className="w-2.5 h-2.5 stroke-[2.5]" />
+                            </div>
+                          ) : isCurrent ? (
+                            <div className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
+                            </div>
+                          ) : (
+                            <div className="w-4 h-4 rounded-full bg-slate-200/80 flex items-center justify-center shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                            </div>
+                          )}
+                          <span className={`text-[11px] font-semibold truncate ${
+                            isCurrent 
+                              ? 'text-indigo-700 font-bold' 
+                              : isDone 
+                                ? 'text-slate-700' 
+                                : 'text-slate-400'
+                          }`}>
+                            {step.label}
+                          </span>
                         </div>
-                        <span className={`text-[9px] font-semibold text-center leading-tight truncate w-full px-0.5 ${
-                          isCurrent ? 'text-indigo-700' : isDone ? 'text-emerald-600' : 'text-slate-400'
-                        }`}>{step.label}</span>
-                      </div>
-                      {!isLast && (
-                        <div className={`h-0.5 flex-1 mx-0.5 -mt-4 transition-all ${isDone ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-                      )}
-                    </div>
-                  );
-                })}
+                        {!isLast && (
+                          <ChevronRight className={`w-3.5 h-3.5 shrink-0 ${
+                            isDone ? 'text-emerald-400' : 'text-slate-300'
+                          }`} />
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* ── Special Status Banner ── */}
-          {isSpecial && (
-            <div className={`mx-5 mt-3 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 ${
-              selectedPO.status === 'CANCELLED'
-                ? 'bg-slate-100 text-slate-600 border border-slate-200'
-                : 'bg-rose-50 text-rose-800 border border-rose-200'
-            }`}>
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              {selectedPO.status === 'CANCELLED' ? 'ใบสั่งซื้อนี้ถูกยกเลิกแล้ว' :
-               selectedPO.status === 'CLAIM_REPORTED' ? '🚨 มีการแจ้งปัญหาสินค้า — รอดำเนินการแก้ไข' :
-               '🔧 อยู่ระหว่างดำเนินการแก้ไขปัญหาสินค้า'}
-            </div>
-          )}
+            {/* Special Status Banner */}
+            {isSpecial && (
+              <div className={`mt-3 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                selectedPO.status === 'CANCELLED'
+                  ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
+              }`}>
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+                <span>
+                  {selectedPO.status === 'CANCELLED' ? 'ใบสั่งซื้อนี้ถูกยกเลิกแล้ว' :
+                   selectedPO.status === 'CLAIM_REPORTED' ? '🚨 มีการแจ้งปัญหาสินค้า — รอดำเนินการแก้ไข' :
+                   '🔧 อยู่ระหว่างดำเนินการแก้ไขปัญหาสินค้า'}
+                </span>
+              </div>
+            )}
+          </div>
 
           {/* ════ ZONE 2 — SCROLLABLE BODY ════ */}
           <div className="flex-1 overflow-y-auto bg-slate-50/40" style={{ scrollbarWidth: 'thin' }}>

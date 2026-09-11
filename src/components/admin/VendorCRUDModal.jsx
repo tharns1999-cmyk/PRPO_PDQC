@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { apiService } from '../../services/apiService';
 import { storageService } from '../../services/storageService';
@@ -8,13 +8,15 @@ import {
   Store, X, Building2, Phone, User, FileText, 
   MapPin, Hash, Check, Sparkles, AlertTriangle 
 } from 'lucide-react';
+import { getUserDepartments } from '../../utils/permissions';
 
 export default function VendorCRUDModal({ 
-  editVendor: propEditVendor, 
   vendor, 
+  editVendor: propEditVendor, 
   vendors = [], 
-  departments: propDepartments,
+  departments: propDepartments, 
   currentRole, 
+  currentUser,
   onClose, 
   onRefresh 
 }) {
@@ -26,25 +28,86 @@ export default function VendorCRUDModal({
   }, [rawDepartments]);
 
   const editVendor = propEditVendor || vendor;
-  const isSupervisor = !currentRole?.canViewAllDepts;
-  const lockedDept = isSupervisor ? currentRole?.department : null;
+  const effectiveUser = currentUser || context?.currentUser;
+  const userDepts = getUserDepartments(currentRole || effectiveUser);
+  const canSelectAll = Boolean(
+    currentRole?.canViewAllDepts ||
+    currentRole?.id === 'ADMIN' ||
+    currentRole?.roleId === 'ADMIN' ||
+    currentRole?.role === 'admin' ||
+    effectiveUser?.role === 'admin' ||
+    effectiveUser?.roleId === 'ADMIN' ||
+    effectiveUser?.isAdmin === true ||
+    Number(currentRole?.level) >= 99 ||
+    Number(effectiveUser?.level) >= 99 ||
+    userDepts.includes('ALL') ||
+    userDepts.includes('*')
+  );
+
+  const selectableDepts = useMemo(() => {
+    if (canSelectAll) return deptList;
+    if (userDepts.length > 0) {
+      const filtered = deptList.filter(d => userDepts.some(ud => ud.toUpperCase() === d.code?.toUpperCase()));
+      return filtered.length > 0 ? filtered : deptList;
+    }
+    return deptList;
+  }, [deptList, canSelectAll, userDepts]);
+
+  const isSingleLockedDept = !canSelectAll && selectableDepts.length === 1;
+  const lockedDept = isSingleLockedDept ? selectableDepts[0]?.code : null;
+  const vendorCodeInputRef = useRef(null);
   const [vendorCode, setVendorCode] = useState(editVendor?.code || '');
   const [isSaving, setIsSaving] = useState(false);
 
+  // Combined master vendors from props, context, and storageService/localStorage for complete duplicate guard
   const allVendors = useMemo(() => {
-    return vendors.length > 0 ? vendors : storageService.getVendors();
-  }, [vendors]);
+    const fromProps = Array.isArray(vendors) ? vendors : [];
+    const fromContext = Array.isArray(context?.vendors) ? context.vendors : [];
+    const fromStorage = storageService.getVendors?.() || [];
+    const map = new Map();
+    [...fromStorage, ...fromContext, ...fromProps].forEach(v => {
+      if (v) {
+        const key = String(v.id || v.code || v.vendorCode || Math.random());
+        map.set(key, v);
+      }
+    });
+    return Array.from(map.values());
+  }, [vendors, context?.vendors]);
 
-  const isCodeDuplicate = useMemo(() => {
-    const cleanCode = vendorCode.trim().toUpperCase();
-    if (!cleanCode) return false;
-    return allVendors.some(v => v.id !== editVendor?.id && (v.code || '').trim().toUpperCase() === cleanCode);
+  // Duplicate Vendor Code Check with Duplicate Vendor Name Resolution
+  const duplicateVendor = useMemo(() => {
+    const cleanVendorCode = vendorCode.trim().toUpperCase();
+    if (!cleanVendorCode) return null;
+    return allVendors.find(v => {
+      if (editVendor && (v.id === editVendor.id || (v.code && v.code.toUpperCase() === editVendor.code?.toUpperCase()))) {
+        return false;
+      }
+      const existingCode = (v.code || v.vendorCode || v.id || '').trim().toUpperCase();
+      return existingCode === cleanVendorCode;
+    }) || null;
   }, [vendorCode, allVendors, editVendor]);
+
+  const isVendorCodeDuplicate = Boolean(duplicateVendor);
+  const isCodeDuplicate = isVendorCodeDuplicate;
 
   const handleSaveVendor = async (e) => {
     e.preventDefault();
-    if (isCodeDuplicate) {
-      return modalService.warning('รหัสผู้ขายนี้มีอยู่ในระบบแล้ว', 'กรุณาระบุรหัสผู้ขายใหม่ที่ไม่ซ้ำกับรายอื่น');
+    const cleanVendorCode = vendorCode.trim().toUpperCase();
+    if (!cleanVendorCode) {
+      modalService.error('กรุณาระบุรหัสผู้ขาย', 'กรุณาระบุรหัสผู้ขาย (Vendor Code)');
+      vendorCodeInputRef.current?.focus();
+      return;
+    }
+
+    if (isVendorCodeDuplicate) {
+      modalService.error(
+        'รหัสผู้ขายนี้ถูกใช้งานแล้วในระบบ',
+        duplicateVendor
+          ? `รหัส "${cleanVendorCode}" ซ้ำกับผู้ขาย: ${duplicateVendor.name}`
+          : 'กรุณาระบุรหัสผู้ขายใหม่ที่ไม่ซ้ำกับรายอื่น'
+      );
+      vendorCodeInputRef.current?.focus();
+      return;
     }
 
     setIsSaving(true);
@@ -132,29 +195,37 @@ export default function VendorCRUDModal({
                     <label className="text-xs font-semibold text-slate-700">
                       รหัสผู้ขาย (Vendor Code) <span className="text-rose-500">*</span>
                     </label>
-                    {isCodeDuplicate && (
+                    {isVendorCodeDuplicate && (
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse">
                         <AlertTriangle className="w-3 h-3 text-rose-500" /> รหัสซ้ำ!
                       </span>
                     )}
                   </div>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                    <div className={`absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none ${
+                      isVendorCodeDuplicate ? 'text-rose-500' : 'text-slate-400'
+                    }`}>
                       <Hash className="w-4 h-4" />
                     </div>
                     <input
+                      ref={vendorCodeInputRef}
                       name="code"
                       value={vendorCode}
                       onChange={e => setVendorCode(e.target.value)}
                       placeholder="เช่น VND-TH-001"
                       required
-                      className={`w-full h-11 pl-10 pr-3 bg-white border rounded-xl text-xs font-mono font-bold uppercase tracking-wide placeholder:font-normal placeholder:text-slate-400 focus:outline-none transition-all ${
-                        isCodeDuplicate 
-                          ? 'border-rose-400 text-rose-900 bg-rose-50/30 focus:ring-2 focus:ring-rose-500/20' 
-                          : 'border-slate-200 text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500'
+                      className={`w-full h-11 pl-10 pr-3 border rounded-xl text-xs font-mono font-bold uppercase tracking-wide placeholder:font-normal placeholder:text-slate-400 focus:outline-none transition-all ${
+                        isVendorCodeDuplicate 
+                          ? 'border-rose-500 focus:border-rose-500 focus:ring-2 focus:ring-rose-200 bg-rose-50/20 text-rose-900' 
+                          : 'border-slate-200 text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white'
                       }`}
                     />
                   </div>
+                  {isVendorCodeDuplicate && (
+                    <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1 font-medium">
+                      <span>⚠️</span> รหัสนี้ถูกใช้งานแล้วในระบบ {duplicateVendor ? `(${duplicateVendor.name})` : ''}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -176,8 +247,8 @@ export default function VendorCRUDModal({
                         defaultValue={dept}
                         className="w-full h-11 pl-10 pr-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
                       >
-                        <option value="ALL">ใช้ร่วมกันทุกแผนก (ALL)</option>
-                        {deptList.map(d => (
+                        {canSelectAll && <option value="ALL">ใช้ร่วมกันทุกแผนก (ALL)</option>}
+                        {selectableDepts.map(d => (
                           <option key={d.code} value={d.code}>
                             เฉพาะ{d.name} ({d.code})
                           </option>
@@ -293,7 +364,7 @@ export default function VendorCRUDModal({
             <button
               type="submit"
               form="vendor-form"
-              disabled={isSaving || isCodeDuplicate}
+              disabled={isSaving || isVendorCodeDuplicate || !vendorCode.trim()}
               className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check className="w-4 h-4" />

@@ -1,7 +1,12 @@
 [
   {
+    "id": "LOC-QC-521026",
+    "name": "ออฟฟิศ QC",
+    "department": "QC"
+  },
+  {
     "id": "LOC-PD-001",
-    "name": "ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)",
+    "name": "ออฟฟิศ PD",
     "department": "PD"
   },
   {

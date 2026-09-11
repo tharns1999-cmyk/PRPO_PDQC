@@ -5,17 +5,33 @@ import {
   Sparkles, Building2, ShoppingBag, Crown, Layers
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
+import { getUserDepartments } from '../../utils/permissions';
+
+const getDeptBadgeStyle = (dept) => {
+  switch (dept?.toUpperCase()) {
+    case 'QC':
+      return 'bg-amber-50 text-amber-700 border-amber-200';
+    case 'PD':
+      return 'bg-blue-50 text-blue-700 border-blue-200';
+    case 'WH':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'PUR':
+      return 'bg-purple-50 text-purple-700 border-purple-200';
+    case 'ENG':
+      return 'bg-cyan-50 text-cyan-700 border-cyan-200';
+    case 'ALL':
+      return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+    default:
+      return 'bg-slate-50 text-slate-700 border-slate-200';
+  }
+};
 
 export default function UserProfileModal({ isOpen, onClose, currentRole, onLogout }) {
   const { availableUsers = [], handleSwitchUser } = useAppContext();
 
   if (!isOpen || !currentRole) return null;
 
-  const deptColor = currentRole.department === 'QC'
-    ? 'bg-amber-50 text-amber-700 border-amber-200'
-    : currentRole.department === 'ALL'
-      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-      : 'bg-blue-50 text-blue-700 border-blue-200';
+  const currentDepts = getUserDepartments(currentRole);
 
   const handleSelectUser = (userAcc) => {
     handleSwitchUser(userAcc);
@@ -70,15 +86,22 @@ export default function UserProfileModal({ isOpen, onClose, currentRole, onLogou
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h4 className="font-bold text-slate-900 text-base truncate">{currentRole.name}</h4>
-                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${deptColor}`}>
-                  {currentRole.department}
-                </span>
+                {currentDepts.map(d => (
+                  <span key={d} className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${getDeptBadgeStyle(d)}`}>
+                    {d}
+                  </span>
+                ))}
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Active
                 </span>
               </div>
               <p className="text-xs text-slate-600 mt-0.5 font-medium">
                 ตำแหน่ง: <span className="font-bold text-slate-800">{currentRole.title}</span>
+                {currentDepts.length > 1 && (
+                  <span className="text-indigo-600 font-bold ml-1.5">
+                    ({currentDepts.join(', ')})
+                  </span>
+                )}
               </p>
               {currentRole.username && (
                 <p className="text-[11px] font-mono text-slate-400 mt-0.5">
@@ -143,9 +166,26 @@ export default function UserProfileModal({ isOpen, onClose, currentRole, onLogou
                             {userAcc.name}
                           </span>
                         </div>
-                        <span className="text-[10px] text-slate-500 block truncate font-normal">
-                          {userAcc.title}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <span className="text-[10px] text-slate-500 block truncate font-normal">
+                            {userAcc.title}
+                          </span>
+                          {(() => {
+                            const accDepts = getUserDepartments(userAcc).filter(d => d !== 'ALL' && d !== '*');
+                            if (accDepts.length > 1) {
+                              return (
+                                <div className="flex items-center gap-1">
+                                  {accDepts.map(d => (
+                                    <span key={d} className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md border ${getDeptBadgeStyle(d)}`}>
+                                      {d}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
                       </div>
                     </div>
 

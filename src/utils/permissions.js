@@ -1,60 +1,109 @@
+import { storageService } from '../services/storageService';
+
 /**
  * Permission and Department Access Control Utilities
  * Supports multi-department access, wildcard (* or ALL), and backward compatibility.
  */
 
 /**
+ * Extracts all departments assigned to a user as a clean Array of uppercase strings.
+ * Supports:
+ * - Array: ['PD', 'QC']
+ * - Comma-separated string: "PD, QC" or "PD,QC"
+ * - Assigned / Allowed / Primary / Department properties
+ * @param {Object} user - User object or currentRole object
+ * @returns {string[]} Array of uppercase department codes
+ */
+export function getUserDepartments(user) {
+  if (!user) return [];
+
+  const rawDepts = [];
+
+  const collect = (val) => {
+    if (!val) return;
+    if (Array.isArray(val)) {
+      val.forEach(item => collect(item));
+    } else if (typeof val === 'string') {
+      val.split(',').forEach(part => {
+        const trimmed = part.trim();
+        if (trimmed) rawDepts.push(trimmed.toUpperCase());
+      });
+    }
+  };
+
+  // Collect from all possible user fields
+  collect(user.departments);
+  collect(user.assignedDepartments);
+  collect(user.allowedDepartments);
+  collect(user.department);
+  collect(user.primaryDepartment);
+
+  // If user object has nested role or session properties
+  if (user.role && typeof user.role === 'object') {
+    collect(user.role.departments);
+    collect(user.role.assignedDepartments);
+    collect(user.role.allowedDepartments);
+    collect(user.role.department);
+  }
+
+  // Deduplicate
+  const uniqueDepts = Array.from(new Set(rawDepts));
+
+  // If empty and user is admin or universal
+  const roleId = String(user.roleId || user.role_id || user.id || '').toUpperCase();
+  const isAdmin = user.role === 'admin' ||
+                  roleId === 'ADMIN' ||
+                  Number(user.level) >= 99 ||
+                  user.isAdmin === true ||
+                  user.username === 'admin';
+  if (uniqueDepts.length === 0 && isAdmin) {
+    return ['ALL'];
+  }
+
+  return uniqueDepts;
+}
+
+/**
+ * Checks if a user can access data scoped to a target department.
+ * - Returns true if user.role === 'admin' or user departments contain 'ALL' or '*'
+ * - Returns true if targetDepartment is 'ALL' or 'BOTH' (central / shared data)
+ * - Returns true if user has the targetDepartment in their departments array (Case-insensitive)
+ * @param {Object} user - User object or currentRole
+ * @param {string} targetDepartment - Department code of the data record
+ * @returns {boolean}
+ */
+export function canAccessDepartmentData(user, targetDepartment) {
+  if (!user) return false;
+  if (!targetDepartment || targetDepartment === 'ALL' || targetDepartment === 'BOTH') return true;
+
+  const userDepts = getUserDepartments(user);
+
+  const roleId = String(user.roleId || user.role_id || user.id || '').toUpperCase();
+  const isAdmin = user.role === 'admin' || 
+                  roleId === 'ADMIN' || 
+                  Number(user.level) >= 99 || 
+                  user.isAdmin === true || 
+                  user.username === 'admin' ||
+                  userDepts.includes('ALL') || 
+                  userDepts.includes('*') ||
+                  (user.department === 'ALL' && user.canViewAllDepts);
+
+  if (isAdmin) return true;
+
+  const target = String(targetDepartment).trim().toUpperCase();
+  return userDepts.some(d => d.toUpperCase() === target);
+}
+
+/**
  * Checks if a user has access to a specific department.
+ * (Delegates to canonical canAccessDepartmentData)
  * @param {Object} user - The user or currentRole object
  * @param {string} departmentCode - The department code to check (e.g. 'PD', 'QC')
  * @returns {boolean}
  */
 export function hasDepartmentAccess(user, departmentCode) {
-  if (!user) return false;
-  if (!departmentCode) return true;
-
-  const targetDept = String(departmentCode).trim().toUpperCase();
-
-  // 1. Universal access roles (Admin, Plant Manager, or users explicitly assigned ALL/*)
-  const roleId = String(user.roleId || user.id || '').toUpperCase();
-  const isAdmin = roleId === 'ADMIN' || Number(user.level) >= 99 || user.role === 'admin';
-  const isApprover = roleId === 'PLANT_MANAGER' || user.positionKey === 'APPROVER' || user.canFinalApprove || Number(user.level) >= 3;
-  const assigned = Array.isArray(user.assignedDepartments) ? user.assignedDepartments : [];
-  const allowed = Array.isArray(user.allowedDepartments) ? user.allowedDepartments : [];
-  const hasAllInAssigned = assigned.includes('ALL') || assigned.includes('*') || allowed.includes('ALL') || allowed.includes('*');
-
-  if (isAdmin || isApprover || (user.department === 'ALL' && user.canViewAllDepts) || hasAllInAssigned) {
-    return true;
-  }
-
-  // 2. Check assignedDepartments (new canonical field) first
-  if (assigned.length > 0) {
-    const upperAssigned = assigned.map(d => String(d).trim().toUpperCase());
-    if (upperAssigned.includes('*') || upperAssigned.includes('ALL')) return true;
-    if (upperAssigned.includes(targetDept)) return true;
-  }
-
-  // 3. Check allowedDepartments array (legacy support)
-  if (allowed.length > 0) {
-    const upperAllowed = allowed.map(d => String(d).trim().toUpperCase());
-    if (upperAllowed.includes('*') || upperAllowed.includes('ALL')) {
-      return true;
-    }
-    if (upperAllowed.includes(targetDept)) {
-      return true;
-    }
-  }
-
-  // 4. Fallback to primaryDepartment or department
-  const primaryDept = String(user.primaryDepartment || user.department || '').trim().toUpperCase();
-  if (primaryDept === 'ALL' || primaryDept === '*' || primaryDept === targetDept) {
-    return true;
-  }
-
-  return false;
+  return canAccessDepartmentData(user, departmentCode);
 }
-
-import { storageService } from '../services/storageService';
 
 /**
  * Returns list of accessible departments for a given user.
@@ -65,39 +114,34 @@ import { storageService } from '../services/storageService';
 export function getUserAccessibleDepartments(user, availableDepartments = null) {
   if (!user) return [];
 
-  const depts = (availableDepartments && availableDepartments.length > 0)
+  const allDepts = (availableDepartments && availableDepartments.length > 0)
     ? availableDepartments
     : (storageService.getDepartments?.()?.map(d => d.code) || ['PD', 'QC', 'WH', 'PUR', 'ENG']);
 
-  const roleId = String(user.roleId || user.id || '').toUpperCase();
-  const isAdmin = roleId === 'ADMIN' || Number(user.level) >= 99 || user.role === 'admin';
-  const isApprover = roleId === 'PLANT_MANAGER' || user.positionKey === 'APPROVER' || user.canFinalApprove || Number(user.level) >= 3;
-  const assigned = Array.isArray(user.assignedDepartments) ? user.assignedDepartments : [];
-  const allowed = Array.isArray(user.allowedDepartments) ? user.allowedDepartments : [];
-  const hasAllInAssigned = assigned.includes('ALL') || assigned.includes('*') || allowed.includes('ALL') || allowed.includes('*');
+  const userDepts = getUserDepartments(user);
+  const roleId = String(user.roleId || user.role_id || user.id || '').toUpperCase();
+  const isAdmin = user.role === 'admin' ||
+                  roleId === 'ADMIN' ||
+                  Number(user.level) >= 99 ||
+                  user.isAdmin === true ||
+                  user.username === 'admin' ||
+                  userDepts.includes('ALL') ||
+                  userDepts.includes('*') ||
+                  (user.department === 'ALL' && user.canViewAllDepts);
 
-  if (isAdmin || isApprover || (user.department === 'ALL' && user.canViewAllDepts) || hasAllInAssigned) {
-    return depts;
+  if (isAdmin) {
+    return allDepts;
   }
 
-  // Check assignedDepartments first (new canonical field)
-  if (assigned.length > 0) {
-    if (assigned.includes('*') || assigned.includes('ALL')) return depts;
-    return assigned.filter(d => depts.includes(d));
-  }
-
-  // Fallback: allowedDepartments (legacy)
-  if (allowed.length > 0) {
-    if (allowed.includes('*') || allowed.includes('ALL')) {
-      return depts;
-    }
-    return allowed.filter(d => depts.includes(d));
+  const filtered = userDepts.filter(d => d !== 'ALL' && d !== '*');
+  if (filtered.length > 0) {
+    return filtered;
   }
 
   const primaryDept = user.primaryDepartment || user.department;
-  if (primaryDept === 'ALL' || primaryDept === '*') {
-    return depts;
+  if (primaryDept && primaryDept !== 'ALL' && primaryDept !== '*') {
+    return [primaryDept];
   }
 
-  return primaryDept ? [primaryDept] : [];
+  return allDepts;
 }

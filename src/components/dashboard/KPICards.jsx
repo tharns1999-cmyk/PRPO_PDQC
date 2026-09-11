@@ -9,7 +9,11 @@ export default function KPICards({ prs, pos, products, budgetSummary, currentRol
   const pendingPRs = accessiblePRs.filter(p => ['SUBMITTED', 'REVIEWED', 'REJECTED_TO_L2'].includes(p.status)).length;
   const activePOs = accessiblePOs.filter(p => ['ISSUED', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL', 'IN_PROGRESS_ONLINE', 'CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(p.status)).length;
   
-  const lowStockItems = products.filter(p => (currentRole.canViewAllDepts || p.category === currentRole.department) && p.stockBalance <= p.reorderPoint);
+  const lowStockItems = products.filter(p => {
+    const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
+    if (isInactive) return false;
+    return (currentRole.canViewAllDepts || p.category === currentRole.department) && p.stockBalance <= p.reorderPoint;
+  });
   const lowStockCount = lowStockItems.length;
 
   const assigned = Array.isArray(currentRole.assignedDepartments) ? currentRole.assignedDepartments : [];

@@ -208,9 +208,15 @@ function MasterDataRoute() {
     usageUnits, 
     departments,
     users, 
+    prs,
+    pos,
     currentRole, 
     currentUser,
     refreshData, 
+    deleteProduct,
+    deleteVendor,
+    saveProduct,
+    saveVendor,
     saveUsageUnit, 
     deleteUsageUnit, 
     saveDepartment,
@@ -227,9 +233,15 @@ function MasterDataRoute() {
       usageUnits={usageUnits}
       departments={departments}
       users={users}
+      prs={prs}
+      pos={pos}
       currentRole={currentRole}
       currentUser={currentUser}
       onRefresh={refreshData}
+      onDeleteProduct={deleteProduct}
+      onDeleteVendor={deleteVendor}
+      onSaveProduct={saveProduct}
+      onSaveVendor={saveVendor}
       onSaveUsageUnit={saveUsageUnit}
       onDeleteUsageUnit={deleteUsageUnit}
       onSaveDepartment={saveDepartment}

@@ -3,7 +3,11 @@ import { AlertTriangle, Zap, CheckCircle2 } from 'lucide-react';
 
 export default function LowStockTable({ products = [], onQuickPR }) {
   const lowStockItems = useMemo(() => {
-    return products.filter(p => Number(p.stockBalance || 0) <= Number(p.reorderPoint || 0));
+    return products.filter(p => {
+      const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
+      if (isInactive) return false;
+      return Number(p.stockBalance || 0) <= Number(p.reorderPoint || 0);
+    });
   }, [products]);
 
   return (
