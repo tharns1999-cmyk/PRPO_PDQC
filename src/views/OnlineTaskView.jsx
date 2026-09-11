@@ -973,8 +973,8 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
                 </button>
               ))}
             </div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-              ร้านค้าออนไลน์ / ช่องทางที่สั่งซื้อ
+            <label className="text-[11px] font-bold text-slate-700 block mb-1.5">
+              ชื่อร้านค้าที่สั่งซื้อจริง (Store Name) <span className="text-rose-500">*</span>
             </label>
             <div className="relative flex items-center">
               <Store className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />

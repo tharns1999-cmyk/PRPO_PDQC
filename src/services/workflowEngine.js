@@ -3,6 +3,7 @@ import { PR_STATUS, PO_STATUS, DEPARTMENTS } from '../config/constants.js';
 import { notificationService } from './notificationService.js';
 import { auditService } from './auditService.js';
 import { hasDepartmentAccess } from '../utils/permissions.js';
+import { generateNextPRId, generateNextPOId } from '../utils/idGenerator.js';
 
 export const workflowEngine = {
   
@@ -879,39 +880,26 @@ export const workflowEngine = {
     return amount > remaining;
   },
 
-  // Generate PR No
+  // Generate PR No with Robust Max-Sequence Scan and Collision Guard
   generatePRNo(deptId) {
-    const counters = storageService.getPRCounters() || {};
-    const dateStr = new Date().getFullYear().toString();
-    const rawCount = (typeof counters[deptId] === 'object' && counters[deptId] !== null)
-      ? (counters[deptId].PR || 0)
-      : (counters[deptId] || 0);
-
-    const count = rawCount + 1;
-    if (typeof counters[deptId] === 'object' && counters[deptId] !== null) {
-      counters[deptId].PR = count;
-    } else {
-      counters[deptId] = count;
-    }
-    storageService.savePRCounters(counters);
-
-    const prefix = DEPARTMENTS[deptId]?.prefix || deptId;
-    return `${prefix}${String(count).padStart(3, '0')}/${dateStr}`;
+    const prs = storageService.getPRs() || [];
+    return generateNextPRId(prs, deptId);
   },
 
-  // Generate PO No
-  generatePONo(deptId) {
-    const pos = storageService.getPOs();
-    const count = pos.length + 1;
-    const dateStr = new Date().getFullYear().toString();
-    const prefix = DEPARTMENTS[deptId]?.prefix || deptId;
-    return `PO-${prefix}-${dateStr}-${String(count).padStart(3, '0')}`;
+  // Generate PO No with Robust Max-Sequence Scan and Collision Guard
+  generatePONo(deptId, offset = 0) {
+    const pos = storageService.getPOs() || [];
+    return generateNextPOId(pos, deptId, new Date().getFullYear(), offset);
   },
 
   // Create PR (Draft or Submitted)
   async createPR(prData, user, isDraft = false) {
-    const prs = storageService.getPRs();
-    const prNo = this.generatePRNo(prData.department);
+    const prs = storageService.getPRs() || [];
+    let prNo = this.generatePRNo(prData.department);
+    const existingPrNos = new Set(prs.flatMap(p => [p.prNo, p.prNumber, p.id].filter(Boolean).map(s => String(s).trim().toUpperCase())));
+    while (existingPrNos.has(prNo.toUpperCase())) {
+      prNo = generateNextPRId([...prs, { prNo }], prData.department);
+    }
     const timestamp = new Date().toLocaleString('th-TH');
 
     const draftFlag = isDraft || Boolean(prData.isDraft);
@@ -1034,13 +1022,10 @@ export const workflowEngine = {
       ]
     };
 
-    const existingIdx = prs.findIndex(p => p.id === newPR.id || (newPR.prNo && p.prNo === newPR.prNo));
-    if (existingIdx !== -1) {
-      prs[existingIdx] = newPR;
-    } else {
-      prs.unshift(newPR);
-    }
-    storageService.savePRs(prs);
+    // Collision Guard: Prepend new PR without ever overwriting existing array items
+    const filteredPRs = prs.filter(p => p.id !== newPR.id && p.prNo !== newPR.prNo);
+    const updatedPRs = [newPR, ...filteredPRs];
+    storageService.savePRs(updatedPRs);
 
     auditService.logAction({
       action: isDraft ? 'PR_DRAFT_CREATED' : 'PR_SUBMITTED',
@@ -1326,11 +1311,15 @@ export const workflowEngine = {
       pr.status = 'APPROVED';
       generatedPO = await this.createPOFromPR(pr, user);
       pr.status = pr.purchaseChannel === 'ONLINE' ? 'IN_PROGRESS_ONLINE' : 'PO_ISSUED';
-      const firstPO = Array.isArray(generatedPO) ? generatedPO[0] : generatedPO;
-      if (firstPO) {
-        pr.poNumber = firstPO.poNo;
-        pr.poNo = firstPO.poNo;
-        pr.poId = firstPO.id;
+      if (Array.isArray(generatedPO) && generatedPO.length > 0) {
+        pr.poNumbers = generatedPO.map(p => p.poNo);
+        pr.poNumber = generatedPO.map(p => p.poNo).join(', ');
+        pr.poNo = generatedPO[0].poNo;
+        pr.poId = generatedPO[0].id;
+      } else if (generatedPO) {
+        pr.poNumber = generatedPO.poNo;
+        pr.poNo = generatedPO.poNo;
+        pr.poId = generatedPO.id;
       }
     } else {
       pr.status = nextStatus;
@@ -1399,55 +1388,65 @@ export const workflowEngine = {
       return existingPOs.length === 1 ? existingPOs[0] : existingPOs;
     }
     
-    // Group items by vendorId
+    // Group items by vendorId (from item.vendorId or master supplierId)
     const groups = {};
     pr.items.forEach(item => {
       const prod = products.find(p => p.id === item.productId);
-      const supplierId = prod?.supplierId || 'NULL';
+      const supplierId = item.vendorId || item.supplierId || prod?.supplierId || prod?.preferredSupplier || 'NULL';
       if (!groups[supplierId]) groups[supplierId] = [];
       groups[supplierId].push(item);
     });
 
     const generatedPOs = [];
-    let splitCount = 0;
-    const basePoNo = this.generatePONo(pr.department);
+    let splitIdx = 0;
     const isSplit = Object.keys(groups).length > 1;
 
     for (const [vendorId, items] of Object.entries(groups)) {
-      splitCount++;
-      const vendor = vendorId !== 'NULL' ? vendors.find(v => v.id === vendorId) : null;
-      const poNo = isSplit ? `${basePoNo}-${splitCount}` : basePoNo;
+      const vendor = vendorId !== 'NULL' ? vendors.find(v => v.id === vendorId || v.code === vendorId || v.name === vendorId) : null;
       
-      const subtotal = items.reduce((sum, item) => sum + (item.price * (item.purchaseQty ?? item.qty)), 0);
+      // Consecutive PO running numbers with collision guard (e.g. PO-PD-2026-005, PO-PD-2026-006)
+      let poNo = this.generatePONo(pr.department, splitIdx);
+      const existingPoNos = new Set([
+        ...pos.map(p => (p.poNo || p.poNumber || p.id || '').toUpperCase()),
+        ...generatedPOs.map(p => (p.poNo || p.poNumber || p.id || '').toUpperCase())
+      ]);
+      let offset = splitIdx;
+      while (existingPoNos.has(poNo.toUpperCase())) {
+        offset++;
+        poNo = this.generatePONo(pr.department, offset);
+      }
+      splitIdx++;
+      
+      const subtotal = items.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (item.purchaseQty ?? item.qty ?? 1)), 0);
       const itemDiscountTotal = items.reduce((sum, item) => sum + (parseFloat(item.discountAmount) || 0), 0);
       
       let vat = 0;
       let grandTotal = subtotal;
       let financials = null;
 
+      const hasVat = pr.hasVat !== undefined 
+        ? Boolean(pr.hasVat) 
+        : (pr.financials?.hasVat !== undefined ? Boolean(pr.financials.hasVat) : (pr.financials?.vatMode !== 'NONE'));
+
       if (pr.purchaseChannel === 'SELF') {
         const prFin = pr.financials || {};
-        const combinedDiscountAmount = parseFloat(prFin.combinedDiscountAmount) || 0;
-        const totalDiscount = itemDiscountTotal + (isSplit ? (combinedDiscountAmount / Object.keys(groups).length) : combinedDiscountAmount);
-        const vatMode = prFin.vatMode || 'AFTER_DISCOUNT';
-        const vatAmount = parseFloat(prFin.vatAmount) || 0;
-        const roundingAdj = parseFloat(prFin.roundingAdj) || 0;
-        const shippingCost = parseFloat(prFin.shippingCost) || 0;
-        
+        const netAfterItemDiscount = Math.max(0, subtotal - itemDiscountTotal);
+        const vatAmount = hasVat ? parseFloat((netAfterItemDiscount * 0.07).toFixed(2)) : 0;
         vat = vatAmount;
-        grandTotal = prFin.grandTotal ? (isSplit ? (subtotal - totalDiscount + (vat / Object.keys(groups).length) + (shippingCost / Object.keys(groups).length)) : prFin.grandTotal) : (subtotal - totalDiscount + vat + roundingAdj + shippingCost);
+        grandTotal = parseFloat((netAfterItemDiscount + vatAmount).toFixed(2));
 
         financials = {
           subtotal,
           itemDiscountTotal,
-          combinedDiscountType: prFin.combinedDiscountType || 'percent',
-          combinedDiscountValue: prFin.combinedDiscountValue || 0,
-          combinedDiscountAmount: isSplit ? (combinedDiscountAmount / Object.keys(groups).length) : combinedDiscountAmount,
-          totalDiscount,
-          vatMode,
-          vatAmount: isSplit ? (vatAmount / Object.keys(groups).length) : vatAmount,
-          roundingAdj: isSplit ? 0 : roundingAdj,
-          shippingCost: isSplit ? (shippingCost / Object.keys(groups).length) : shippingCost,
+          combinedDiscountType: 'fixed',
+          combinedDiscountValue: 0,
+          combinedDiscountAmount: 0,
+          totalDiscount: itemDiscountTotal,
+          hasVat,
+          vatMode: hasVat ? 'AFTER_DISCOUNT' : 'NONE',
+          vatAmount,
+          roundingAdj: 0,
+          shippingCost: 0,
           grandTotal
         };
       } else {
@@ -1459,6 +1458,7 @@ export const workflowEngine = {
           combinedDiscountValue: 0,
           combinedDiscountAmount: 0,
           totalDiscount: 0,
+          hasVat: false,
           vatMode: 'NONE',
           vatAmount: 0,
           roundingAdj: 0,
@@ -1473,11 +1473,23 @@ export const workflowEngine = {
       let vName = vendor?.name || 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)';
       if (pr.purchaseChannel === 'ONLINE') {
         vId = null;
-        vName = 'Shopee / Lazada (ระบุร้านภายหลัง)';
+        vName = pr.shopName || 'Shopee / Lazada (ระบุร้านภายหลัง)';
       }
 
+      // Copy complete Vendor Object from Master Data (5 points: name, taxId, address, contactPerson, phone)
+      const vendorObj = vendor ? {
+        id: vendor.id,
+        code: vendor.code || '',
+        name: vendor.name || '',
+        taxId: vendor.taxId || '',
+        address: vendor.address || '',
+        phone: vendor.phone || '',
+        email: vendor.email || '',
+        contactPerson: vendor.contactPerson || ''
+      } : null;
+
       const newPO = {
-        id: `PO-${Date.now()}-${splitCount}`,
+        id: `PO-${Date.now()}-${splitIdx}`,
         poNo,
         prId: pr.id,
         prNo: pr.prNo,
@@ -1489,6 +1501,7 @@ export const workflowEngine = {
         department: pr.department,
         vendorId: vId,
         vendorName: vName,
+        vendor: vendorObj,
         purchaseChannel: pr.purchaseChannel,
         onlineLink: pr.onlineLink || null,
         specUrl: pr.specUrl || null,

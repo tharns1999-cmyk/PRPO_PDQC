@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiService } from '../services/apiService';
+import { storageService } from '../services/storageService';
+import { useAppContext } from '../context/AppContext';
 import { 
   ArrowLeft, AlertTriangle, Plus, Minus, Trash2, Building2, 
   Globe, Sparkles, CheckCircle2, ShoppingCart, 
@@ -14,6 +16,7 @@ import { sanitizeExternalUrl, getProductUrl } from '../utils/urlHelper';
 export default function PRCreateView({ 
   products = [], 
   departments = [],
+  vendors = [],
   currentRole, 
   onNavigate, 
   onRefresh, 
@@ -26,6 +29,37 @@ export default function PRCreateView({
 }) {
   // Submission Guard to prevent duplicate submissions
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const context = useAppContext ? useAppContext() : {};
+
+  // Master Vendors integration (Directive 1)
+  const masterVendors = useMemo(() => {
+    if (Array.isArray(vendors) && vendors.length > 0) return vendors;
+    if (Array.isArray(context?.vendors) && context.vendors.length > 0) return context.vendors;
+    return storageService.getVendors?.() || [];
+  }, [vendors, context?.vendors]);
+
+  const vendorOptions = useMemo(() => {
+    return masterVendors.map(v => ({
+      value: v.id,
+      label: v.name,
+      code: v.code,
+      subLabel: `${v.code} • โทร: ${v.phone || '-'} • เลขผู้เสียภาษี: ${v.taxId || '-'}`,
+      keywords: `${v.code} ${v.name} ${v.taxId || ''} ${v.phone || ''} ${v.contactPerson || ''}`
+    }));
+  }, [masterVendors]);
+
+  // Helper to find default vendor from product preferredSupplier / supplierId
+  const getDefaultVendorId = (prod) => {
+    if (!prod) return masterVendors[0]?.id || '';
+    const match = masterVendors.find(v => 
+      v.id === prod.supplierId || 
+      v.id === prod.preferredSupplier ||
+      v.code === prod.supplierId || 
+      v.code === prod.preferredSupplier ||
+      v.name === prod.preferredSupplier
+    );
+    return match?.id || prod.supplierId || prod.preferredSupplier || masterVendors[0]?.id || '';
+  };
 
   // Dynamic Departments from context / master data
   const deptList = useMemo(() => {
@@ -133,6 +167,7 @@ export default function PRCreateView({
         price: parseFloat(it.price) || 0,
         discountPercent: parseFloat(it.discountPercent) || 0,
         discountAmount: parseFloat(it.discountAmount) || 0,
+        vendorId: it.vendorId || it.supplierId || '',
         onlineUrl: getProductUrl(it) || '',
         productUrl: getProductUrl(it) || '',
         source: it.source === 'OFFICE' ? 'OFFICE' : 'FACTORY',
@@ -153,6 +188,7 @@ export default function PRCreateView({
         price: parseFloat(preselectedProduct.price) || 0,
         discountPercent: 0,
         discountAmount: 0,
+        vendorId: getDefaultVendorId(preselectedProduct),
         onlineUrl: '',
         source: 'FACTORY'
       }];
@@ -167,6 +203,7 @@ export default function PRCreateView({
       price: parseFloat(initialList[0]?.price) || 0,
       discountPercent: 0,
       discountAmount: 0,
+      vendorId: getDefaultVendorId(initialList[0]),
       onlineUrl: '',
       source: 'FACTORY'
     }];
@@ -184,6 +221,7 @@ export default function PRCreateView({
             price: parseFloat(availableProducts[0].price) || 0,
             discountPercent: 0,
             discountAmount: 0,
+            vendorId: getDefaultVendorId(availableProducts[0]),
             onlineUrl: '',
             source: 'FACTORY'
           }];
@@ -217,6 +255,11 @@ export default function PRCreateView({
 
   // ── Financial Calculations (Smart Standard VAT: (Subtotal - Discount) * 0.07) ──
   const isOnline = purchaseChannel === 'ONLINE';
+
+  const isMissingVendor = useMemo(() => {
+    if (purchaseChannel !== 'SELF') return false;
+    return prItems.some(item => !item.vendorId);
+  }, [purchaseChannel, prItems]);
 
   const subtotal = useMemo(() => {
     return prItems.reduce((sum, item) => sum + ((parseFloat(item.qty) || 0) * (parseFloat(item.price) || 0)), 0);
@@ -305,6 +348,7 @@ export default function PRCreateView({
         price: parseFloat(defaultProd?.price) || 0, 
         discountPercent: 0, 
         discountAmount: 0, 
+        vendorId: getDefaultVendorId(defaultProd),
         source: 'FACTORY',
         isCustom: false 
       }
@@ -334,6 +378,7 @@ export default function PRCreateView({
         qty: parseFloat(current.qty) || 1,
         discountPercent: 0,
         discountAmount: 0,
+        vendorId: current.vendorId || masterVendors[0]?.id || '',
         onlineUrl: current.onlineUrl || '',
         source: current.source || 'FACTORY'
       };
@@ -350,6 +395,7 @@ export default function PRCreateView({
         qty: parseFloat(current.qty) || 1,
         discountPercent: 0,
         discountAmount: 0,
+        vendorId: current.vendorId || getDefaultVendorId(defaultProd),
         onlineUrl: current.onlineUrl || '',
         source: current.source || 'FACTORY'
       };
@@ -367,11 +413,12 @@ export default function PRCreateView({
       updated[index].productUrl = value;
     }
     
-    // Auto-update price when product changes
+    // Auto-update price and preferred vendor when product changes
     if (field === 'productId') {
       const prod = availableProducts.find(p => p.id === value);
       if (prod) {
         updated[index].price = parseFloat(prod.price) || 0;
+        updated[index].vendorId = getDefaultVendorId(prod);
       }
     }
 
@@ -426,6 +473,10 @@ export default function PRCreateView({
         return modalService.warning('กรุณาระบุข้อมูลรายการสินค้าและจำนวนที่ถูกต้อง');
       }
 
+      if (purchaseChannel === 'SELF' && isMissingVendor) {
+        return modalService.warning('กรุณาระบุผู้ขาย (Vendor) ให้ครบทุกรายการสำหรับการขอซื้อภายใน');
+      }
+
       if (isOnline && !requiresMemo) {
         const hasLink = !!onlineLink.trim() || prItems.some(item => !!(item.onlineUrl || '').trim());
         if (!hasLink) {
@@ -446,40 +497,11 @@ export default function PRCreateView({
     setIsSubmitting(true);
     try {
       const itemsFormatted = prItems.map(item => {
+        const prod = availableProducts.find(p => p.id === item.productId) || products.find(p => p.id === item.productId);
         const itemSource = item.source === 'OFFICE' ? 'OFFICE' : 'FACTORY';
+        const pQty = parseFloat(item.qty) || 1;
         const discP = parseFloat(item.discountPercent) || 0;
         const discA = parseFloat(item.discountAmount) || 0;
-
-        if (item.isCustom) {
-          const pQty = Number(item.qty) || 1;
-          const price = parseFloat(item.price) || 0;
-          const unit = item.customUnit?.trim() || 'ชิ้น';
-          const code = item.customCode || `TEMP-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-          const rowTotal = Math.max(0, (price * pQty) - discA);
-          return {
-            productId: item.productId || code,
-            code: code,
-            name: item.customName?.trim() || 'สินค้านอกแคตตาล็อก',
-            purchaseUnit: unit,
-            stockUnit: unit,
-            unit: unit,
-            conversionRate: 1,
-            purchaseQty: pQty,
-            stockQty: pQty,
-            qty: pQty,
-            price: price,
-            discountPercent: discP,
-            discountAmount: discA,
-            onlineUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
-            productUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
-            total: rowTotal,
-            source: itemSource,
-            isCustom: true
-          };
-        }
-
-        const prod = availableProducts.find(p => p.id === item.productId) || products.find(p => p.id === item.productId);
-        const pQty = Number(item.qty) || 1;
         const rate = (item.overrideUnit && Number(item.customRate) > 0)
           ? Number(item.customRate)
           : (Number(prod?.conversionRate) > 0 ? Number(prod?.conversionRate) : 1);
@@ -492,6 +514,10 @@ export default function PRCreateView({
           : (prod?.stockUnit || prod?.unit || 'ชิ้น');
         const price = parseFloat(item.price) || 0;
         const rowTotal = Math.max(0, (price * pQty) - discA);
+        const matchedVendor = masterVendors.find(v => v.id === item.vendorId);
+        const vId = item.vendorId || matchedVendor?.id || prod?.preferredSupplier || prod?.supplierId || null;
+        const vName = matchedVendor?.name || prod?.supplierName || null;
+
         return {
           productId: prod?.id || item.productId,
           code: prod?.code || 'N/A',
@@ -506,6 +532,10 @@ export default function PRCreateView({
           price: price,
           discountPercent: discP,
           discountAmount: discA,
+          vendorId: vId,
+          vendorName: vName,
+          supplierId: vId,
+          supplierName: vName,
           onlineUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
           productUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
           total: rowTotal,
@@ -1079,6 +1109,25 @@ export default function PRCreateView({
                       </div>
                     )}
 
+                    {/* Vendor Selector for item (If channel is SELF) */}
+                    {purchaseChannel === 'SELF' && (
+                      <div className="p-2.5 bg-blue-50/40 border border-blue-200/80 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-2 animate-fade-in">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900 shrink-0">
+                          <Building className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          <span>ผู้ขาย (Vendor) <span className="text-rose-500">*</span>:</span>
+                        </div>
+                        <div className="flex-1 w-full sm:w-auto">
+                          <SearchableSelect
+                            options={vendorOptions}
+                            value={item.vendorId || ''}
+                            onChange={val => handleItemChange(idx, 'vendorId', val)}
+                            placeholder="-- เลือกผู้ขาย / Supplier --"
+                            className="text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     {/* Online Link for item (If channel is ONLINE) */}
                     {purchaseChannel === 'ONLINE' && (
                       <div className="p-2.5 bg-purple-50/40 border border-purple-200/80 rounded-xl flex items-center gap-2 animate-fade-in">
@@ -1534,13 +1583,23 @@ export default function PRCreateView({
 
           {/* Box 3: Main Action Buttons (Directive 1 & 5) */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-2.5">
+            {/* Vendor validation warning */}
+            {isMissingVendor && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-xl text-center">
+                <p className="text-[11px] text-rose-600 font-semibold flex items-center justify-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  <span>* กรุณาระบุผู้ขาย (Vendor) ให้ครบทุกรายการ</span>
+                </p>
+              </div>
+            )}
+
             {/* Primary Submit Button */}
             <button
               type="button"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isMissingVendor}
               onClick={(e) => handleCreateSubmit(e, false)}
               className={`w-full py-3 rounded-xl font-semibold text-xs sm:text-sm text-white bg-indigo-600 hover:bg-indigo-700 shadow-md hover:shadow-lg active:scale-[0.99] transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                isSubmitting ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
+                isSubmitting || isMissingVendor ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
               }`}
             >
               {isSubmitting ? (

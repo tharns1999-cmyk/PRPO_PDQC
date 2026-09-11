@@ -355,11 +355,14 @@ export const apiService = {
         });
       }
       if (result?.po) {
-        await fetch('http://localhost:3001/api/pos', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(result.po)
-        });
+        const poList = Array.isArray(result.po) ? result.po : [result.po];
+        for (const singlePo of poList) {
+          await fetch('http://localhost:3001/api/pos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(singlePo)
+          });
+        }
       }
     } catch (e) {}
     return result;

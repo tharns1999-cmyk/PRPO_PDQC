@@ -291,19 +291,37 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
           {/* Linked PO Banner - แสดงเฉพาะเมื่อ PR ผ่านการอนุมัติแล้วเท่านั้น */}
           {relatedPOs.length > 0 && (
             <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 mt-0.5">
                   <Layers className="w-4 h-4" />
                 </div>
                 <div>
                   <h4 className="text-xs sm:text-sm font-semibold text-indigo-950">
-                    ออกใบสั่งซื้อ (PO) เรียบร้อยแล้ว {relatedPOs.length} ฉบับ: {relatedPOs[0]?.poNo || relatedPOs[0]?.id} {relatedPOs[0]?.vendorName ? `(${relatedPOs[0].vendorName})` : ''}
+                    ออกใบสั่งซื้อ (PO) เรียบร้อยแล้ว {relatedPOs.length} ฉบับ: {relatedPOs.map(p => `${p.poNo || p.id} (${p.vendorName || 'ไม่ระบุผู้ขาย'})`).join(', ')}
                   </h4>
                   {relatedPOs.length > 1 && (
                     <p className="text-xs text-indigo-700/80 mt-0.5">
                       รายการสินค้าถูกแยกตาม Supplier ของแต่ละรายการโดยอัตโนมัติ
                     </p>
                   )}
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {relatedPOs.map(po => (
+                      <button
+                        key={po.id || po.poNo}
+                        type="button"
+                        onClick={() => {
+                          if (onSelectPO) onSelectPO(po);
+                          else setShowSplitModal(true);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-indigo-800 text-[11px] font-mono font-semibold hover:bg-indigo-100/60 shadow-2xs transition-all cursor-pointer"
+                      >
+                        <span>{po.poNo || po.id}</span>
+                        <span className="text-[10px] text-indigo-500 font-sans font-normal">
+                          ({po.vendorName || 'ไม่ระบุ'})
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
               <button

@@ -842,15 +842,21 @@ app.post('/api/pos', async (req, res) => {
   try {
     const data = req.body;
     if (Array.isArray(data)) {
-      const seen = new Set();
-      const unique = data.filter(p => {
-        const key = p.poNo || p.poNumber || p.id;
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      await writeFile('pos.json', unique);
-      return res.json(unique);
+      const pos = await readFile('pos.json', []);
+      for (const item of data) {
+        const idx = pos.findIndex(p => 
+          (item.id && p.id === item.id) || 
+          (item.poNo && (p.poNo === item.poNo || p.poNumber === item.poNo)) ||
+          (item.prNo && p.prNo === item.prNo && item.vendorId && p.vendorId === item.vendorId)
+        );
+        if (idx !== -1) {
+          pos[idx] = { ...pos[idx], ...item };
+        } else {
+          pos.unshift(item);
+        }
+      }
+      await writeFile('pos.json', pos);
+      return res.json(data);
     }
     const pos = await readFile('pos.json', []);
     const idx = pos.findIndex(p => 

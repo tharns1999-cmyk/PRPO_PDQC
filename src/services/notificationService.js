@@ -221,6 +221,10 @@ export const notificationService = {
     return list.filter(n => !(n.isRead === true || n.read === true || n.status === 'read')).length;
   },
 
+  getUnreadCount(currentRole) {
+    return this.getUnreadCountForRole(currentRole);
+  },
+
   // Mark a specific notification as read
   async markAsRead(id) {
     const all = this.getAll();
