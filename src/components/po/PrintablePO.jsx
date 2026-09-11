@@ -19,18 +19,20 @@ export default function PrintablePO({ po }) {
   if (!po) return null;
 
   return (
-    <div 
-      className="bg-white text-black p-8 max-w-[210mm] mx-auto text-sm thai-doc-container"
-      style={{
-        fontFamily: "'Sarabun', 'TH Sarabun New', 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif",
-        letterSpacing: '0px',
-        fontVariantLigatures: 'normal',
-        fontFeatureSettings: '"liga" 1, "kern" 1',
-        textRendering: 'optimizeLegibility',
-        wordBreak: 'normal',
-        overflowWrap: 'break-word',
-      }}
-    >
+      <div 
+        className="bg-white text-black p-8 max-w-[210mm] mx-auto text-sm thai-doc-container"
+        style={{
+          fontFamily: "'Sarabun', 'TH Sarabun New', 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif",
+          letterSpacing: '0px',
+          fontVariantLigatures: 'normal',
+          fontFeatureSettings: '"liga" 1, "kern" 1',
+          textRendering: 'optimizeLegibility',
+          wordBreak: 'normal',
+          overflowWrap: 'break-word',
+          WebkitPrintColorAdjust: 'exact',
+          printColorAdjust: 'exact',
+        }}
+      >
       {/* Header */}
       <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-4">
         <div>
@@ -129,25 +131,42 @@ export default function PrintablePO({ po }) {
       </table>
 
       {/* Electronic Approvals & Acknowledgement */}
-      <div className="grid grid-cols-3 gap-3 mt-10 text-center text-xs">
-        <div className="border border-slate-300 rounded-xl p-3 bg-slate-50/50">
-          <p className="font-semibold text-slate-800">{cleanThaiText('ผู้จัดทำ (Prepared By)')}</p>
-          <p className="text-[11px] text-emerald-700 font-medium mt-1">{cleanThaiText('✓ อนุมัติทางอิเล็กทรอนิกส์')}</p>
-          <p className="text-[11px] font-medium text-slate-700 mt-0.5">{cleanThaiText(po.createdBy || po.createdByName || po.requesterName || 'คุณวิชัย (PD)')}</p>
-          <p className="text-[10px] text-slate-400 mt-0.5">{cleanThaiText('วันที่:')} {cleanThaiText(po.issuedDate || po.createdAt || '-')}</p>
-        </div>
-        <div className="border border-slate-300 rounded-xl p-3 bg-slate-50/50">
-          <p className="font-semibold text-slate-800">{cleanThaiText('ผู้อนุมัติ (Authorized By)')}</p>
-          <p className="text-[11px] text-emerald-700 font-medium mt-1">{cleanThaiText('✓ อนุมัติทางอิเล็กทรอนิกส์')}</p>
-          <p className="text-[11px] font-medium text-slate-700 mt-0.5">{cleanThaiText(po.approvedBy || 'คุณประเสริฐ ยิ่งยง')}</p>
-          <p className="text-[10px] text-slate-400 mt-0.5">{cleanThaiText('วันที่:')} {cleanThaiText(po.approvedAt || po.issuedDate || '-')}</p>
-        </div>
-        <div className="border border-slate-300 rounded-xl p-3 bg-slate-50/50 flex flex-col justify-between">
-          <p className="font-semibold text-slate-800">{cleanThaiText('ผู้ขายรับเอกสาร (Accepted By)')}</p>
-          <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto my-2"></div>
-          <p className="text-[10px] text-slate-400">{cleanThaiText('วันที่:')} ___________________</p>
-        </div>
-      </div>
+      <table className="w-full table-fixed border-collapse border border-black text-center mt-10">
+        <thead>
+          <tr className="bg-slate-50 border-b border-black">
+            {[
+              { role: 'ผู้ขอซื้อ' },
+              { role: 'ผู้ทบทวน' },
+              { role: 'ผู้อนุมัติ' },
+              { role: 'ผู้ตรวจรับ / บันทึกสต็อก' }
+            ].map((stamp, idx) => (
+              <th key={idx} className={`w-1/4 py-1.5 px-2 ${idx < 3 ? 'border-r border-black' : ''} text-[11px] font-bold text-slate-800`}>
+                {cleanThaiText(stamp.role)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            {[ 
+              { name: po.createdBy || po.createdByName || po.requesterName || 'คุณวิชัย สุขใจ', date: po.issuedDate || po.createdAt || '10/09/2026', time: '08:15' },
+              { name: po.reviewedBy || 'คุณมานะ อดทน', date: po.reviewedDate || po.createdAt || '10/09/2026', time: '08:20' },
+              { name: po.approvedBy || 'คุณประเสริฐ ยิ่งยง', date: po.approvedAt || po.issuedDate || '10/09/2026', time: '08:30' },
+              { name: po.receivedBy || 'คุณวิชัย สุขใจ', date: po.receivedAt ? po.receivedAt.split(' ')[0] : '-', time: po.receivedAt ? po.receivedAt.split(' ')[1] || '-' : '-' }
+            ].map((stamp, idx) => (
+              <td key={idx} className={`w-1/4 p-2 align-top ${idx < 3 ? 'border-r border-black' : ''}`}>
+                <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
+                  <div className="h-12 w-full mb-2 flex items-center justify-center"></div> {/* Image Placeholder */}
+                  <p className="text-[11px] font-medium text-slate-800">{cleanThaiText(`( ${stamp.name} )`)}</p>
+                  {stamp.date !== '-' && (
+                    <p className="text-[10px] text-slate-500 mt-1">{cleanThaiText(`วันที่ ${stamp.date} เวลา ${stamp.time} น.`)}</p>
+                  )}
+                </div>
+              </td>
+            ))}
+          </tr>
+        </tbody>
+      </table>
     </div>
   );
 }

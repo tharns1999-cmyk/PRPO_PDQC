@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, degrees } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { storageService } from '../services/storageService.js';
 
@@ -153,6 +153,48 @@ export function truncateText(text, font, size, maxWidth = 230) {
   return shapeThaiText(truncated.trim() || Array.from(text).slice(0, 15).join('')) + ellipsis;
 }
 
+export function splitTextToLines(text, font, size, maxWidth) {
+  if (!text) return [];
+  const clean = shapeThaiText(text);
+  if (font.widthOfTextAtSize(clean, size) <= maxWidth) {
+    return [clean];
+  }
+
+  const lines = [];
+  let currentLine = '';
+
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    const segmenter = new Intl.Segmenter('th', { granularity: 'word' });
+    for (const { segment } of segmenter.segment(text)) {
+      const candidate = currentLine + segment;
+      const shapedCandidate = shapeThaiText(candidate);
+      if (font.widthOfTextAtSize(shapedCandidate, size) > maxWidth && currentLine.length > 0) {
+        lines.push(shapeThaiText(currentLine).trim());
+        currentLine = segment;
+      } else {
+        currentLine = candidate;
+      }
+    }
+  } else {
+    for (const char of Array.from(text)) {
+      const candidate = currentLine + char;
+      const shapedCandidate = shapeThaiText(candidate);
+      if (font.widthOfTextAtSize(shapedCandidate, size) > maxWidth && currentLine.length > 0) {
+        lines.push(shapeThaiText(currentLine).trim());
+        currentLine = char;
+      } else {
+        currentLine = candidate;
+      }
+    }
+  }
+
+  if (currentLine.trim()) {
+    lines.push(shapeThaiText(currentLine).trim());
+  }
+
+  return lines;
+}
+
 export async function generatePoPdf(po) {
   // Ensure Thai web fonts are loaded prior to rendering
   if (typeof document !== 'undefined' && document.fonts?.ready) {
@@ -192,26 +234,6 @@ export async function generatePoPdf(po) {
   const page = pdfDoc.addPage([595.28, 841.89]);
   const { width, height } = page.getSize();
 
-  // 3. ปั๊มลายน้ำ Audit Trail 45 องศา
-  const statusWatermarks = {
-    completed: 'CLOSED / AUDITED',
-    CLOSED: 'CLOSED / AUDITED',
-    ordered: 'PURCHASE ORDERED',
-    ISSUED: 'PURCHASE ORDERED',
-    pending_order: 'PENDING ORDER',
-    in_delivery: 'IN DELIVERY',
-    PARTIAL: 'PARTIAL RECEIVED',
-  };
-  const watermarkText = statusWatermarks[po?.status] || 'PO DOCUMENT';
-
-  page.drawText(watermarkText, {
-    x: 90,
-    y: height / 2 - 40,
-    size: 52,
-    font: boldFont,
-    color: rgb(0.88, 0.90, 0.94),
-    rotate: degrees(45),
-  });
 
   // 4. ส่วนหัวเอกสารควบคุม (QMS/DCC Header)
   page.drawText(normalizeThaiText('บริษัท อุตสาหกรรมอาหาร จำกัด (สำนักงานใหญ่)'), { 
@@ -219,9 +241,6 @@ export async function generatePoPdf(po) {
   });
   page.drawText(normalizeThaiText('ใบสั่งซื้อสินค้า / PURCHASE ORDER'), { 
     x: 50, y: height - 68, size: 12, font: boldFont, color: rgb(0.2, 0.3, 0.6) 
-  });
-  page.drawText(normalizeThaiText('แบบฟอร์ม DCC: FM-PUR-002 (Rev.04)'), { 
-    x: width - 190, y: height - 50, size: 9, font: customFont, color: rgb(0.5, 0.5, 0.5) 
   });
 
   // กล่องเลขที่เอกสาร
@@ -262,10 +281,13 @@ export async function generatePoPdf(po) {
     // Row index
     page.drawText(String(index + 1), { x: 58, y: rowY, size: 9, font: customFont });
     
-    // Product Name (truncated to max 230pt to prevent collision with column at x: 330)
+    // Product Name (Wrap text to max 230pt to prevent collision with column at x: 330)
     const rawItemTitle = `[${item.code || '-'}] ${item.name || '-'}`;
-    const safeItemTitle = truncateText(rawItemTitle, customFont, 9, 230);
-    page.drawText(safeItemTitle, { x: 80, y: rowY, size: 9, font: customFont });
+    const lines = splitTextToLines(rawItemTitle, customFont, 9, 230);
+    
+    lines.forEach((line, i) => {
+      page.drawText(line, { x: 80, y: rowY - (i * 12), size: 9, font: customFont });
+    });
 
     // Qty and Unit
     page.drawText(normalizeThaiText(`${item.qty || 1} ${item.unit || ''}`), { x: 330, y: rowY, size: 9, font: customFont });
@@ -276,7 +298,8 @@ export async function generatePoPdf(po) {
     // Total Line Amount
     page.drawText(Number(item.total || item.lineTotal || ((item.qty || 1) * (item.price || 0)) || 0).toLocaleString(), { x: 480, y: rowY, size: 9, font: customFont });
     
-    rowY -= 20;
+    const rowHeight = Math.max(1, lines.length) * 12 + 8;
+    rowY -= rowHeight;
   });
 
   page.drawLine({ start: { x: 50, y: rowY - 5 }, end: { x: width - 50, y: rowY - 5 }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
@@ -285,10 +308,11 @@ export async function generatePoPdf(po) {
     x: 480, y: rowY - 22, size: 11, font: boldFont, color: rgb(0.1, 0.5, 0.3) 
   });
 
-  // 7. กล่อง Digital Approval Stamp 3 ช่อง พร้อมรูปลายเซ็น E-Signature ตัวจริง
+  // 7. กล่อง Digital Approval Stamp 4 ช่อง (Continuous Table Layout)
   const stampBoxY = 55;
   const stampBoxHeight = 90;
-  const stampWidth = (width - 120) / 3;
+  const totalStampWidth = width - 100;
+  const stampWidth = totalStampWidth / 4;
   const isCompleted = ['completed', 'CLOSED', 'RECEIVED'].includes(po?.status);
 
   // Fetch users with signatures
@@ -303,7 +327,7 @@ export async function generatePoPdf(po) {
     users = storageService.getUsers() || [];
   }
 
-  // Find users for 3 signer roles
+  // Find users for 4 signer roles
   const requesterUser = users.find(u => 
     u.name === po?.requestedBy || 
     u.displayName === po?.requestedBy || 
@@ -312,11 +336,19 @@ export async function generatePoPdf(po) {
     u.roleId === 'REQUESTER_PD'
   ) || users.find(u => u.roleId?.includes('REQUESTER')) || users[0];
 
+  const reviewerUser = users.find(u => 
+    u.name === po?.reviewedBy || 
+    u.displayName === po?.reviewedBy || 
+    u.employeeName === po?.reviewedBy ||
+    (po?.reviewedBy && po.reviewedBy.includes(u.name)) ||
+    u.roleId === 'REVIEWER'
+  ) || users.find(u => u.roleId?.includes('REVIEWER')) || users[1] || users[0];
+
   const approverUser = users.find(u => 
     u.roleId === 'PLANT_MANAGER' || 
     u.positionKey === 'APPROVER' || 
     u.name?.includes('ประเสริฐ')
-  ) || users.find(u => u.roleId === 'PLANT_MANAGER') || users[4];
+  ) || users.find(u => u.roleId === 'PLANT_MANAGER') || users[4] || users[0];
 
   const receiverUser = users.find(u => 
     u.name === po?.receivedBy || 
@@ -339,131 +371,143 @@ export async function generatePoPdf(po) {
     }
   };
 
-  const [reqSigImg, appSigImg, recSigImg] = await Promise.all([
+  const [reqSigImg, revSigImg, appSigImg, recSigImg] = await Promise.all([
     embedSignature(requesterUser),
+    embedSignature(reviewerUser),
     embedSignature(approverUser),
     isCompleted ? embedSignature(receiverUser) : null,
   ]);
 
-  const docHashBase = (po?.poNo || po?.id || 'PO-PDQC').replace(/[^a-zA-Z0-9]/g, '');
-  const docHash = `SHA256:${docHashBase.slice(-8)}-${(po?.issueDate || '20260910').replace(/-/g, '')}`;
+  const formatDateTime = (dt) => {
+    if (!dt || dt === '-') return '-';
+    const cleanDt = dt.replace(' น.', '');
+    const parts = cleanDt.split(' ');
+    return `วันที่ ${parts[0]} เวลา ${parts[1] || '00:00'} น.`;
+  };
+
+  const reqTime = formatDateTime(po?.requestedAt || '10/09/2026 08:15');
+  const revTime = formatDateTime(po?.reviewedAt || '10/09/2026 08:20');
+  const appTime = formatDateTime(po?.approvedAt || '10/09/2026 08:30');
+  const recTime = isCompleted ? formatDateTime(po?.receivedAt || '10/09/2026 13:14') : '-';
 
   const stamps = [
     { 
-      role: 'ผู้ขอซื้อ (Requester)', 
+      role: 'ผู้ขอซื้อ', 
       name: requesterUser?.employeeName || requesterUser?.name || po?.requestedBy || 'คุณวิชัย สุขใจ', 
-      time: '10/09/2026 08:15 น.', 
-      status: 'VERIFIED',
+      time: reqTime, 
       sigImg: reqSigImg,
       isSigned: true
     },
     { 
-      role: 'ผู้อนุมัติ (Plant Manager)', 
+      role: 'ผู้ทบทวน', 
+      name: reviewerUser?.employeeName || reviewerUser?.name || po?.reviewedBy || 'คุณมานะ อดทน', 
+      time: revTime, 
+      sigImg: revSigImg,
+      isSigned: true
+    },
+    { 
+      role: 'ผู้อนุมัติ', 
       name: approverUser?.employeeName || approverUser?.name || 'คุณประเสริฐ ยิ่งยง', 
-      time: '10/09/2026 08:30 น.', 
-      status: 'APPROVED',
+      time: appTime, 
       sigImg: appSigImg,
       isSigned: true
     },
     { 
       role: 'ผู้ตรวจรับ / บันทึกสต็อก', 
       name: receiverUser?.employeeName || receiverUser?.name || po?.receivedBy || 'คุณวิชัย สุขใจ', 
-      time: isCompleted ? (po?.receivedAt || '10/09/2026 13:14 น.') : '-', 
-      status: isCompleted ? 'RECEIVED (+IN)' : 'PENDING',
+      time: recTime, 
       sigImg: recSigImg,
       isSigned: isCompleted
     }
   ];
 
+  // Draw full-width Header Background
+  page.drawRectangle({
+    x: 50,
+    y: stampBoxY + stampBoxHeight - 18,
+    width: totalStampWidth,
+    height: 18,
+    color: rgb(0.96, 0.96, 0.98)
+  });
+
+  // Draw Outer Box
+  page.drawRectangle({
+    x: 50,
+    y: stampBoxY,
+    width: totalStampWidth,
+    height: stampBoxHeight,
+    borderColor: rgb(0, 0, 0),
+    borderWidth: 1
+  });
+
+  // Draw Header Bottom Border
+  page.drawLine({
+    start: { x: 50, y: stampBoxY + stampBoxHeight - 18 },
+    end: { x: 50 + totalStampWidth, y: stampBoxY + stampBoxHeight - 18 },
+    thickness: 1,
+    color: rgb(0, 0, 0)
+  });
+
+  // Draw Vertical Separators
+  for (let i = 1; i <= 3; i++) {
+    const lineX = 50 + (i * stampWidth);
+    page.drawLine({
+      start: { x: lineX, y: stampBoxY },
+      end: { x: lineX, y: stampBoxY + stampBoxHeight },
+      thickness: 1,
+      color: rgb(0, 0, 0)
+    });
+  }
+
+  // Draw Text and Images for each cell
   stamps.forEach((s, idx) => {
-    const boxX = 50 + (idx * (stampWidth + 10));
+    const boxX = 50 + (idx * stampWidth);
 
-    // Outer Box
-    page.drawRectangle({ 
-      x: boxX, 
-      y: stampBoxY, 
-      width: stampWidth, 
-      height: stampBoxHeight, 
-      borderColor: rgb(0.85, 0.85, 0.85), 
-      borderWidth: 1 
-    });
-
-    // Top Header Banner
-    page.drawRectangle({ 
-      x: boxX, 
-      y: stampBoxY + stampBoxHeight - 18, 
-      width: stampWidth, 
-      height: 18, 
-      color: rgb(0.96, 0.96, 0.98) 
-    });
-    page.drawText(normalizeThaiText(s.role), { 
-      x: boxX + 6, 
+    // Centered Role Text
+    const roleText = normalizeThaiText(s.role);
+    const roleWidth = boldFont.widthOfTextAtSize(roleText, 8);
+    page.drawText(roleText, { 
+      x: boxX + (stampWidth - roleWidth) / 2, 
       y: stampBoxY + stampBoxHeight - 13, 
       size: 8, 
       font: boldFont, 
       color: rgb(0.2, 0.25, 0.35) 
     });
 
-    // Status Pill in Banner
-    page.drawText(`[ ${s.status} ]`, { 
-      x: boxX + stampWidth - 52, 
-      y: stampBoxY + stampBoxHeight - 13, 
-      size: 7.5, 
-      font: boldFont, 
-      color: s.status === 'PENDING' ? rgb(0.7, 0.5, 0.1) : rgb(0.1, 0.5, 0.3) 
-    });
+    // Draw Real Digital E-Signature if present
+    if (s.sigImg && s.isSigned) {
+      const sigWidth = 78;
+      const sigHeight = 28;
+      page.drawImage(s.sigImg, {
+        x: boxX + (stampWidth - sigWidth) / 2,
+        y: stampBoxY + 40,
+        width: sigWidth,
+        height: sigHeight,
+      });
+    }
 
-    // Signer Name
-    page.drawText(normalizeThaiText(`ลงชื่อ: ${s.name}`), { 
-      x: boxX + 6, 
-      y: stampBoxY + stampBoxHeight - 31, 
-      size: 7.5, 
+    // Centered Name `( คุณ... )`
+    const nameText = normalizeThaiText(`( ${s.name} )`);
+    const nameWidth = customFont.widthOfTextAtSize(nameText, 8);
+    page.drawText(nameText, { 
+      x: boxX + (stampWidth - nameWidth) / 2, 
+      y: stampBoxY + 18, 
+      size: 8, 
       font: customFont,
       color: rgb(0.25, 0.25, 0.25)
     });
 
-    // Draw Real Digital E-Signature if present
-    if (s.sigImg && s.isSigned) {
-      page.drawImage(s.sigImg, {
-        x: boxX + 10,
-        y: stampBoxY + 16,
-        width: 78,
-        height: 28,
-      });
-
-      // E-Signature Stamp & ISO Hash Audit Text
-      page.drawText(normalizeThaiText('[ ลงนามดิจิทัลผ่านระบบ PR/PO ]'), { 
-        x: boxX + 6, 
-        y: stampBoxY + 11, 
-        size: 6, 
-        font: boldFont, 
-        color: rgb(0.12, 0.48, 0.3) 
-      });
-      page.drawText(normalizeThaiText(`เวลา: ${s.time} • ${docHash}`), { 
-        x: boxX + 6, 
-        y: stampBoxY + 3, 
-        size: 5.5, 
+    // Centered Date Time
+    if (s.time !== '-') {
+      const timeText = normalizeThaiText(s.time);
+      const timeWidth = customFont.widthOfTextAtSize(timeText, 7);
+      page.drawText(timeText, { 
+        x: boxX + (stampWidth - timeWidth) / 2, 
+        y: stampBoxY + 6, 
+        size: 7, 
         font: customFont, 
-        color: rgb(0.45, 0.45, 0.5) 
+        color: rgb(0.5, 0.5, 0.5) 
       });
-    } else {
-      // Pending / Unsigned State
-      page.drawText(normalizeThaiText(s.status === 'PENDING' ? '(รอการตรวจรับสินค้า)' : '[ ลงชื่อเอกสาร ]'), { 
-        x: boxX + 16, 
-        y: stampBoxY + 28, 
-        size: 8, 
-        font: customFont, 
-        color: rgb(0.6, 0.6, 0.6) 
-      });
-      if (s.time !== '-') {
-        page.drawText(normalizeThaiText(`เวลา: ${s.time}`), { 
-          x: boxX + 6, 
-          y: stampBoxY + 6, 
-          size: 6, 
-          font: customFont, 
-          color: rgb(0.5, 0.5, 0.5) 
-        });
-      }
     }
   });
 
