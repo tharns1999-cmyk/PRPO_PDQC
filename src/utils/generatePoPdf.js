@@ -612,31 +612,16 @@ export async function generatePoPdf(po) {
   }
 
   // Retrieve linked PR data for approval history and timestamps
-  let prData = po?.prData || null;
-  if (!prData) {
-    try {
-      const prs = storageService.getPRs();
-      if (Array.isArray(prs)) {
-        prData = prs.find(p =>
-          (po?.prId && p.id === po.prId) ||
-          (po?.prNo && (p.prNo === po.prNo || p.id === po.prNo)) ||
-          (po?.prNumber && (p.prNumber === po.prNumber || p.prNo === po.prNumber || p.id === po.prNumber))
-        );
-      }
-    } catch { }
-  }
+  const prs = storageService.getPRs() || [];
+  let prData = po?.prData || prs.find(p => p.id === po.prId || p.prNo === po.prNo || p.id === po.prNumber || p.prNo === po.prNumber) || null;
   if (!prData && (po?.prId || po?.prNo || po?.prNumber)) {
     try {
       const res = await fetch('http://localhost:3001/api/storage');
       if (res.ok) {
         const storageData = await res.json();
-        const prs = storageData?.prs || storageData?.PRS;
-        if (Array.isArray(prs)) {
-          prData = prs.find(p =>
-            (po?.prId && p.id === po.prId) ||
-            (po?.prNo && (p.prNo === po.prNo || p.id === po.prNo)) ||
-            (po?.prNumber && (p.prNumber === po.prNumber || p.prNo === po.prNumber || p.id === po.prNumber))
-          );
+        const apiPrs = storageData?.prs || storageData?.PRS;
+        if (Array.isArray(apiPrs)) {
+          prData = apiPrs.find(p => p.id === po.prId || p.prNo === po.prNo || p.id === po.prNumber || p.prNo === po.prNumber) || null;
         }
       }
     } catch { }
@@ -695,17 +680,18 @@ export async function generatePoPdf(po) {
     isCompleted ? embedSignature(receiverUser) : null,
   ]);
 
-  // ค้นหา Timestamp จาก Log ตอน Requester ส่ง PR หรือจากฟิลด์ submittedAt / createdAt ของ PR
-  const requesterLog = Array.isArray(prData?.approvalHistory)
+  // ดึงเวลาเปิด PR จาก Log แรก หรือ submittedAt / createdAt ของ PR
+  const submitLog = Array.isArray(prData?.approvalHistory)
     ? prData.approvalHistory.find(h => h.action === 'SUBMITTED' || h.action === 'CREATED')
     : null;
 
-  const requesterDate = requesterLog?.timestamp ||
-    requesterLog?.date ||
-    prData?.submittedAt ||
-    prData?.createdAt ||
-    po.createdAt ||
-    '';
+  // ดึงเวลาของ PR เท่านั้น ห้ามดึง po.createdAt หรือ approverDate มาทับ
+  const requesterDate = submitLog?.timestamp || 
+                        prData?.submittedAt || 
+                        prData?.createdAt || 
+                        prData?.date || 
+                        po.prCreatedAt || 
+                        '';
 
   // 2. ข้อมูลผู้ทบทวน (Reviewer)
   const reviewedLog = Array.isArray(prData?.approvalHistory)

@@ -99,17 +99,18 @@ export default function PrintablePO({ po }) {
     storageService.getSignatureByRole?.(po.department === 'QC' ? 'REQUESTER_QC' : 'REQUESTER_PD')?.signatureUrl ||
     null;
 
-  // ค้นหา Timestamp จาก Log ตอน Requester ส่ง PR หรือจากฟิลด์ submittedAt / createdAt ของ PR
-  const requesterLog = Array.isArray(prData?.approvalHistory)
+  // ดึงเวลาเปิด PR จาก Log แรก หรือ submittedAt / createdAt ของ PR
+  const submitLog = Array.isArray(prData?.approvalHistory)
     ? prData.approvalHistory.find(h => h.action === 'SUBMITTED' || h.action === 'CREATED')
     : null;
 
-  const requesterDate = requesterLog?.timestamp ||
-    requesterLog?.date ||
-    prData?.submittedAt ||
-    prData?.createdAt ||
-    po.createdAt ||
-    '';
+  // ดึงเวลาของ PR เท่านั้น ห้ามดึง po.createdAt หรือ approverDate มาทับ
+  const requesterDate = submitLog?.timestamp || 
+                        prData?.submittedAt || 
+                        prData?.createdAt || 
+                        prData?.date || 
+                        po.prCreatedAt || 
+                        '';
 
   const isReviewed = Boolean(
     po.reviewedAt ||
