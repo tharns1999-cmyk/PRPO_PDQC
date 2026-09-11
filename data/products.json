@@ -139,7 +139,7 @@
     "conversionRate": 6,
     "unit": "ม้วน",
     "price": 1100,
-    "stockBalance": 0,
+    "stockBalance": 18,
     "reorderPoint": 25,
     "leadTimeDays": 2,
     "supplierId": null,

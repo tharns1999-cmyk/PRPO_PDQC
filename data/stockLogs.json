@@ -1,5 +1,21 @@
 [
   {
+    "id": "LOG-1789110577478-8990",
+    "grNumber": "GR-PO-PD-2026-002-1789110577472",
+    "date": "11/9/2569 14:09:37",
+    "productId": "PROD-PD-008",
+    "productCode": "PD-STF-001",
+    "type": "IN",
+    "docNo": "PO-PD-2026-002",
+    "qty": 18,
+    "unit": "ม้วน",
+    "balance": 18,
+    "user": "คุณวิชัย (PD) (Requester (PD))",
+    "locationId": "LOC-PD-004",
+    "locationName": "ห้องแพ็คเกจจิ้ง",
+    "note": "รับสินค้า 3 ลัง (6 ม้วน) (= 18 ม้วน) จาก PO PO-PD-2026-002"
+  },
+  {
     "id": "LOG-1789092278756",
     "date": "11/9/2569 09:04:38",
     "productId": "PROD-PD-007",

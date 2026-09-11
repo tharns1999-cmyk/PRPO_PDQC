@@ -16,55 +16,164 @@ function cleanThaiText(rawText) {
   return text;
 }
 
+/**
+ * Document Date Time Formatter
+ * Formats ISO timestamps or Thai date strings to "วันที่ DD/MM/YYYY เวลา HH:mm น."
+ */
+export function formatDocDateTime(dt) {
+  if (!dt || dt === '-') return '';
+  try {
+    if (typeof dt === 'string' && dt.includes('T')) {
+      const d = new Date(dt);
+      if (!isNaN(d.getTime())) {
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear() > 2400 ? d.getFullYear() - 543 : d.getFullYear();
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `วันที่ ${day}/${month}/${year} เวลา ${hours}:${minutes} น.`;
+      }
+    }
+    const cleanDt = String(dt).replace(' น.', '').trim();
+    if (cleanDt.includes(' ')) {
+      const parts = cleanDt.split(' ');
+      const timePart = parts[1] ? parts[1].substring(0, 5) : '00:00';
+      return `วันที่ ${parts[0]} เวลา ${timePart} น.`;
+    }
+    return `วันที่ ${cleanDt}`;
+  } catch {
+    return String(dt);
+  }
+}
+
 export default function PrintablePO({ po }) {
   if (!po) return null;
 
-  // Extract Reviewer & Approver dynamically from PR if possible
+  // Extract Reviewer, Approver & Requester dynamically from PR & Storage
   let prData = null;
   try {
     const prs = storageService.getPRs();
     prData = prs.find(p => p.id === po.prId || p.prNo === po.prNo);
   } catch(e) {}
 
-  let reviewerName = po.reviewedBy || '';
-  let reviewerDate = po.reviewedDate || '';
-  let approverName = po.approvedBy || '';
-  let approverDate = po.approvedAt || '';
+  let users = [];
+  try {
+    users = storageService.getUsers() || [];
+  } catch(e) {}
 
-  if (prData && Array.isArray(prData.approvalHistory)) {
-    // Reviewer is typically action 'REVIEWED' or level 2
-    const reviewedLog = prData.approvalHistory.find(h => h.action === 'REVIEWED');
-    if (reviewedLog) {
-      reviewerName = reviewedLog.actorName || reviewerName;
-      reviewerDate = reviewedLog.date || reviewerDate;
-    }
-    // Approver is typically action 'APPROVED' or level 3
-    const approvedLog = prData.approvalHistory.find(h => h.action === 'APPROVED');
-    if (approvedLog) {
-      approverName = approvedLog.actorName || approverName;
-      approverDate = approvedLog.date || approverDate;
-    }
+  const reviewedLog = Array.isArray(prData?.approvalHistory)
+    ? prData.approvalHistory.find(h => h.action === 'REVIEWED')
+    : null;
+
+  const approvedLog = Array.isArray(prData?.approvalHistory)
+    ? prData.approvalHistory.find(h => h.action === 'APPROVED')
+    : null;
+
+  // 1. Requester (ผู้ขอซื้อ)
+  const requesterUser = users.find(u =>
+    u.name === (po.requestedBy || prData?.requestedBy) ||
+    u.employeeName === (po.requestedBy || prData?.requestedBy) ||
+    u.displayName === (po.requestedBy || prData?.requestedBy) ||
+    u.id === (po.requesterId || prData?.requesterId) ||
+    (po.department === 'QC' ? u.roleId === 'REQUESTER_QC' : u.roleId === 'REQUESTER')
+  );
+  let requesterName = po.createdBy || po.createdByName || po.requesterName || po.requestedBy || prData?.requestedBy || requesterUser?.employeeName || requesterUser?.name || 'คุณวิชัย สุขใจ';
+  if (requesterName === 'Admin System') {
+    requesterName = po.department === 'QC' ? 'คุณสมหญิง รักดี' : 'คุณวิชัย สุขใจ';
+  }
+  const requesterSig = po.requesterSignature || 
+    prData?.requesterSignature || 
+    requesterUser?.signature || 
+    storageService.getSignatureByRole?.(po.department === 'QC' ? 'REQUESTER_QC' : 'REQUESTER_PD')?.signatureUrl || 
+    null;
+  const requesterDate = po.issueDate || po.createdAt || prData?.createdAt || '';
+
+  // 2. Reviewer (ผู้ทบทวน)
+  const isReviewed = Boolean(
+    po.reviewedAt ||
+    po.reviewerName ||
+    po.reviewerSignature ||
+    prData?.reviewedBy ||
+    reviewedLog ||
+    ['REVIEWED', 'APPROVED', 'PO_ISSUED', 'IN_PROGRESS_ONLINE', 'CLOSED', 'COMPLETED'].includes(String(prData?.status || '').toUpperCase())
+  );
+
+  const reviewerUser = users.find(u =>
+    u.id === prData?.reviewedBy?.id ||
+    u.roleId === 'ASST_MANAGER' ||
+    u.positionKey === 'REVIEWER' ||
+    u.name === 'คุณสมชาย (Asst. Mgr)' ||
+    u.employeeName === 'คุณสมชาย มุ่งมั่น'
+  );
+
+  let reviewerName = po.reviewerName ||
+    (prData?.reviewedBy && typeof prData.reviewedBy === 'object' ? prData.reviewedBy.name : null) ||
+    (typeof po.reviewedBy === 'string' && po.reviewedBy !== 'Admin System' ? po.reviewedBy : null) ||
+    reviewedLog?.actorName ||
+    (isReviewed ? 'คุณสมชาย มุ่งมั่น' : '');
+  if (!reviewerName || reviewerName === 'Admin System') {
+    reviewerName = isReviewed ? 'คุณสมชาย มุ่งมั่น' : '';
   }
 
-  // Fallbacks
-  const requesterName = po.createdBy || po.createdByName || po.requesterName || po.requestedBy || '-';
-  const requesterDate = po.issuedDate || po.createdAt || '-';
-  const rTime = requesterDate.includes(' ') ? requesterDate.split(' ')[1].substring(0, 5) : '-';
-  const rDate = requesterDate.includes(' ') ? requesterDate.split(' ')[0] : requesterDate;
+  const reviewerSig = po.reviewerSignature ||
+    (prData?.reviewedBy && typeof prData.reviewedBy === 'object' ? prData.reviewedBy.signature : null) ||
+    reviewerUser?.signature ||
+    storageService.getSignatureByRole?.('ASST_MANAGER')?.signatureUrl ||
+    null;
 
-  reviewerName = reviewerName || '-';
-  reviewerDate = reviewerDate || '-';
-  const revTime = reviewerDate.includes(' ') ? reviewerDate.split(' ')[1].substring(0, 5) : '-';
-  const revDate = reviewerDate.includes(' ') ? reviewerDate.split(' ')[0] : reviewerDate;
+  const reviewerDate = po.reviewedAt ||
+    (prData?.reviewedBy && typeof prData.reviewedBy === 'object' ? prData.reviewedBy.timestamp : null) ||
+    reviewedLog?.date ||
+    reviewedLog?.timestamp ||
+    po.reviewedDate ||
+    '';
 
-  approverName = approverName || '-';
-  approverDate = approverDate || '-';
-  const appTime = approverDate.includes(' ') ? approverDate.split(' ')[1].substring(0, 5) : '-';
-  const appDate = approverDate.includes(' ') ? approverDate.split(' ')[0] : approverDate;
+  // 3. Approver (ผู้อนุมัติ)
+  const isApproved = Boolean(
+    po.approvedAt ||
+    po.approvedBy ||
+    po.approverName ||
+    approvedLog ||
+    ['APPROVED', 'PO_ISSUED', 'IN_PROGRESS_ONLINE', 'CLOSED', 'COMPLETED'].includes(String(po.status || prData?.status || '').toUpperCase())
+  );
 
-  const receiverName = po.receivedBy || '-';
-  const receiverDate = po.receivedAt ? po.receivedAt.split(' ')[0] : '-';
-  const receiverTime = po.receivedAt && po.receivedAt.includes(' ') ? po.receivedAt.split(' ')[1].substring(0, 5) : '-';
+  const approverUser = users.find(u =>
+    u.roleId === 'PLANT_MANAGER' ||
+    u.positionKey === 'APPROVER' ||
+    u.name === 'คุณประเสริฐ (Plant Mgr)' ||
+    u.employeeName === 'คุณประเสริฐ ยิ่งยง'
+  );
+
+  let approverName = po.approvedBy || po.approverName || approvedLog?.actorName || approverUser?.employeeName || approverUser?.name || (isApproved ? 'คุณประเสริฐ ยิ่งยง' : '');
+  if (approverName === 'Admin System') {
+    approverName = 'คุณประเสริฐ ยิ่งยง';
+  }
+
+  const approverSig = po.approverSignature ||
+    approverUser?.signature ||
+    storageService.getSignatureByRole?.('PLANT_MANAGER')?.signatureUrl ||
+    null;
+
+  const approverDate = po.approvedAt || approvedLog?.date || approvedLog?.timestamp || po.issueDate || po.createdAt || '';
+
+  // 4. Receiver (ผู้ตรวจรับ / บันทึกสต็อก)
+  const isReceived = Boolean(
+    po.receivedAt &&
+    ['COMPLETED', 'CLOSED', 'RECEIVED'].includes(String(po.status || '').toUpperCase())
+  );
+
+  const receiverUser = users.find(u =>
+    (po.receivedById && u.id === po.receivedById) ||
+    (po.receivedBy && (u.name === po.receivedBy || u.employeeName === po.receivedBy || u.displayName === po.receivedBy)) ||
+    (po.receiverName && (u.name === po.receiverName || u.employeeName === po.receiverName || u.displayName === po.receiverName))
+  );
+
+  let receiverName = po.receiverName || po.receivedBy || receiverUser?.employeeName || receiverUser?.name || '';
+  if (receiverName === 'Admin System') {
+    receiverName = '';
+  }
+
+  const receiverSig = po.receiverSignature || receiverUser?.signature || null;
 
   return (
       <div 
@@ -228,22 +337,119 @@ export default function PrintablePO({ po }) {
         </thead>
         <tbody>
           <tr>
-            {[ 
-              { name: requesterName, date: rDate, time: rTime },
-              { name: reviewerName, date: revDate, time: revTime },
-              { name: approverName, date: appDate, time: appTime },
-              { name: receiverName, date: receiverDate, time: receiverTime }
-            ].map((stamp, idx) => (
-              <td key={idx} className={`w-1/4 p-2 align-top ${idx < 3 ? 'border-r border-black' : ''}`}>
-                <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
-                  <div className="h-12 w-full mb-2 flex items-center justify-center"></div> {/* Image Placeholder */}
-                  <p className="text-[11px] font-medium text-slate-800">{cleanThaiText(stamp.name === '-' ? '-' : `( ${stamp.name} )`)}</p>
-                  {stamp.date !== '-' && (
-                    <p className="text-[10px] text-slate-500 mt-1">{cleanThaiText(`วันที่ ${stamp.date}${stamp.time !== '-' ? ` เวลา ${stamp.time} น.` : ''}`)}</p>
-                  )}
+            {/* 1. ผู้ขอซื้อ */}
+            <td className="w-1/4 p-2 align-top border-r border-black">
+              <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
+                <div className="h-14 flex items-center justify-center">
+                  {requesterSig ? (
+                    <img 
+                      src={requesterSig} 
+                      alt="Requester Signature" 
+                      className="h-12 max-h-12 max-w-[120px] object-contain" 
+                    />
+                  ) : null}
                 </div>
-              </td>
-            ))}
+                <p className="text-[11px] font-medium text-slate-800">
+                  ( {cleanThaiText(requesterName)} )
+                </p>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {cleanThaiText(formatDocDateTime(requesterDate) || 'วันที่ ..... / ..... / .........')}
+                </p>
+              </div>
+            </td>
+
+            {/* 2. ผู้ทบทวน (Reviewer) */}
+            <td className="w-1/4 p-2 align-top border-r border-black">
+              <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
+                {isReviewed ? (
+                  <>
+                    <div className="h-14 flex items-center justify-center">
+                      {reviewerSig ? (
+                        <img 
+                          src={reviewerSig} 
+                          alt="Reviewer Signature" 
+                          className="h-12 max-h-12 max-w-[120px] object-contain" 
+                        />
+                      ) : null}
+                    </div>
+                    <p className="text-[11px] font-medium text-slate-800">
+                      ( {cleanThaiText(reviewerName || 'คุณสมชาย มุ่งมั่น')} )
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {cleanThaiText(formatDocDateTime(reviewerDate) || 'วันที่ ..... / ..... / .........')}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="h-14 flex items-center justify-center"></div>
+                    <p className="text-xs text-slate-600">( ............................................................ )</p>
+                    <p className="text-[11px] text-slate-400 mt-1">วันที่ ..... / ..... / .........</p>
+                  </>
+                )}
+              </div>
+            </td>
+
+            {/* 3. ผู้อนุมัติ (Approver) */}
+            <td className="w-1/4 p-2 align-top border-r border-black">
+              <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
+                {isApproved ? (
+                  <>
+                    <div className="h-14 flex items-center justify-center">
+                      {approverSig ? (
+                        <img 
+                          src={approverSig} 
+                          alt="Approver Signature" 
+                          className="h-12 max-h-12 max-w-[120px] object-contain" 
+                        />
+                      ) : null}
+                    </div>
+                    <p className="text-[11px] font-medium text-slate-800">
+                      ( {cleanThaiText(approverName || 'คุณประเสริฐ ยิ่งยง')} )
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {cleanThaiText(formatDocDateTime(approverDate) || 'วันที่ ..... / ..... / .........')}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="h-14 flex items-center justify-center"></div>
+                    <p className="text-xs text-slate-600">( ............................................................ )</p>
+                    <p className="text-[11px] text-slate-400 mt-1">วันที่ ..... / ..... / .........</p>
+                  </>
+                )}
+              </div>
+            </td>
+
+            {/* 4. ผู้ตรวจรับ / บันทึกสต็อก (Receiver) */}
+            <td className="w-1/4 p-2 align-top">
+              <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
+                {isReceived ? (
+                  <>
+                    <div className="h-14 flex items-center justify-center">
+                      {receiverSig ? (
+                        <img 
+                          src={receiverSig} 
+                          alt="Receiver Signature" 
+                          className="h-12 max-h-12 max-w-[120px] object-contain" 
+                        />
+                      ) : null}
+                    </div>
+                    <p className="text-[11px] font-medium text-slate-800">
+                      ( {cleanThaiText(receiverName || 'คุณวิชัย สุขใจ')} )
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {cleanThaiText(formatDocDateTime(po.receivedAt))}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="h-14 flex items-center justify-center"></div>
+                    <p className="text-xs text-slate-600">( ............................................................ )</p>
+                    <p className="text-[11px] text-slate-400 mt-1">วันที่ ..... / ..... / .........</p>
+                  </>
+                )}
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>

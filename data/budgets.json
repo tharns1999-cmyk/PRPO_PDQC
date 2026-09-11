@@ -1,11 +1,11 @@
 {
   "PD": {
     "monthlyBudget": 250000,
-    "spent": 14500,
+    "spent": 17500,
     "pending": 0,
-    "variance": 235500,
+    "variance": 232500,
     "historicalSpent": {
-      "2026-09": 14500
+      "2026-09": 17500
     }
   },
   "QC": {

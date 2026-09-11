@@ -1,5 +1,118 @@
 [
   {
+    "id": "PR-1789110674000-9BW",
+    "prNo": "PD004/2026",
+    "department": "PD",
+    "source": "FACTORY",
+    "purchaseChannel": "SELF",
+    "specUrl": "บันทึกข้อความและประกาศภายในองค์กร.pdf",
+    "attachments": [
+      {
+        "name": "บันทึกข้อความและประกาศภายในองค์กร.pdf",
+        "size": 312432,
+        "type": "application/pdf",
+        "previewUrl": "blob:http://localhost:5173/f4da401f-d551-4f3c-8e8d-679ed40770a9",
+        "category": "QUOTATION"
+      },
+      {
+        "name": "Picture255.png",
+        "size": 26240,
+        "type": "image/png",
+        "previewUrl": "blob:http://localhost:5173/2a33f940-daf9-41bc-bc0a-265b3a5610b6",
+        "category": "IMAGE"
+      }
+    ],
+    "note": "",
+    "items": [
+      {
+        "productId": "PROD-PD-1789102607194",
+        "code": "  itm-001  ",
+        "name": "ถุงมือยางใหม่",
+        "purchaseUnit": "ชิ้น",
+        "stockUnit": "ชิ้น",
+        "conversionRate": 1,
+        "purchaseQty": 43,
+        "stockQty": 43,
+        "qty": 43,
+        "unit": "ชิ้น",
+        "price": 15,
+        "discountPercent": 0,
+        "discountAmount": 0,
+        "onlineUrl": "",
+        "productUrl": "",
+        "total": 645,
+        "source": "FACTORY",
+        "isCustom": false,
+        "isUnitOverridden": false
+      }
+    ],
+    "financials": {
+      "subtotal": 645,
+      "itemDiscountTotal": 0,
+      "combinedDiscountType": "percent",
+      "combinedDiscountValue": 0,
+      "combinedDiscountAmount": 0,
+      "totalDiscount": 0,
+      "vatMode": "AFTER_DISCOUNT",
+      "vatAmount": 45.15,
+      "roundingAdj": 0,
+      "shippingCost": 0,
+      "grandTotal": 690.15
+    },
+    "totalAmount": 690.15,
+    "status": "PO_ISSUED",
+    "requestedBy": "คุณวิชัย (PD)",
+    "requestedByRole": "Requester (PD)",
+    "requestedDept": "PD",
+    "createdAt": "11/9/2569 14:11:14",
+    "updatedAt": "11/9/2569 14:11:14",
+    "memo": null,
+    "activityLog": [
+      {
+        "action": "สร้างและยื่นส่ง PR (PR Submitted)",
+        "user": "คุณวิชัย (PD)",
+        "role": "Requester (PD)",
+        "timestamp": "11/9/2569 14:11:14",
+        "note": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
+      },
+      {
+        "action": "ตรวจสอบแล้ว (Level 1 - Asst Mgr)",
+        "user": "คุณสมชาย (Asst. Mgr)",
+        "role": "Assistant Manager",
+        "timestamp": "11/9/2569 14:11:28",
+        "note": "เปลี่ยนสถานะเป็น ผ่านตรวจ / รออนุมัติ (Plant Mgr)"
+      },
+      {
+        "action": "อนุมัติ (Final Approval - Plant Mgr)",
+        "user": "คุณประเสริฐ (Plant Mgr)",
+        "role": "Plant Manager",
+        "timestamp": "11/9/2569 14:11:35",
+        "note": "เปลี่ยนสถานะเป็น อนุมัติแล้ว (สร้าง PO)"
+      }
+    ],
+    "approvalHistory": [
+      {
+        "actorName": "คุณสมชาย (Asst. Mgr)",
+        "actorRole": "Assistant Manager",
+        "action": "REVIEWED",
+        "date": "11/9/2569 14:11:28",
+        "timestamp": "11/9/2569 14:11:28",
+        "comment": ""
+      },
+      {
+        "actorName": "คุณประเสริฐ (Plant Mgr)",
+        "actorRole": "Plant Manager",
+        "action": "APPROVED",
+        "date": "11/9/2569 14:11:35",
+        "timestamp": "11/9/2569 14:11:35",
+        "comment": ""
+      }
+    ],
+    "poNumber": "PO-PD-2026-003",
+    "poNo": "PO-PD-2026-003",
+    "poId": "PO-1789110695292-1"
+  },
+  {
     "id": "PR-1789102530747-1JM",
     "prNo": "PD003/2026",
     "department": "PD",

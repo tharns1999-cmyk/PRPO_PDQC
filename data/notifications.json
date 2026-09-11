@@ -1,5 +1,60 @@
 [
   {
+    "id": "NOTI-1789110695292-899",
+    "type": "PR_APPROVED",
+    "typeInfo": {
+      "id": "PR_APPROVED",
+      "label": "PR ได้รับการอนุมัติ (ออก PO อัตโนมัติ)",
+      "badgeColor": "bg-emerald-100 text-emerald-800 border-emerald-200",
+      "icon": "CheckCircle2",
+      "colorHex": "#059669",
+      "priority": "INFO"
+    },
+    "title": "PR ได้รับการอนุมัติ & ออก PO อัตโนมัติเรียบร้อย",
+    "message": "ใบสั่งซื้อ PO-PD-2026-003 ถูกสร้างจาก PD004/2026 (ผู้ขาย: ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)) ยอดเงิน ฿690.15",
+    "docNo": "PO-PD-2026-003",
+    "refDocType": "PO",
+    "refDocId": "PO-1789110695292-1",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN",
+      "ASST_MANAGER"
+    ],
+    "amount": 690.15,
+    "actor": "คุณประเสริฐ (Plant Mgr)",
+    "timestamp": "2026-09-11T07:11:35.292Z",
+    "timeFormatted": "11/9/69 14:11",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789110688708-267",
+    "type": "PR_REVIEWED",
+    "typeInfo": {
+      "id": "PR_REVIEWED",
+      "label": "PR ผ่านการตรวจ รออนุมัติ (Final Approve)",
+      "badgeColor": "bg-blue-100 text-blue-800 border-blue-200",
+      "icon": "ShieldCheck",
+      "colorHex": "#2563EB",
+      "priority": "URGENT"
+    },
+    "title": "PR ผ่านการตรวจสอบแล้ว รออนุมัติสั่งซื้อ (Final Approve)",
+    "message": "ใบขอซื้อเลขที่ PD004/2026 แผนก PD ยอดเงิน ฿690.15 ผ่านการตรวจ Level 1 แล้ว รอคุณประเสริฐ (Plant Manager) อนุมัติ",
+    "docNo": "PD004/2026",
+    "refDocType": "PR",
+    "refDocId": "PR-1789110674000-9BW",
+    "department": "PD",
+    "targetRoles": [
+      "PLANT_MANAGER",
+      "ADMIN"
+    ],
+    "amount": 690.15,
+    "actor": "คุณสมชาย (Asst. Mgr)",
+    "timestamp": "2026-09-11T07:11:28.708Z",
+    "timeFormatted": "11/9/69 14:11",
+    "isRead": false
+  },
+  {
     "id": "NOTI-1789108663005-951",
     "type": "PO_SHORT_CLOSED",
     "typeInfo": {

@@ -1,5 +1,84 @@
 [
   {
+    "id": "PO-1789110695292-1",
+    "poNo": "PO-PD-2026-003",
+    "prId": "PR-1789110674000-9BW",
+    "prNo": "PD004/2026",
+    "prNumber": "PD004/2026",
+    "requestedBy": "คุณวิชัย (PD)",
+    "requesterId": null,
+    "department": "PD",
+    "vendorId": null,
+    "vendorName": "ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)",
+    "purchaseChannel": "SELF",
+    "onlineLink": null,
+    "specUrl": "บันทึกข้อความและประกาศภายในองค์กร.pdf",
+    "issueDate": "2026-09-11",
+    "status": "ISSUED",
+    "items": [
+      {
+        "productId": "PROD-PD-1789102607194",
+        "code": "  itm-001  ",
+        "name": "ถุงมือยางใหม่",
+        "purchaseUnit": "ชิ้น",
+        "stockUnit": "ชิ้น",
+        "conversionRate": 1,
+        "purchaseQty": 43,
+        "stockQty": 43,
+        "qty": 43,
+        "unit": "ชิ้น",
+        "price": 15,
+        "discountPercent": 0,
+        "discountAmount": 0,
+        "onlineUrl": "",
+        "productUrl": "",
+        "total": 645,
+        "source": "FACTORY",
+        "isCustom": false,
+        "isUnitOverridden": false,
+        "orderedQty": 43,
+        "receivedQty": 0,
+        "receivedStockQty": 0,
+        "receivedNgQty": 0,
+        "remainingQty": 43,
+        "actUnitPrice": null
+      }
+    ],
+    "financials": {
+      "subtotal": 645,
+      "itemDiscountTotal": 0,
+      "combinedDiscountType": "percent",
+      "combinedDiscountValue": 0,
+      "combinedDiscountAmount": 0,
+      "totalDiscount": 0,
+      "vatMode": "AFTER_DISCOUNT",
+      "vatAmount": 45.15,
+      "roundingAdj": 0,
+      "shippingCost": 0,
+      "grandTotal": 690.15
+    },
+    "subtotal": 645,
+    "vat": 45.15,
+    "grandTotal": 690.15,
+    "reviewerName": "คุณสมชาย มุ่งมั่น",
+    "reviewedAt": "2026-09-11T07:11:28.000Z",
+    "approvedBy": "คุณประเสริฐ ยิ่งยง",
+    "approvedAt": "2026-09-11T07:11:35.000Z",
+    "receivedBy": null,
+    "receiverName": null,
+    "receiverSignature": null,
+    "receivedAt": null,
+    "activityLog": [
+      {
+        "action": "แปลง PR เป็น PO และออกใบสั่งซื้ออัตโนมัติ",
+        "user": "คุณประเสริฐ (Plant Mgr)",
+        "role": "Plant Manager",
+        "timestamp": "11/9/2569 14:11:35",
+        "note": "อนุมัติสร้างเอกสาร PO เลขที่ PO-PD-2026-003"
+      }
+    ]
+  },
+  {
     "id": "PO-1789107220484-1",
     "poNo": "PO-PD-2026-002",
     "prId": "PR-1789102530747-1JM",
@@ -14,7 +93,7 @@
     "onlineLink": null,
     "specUrl": "SC document template.pdf",
     "issueDate": "2026-09-11",
-    "status": "ORDERED_PENDING_DELIVERY",
+    "status": "CLOSED",
     "items": [
       {
         "productId": "PROD-PD-008",
@@ -37,10 +116,10 @@
         "isCustom": false,
         "isUnitOverridden": false,
         "orderedQty": 3,
-        "receivedQty": 0,
-        "receivedStockQty": 0,
+        "receivedQty": 3,
+        "receivedStockQty": 18,
         "receivedNgQty": 0,
-        "remainingQty": 3,
+        "remainingQty": 0,
         "actUnitPrice": null,
         "originalEstimatedPrice": 500,
         "originalPurchaseQty": 3,
@@ -102,6 +181,14 @@
         "note": "[ONLINE CLAIM RESOLVED] ดำเนินการ: RESEND — จัดซื้อใหม่/ส่งสินค้าทดแทน (รอบที่ 1), คาดรับวันที่: 2026-09-11 — xxthzdthzdthdsxffhxfrhxrsfdth โดย คุณนัท (Online Purchaser)",
         "type": "CLAIM_RESOLUTION",
         "channel": "ONLINE"
+      },
+      {
+        "action": "รับสินค้าครบและปิด PO (Goods Received – Closed)",
+        "user": "คุณวิชัย (PD)",
+        "role": "Requester (PD)",
+        "timestamp": "11/9/2569 14:09:37",
+        "note": "รับปกติ: ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m): 3 ลัง (6 ม้วน)",
+        "grNumber": "GR-PO-PD-2026-002-1789110577472"
       }
     ],
     "vendor": "พหะพไะฟไพะัฟไะพภฟไะภไะไะฟไะไฟะภหพะไภะ",
@@ -132,7 +219,14 @@
         "resolvedAt": "11/9/2569 13:31:26",
         "channel": "ONLINE"
       }
-    ]
+    ],
+    "reviewerName": "คุณสมชาย มุ่งมั่น",
+    "reviewedAt": "2026-09-11T06:13:00.000Z",
+    "approvedBy": "คุณประเสริฐ ยิ่งยง",
+    "approvedAt": "2026-09-11T06:13:40.000Z",
+    "receivedAt": "2026-09-11T07:09:37.000Z",
+    "receivedBy": "คุณวิชัย (PD)",
+    "receiverName": "คุณวิชัย สุขใจ"
   },
   {
     "id": "PO-1789003809083-1",
@@ -234,6 +328,13 @@
       }
     ],
     "orderedAt": "2026-09-10T05:42:58.160Z",
-    "totalAmount": 14500
+    "totalAmount": 14500,
+    "reviewerName": "คุณสมชาย มุ่งมั่น",
+    "reviewedAt": "2026-09-10T01:25:00.000Z",
+    "approvedBy": "คุณประเสริฐ ยิ่งยง",
+    "approvedAt": "2026-09-10T01:30:09.000Z",
+    "receivedAt": "2026-09-10T06:29:51.000Z",
+    "receivedBy": "คุณวิชัย (PD)",
+    "receiverName": "คุณวิชัย สุขใจ"
   }
 ]

@@ -367,9 +367,11 @@ export async function generatePoPdf(po) {
     u.name === po?.reviewedBy || 
     u.displayName === po?.reviewedBy || 
     u.employeeName === po?.reviewedBy ||
-    (po?.reviewedBy && po.reviewedBy.includes(u.name)) ||
-    u.roleId === 'REVIEWER'
-  ) || users.find(u => u.roleId?.includes('REVIEWER')) || users[1] || users[0];
+    (po?.reviewedBy && typeof po.reviewedBy === 'string' && po.reviewedBy.includes(u.name)) ||
+    (po?.reviewerName && (u.name === po.reviewerName || u.employeeName === po.reviewerName)) ||
+    u.roleId === 'REVIEWER' ||
+    u.roleId === 'ASST_MANAGER'
+  ) || users.find(u => u.roleId?.includes('REVIEWER') || u.roleId === 'ASST_MANAGER') || users[1] || users[0];
 
   const approverUser = users.find(u => 
     u.roleId === 'PLANT_MANAGER' || 
@@ -406,16 +408,56 @@ export async function generatePoPdf(po) {
   ]);
 
   const formatDateTime = (dt) => {
-    if (!dt || dt === '-') return '-';
-    const cleanDt = dt.replace(' น.', '');
-    const parts = cleanDt.split(' ');
-    return `วันที่ ${parts[0]} เวลา ${parts[1] || '00:00'} น.`;
+    if (!dt || dt === '-') return '';
+    try {
+      if (typeof dt === 'string' && dt.includes('T')) {
+        const d = new Date(dt);
+        if (!isNaN(d.getTime())) {
+          const day = String(d.getDate()).padStart(2, '0');
+          const month = String(d.getMonth() + 1).padStart(2, '0');
+          const year = d.getFullYear() > 2400 ? d.getFullYear() - 543 : d.getFullYear();
+          const hours = String(d.getHours()).padStart(2, '0');
+          const minutes = String(d.getMinutes()).padStart(2, '0');
+          return `วันที่ ${day}/${month}/${year} เวลา ${hours}:${minutes} น.`;
+        }
+      }
+      const cleanDt = String(dt).replace(' น.', '').trim();
+      if (cleanDt.includes(' ')) {
+        const parts = cleanDt.split(' ');
+        const timePart = parts[1] ? parts[1].substring(0, 5) : '00:00';
+        return `วันที่ ${parts[0]} เวลา ${timePart} น.`;
+      }
+      return `วันที่ ${cleanDt}`;
+    } catch {
+      return String(dt);
+    }
   };
 
-  const reqTime = formatDateTime(po?.requestedAt || '10/09/2026 08:15');
-  const revTime = formatDateTime(po?.reviewedAt || '10/09/2026 08:20');
-  const appTime = formatDateTime(po?.approvedAt || '10/09/2026 08:30');
-  const recTime = isCompleted ? formatDateTime(po?.receivedAt || '10/09/2026 13:14') : '-';
+  const isReviewed = Boolean(
+    po?.reviewedAt ||
+    po?.reviewerName ||
+    po?.reviewerSignature ||
+    po?.reviewedBy
+  );
+
+  const reqTime = formatDateTime(po?.requestedAt || po?.createdAt || po?.issueDate) || 'วันที่ ..... / ..... / .........';
+  const revTime = isReviewed ? (formatDateTime(po?.reviewedAt || po?.createdAt) || 'วันที่ ..... / ..... / .........') : 'วันที่ ..... / ..... / .........';
+  const appTime = formatDateTime(po?.approvedAt || po?.createdAt || po?.issueDate) || 'วันที่ ..... / ..... / .........';
+  const recTime = (isCompleted && po?.receivedAt) ? formatDateTime(po.receivedAt) : 'วันที่ ..... / ..... / .........';
+
+  let rawRevName = po?.reviewerName || (typeof po?.reviewedBy === 'string' && po.reviewedBy !== 'Admin System' ? po.reviewedBy : null) || (isReviewed ? (reviewerUser?.employeeName || 'คุณสมชาย มุ่งมั่น') : '');
+  if (!rawRevName || rawRevName === 'Admin System') {
+    rawRevName = isReviewed ? 'คุณสมชาย มุ่งมั่น' : '';
+  }
+  const revName = isReviewed ? (rawRevName || 'คุณสมชาย มุ่งมั่น') : '( ............................................................ )';
+
+  let rawRecName = (isCompleted && po?.receivedAt) ? (po?.receiverName || po?.receivedBy || receiverUser?.employeeName || '') : '';
+  if (rawRecName === 'Admin System') {
+    rawRecName = '';
+  }
+  const recName = (isCompleted && po?.receivedAt)
+    ? (rawRecName || 'คุณวิชัย สุขใจ')
+    : '( ............................................................ )';
 
   const stamps = [
     { 
@@ -427,10 +469,10 @@ export async function generatePoPdf(po) {
     },
     { 
       role: 'ผู้ทบทวน', 
-      name: reviewerUser?.employeeName || reviewerUser?.name || po?.reviewedBy || 'คุณมานะ อดทน', 
+      name: revName, 
       time: revTime, 
-      sigImg: revSigImg,
-      isSigned: true
+      sigImg: isReviewed ? revSigImg : null,
+      isSigned: isReviewed
     },
     { 
       role: 'ผู้อนุมัติ', 
@@ -441,10 +483,10 @@ export async function generatePoPdf(po) {
     },
     { 
       role: 'ผู้ตรวจรับ / บันทึกสต็อก', 
-      name: receiverUser?.employeeName || receiverUser?.name || po?.receivedBy || 'คุณวิชัย สุขใจ', 
+      name: recName, 
       time: recTime, 
-      sigImg: recSigImg,
-      isSigned: isCompleted
+      sigImg: (isCompleted && po?.receivedAt) ? recSigImg : null,
+      isSigned: Boolean(isCompleted && po?.receivedAt)
     }
   ];
 
@@ -514,7 +556,8 @@ export async function generatePoPdf(po) {
     }
 
     // Centered Name `( คุณ... )`
-    const nameText = normalizeThaiText(`( ${s.name} )`);
+    const displayName = s.name.startsWith('(') ? s.name : `( ${s.name} )`;
+    const nameText = normalizeThaiText(displayName);
     const nameWidth = customFont.widthOfTextAtSize(nameText, 8);
     page.drawText(nameText, { 
       x: boxX + (stampWidth - nameWidth) / 2, 

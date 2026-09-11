@@ -1284,8 +1284,40 @@ export const workflowEngine = {
       comment: note || ''
     });
 
+    if (nextStatus === 'REVIEWED') {
+      const reviewerSig = user?.signature || 
+        storageService.getSignatureByRole?.(user?.roleId || user?.id)?.signatureUrl || 
+        storageService.getSignatures?.()?.[user?.roleId || 'ASST_MANAGER']?.signatureUrl || 
+        null;
+      const realName = user?.employeeName || (user?.name && user.name !== 'Admin System' ? user.name : 'คุณสมชาย มุ่งมั่น');
+      pr.reviewedBy = {
+        id: user?.id || user?.userId || 'USR-0003',
+        name: realName,
+        signature: reviewerSig,
+        timestamp: new Date().toISOString()
+      };
+      pr.reviewerName = pr.reviewedBy.name;
+      pr.reviewerSignature = pr.reviewedBy.signature;
+      pr.reviewedAt = pr.reviewedBy.timestamp;
+    }
+
     let generatedPO = null;
     if (nextStatus === 'APPROVED') {
+      const appUserSig = user?.signature || 
+        storageService.getSignatureByRole?.(user?.roleId || user?.id)?.signatureUrl || 
+        storageService.getSignatures?.()?.[user?.roleId || 'PLANT_MANAGER']?.signatureUrl || 
+        null;
+      const appRealName = user?.employeeName || (user?.name && user.name !== 'Admin System' ? user.name : 'คุณประเสริฐ ยิ่งยง');
+      pr.approvedBy = {
+        id: user?.id || user?.userId || 'USR-0005',
+        name: appRealName,
+        signature: appUserSig,
+        timestamp: new Date().toISOString()
+      };
+      pr.approverName = pr.approvedBy.name;
+      pr.approverSignature = pr.approvedBy.signature;
+      pr.approvedAt = pr.approvedBy.timestamp;
+
       const currentNorm = String(previousStatus || '').toLowerCase();
       // State Machine Guard: Cannot approve or issue PO if PR has not been reviewed
       if (['waiting_review', 'submitted', 'draft', 'rejected_to_draft', 'rejected_to_l2', 'waiting_approval'].includes(currentNorm)) {
@@ -1453,6 +1485,7 @@ export const workflowEngine = {
         // ─── Snapshot PR ownership data so Requester can always access this PO ───
         requestedBy: pr.requestedBy || '',
         requesterId: pr.requesterId || null,
+        requesterSignature: pr.requesterSignature || null,
         department: pr.department,
         vendorId: vId,
         vendorName: vName,
@@ -1461,6 +1494,21 @@ export const workflowEngine = {
         specUrl: pr.specUrl || null,
         issueDate: new Date().toISOString().split('T')[0],
         status: poStatus,
+        // ─── Reviewer details forwarded from PR ───
+        reviewedBy: (pr.reviewedBy && typeof pr.reviewedBy === 'object') ? pr.reviewedBy : (pr.reviewerName ? { name: pr.reviewerName, signature: pr.reviewerSignature || null, timestamp: pr.reviewedAt || null } : null),
+        reviewerName: (pr.reviewedBy && typeof pr.reviewedBy === 'object' ? pr.reviewedBy.name : null) || pr.reviewerName || (typeof pr.reviewedBy === 'string' && pr.reviewedBy !== 'Admin System' ? pr.reviewedBy : null) || null,
+        reviewerSignature: (pr.reviewedBy && typeof pr.reviewedBy === 'object' ? pr.reviewedBy.signature : null) || pr.reviewerSignature || null,
+        reviewedAt: (pr.reviewedBy && typeof pr.reviewedBy === 'object' ? pr.reviewedBy.timestamp : null) || pr.reviewedAt || null,
+        // ─── Approver details ───
+        approvedBy: user?.employeeName || (user?.name && user.name !== 'Admin System' ? user.name : 'คุณประเสริฐ ยิ่งยง'),
+        approverName: user?.employeeName || (user?.name && user.name !== 'Admin System' ? user.name : 'คุณประเสริฐ ยิ่งยง'),
+        approverSignature: user?.signature || storageService.getSignatureByRole?.(user?.roleId || user?.id)?.signatureUrl || storageService.getSignatures?.()?.[user?.roleId || 'PLANT_MANAGER']?.signatureUrl || null,
+        approvedAt: timestamp,
+        // ─── Receiver details (strictly blank until goods physically received) ───
+        receivedBy: null,
+        receiverName: null,
+        receiverSignature: null,
+        receivedAt: null,
         items: items.map(item => {
           const pQty = Number(item.purchaseQty ?? item.qty) || 0;
           return {
@@ -1930,9 +1978,17 @@ export const workflowEngine = {
       }
     }
 
-    po.receivedBy = user.name;
-    po.receivedById = user.id || user.roleId || '';
-    po.receivedRole = user.title;
+    const recUserSig = user?.signature || 
+      storageService.getSignatureByRole?.(user?.roleId || user?.id)?.signatureUrl || 
+      storageService.getSignatures?.()?.[user?.roleId || 'REQUESTER_PD']?.signatureUrl || 
+      null;
+    const realReceiverName = user?.employeeName || (user?.name && user.name !== 'Admin System' ? user.name : 'คุณวิชัย สุขใจ');
+
+    po.receivedBy = realReceiverName;
+    po.receiverName = realReceiverName;
+    po.receivedById = user?.id || user?.roleId || '';
+    po.receivedRole = user?.title || '';
+    po.receiverSignature = recUserSig;
     po.receivedAt = timestamp;
 
     storageService.savePOs(pos);
