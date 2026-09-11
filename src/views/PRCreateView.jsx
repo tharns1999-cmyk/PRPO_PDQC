@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { apiService } from '../services/apiService';
 import { storageService } from '../services/storageService';
 import { useAppContext } from '../context/AppContext';
@@ -32,7 +32,7 @@ export default function PRCreateView({
 }) {
   // Submission Guard to prevent duplicate submissions
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const context = useAppContext ? useAppContext() : {};
+  const context = useAppContext() || {};
 
   // Existing PRs from Context or LocalStorage (Dynamic Max-ID Scanner)
   const existingPRs = useMemo(() => {
@@ -58,7 +58,7 @@ export default function PRCreateView({
   }, [masterVendors]);
 
   // Helper to find default vendor from product preferredSupplier / supplierId
-  const getDefaultVendorId = (prod) => {
+  const getDefaultVendorId = useCallback((prod) => {
     if (!prod) return masterVendors[0]?.id || '';
     const match = masterVendors.find(v => 
       v.id === prod.supplierId || 
@@ -68,7 +68,7 @@ export default function PRCreateView({
       v.name === prod.preferredSupplier
     );
     return match?.id || prod.supplierId || prod.preferredSupplier || masterVendors[0]?.id || '';
-  };
+  }, [masterVendors]);
 
   // Dynamic Departments from context / master data
   const deptList = useMemo(() => {
@@ -113,6 +113,27 @@ export default function PRCreateView({
 
   const [purchaseChannel, setPurchaseChannel] = useState(editingPR?.purchaseChannel || 'SELF');
   
+  // 1 PR = 1 Vendor at Form Header for Internal Purchase (Directive 1)
+  const [selectedVendorId, setSelectedVendorId] = useState(() => {
+    if (editingPR?.vendorId) return editingPR.vendorId;
+    if (editingPR?.vendor?.id) return editingPR.vendor.id;
+    if (editingPR?.supplierId) return editingPR.supplierId;
+    if (editingPR?.items?.[0]?.vendorId) return editingPR.items[0].vendorId;
+    if (preselectedProduct) return getDefaultVendorId(preselectedProduct);
+    return masterVendors[0]?.id || '';
+  });
+
+  // Ensure default vendor selection when masterVendors load
+  useEffect(() => {
+    if (!selectedVendorId && masterVendors.length > 0 && !editingPR) {
+      setSelectedVendorId(preselectedProduct ? getDefaultVendorId(preselectedProduct) : (masterVendors[0]?.id || ''));
+    }
+  }, [masterVendors, selectedVendorId, editingPR, preselectedProduct, getDefaultVendorId]);
+
+  const selectedVendor = useMemo(() => {
+    return masterVendors.find(v => v.id === selectedVendorId) || null;
+  }, [masterVendors, selectedVendorId]);
+
   // File attachments
   const [onlineLink, setOnlineLink] = useState(editingPR?.specUrl || '');
   const [quotationFiles, setQuotationFiles] = useState(() => {
@@ -254,7 +275,7 @@ export default function PRCreateView({
         return prevItems;
       });
     }
-  }, [department, availableProducts, editingPR]);
+  }, [department, availableProducts, editingPR, getDefaultVendorId]);
 
   // Memo Fields
   const [memoData, setMemoData] = useState(() => {
@@ -283,8 +304,8 @@ export default function PRCreateView({
 
   const isMissingVendor = useMemo(() => {
     if (purchaseChannel !== 'SELF') return false;
-    return prItems.some(item => !item.vendorId);
-  }, [purchaseChannel, prItems]);
+    return !selectedVendorId;
+  }, [purchaseChannel, selectedVendorId]);
 
   const subtotal = useMemo(() => {
     return prItems.reduce((sum, item) => sum + ((parseFloat(item.qty) || 0) * (parseFloat(item.price) || 0)), 0);
@@ -443,7 +464,9 @@ export default function PRCreateView({
       const prod = availableProducts.find(p => p.id === value);
       if (prod) {
         updated[index].price = parseFloat(prod.price) || 0;
-        updated[index].vendorId = getDefaultVendorId(prod);
+        if (purchaseChannel === 'SELF' && !selectedVendorId) {
+          setSelectedVendorId(getDefaultVendorId(prod));
+        }
       }
     }
 
@@ -498,12 +521,12 @@ export default function PRCreateView({
         return modalService.warning('กรุณาระบุข้อมูลรายการสินค้าและจำนวนที่ถูกต้อง');
       }
 
-      if (purchaseChannel === 'SELF' && isMissingVendor) {
-        return modalService.warning('กรุณาระบุผู้ขาย (Vendor) ให้ครบทุกรายการสำหรับการขอซื้อภายใน');
+      if (purchaseChannel === 'SELF' && !selectedVendorId) {
+        return modalService.warning('กรุณาระบุผู้จัดจำหน่าย (Vendor) ที่หัวเอกสารสำหรับการขอซื้อภายใน');
       }
 
       if (isOnline && !requiresMemo) {
-        const hasLink = !!onlineLink.trim() || prItems.some(item => !!(item.onlineUrl || '').trim());
+        const hasLink = !!onlineLink.trim() || prItems.some(item => !!(item.productUrl || item.onlineUrl || '').trim());
         if (!hasLink) {
           return modalService.warning('กรุณาระบุ Online Link (Shopee/Lazada) สำหรับการสั่งซื้อออนไลน์อย่างน้อย 1 รายการ หรือในส่วนรายละเอียดเอกสาร');
         }
@@ -521,6 +544,10 @@ export default function PRCreateView({
 
     setIsSubmitting(true);
     try {
+      const matchedHeaderVendor = purchaseChannel === 'SELF' ? (masterVendors.find(v => v.id === selectedVendorId) || null) : null;
+      const vId = purchaseChannel === 'SELF' ? (matchedHeaderVendor?.id || selectedVendorId || null) : null;
+      const vName = purchaseChannel === 'SELF' ? (matchedHeaderVendor?.name || null) : null;
+
       const itemsFormatted = prItems.map(item => {
         const prod = availableProducts.find(p => p.id === item.productId) || products.find(p => p.id === item.productId);
         const itemSource = item.source === 'OFFICE' ? 'OFFICE' : 'FACTORY';
@@ -539,14 +566,11 @@ export default function PRCreateView({
           : (prod?.stockUnit || prod?.unit || 'ชิ้น');
         const price = parseFloat(item.price) || 0;
         const rowTotal = Math.max(0, (price * pQty) - discA);
-        const matchedVendor = masterVendors.find(v => v.id === item.vendorId);
-        const vId = item.vendorId || matchedVendor?.id || prod?.preferredSupplier || prod?.supplierId || null;
-        const vName = matchedVendor?.name || prod?.supplierName || null;
 
         return {
           productId: prod?.id || item.productId,
-          code: prod?.code || 'N/A',
-          name: prod?.name || 'N/A',
+          code: prod?.code || item.customCode || 'N/A',
+          name: prod?.name || item.customName || 'N/A',
           purchaseUnit: pUnit,
           stockUnit: sUnit,
           conversionRate: rate,
@@ -565,7 +589,7 @@ export default function PRCreateView({
           productUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
           total: rowTotal,
           source: itemSource,
-          isCustom: false,
+          isCustom: Boolean(item.isCustom),
           isUnitOverridden: Boolean(item.overrideUnit && Number(item.customRate) > 0)
         };
       });
@@ -623,10 +647,26 @@ export default function PRCreateView({
         grandTotal: subtotal
       };
 
+      const vendorObj = matchedHeaderVendor ? {
+        id: matchedHeaderVendor.id,
+        code: matchedHeaderVendor.code || '',
+        name: matchedHeaderVendor.name || '',
+        taxId: matchedHeaderVendor.taxId || '',
+        address: matchedHeaderVendor.address || '',
+        phone: matchedHeaderVendor.phone || '',
+        email: matchedHeaderVendor.email || '',
+        contactPerson: matchedHeaderVendor.contactPerson || ''
+      } : null;
+
       const prPayload = {
         prNo: editingPR ? editingPR.prNo : nextPRNumber,
         department,
         purchaseChannel,
+        vendorId: vId,
+        vendorName: vName,
+        vendor: vendorObj,
+        supplierId: vId,
+        supplierName: vName,
         hasVat: purchaseChannel === 'SELF' ? hasVat : false,
         specUrl: quotationFiles[0] ? quotationFiles[0].name : '',
         attachments: [
@@ -820,6 +860,50 @@ export default function PRCreateView({
               </div>
 
             </div>
+
+            {/* Form Header Vendor Selector (Rule 1 PR = 1 Vendor for Internal Purchase) */}
+            {purchaseChannel === 'SELF' && (
+              <div className="pt-3 border-t border-slate-100 space-y-2 animate-fade-in">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Building className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span>ผู้จัดจำหน่าย (Vendor)</span>
+                    <span className="text-rose-500">*</span>
+                    <span className="text-[11px] font-normal text-slate-400 hidden sm:inline">(1 PR = 1 ผู้จัดจำหน่าย)</span>
+                  </label>
+                  {selectedVendor && (
+                    <span className="text-[11px] font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 self-start sm:self-auto">
+                      {selectedVendor.code}
+                    </span>
+                  )}
+                </div>
+                
+                <SearchableSelect
+                  options={vendorOptions}
+                  value={selectedVendorId}
+                  onChange={val => setSelectedVendorId(val)}
+                  placeholder="-- ค้นหาหรือเลือกผู้จัดจำหน่าย (Vendor) --"
+                  searchPlaceholder="พิมพ์ชื่อ, รหัส หรือเลขประจำตัวผู้เสียภาษีของผู้ขาย..."
+                  emptyMessage="ไม่พบข้อมูลผู้จัดจำหน่ายในระบบ"
+                  className="text-xs"
+                />
+
+                {selectedVendor && (
+                  <div className="p-3 bg-slate-50/90 rounded-xl border border-slate-200/80 text-xs text-slate-600 space-y-1">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <span><strong>เลขผู้เสียภาษี:</strong> {selectedVendor.taxId || '-'}</span>
+                      <span><strong>ผู้ติดต่อ:</strong> {selectedVendor.contactPerson || '-'}</span>
+                      <span><strong>โทร:</strong> {selectedVendor.phone || '-'}</span>
+                    </div>
+                    {selectedVendor.address && (
+                      <p className="text-slate-500 text-[11px] leading-relaxed truncate" title={selectedVendor.address}>
+                        <strong>ที่อยู่:</strong> {selectedVendor.address}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Online Channel URL helper (if ONLINE is selected) */}
             {purchaseChannel === 'ONLINE' && (
@@ -1142,35 +1226,16 @@ export default function PRCreateView({
                       </div>
                     )}
 
-                    {/* Vendor Selector for item (If channel is SELF) */}
-                    {purchaseChannel === 'SELF' && (
-                      <div className="p-2.5 bg-blue-50/40 border border-blue-200/80 rounded-xl flex flex-col sm:flex-row items-start sm:items-center gap-2 animate-fade-in">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900 shrink-0">
-                          <Building className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                          <span>ผู้ขาย (Vendor) <span className="text-rose-500">*</span>:</span>
-                        </div>
-                        <div className="flex-1 w-full sm:w-auto">
-                          <SearchableSelect
-                            options={vendorOptions}
-                            value={item.vendorId || ''}
-                            onChange={val => handleItemChange(idx, 'vendorId', val)}
-                            placeholder="-- เลือกผู้ขาย / Supplier --"
-                            className="text-xs"
-                          />
-                        </div>
-                      </div>
-                    )}
-
                     {/* Online Link for item (If channel is ONLINE) */}
                     {purchaseChannel === 'ONLINE' && (
-                      <div className="p-2.5 bg-purple-50/40 border border-purple-200/80 rounded-xl flex items-center gap-2 animate-fade-in">
+                      <div className="p-2.5 bg-purple-50/50 border border-purple-200 rounded-xl flex items-center gap-2 animate-fade-in">
                         <Globe className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                         <input
                           type="url"
-                          placeholder="ลิงก์สินค้าสำหรับรายการนี้ (Shopee / Lazada)..."
-                          value={item.onlineUrl || ''}
-                          onChange={e => handleItemChange(idx, 'onlineUrl', e.target.value)}
-                          className="flex-1 bg-white border border-purple-200 rounded-lg px-2.5 py-1 text-xs text-purple-950 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          placeholder="ลิงก์สินค้าสำหรับรายการนี้ (Shopee / Lazada / เว็บไซต์)... *"
+                          value={item.productUrl || item.onlineUrl || ''}
+                          onChange={e => handleItemChange(idx, 'productUrl', e.target.value)}
+                          className="flex-1 bg-white border border-purple-200 rounded-lg px-2.5 py-1 text-xs text-purple-950 placeholder:text-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
                         />
                       </div>
                     )}
@@ -1621,7 +1686,7 @@ export default function PRCreateView({
               <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-xl text-center">
                 <p className="text-[11px] text-rose-600 font-semibold flex items-center justify-center gap-1">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  <span>* กรุณาระบุผู้ขาย (Vendor) ให้ครบทุกรายการ</span>
+                  <span>* กรุณาระบุผู้จัดจำหน่าย (Vendor) ที่หัวเอกสาร</span>
                 </p>
               </div>
             )}

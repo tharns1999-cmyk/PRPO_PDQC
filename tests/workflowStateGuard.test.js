@@ -15,43 +15,33 @@ describe('Workflow State Machine Guards & Mock Data Consistency', () => {
     ]);
   });
 
-  describe('1. Mock Data Consistency (SSOT Files)', () => {
-    it('PO-PD-2026-001 in data/pos.json references PD001/2026 for Hydraulic Oil', () => {
+  describe('1. Mock Data Consistency (Clean Transactional State & Master Data Preservation)', () => {
+    it('data/pos.json and data/prs.json are clean empty arrays for zero-state initialization', () => {
       const posPath = path.resolve(process.cwd(), 'data/pos.json');
       const pos = JSON.parse(fs.readFileSync(posPath, 'utf-8'));
-      const targetPO = pos.find(p => p.poNo === 'PO-PD-2026-001' || p.id === 'PO-1789003809083-1');
-
-      expect(targetPO).toBeDefined();
-      expect(targetPO.prNo).toBe('PD001/2026');
-      expect(targetPO.prNumber).toBe('PD001/2026');
-      expect(targetPO.items[0].code).toBe('PD-OIL-068');
-      expect(targetPO.items[0].name).toContain('น้ำมันไฮดรอลิก');
-      expect(targetPO.items[0].price).toBe(14500);
-    });
-
-    it('PD002/2026 in data/prs.json is WAITING_REVIEW with NO PO link', () => {
       const prsPath = path.resolve(process.cwd(), 'data/prs.json');
       const prs = JSON.parse(fs.readFileSync(prsPath, 'utf-8'));
-      const targetPR = prs.find(p => p.prNo === 'PD002/2026');
 
-      expect(targetPR).toBeDefined();
-      expect(targetPR.status).toBe('WAITING_REVIEW');
-      expect(targetPR.poNumber).toBeUndefined();
-      expect(targetPR.poNo).toBeUndefined();
-      expect(targetPR.poId).toBeUndefined();
-      expect(targetPR.items[0].code).toBe('PD-STF-001');
-      expect(targetPR.items[0].name).toContain('ฟิล์มยืดพันพาเลท');
+      expect(Array.isArray(pos)).toBe(true);
+      expect(Array.isArray(prs)).toBe(true);
+      expect(pos.length).toBe(0);
+      expect(prs.length).toBe(0);
     });
 
-    it('PD001/2026 in data/prs.json is the source PR for Hydraulic Oil and links to PO-PD-2026-001', () => {
-      const prsPath = path.resolve(process.cwd(), 'data/prs.json');
-      const prs = JSON.parse(fs.readFileSync(prsPath, 'utf-8'));
-      const targetPR = prs.find(p => p.prNo === 'PD001/2026');
+    it('Master Data files (vendors.json, products.json, users.json) are 100% preserved', () => {
+      const vendorsPath = path.resolve(process.cwd(), 'data/vendors.json');
+      const vendors = JSON.parse(fs.readFileSync(vendorsPath, 'utf-8'));
+      const productsPath = path.resolve(process.cwd(), 'data/products.json');
+      const products = JSON.parse(fs.readFileSync(productsPath, 'utf-8'));
+      const usersPath = path.resolve(process.cwd(), 'data/users.json');
+      const users = JSON.parse(fs.readFileSync(usersPath, 'utf-8'));
 
-      expect(targetPR).toBeDefined();
-      expect(targetPR.items[0].code).toBe('PD-OIL-068');
-      expect(targetPR.items[0].name).toContain('น้ำมันไฮดรอลิก');
-      expect(targetPR.poNumber).toBe('PO-PD-2026-001');
+      expect(Array.isArray(vendors)).toBe(true);
+      expect(vendors.length).toBeGreaterThan(0);
+      expect(Array.isArray(products)).toBe(true);
+      expect(products.length).toBeGreaterThan(0);
+      expect(Array.isArray(users)).toBe(true);
+      expect(users.length).toBeGreaterThan(0);
     });
   });
 

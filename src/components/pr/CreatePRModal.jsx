@@ -25,13 +25,14 @@ export default function CreatePRModal(props) {
     }
   }, [existingPRs, currentDept, props.initialPRNo]);
 
-  const handleSave = props.handleSavePR || context?.handleSavePR || props.createPR || context?.createPR;
+  const handleSave = props.handleSavePR || props.createPR || props.onSave || props.onSubmit || context?.handleSavePR || context?.createPR;
 
   return (
     <PRCreateView
       {...props}
       initialPRNo={initialPRNo}
       handleSavePR={handleSave}
+      createPR={handleSave}
     />
   );
 }

@@ -19,10 +19,19 @@ export default function TaskCard({ task, activeTab, currentRole, onClick }) {
         : `${task.items[0].name} (+${task.items.length - 1} รายการ)`)
     : (isPR ? 'ใบขอซื้อ' : 'ใบสั่งซื้อ'));
 
+  const getVendorDisplayName = (vendorData) => {
+    if (!vendorData) return 'ไม่ระบุผู้ขาย';
+    if (typeof vendorData === 'string') return vendorData;
+    if (typeof vendorData === 'object') {
+      return vendorData.name || vendorData.companyName || vendorData.code || 'ไม่ระบุผู้ขาย';
+    }
+    return String(vendorData);
+  };
+
   // Vendor / Requester Name
   const entityName = isPR 
     ? (task.requestedBy ? `${task.requestedBy}${task.department ? ` (${task.department})` : ''}` : (task.department || 'ฝ่ายผลิต'))
-    : (task.vendorName || task.vendor || 'ไม่ระบุผู้ขาย');
+    : getVendorDisplayName(task.vendorName || task.vendor);
 
   // Purchase Channel / Tag
   const channelLabel = task.purchaseChannel === 'ONLINE' 

@@ -37,20 +37,51 @@ export default function WorkspaceView({
   const [selectedPR, setSelectedPR] = useState(null);
   const [selectedPO, setSelectedPO] = useState(null);
 
-  // 1. รวมและ Deduplicate งานทั้งหมดด้วย Map ป้องกันการเกิดบั๊กซ้ำซ้อน 100%
+  // 1. รวมและ Deduplicate งานทั้งหมดด้วย Map พร้อมดักกรองข้อมูลข้ามแผนก (RBAC Scoping Rule) ป้องกัน Data Leak
   const unifiedTasks = useMemo(() => {
     const taskMap = new Map();
+    const user = currentUser || currentRole;
+
+    // Helper: ตรวจสอบสิทธิ์การเข้าถึงเอกสารตามแผนกและบทบาท (Pre-Filtering RBAC)
+    const canSeeDocument = (doc) => {
+      if (!user) return false;
+      const roleId = String(user.roleId || user.id || '').toUpperCase();
+      const userLevel = Number(user.level || 1);
+      
+      // Admin, Plant Manager, Central Purchaser sees ALL
+      const isAdminOrGlobal = roleId === 'ADMIN' || user.role === 'admin' || userLevel >= 99 || 
+                              roleId === 'PLANT_MANAGER' || userLevel >= 3 || 
+                              roleId === 'PURCHASER' || roleId === 'ONLINE_PURCHASER';
+      if (isAdminOrGlobal) return true;
+
+      // Reviewer / Approver (Asst. Manager) - sees ALL docs in their department(s)
+      const isReviewer = roleId === 'ASST_MANAGER' || roleId === 'REVIEWER' || userLevel === 2;
+      if (isReviewer) {
+        return hasDepartmentAccess(user, doc.department);
+      }
+
+      // Requester - sees ONLY docs they created, OR POs in their dept (since they receive goods)
+      const names = [user.name, user.employeeName, user.displayName, user.username].filter(Boolean);
+      const isCreator = names.includes(doc.requestedBy) || names.includes(doc.applicantName1) || names.includes(doc.createdBy) || doc.requesterId === user.id;
+      if (isCreator) return true;
+
+      // Requesters can see POs in their department (for receiving goods)
+      if (doc.docType === 'PO' && hasDepartmentAccess(user, doc.department)) {
+         return true;
+      }
+      
+      return false; // Not allowed to see this document (Data Leak Prevention)
+    };
 
     // ใส่ PO ก่อน (PO ถือเป็นสถานะล่าสุดของเอกสาร)
     pos.forEach(po => {
-      taskMap.set(po.id, {
-        ...po,
-        docType: 'PO',
-        uniqueKey: `po-${po.id}`
-      });
+      const docWithMeta = { ...po, docType: 'PO', uniqueKey: `po-${po.id}` };
+      if (canSeeDocument(docWithMeta)) {
+        taskMap.set(po.id, docWithMeta);
+      }
     });
 
-    // ใส่ PR เฉพาะใบที่ยังไม่ถูกแปลงเป็น PO (ถ้ามี poNumber หรือถูกแปลงแล้ว ให้ข้าม)
+    // ใส่ PR เฉพาะใบที่ยังไม่ถูกแปลงเป็น PO
     prs.forEach(pr => {
       const isConverted = Boolean(
         pr.poNumber || 
@@ -64,16 +95,15 @@ export default function WorkspaceView({
         )
       );
       if (!isConverted) {
-        taskMap.set(pr.id, {
-          ...pr,
-          docType: 'PR',
-          uniqueKey: `pr-${pr.id}`
-        });
+        const docWithMeta = { ...pr, docType: 'PR', uniqueKey: `pr-${pr.id}` };
+        if (canSeeDocument(docWithMeta)) {
+          taskMap.set(pr.id, docWithMeta);
+        }
       }
     });
 
     return Array.from(taskMap.values());
-  }, [prs, pos]);
+  }, [prs, pos, currentUser, currentRole]);
 
   // Helper: ตรวจสอบว่าเสร็จสิ้นภายใน 30 วันย้อนหลังหรือไม่ (Directive 1: 30-Day Rolling Window)
   const isRecentlyCompleted = (task) => {
@@ -108,7 +138,7 @@ export default function WorkspaceView({
     return false;
   };
 
-  // Helper: ตรวจสอบงานที่เสร็จสิ้นแล้ว (Completed)
+  // Helper: ตรวจสอบงานที่เสร็จสิ้นแล้ว (Completed) - ปรับปรุงไม่ให้ Fallback ดูของคนอื่น
   const isCompletedTask = (task, user) => {
     const isPR = task.docType === 'PR';
     const isDone = isPR 
@@ -117,17 +147,65 @@ export default function WorkspaceView({
     
     if (!isDone) return false;
 
+    // Admin sees all completed tasks
     if (user?.id === 'ADMIN' || user?.roleId === 'ADMIN' || Number(user?.level || 1) >= 99) return true;
+    
+    // For normal users, only show in their completed tab if they were directly involved
     const names = [user?.name, user?.employeeName, user?.displayName, user?.username].filter(Boolean);
-    const wasRequester = names.includes(task.requestedBy) || names.includes(task.applicantName1) || names.includes(task.createdBy);
+    const wasRequester = names.includes(task.requestedBy) || names.includes(task.applicantName1) || names.includes(task.createdBy) || task.requesterId === user?.id;
     const wasInLog = task.activityLog?.some(l => names.includes(l.user) || (user?.title && l.role === user.title));
-    const isDept = task.department && hasDepartmentAccess(user, task.department);
-    return wasRequester || wasInLog || isDept;
+    
+    return wasRequester || wasInLog;
   };
 
-  // Helper: ตรวจสอบงานที่รอผู้อื่นดำเนินการ (In Progress)
+  // Helper: ตรวจสอบงานที่รอผู้อื่นดำเนินการ (In Progress) - ลบ Fallback !isTaskForMe && !isCompletedTask
   const isInProgressTask = (task, user) => {
-    return !isTaskForMe(task, user) && !isCompletedTask(task, user) && !['CLOSED', 'CANCELLED'].includes(task.status);
+    // 1. If it's for me right now, it's NOT in progress (it's To Do)
+    if (isTaskForMe(task, user)) return false;
+    
+    // 2. If it's completely done, it's NOT in progress
+    const isPR = task.docType === 'PR';
+    const isDone = isPR 
+      ? ['PO_ISSUED', 'APPROVED', 'CLOSED', 'CANCELLED', 'completed', 'received'].includes(task.status)
+      : ['CLOSED', 'CANCELLED', 'RECEIVED'].includes(task.status);
+    if (isDone) return false;
+
+    // 3. Strict Classification based on User Involvement and Waiting Statuses
+    const roleId = String(user?.roleId || user?.id || '').toUpperCase();
+    const userLevel = Number(user?.level || 1);
+    const isAdmin = roleId === 'ADMIN' || user?.role === 'admin' || userLevel >= 99;
+    
+    if (isAdmin) return true; // Admins see everything not-done as in-progress (since ToDo catches Admin actions)
+
+    const names = [user?.name, user?.employeeName, user?.displayName, user?.username].filter(Boolean);
+    const actedOn = names.includes(task.requestedBy) || names.includes(task.applicantName1) || names.includes(task.createdBy) || task.requesterId === user?.id || task.activityLog?.some(l => names.includes(l.user) || (user?.title && l.role === user.title));
+
+    if (!actedOn) {
+       // If user never acted on it and didn't request it, they are not "waiting" on it.
+       return false;
+    }
+
+    if (isPR) {
+      if (userLevel === 1) { // Requester
+        return ['SUBMITTED', 'REJECTED_TO_L2', 'REVIEWED', 'waiting_review', 'pending_review', 'รอตรวจทาน', 'รอตรวจสอบ'].includes(task.status);
+      }
+      if (userLevel === 2 || roleId === 'ASST_MANAGER') { // Reviewer
+        return ['REVIEWED'].includes(task.status); // Waiting for Plant Manager
+      }
+      if (userLevel >= 3 || roleId === 'PLANT_MANAGER') { // Approver
+        return false; // Approver is the final authority
+      }
+    } else {
+      if (roleId === 'ONLINE_PURCHASER') {
+        return ['ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'].includes(task.status);
+      }
+      // Requesters/Reviewers waiting for PO delivery
+      if (userLevel <= 2) {
+        return ['IN_PROGRESS_ONLINE', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL', 'ISSUED', 'CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(task.status);
+      }
+    }
+    
+    return false;
   };
 
   // 2. กรองข้อมูลตาม Tab ปัจจุบัน โดยไม่พึ่งพา Side-Effect State (Pure useMemo)

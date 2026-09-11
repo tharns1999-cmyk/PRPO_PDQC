@@ -618,6 +618,15 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                       {selectedPR.source === 'FACTORY' || !selectedPR.source || selectedPR.source === 'PD' ? 'โรงงาน (Factory)' : (selectedPR.source === 'OFFICE' ? 'สำนักงาน (Office)' : selectedPR.source)}
                     </p>
                   </div>
+
+                  {selectedPR.purchaseChannel !== 'ONLINE' && (selectedPR.vendorName || selectedPR.vendor?.name) && (
+                    <div className="col-span-2 pt-1 border-t border-slate-100">
+                      <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">ผู้จัดจำหน่าย (Vendor)</span>
+                      <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">
+                        {selectedPR.vendorName || selectedPR.vendor?.name}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -195,6 +195,33 @@ export function splitTextToLines(text, font, size, maxWidth) {
   return lines;
 }
 
+export function wrapText(text, font, size, maxWidth) {
+  if (!text) return [];
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    try {
+      const segLines = splitTextToLines(text, font, size, maxWidth);
+      if (segLines && segLines.length > 0) return segLines;
+    } catch {}
+  }
+
+  const words = String(text).split(' ');
+  const lines = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const width = font.widthOfTextAtSize(testLine, size);
+    if (width <= maxWidth) {
+      currentLine = testLine;
+    } else {
+      if (currentLine) lines.push(currentLine);
+      currentLine = word;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  return lines.length > 0 ? lines : [text];
+}
+
 export async function generatePoPdf(po) {
   // Ensure Thai web fonts are loaded prior to rendering
   if (typeof document !== 'undefined' && document.fonts?.ready) {
@@ -230,9 +257,10 @@ export async function generatePoPdf(po) {
   const customFont = await pdfDoc.embedFont(fontBytes);
   const boldFont = await pdfDoc.embedFont(boldFontBytes);
 
-  // 2. ขนาดกระดาษ A4
+  // 2. ขนาดกระดาษ A4 และขอบเขตหน้ากระดาษ (Page Boundaries)
   const page = pdfDoc.addPage([595.28, 841.89]);
   const { width, height } = page.getSize();
+  const rightX = 555; // width - marginX (595.28 - 40 ≈ 555.28)
 
 
   // โหลดรูปภาพตราสัญลักษณ์บริษัท (SC Logo)
@@ -248,50 +276,179 @@ export async function generatePoPdf(po) {
   }
 
   // 4. ส่วนหัวเอกสารควบคุม (QMS/DCC Header)
+  // ── Y เริ่มต้นของหัวเอกสาร (บรรทัดแรก = ชื่อบริษัท) ──
+  const headerStartY = height - 52;
+
+  // บริษัท เศรษฐชล จำกัด (ฝั่งซ้าย)
   if (logoImage) {
+    // ── โลโก้รักษาสัดส่วนภาพจริง (scaleToFit 46×46) วางที่ x: 42, y: 752 ──
+    const logoDims = logoImage.scaleToFit ? logoImage.scaleToFit(46, 46) : { width: 44, height: 44 };
     page.drawImage(logoImage, {
-      x: 50,
-      y: height - 74,
-      width: 42,
-      height: 36,
+      x: 42,
+      y: 752,
+      width: logoDims.width,
+      height: logoDims.height,
     });
-    page.drawText(normalizeThaiText('บริษัท เศรษฐชล จำกัด (สำนักงานใหญ่)'), { 
-      x: 102, y: height - 50, size: 14, font: boldFont, color: rgb(0.1, 0.1, 0.2) 
+    // บรรทัด 1: ชื่อบริษัท (Y = headerStartY)
+    page.drawText(normalizeThaiText('บริษัท เศรษฐชล จำกัด (สำนักงานใหญ่)'), {
+      x: 98, y: headerStartY, size: 14, font: boldFont, color: rgb(0.1, 0.1, 0.2)
     });
-    page.drawText(normalizeThaiText('ใบสั่งซื้อสินค้า / PURCHASE ORDER'), { 
-      x: 102, y: height - 68, size: 12, font: boldFont, color: rgb(0.2, 0.3, 0.6) 
+    // บรรทัด 2: ที่อยู่ บรรทัด 1 (ตัดคำป้องกันการทับซ้อนกับฝั่งขวา) (Y -= 16 pt)
+    page.drawText(normalizeThaiText('ที่อยู่ 225 หมู่ที่ 12 ถนนเทพารักษ์ ตำบลบางพลีใหญ่'), {
+      x: 98, y: headerStartY - 16, size: 9, font: customFont, color: rgb(0.3, 0.3, 0.3)
+    });
+    // บรรทัด 3: ที่อยู่ บรรทัด 2 (Y -= 15 pt = headerStartY - 31)
+    page.drawText(normalizeThaiText('อำเภอบางพลี จังหวัดสมุทรปราการ 10540'), {
+      x: 98, y: headerStartY - 31, size: 9, font: customFont, color: rgb(0.3, 0.3, 0.3)
+    });
+    // บรรทัด 4: TAX ID (Y -= 15 pt = headerStartY - 46)
+    page.drawText(normalizeThaiText('เลขประจำตัวผู้เสียภาษี (TAX ID): 0-10553-2104-63-7'), {
+      x: 98, y: headerStartY - 46, size: 9, font: customFont, color: rgb(0.3, 0.3, 0.3)
     });
   } else {
-    page.drawText(normalizeThaiText('บริษัท เศรษฐชล จำกัด (สำนักงานใหญ่)'), { 
-      x: 50, y: height - 50, size: 14, font: boldFont, color: rgb(0.1, 0.1, 0.2) 
+    // บรรทัด 1: ชื่อบริษัท
+    page.drawText(normalizeThaiText('บริษัท เศรษฐชล จำกัด (สำนักงานใหญ่)'), {
+      x: 42, y: headerStartY, size: 14, font: boldFont, color: rgb(0.1, 0.1, 0.2)
     });
-    page.drawText(normalizeThaiText('ใบสั่งซื้อสินค้า / PURCHASE ORDER'), { 
-      x: 50, y: height - 68, size: 12, font: boldFont, color: rgb(0.2, 0.3, 0.6) 
+    // บรรทัด 2: ที่อยู่ บรรทัด 1 (Y -= 16 pt)
+    page.drawText(normalizeThaiText('ที่อยู่ 225 หมู่ที่ 12 ถนนเทพารักษ์ ตำบลบางพลีใหญ่'), {
+      x: 42, y: headerStartY - 16, size: 9, font: customFont, color: rgb(0.3, 0.3, 0.3)
+    });
+    // บรรทัด 3: ที่อยู่ บรรทัด 2 (Y -= 15 pt)
+    page.drawText(normalizeThaiText('อำเภอบางพลี จังหวัดสมุทรปราการ 10540'), {
+      x: 42, y: headerStartY - 31, size: 9, font: customFont, color: rgb(0.3, 0.3, 0.3)
+    });
+    // บรรทัด 4: TAX ID (Y -= 15 pt)
+    page.drawText(normalizeThaiText('เลขประจำตัวผู้เสียภาษี (TAX ID): 0-10553-2104-63-7'), {
+      x: 42, y: headerStartY - 46, size: 9, font: customFont, color: rgb(0.3, 0.3, 0.3)
     });
   }
 
-  // กล่องเลขที่เอกสาร
-  page.drawRectangle({ x: width - 210, y: height - 105, width: 160, height: 45, borderColor: rgb(0.85, 0.85, 0.85), borderWidth: 1 });
-  page.drawText(normalizeThaiText(`เลขที่ PO: ${po?.poNo || po?.id || po?.poNumber || '-'}`), { 
-    x: width - 200, y: height - 80, size: 10, font: boldFont 
+  // ── ข้อมูลเลขที่ PO และวันที่ออก PO (ชิดขอบขวาสุด rightX = 555, ไม่มีกรอบสี่เหลี่ยม) ──
+  const poNoText = normalizeThaiText(`เลขที่ PO: ${po?.poNo || po?.id || po?.poNumber || '-'}`);
+  const poDateText = normalizeThaiText(`วันที่ออก PO: ${po?.issueDate || po?.createdAt || '-'}`);
+  const poMetaSize = 9;
+  let poNoX = 440;
+  let poDateX = 440;
+  try {
+    poNoX = rightX - boldFont.widthOfTextAtSize(poNoText, poMetaSize);
+    poDateX = rightX - customFont.widthOfTextAtSize(poDateText, poMetaSize);
+  } catch {
+    poNoX = 440;
+    poDateX = 440;
+  }
+  // บรรทัดที่ 1 (เลขที่ PO): ใช้พิกัด Y ระนาบเดียวกับ "บริษัท เศรษฐชล จำกัด"
+  page.drawText(poNoText, {
+    x: poNoX,
+    y: headerStartY,
+    size: poMetaSize,
+    font: boldFont,
+    color: rgb(0.1, 0.1, 0.2),
   });
-  page.drawText(normalizeThaiText(`วันที่ออก PO: ${po?.issueDate || po?.createdAt || '-'}`), { 
-    x: width - 200, y: height - 95, size: 9, font: customFont 
+  // บรรทัดที่ 2 (วันที่ออก PO): ใช้พิกัด Y ระนาบเดียวกับที่อยู่บรรทัดที่ 1
+  page.drawText(poDateText, {
+    x: poDateX,
+    y: headerStartY - 16,
+    size: poMetaSize,
+    font: customFont,
+    color: rgb(0.3, 0.3, 0.3),
   });
 
-  // 5. ข้อมูลอ้างอิงและคู่ค้า
-  page.drawText(normalizeThaiText(`อ้างอิงใบขอซื้อ (PR): ${po?.prNo || po?.prNumber || '-'}`), { 
-    x: 50, y: height - 100, size: 10, font: customFont 
-  });
-  page.drawText(normalizeThaiText(`แผนกผู้ขอ: ${po?.department || 'ฝ่ายผลิตและควบคุมคุณภาพ (PD)'}`), { 
-    x: 50, y: height - 115, size: 10, font: customFont 
-  });
-  page.drawText(normalizeThaiText(`ร้านค้า / ผู้จำหน่าย: ${po?.vendorName || po?.vendor || po?.shopName || 'สั่งซื้อออนไลน์ (Shopee / Lazada)'}`), { 
-    x: 50, y: height - 130, size: 10, font: boldFont 
+  // ── ชื่อเอกสาร "ใบสั่งซื้อสินค้า / PURCHASE ORDER" (กึ่งกลางหน้ากระดาษ พร้อมระยะเว้นบนและล่าง) ──
+  const titleText = normalizeThaiText('ใบสั่งซื้อสินค้า / PURCHASE ORDER');
+  const titleSize = 14;
+  const titleY = headerStartY - 46 - 24; // เว้นห่างจาก TAX ID บริษัทด้านบนลงมา 24 pt (headerStartY - 70)
+  let titleX = 180;
+  try {
+    titleX = (width - boldFont.widthOfTextAtSize(titleText, titleSize)) / 2;
+  } catch {
+    titleX = 180;
+  }
+  page.drawText(titleText, {
+    x: titleX,
+    y: titleY,
+    size: titleSize,
+    font: boldFont,
+    color: rgb(0.15, 0.25, 0.55),
   });
 
-  // 6. ตารางรายการสินค้า
-  const tableTop = height - 160;
+  // ── อ้างอิง PR และแผนก (เว้นระยะจากชื่อเอกสารลงไป 20 pt) ──
+  const prRefY = titleY - 20;
+  page.drawText(normalizeThaiText(`อ้างอิงใบขอซื้อ (PR): ${po?.prNo || po?.prNumber || '-'}`), {
+    x: 42, y: prRefY, size: 9.5, font: customFont
+  });
+  page.drawText(normalizeThaiText(`แผนกผู้ขอ: ${po?.department || 'ฝ่ายผลิตและควบคุมคุณภาพ (PD)'}`), {
+    x: 42, y: prRefY - 16, size: 9.5, font: customFont
+  });
+
+  // Fetch Master Vendor Data
+  let vendors = [];
+  try {
+    vendors = storageService.getVendors() || [];
+  } catch {}
+
+  const targetVendorId = po?.vendorId || (typeof po?.vendor === 'object' ? po?.vendor?.id : null) || po?.vendorCode;
+  const targetVendorName = po?.vendorName || (typeof po?.vendor === 'string' ? po?.vendor : po?.vendor?.name) || po?.shopName;
+
+  const masterVendor = vendors.find(v => 
+    (targetVendorId && (v.id === targetVendorId || v.code === targetVendorId)) ||
+    (targetVendorName && v.name && v.name.trim().toLowerCase() === targetVendorName.trim().toLowerCase()) ||
+    (targetVendorName && v.code && v.code.trim().toLowerCase() === targetVendorName.trim().toLowerCase())
+  );
+
+  const vendorObj = po?.vendorDetails || (typeof po?.vendor === 'object' ? po?.vendor : null) || masterVendor || {};
+
+  const vendorCode = masterVendor?.code || vendorObj.code || po?.vendorCode || po?.vendorId || '-';
+  const vendorName = masterVendor?.name || vendorObj.name || vendorObj.companyName || targetVendorName || 'สั่งซื้อออนไลน์ (Shopee / Lazada)';
+  const vendorTaxId = masterVendor?.taxId || vendorObj.taxId || '-';
+  const vendorContactPerson = masterVendor?.contactPerson || vendorObj.contactPerson || '-';
+  const vendorPhone = masterVendor?.phone || vendorObj.phone || '-';
+  const vendorAddress = masterVendor?.address || vendorObj.address || '-';
+
+  // ── Vendor Block: Grid Baseline Matching & Dynamic Y Flow ──
+  const colLeftX = 42;
+  const maxLeftWidth = 340; // ห้ามข้อความฝั่งซ้ายเกินจุด x = 382 pt
+  const colRightX = 420; // ชิดขวามากขึ้น สอดรับกับแนวตารางสินค้าฝั่งขวา
+  const vendorTitleY = 660;
+
+  // บรรทัดหัวข้อเดี่ยว (Standalone Title: ฝั่งขวาว่างไว้ ไม่วางรหัสผู้ขายที่บรรทัดนี้)
+  page.drawText(normalizeThaiText('ข้อมูลคู่ค้า / ผู้จำหน่าย (VENDOR DETAILS):'), {
+    x: colLeftX, y: vendorTitleY, size: 10, font: boldFont
+  });
+
+  // แถวที่ 1 (y = 642): ชื่อบริษัท/ร้านค้า (ซ้าย ตัดคำไม่เกิน 340 pt) + รหัสผู้ขาย (ขวา)
+  let vendorY = vendorTitleY - 18; // 642
+  const nameLines = wrapText(`ชื่อบริษัท/ร้านค้า: ${vendorName}`, customFont, 9, maxLeftWidth);
+  nameLines.forEach((line, i) => {
+    page.drawText(normalizeThaiText(line), { x: colLeftX, y: vendorY - (i * 16), size: 9, font: customFont });
+  });
+  page.drawText(normalizeThaiText(`รหัสผู้ขาย: ${vendorCode}`), {
+    x: colRightX, y: vendorY, size: 9, font: customFont
+  });
+  vendorY -= (nameLines.length > 1 ? (nameLines.length - 1) * 16 + 18 : 18);
+
+  // แถวที่ 2 (y = 624): เลขประจำตัวผู้เสียภาษี (ซ้าย) + ผู้ติดต่อ (ขวา)
+  page.drawText(normalizeThaiText(`เลขประจำตัวผู้เสียภาษี: ${vendorTaxId}`), {
+    x: colLeftX, y: vendorY, size: 9, font: customFont
+  });
+  page.drawText(normalizeThaiText(`ผู้ติดต่อ: ${vendorContactPerson}`), {
+    x: colRightX, y: vendorY, size: 9, font: customFont
+  });
+  vendorY -= 18;
+
+  // แถวที่ 3 (y = 606): ที่อยู่ (ซ้าย ตัดคำไม่เกิน 340 pt) + โทรศัพท์ (ขวา)
+  const addrLines = wrapText(`ที่อยู่: ${vendorAddress}`, customFont, 9, maxLeftWidth);
+  addrLines.forEach((line, i) => {
+    page.drawText(normalizeThaiText(line), { x: colLeftX, y: vendorY - (i * 16), size: 9, font: customFont });
+  });
+  page.drawText(normalizeThaiText(`โทรศัพท์: ${vendorPhone}`), {
+    x: colRightX, y: vendorY, size: 9, font: customFont
+  });
+  const lastAddrY = vendorY - (addrLines.length - 1) * 16;
+
+  // 6. ตารางรายการสินค้า (tableStartY ถูกดันลงมาตามบรรทัดที่อยู่ ไม่น้อยกว่า 24 pt)
+  const tableStartY = lastAddrY - 24;
+  const tableTop = tableStartY;
   page.drawRectangle({ x: 50, y: tableTop - 20, width: width - 100, height: 20, color: rgb(0.95, 0.96, 0.98) });
   page.drawText('#', { x: 58, y: tableTop - 14, size: 9, font: boldFont });
   page.drawText(normalizeThaiText('รหัสสินค้า / รายละเอียดพัสดุ'), { x: 80, y: tableTop - 14, size: 9, font: boldFont });
@@ -330,9 +487,53 @@ export async function generatePoPdf(po) {
   });
 
   page.drawLine({ start: { x: 50, y: rowY - 5 }, end: { x: width - 50, y: rowY - 5 }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
-  page.drawText(normalizeThaiText('ยอดเงินสุทธิ (Grand Total):'), { x: 350, y: rowY - 22, size: 10, font: boldFont });
-  page.drawText(`฿${Number(po?.totalAmount || po?.grandTotal || po?.subtotal || 14500).toLocaleString()}`, { 
-    x: 480, y: rowY - 22, size: 11, font: boldFont, color: rgb(0.1, 0.5, 0.3) 
+
+  const itemsSubtotal = (po?.items || []).reduce((sum, item) => {
+    const p = parseFloat(item.price) || 0;
+    const q = parseFloat(item.qty ?? item.purchaseQty) || 1;
+    const disc = parseFloat(item.discountAmount) || 0;
+    const lineTotal = item.total !== undefined ? parseFloat(item.total) : ((p * q) - disc);
+    return sum + (lineTotal > 0 ? lineTotal : 0);
+  }, 0);
+
+  const subtotal = (po?.financials?.subtotal !== undefined && Number(po.financials.subtotal) > 0)
+    ? Number(po.financials.subtotal)
+    : ((po?.subtotal !== undefined && Number(po.subtotal) > 0) ? Number(po.subtotal) : itemsSubtotal);
+
+  const hasVat = po?.hasVat !== undefined
+    ? Boolean(po.hasVat)
+    : (po?.financials?.hasVat !== undefined
+        ? Boolean(po.financials.hasVat)
+        : (po?.financials?.vatMode ? po.financials.vatMode !== 'NONE' : Number(po?.vat) > 0));
+
+  const vatAmount = hasVat
+    ? (po?.financials?.vatAmount !== undefined
+        ? Number(po.financials.vatAmount)
+        : (po?.vat !== undefined && Number(po.vat) > 0 ? Number(po.vat) : parseFloat((subtotal * 0.07).toFixed(2))))
+    : 0;
+
+  const grandTotal = (po?.financials?.grandTotal !== undefined && Number(po.financials.grandTotal) > 0)
+    ? Number(po.financials.grandTotal)
+    : (po?.grandTotal !== undefined && Number(po.grandTotal) > 0
+        ? Number(po.grandTotal)
+        : (po?.totalAmount !== undefined && Number(po.totalAmount) > 0
+            ? Number(po.totalAmount)
+            : parseFloat((subtotal + vatAmount).toFixed(2))));
+
+  // 3 Lines Financial Breakdown
+  page.drawText(normalizeThaiText('รวมมูลค่าสินค้า (Subtotal):'), { x: 330, y: rowY - 20, size: 10, font: boldFont });
+  page.drawText(`฿${subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, { 
+    x: 480, y: rowY - 20, size: 10, font: boldFont
+  });
+
+  page.drawText(normalizeThaiText('ภาษีมูลค่าเพิ่ม 7% (VAT 7%):'), { x: 330, y: rowY - 35, size: 10, font: boldFont });
+  page.drawText(hasVat && vatAmount > 0 ? `฿${vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : normalizeThaiText('ไม่มี VAT (0%)'), { 
+    x: 480, y: rowY - 35, size: 10, font: boldFont
+  });
+
+  page.drawText(normalizeThaiText('ยอดเงินรวมสุทธิ (Grand Total):'), { x: 330, y: rowY - 50, size: 10, font: boldFont });
+  page.drawText(`฿${grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, { 
+    x: 480, y: rowY - 50, size: 11, font: boldFont, color: rgb(0.1, 0.5, 0.3) 
   });
 
   // 7. กล่อง Digital Approval Stamp 4 ช่อง (Continuous Table Layout)
@@ -410,8 +611,13 @@ export async function generatePoPdf(po) {
   const formatDateTime = (dt) => {
     if (!dt || dt === '-') return '';
     try {
-      if (typeof dt === 'string' && dt.includes('T')) {
-        const d = new Date(dt);
+      let str = String(dt).trim();
+      if (!str) return '';
+      str = str.replace(/^วันที่\s*/, '');
+
+      // Case 1: ISO string with T
+      if (str.includes('T')) {
+        const d = new Date(str);
         if (!isNaN(d.getTime())) {
           const day = String(d.getDate()).padStart(2, '0');
           const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -421,7 +627,22 @@ export async function generatePoPdf(po) {
           return `วันที่ ${day}/${month}/${year} เวลา ${hours}:${minutes} น.`;
         }
       }
-      const cleanDt = String(dt).replace(' น.', '').trim();
+
+      // Case 2: YYYY-MM-DD or YYYY-MM-DD HH:mm
+      const ymdMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+      if (ymdMatch) {
+        const [, y, m, d, hh, mm] = ymdMatch;
+        const day = String(Number(d)).padStart(2, '0');
+        const month = String(Number(m)).padStart(2, '0');
+        const year = Number(y) > 2400 ? Number(y) - 543 : y;
+        if (hh !== undefined && mm !== undefined) {
+          return `วันที่ ${day}/${month}/${year} เวลา ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} น.`;
+        }
+        return `วันที่ ${day}/${month}/${year}`;
+      }
+
+      // Case 3: Thai locale string
+      const cleanDt = str.replace(' น.', '').trim();
       if (cleanDt.includes(' ')) {
         const parts = cleanDt.split(' ');
         const timePart = parts[1] ? parts[1].substring(0, 5) : '00:00';

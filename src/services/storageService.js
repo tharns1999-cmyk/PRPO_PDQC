@@ -2,7 +2,7 @@ import { STORAGE_KEYS, ROLES, INITIAL_USAGE_UNITS, INITIAL_DEPARTMENTS } from '.
 import { initialProducts, initialVendors, initialStorageLocations, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
 import { DEFAULT_EMPLOYEE_ACCOUNTS } from './authService.js';
 
-const DATA_VERSION = 'prpo_clean_v15_sanitized';
+const DATA_VERSION = 'prpo_clean_v16_empty_state';
 const API_URL = 'http://localhost:3001/api/storage';
 
 // In-Memory Storage Cache backed by Local File API Server
@@ -27,55 +27,46 @@ const _migrateLocalStorageCache = () => {
   try {
     const currentVersion = localStorage.getItem('prpo_data_version');
     if (currentVersion !== DATA_VERSION) {
-      console.log(`[StorageService] Migrating LocalStorage cache to ${DATA_VERSION}...`);
+      console.log(`[StorageService] Migrating LocalStorage cache to ${DATA_VERSION} (Clean Transactional State)...`);
 
-      // 1. Sanitize cached PRs in localStorage
-      const storedPRs = localStorage.getItem(STORAGE_KEYS.PRS);
-      if (storedPRs) {
-        try {
-          const parsed = JSON.parse(storedPRs);
-          if (Array.isArray(parsed)) {
-            const cleaned = parsed.map(pr => {
-              if (pr.prNo === 'PD002/2026' || pr.id === 'PR-1789100542800-9OZ') {
-                const c = { ...pr };
-                delete c.poNumber;
-                delete c.poNo;
-                delete c.poId;
-                if (c.status === 'completed' || c.status === 'CLOSED') {
-                  c.status = 'WAITING_REVIEW';
-                }
-                return c;
-              }
-              return pr;
-            });
-            localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify(cleaned));
-          }
-        } catch (e) {}
-      }
+      // 1. Reset all Transactional Data to empty arrays []
+      localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify([]));
+      localStorage.setItem(STORAGE_KEYS.POS, JSON.stringify([]));
+      localStorage.setItem(STORAGE_KEYS.STOCK_LOGS, JSON.stringify([]));
+      localStorage.setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, JSON.stringify([]));
+      localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify([]));
+      localStorage.setItem('prpo_in_app_notifications', JSON.stringify([]));
+      localStorage.setItem('prpo_notifications', JSON.stringify([]));
 
-      // 2. Sanitize cached POs in localStorage
-      const storedPOs = localStorage.getItem(STORAGE_KEYS.POS);
-      if (storedPOs) {
-        try {
-          const parsed = JSON.parse(storedPOs);
-          if (Array.isArray(parsed)) {
-            const cleaned = parsed.map(po => {
-              if ((po.poNo === 'PO-PD-2026-001' || po.id === 'PO-1789003809083-1') && (po.prNo === 'PD002/2026' || po.prNumber === 'PD002/2026')) {
-                return { ...po, prNo: 'PD001/2026', prNumber: 'PD001/2026', prId: 'PR-PD001-2026' };
-              }
-              return po;
-            });
-            localStorage.setItem(STORAGE_KEYS.POS, JSON.stringify(cleaned));
-          }
-        } catch (e) {}
-      }
-
-      // 3. Remove floating decoupled counters from localStorage (Directive 4: Single Source of Truth from documents)
+      // 2. Reset counters to 0
       try {
         localStorage.removeItem(STORAGE_KEYS.PR_COUNTERS);
         localStorage.removeItem('pr_counter');
         localStorage.removeItem('currentRunningIndex');
       } catch (e) {}
+
+      // 3. Reset budget spent and pending to 0 while strictly preserving master monthlyBudget configurations
+      const storedBudgets = localStorage.getItem(STORAGE_KEYS.BUDGETS);
+      if (storedBudgets) {
+        try {
+          const parsedB = JSON.parse(storedBudgets);
+          if (parsedB && typeof parsedB === 'object') {
+            const resetB = {};
+            for (const [dept, b] of Object.entries(parsedB)) {
+              resetB[dept] = {
+                ...b,
+                spent: 0,
+                pending: 0,
+                variance: b.monthlyBudget || 0,
+                historicalSpent: {}
+              };
+            }
+            localStorage.setItem(STORAGE_KEYS.BUDGETS, JSON.stringify(resetB));
+          }
+        } catch (e) {}
+      }
+
+      // Master Data (Vendors, Products, Users, Locations, Usage Units, Signatures, Departments) is 100% PRESERVED!
 
       localStorage.setItem('prpo_data_version', DATA_VERSION);
     }
@@ -152,7 +143,41 @@ export const storageService = {
     _setItem('prpo_budget_transactions', [], false);
     _setItem('prpo_audit_logs', [], false);
     _setItem('prpo_notifications', [], false);
+    _setItem('prpo_in_app_notifications', [], false);
     console.log('[StorageService] Local browser cache reset. Server SSOT preserved.');
+  },
+
+  // Clear transactional data only (PRs, POs, Stock movement, Notifications, Audit logs) while preserving 100% of Master Data
+  clearTransactionalData(syncWithBackend = false) {
+    _setItem(STORAGE_KEYS.PRS, [], syncWithBackend);
+    _setItem(STORAGE_KEYS.POS, [], syncWithBackend);
+    _setItem(STORAGE_KEYS.STOCK_LOGS, [], syncWithBackend);
+    _setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, [], syncWithBackend);
+    _setItem(STORAGE_KEYS.AUDIT_LOGS, [], syncWithBackend);
+    _setItem('prpo_budget_transactions', [], syncWithBackend);
+    _setItem('prpo_audit_logs', [], syncWithBackend);
+    _setItem('prpo_notifications', [], syncWithBackend);
+    _setItem('prpo_in_app_notifications', [], false);
+    _setItem(STORAGE_KEYS.PR_COUNTERS, {
+      PD: { PR: 0, PO: 0 },
+      QC: { PR: 0, PO: 0 }
+    }, syncWithBackend);
+
+    // Reset budget spent / pending to 0
+    const currentBudgets = this.getBudgets();
+    const cleanBudgets = {};
+    for (const [dept, b] of Object.entries(currentBudgets)) {
+      cleanBudgets[dept] = {
+        ...b,
+        spent: 0,
+        pending: 0,
+        variance: b.monthlyBudget || 0,
+        historicalSpent: {}
+      };
+    }
+    this.saveBudgets(cleanBudgets);
+    console.log('[StorageService] Transactional data cleared. Master data preserved.');
+    return true;
   },
 
   // Role

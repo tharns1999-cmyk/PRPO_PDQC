@@ -134,4 +134,140 @@ describe('Multi-Vendor PR & Auto-Split POs by Vendor', () => {
     const updatedPO = storageService.getPOs().find(p => p.id === onlinePO.id);
     expect(updatedPO.vendorName).toBe('Shopee: 3M Official Store');
   });
+
+  it('3. Single PR Document Guarantee: Form submission creates only 1 PR for all vendors, reviewed as 1 document, and splits into N POs only on approval', async () => {
+    const requester = { name: 'คุณวิชัย (PD)', title: 'Requester (PD)', department: 'PD', roleId: 'REQUESTER_PD' };
+    const asstMgr = { name: 'คุณสมชาย (Asst. Mgr)', title: 'Assistant Manager', department: 'PD', roleId: 'ASST_MANAGER', level: 1 };
+    const plantMgr = { name: 'คุณประเสริฐ (Plant Mgr)', title: 'Plant Manager', department: 'PD', roleId: 'PLANT_MANAGER', level: 2 };
+
+    const prPayload = {
+      department: 'PD',
+      purchaseChannel: 'SELF',
+      hasVat: true,
+      items: [
+        { productId: 'PROD-A', code: 'A01', name: 'Item 1 from Vendor 1', price: 1000, qty: 2, vendorId: 'VEND-001' },
+        { productId: 'PROD-B', code: 'B01', name: 'Item 2 from Vendor 2', price: 2000, qty: 1, vendorId: 'VEND-002' },
+        { productId: 'PROD-C', code: 'C01', name: 'Item 3 without Vendor', price: 500, qty: 1, vendorId: null }
+      ]
+    };
+
+    // 1. PR Creation Phase: MUST create exactly 1 single PR document
+    const createdPR = await workflowEngine.createPR(prPayload, requester);
+    expect(createdPR).toBeDefined();
+
+    const allPRs = storageService.getPRs();
+    expect(allPRs.length).toBe(1);
+    expect(allPRs[0].id).toBe(createdPR.id);
+    expect(allPRs[0].items.length).toBe(3);
+
+    // Subtotal: (1000*2) + (2000*1) + (500*1) = 4500
+    // VAT 7% = 315
+    // Grand Total = 4815
+    expect(createdPR.financials.subtotal).toBe(4500);
+    expect(createdPR.financials.vatAmount).toBe(315);
+    expect(createdPR.financials.grandTotal).toBe(4815);
+    expect(createdPR.totalAmount).toBe(4815);
+
+    // 2. Review & Approval Phase: Single document throughout
+    const { pr: reviewedPR } = await workflowEngine.updatePRStatus(createdPR.id, 'REVIEWED', asstMgr);
+    expect(reviewedPR.status).toBe('REVIEWED');
+    expect(storageService.getPRs().length).toBe(1);
+
+    // 3. PO Generation Phase: Group by Vendor happens strictly upon approval (1 PR to N POs)
+    const { pr: approvedPR, po: generatedPOs } = await workflowEngine.updatePRStatus(createdPR.id, 'APPROVED', plantMgr);
+    expect(approvedPR.status).toBe('PO_ISSUED');
+    expect(Array.isArray(generatedPOs)).toBe(true);
+    expect(generatedPOs.length).toBe(3); // VEND-001, VEND-002, NULL
+
+    // PR document count remains 1
+    expect(storageService.getPRs().length).toBe(1);
+    // PO document count is 3
+    expect(storageService.getPOs().length).toBe(3);
+  });
+
+  it('4. 1 PR = 1 Vendor (Internal Purchase): Header Vendor selector ensures 1 PR maps directly to 1 PO with full Master Vendor data, VAT 7%, and accurate financials without splitting', async () => {
+    const requester = { name: 'คุณวิชัย (PD)', title: 'Requester (PD)', department: 'PD', roleId: 'REQUESTER_PD' };
+    const plantMgr = { name: 'คุณประเสริฐ (Plant Mgr)', title: 'Plant Manager', department: 'PD', roleId: 'PLANT_MANAGER', level: 2 };
+
+    const prPayload = {
+      department: 'PD',
+      purchaseChannel: 'SELF',
+      vendorId: 'VEND-001',
+      hasVat: true,
+      items: [
+        { productId: 'PROD-A', code: 'A01', name: 'Item 1 from Master Vendor', price: 1500, qty: 2 },
+        { productId: 'PROD-B', code: 'B01', name: 'Item 2 from Master Vendor', price: 2000, qty: 1 }
+      ]
+    };
+
+    // 1 PR Created with Header Vendor
+    const createdPR = await workflowEngine.createPR(prPayload, requester);
+    expect(createdPR).toBeDefined();
+    expect(createdPR.vendorId).toBe('VEND-001');
+    expect(createdPR.items.length).toBe(2);
+    expect(createdPR.items[0].vendorId).toBe('VEND-001');
+    expect(createdPR.items[1].vendorId).toBe('VEND-001');
+
+    // Subtotal = (1500 * 2) + (2000 * 1) = 5000
+    // VAT 7% = 350
+    // Grand Total = 5350
+    expect(createdPR.financials.subtotal).toBe(5000);
+    expect(createdPR.financials.vatAmount).toBe(350);
+    expect(createdPR.financials.grandTotal).toBe(5350);
+
+    // Fast-track to APPROVED
+    createdPR.status = 'APPROVED';
+    storageService.savePRs([createdPR]);
+
+    // Generate PO (1 PR = 1 PO)
+    const generatedPO = await workflowEngine.createPOFromPR(createdPR, plantMgr);
+    expect(generatedPO).toBeDefined();
+    expect(Array.isArray(generatedPO) ? generatedPO.length : 1).toBe(1);
+
+    const po = Array.isArray(generatedPO) ? generatedPO[0] : generatedPO;
+    expect(po.vendorId).toBe('VEND-001');
+    expect(po.vendorName).toBe('บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด');
+    expect(po.vendor?.taxId).toBe('0105551234567');
+    expect(po.vendor?.address).toContain('นิคมอุตสาหกรรมบางชัน');
+    expect(po.vendor?.contactPerson).toBe('คุณสมชาย มุ่งมั่น');
+    expect(po.vendor?.phone).toBe('02-123-4567');
+    expect(po.subtotal).toBe(5000);
+    expect(po.vat).toBe(350);
+    expect(po.grandTotal).toBe(5350);
+    expect(po.status).toBe('ISSUED');
+  });
+
+  it('5. Online Purchase: Form without header vendor, multi-item with product URLs, approved into 1 Online PO (IN_PROGRESS_ONLINE) dispatched to Online Procurement Hub', async () => {
+    const requester = { name: 'คุณวิชัย (PD)', title: 'Requester (PD)', department: 'PD', roleId: 'REQUESTER_PD' };
+    const plantMgr = { name: 'คุณประเสริฐ (Plant Mgr)', title: 'Plant Manager', department: 'PD', roleId: 'PLANT_MANAGER', level: 2 };
+
+    const prPayload = {
+      department: 'PD',
+      purchaseChannel: 'ONLINE',
+      specUrl: 'https://shopee.co.th/cart',
+      items: [
+        { productId: 'PROD-ONLINE-1', code: 'ON-01', name: 'เมาส์ไร้สาย', price: 350, qty: 2, productUrl: 'https://shopee.co.th/mouse' },
+        { productId: 'PROD-ONLINE-2', code: 'ON-02', name: 'คีย์บอร์ดบลูทูธ', price: 800, qty: 1, productUrl: 'https://lazada.co.th/keyboard' }
+      ]
+    };
+
+    const createdPR = await workflowEngine.createPR(prPayload, requester);
+    expect(createdPR).toBeDefined();
+    expect(createdPR.purchaseChannel).toBe('ONLINE');
+    expect(createdPR.vendorId).toBeNull();
+    expect(createdPR.financials.subtotal).toBe(1500); // (350*2) + 800
+    expect(createdPR.financials.grandTotal).toBe(1500);
+
+    // Fast-track to APPROVED
+    createdPR.status = 'APPROVED';
+    storageService.savePRs([createdPR]);
+
+    const generatedPO = await workflowEngine.createPOFromPR(createdPR, plantMgr);
+    const po = Array.isArray(generatedPO) ? generatedPO[0] : generatedPO;
+    expect(po).toBeDefined();
+    expect(po.purchaseChannel).toBe('ONLINE');
+    expect(po.status).toBe('IN_PROGRESS_ONLINE');
+    expect(po.items.length).toBe(2);
+    expect(po.grandTotal).toBe(1500);
+  });
 });

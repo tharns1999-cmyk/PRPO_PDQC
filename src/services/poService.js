@@ -13,6 +13,15 @@ export const poService = {
     return workflowEngine.createPOFromPR(pr, user);
   },
 
+  // 1 PR = 1 Vendor (Internal) or 1 PR = 1 Online PO: direct conversion upon approved PR
+  async generatePO(pr, user) {
+    return workflowEngine.createPOFromPR(pr, user);
+  },
+
+  async generatePOsFromPR(pr, user) {
+    return workflowEngine.createPOFromPR(pr, user);
+  },
+
   async acknowledgeOnlineOrder(poId, storeName, user, items = null, note = '') {
     return apiService.acknowledgeOnlineTask(poId, storeName, user, items, note);
   },

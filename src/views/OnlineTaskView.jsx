@@ -413,7 +413,16 @@ const renderPOStatusBadge = (status) => {
 };
 
 function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDetails }) {
-  const initialVendor = po.vendor || po.shopName || (po.vendorName && po.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)' ? po.vendorName : '');
+  const getVendorStr = (p) => {
+    if (!p) return '';
+    if (typeof p.vendor === 'object' && p.vendor) return p.vendor.name || p.vendor.companyName || '';
+    if (typeof p.vendor === 'string' && p.vendor) return p.vendor;
+    if (p.shopName) return p.shopName;
+    if (p.vendorName && p.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)') return p.vendorName;
+    return '';
+  };
+
+  const initialVendor = getVendorStr(po);
   const [vendorName, setVendorName] = useState(initialVendor);
   const [varianceNote, setVarianceNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -422,7 +431,7 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
   const isVendorValid = Boolean(vendorName && vendorName.trim().length >= 3);
 
   useEffect(() => {
-    const v = po.vendor || po.shopName || (po.vendorName && po.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)' ? po.vendorName : '');
+    const v = getVendorStr(po);
     if (v) setVendorName(v);
   }, [po.vendor, po.shopName, po.vendorName]);
 
@@ -663,12 +672,12 @@ function OnlineTaskCard({ po, currentRole, onUpdate, onViewAttachment, onShowDet
           </div>
 
           {/* Online Shop / Vendor Badge */}
-          {(po.vendor || po.shopName || (po.vendorName && po.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)')) && (
+          {Boolean(getVendorStr(po)) && (
             <div className="flex items-center gap-1.5 px-2.5 py-1 bg-violet-50/70 border border-violet-200/70 rounded-xl text-xs text-slate-700">
               <Store className="w-3.5 h-3.5 text-violet-600 shrink-0" />
               <span className="text-slate-400">ร้านค้า:</span>
               <strong className="text-slate-800 font-semibold max-w-[220px] truncate">
-                {po.vendor || po.shopName || po.vendorName}
+                {getVendorStr(po)}
               </strong>
             </div>
           )}

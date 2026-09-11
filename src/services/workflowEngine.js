@@ -906,6 +906,9 @@ export const workflowEngine = {
     const draftFlag = isDraft || Boolean(prData.isDraft);
     const status = draftFlag ? 'DRAFT' : 'SUBMITTED';
 
+    const headerVendorId = prData.purchaseChannel === 'SELF' ? (prData.vendorId || prData.supplierId || prData.vendor?.id || null) : null;
+    const headerVendorName = prData.purchaseChannel === 'SELF' ? (prData.vendorName || prData.supplierName || prData.vendor?.name || null) : null;
+
     const formattedItems = (prData.items || []).map(item => {
       const pQty = Number(item.purchaseQty ?? item.qty) || 1;
       const rate = Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1;
@@ -916,6 +919,8 @@ export const workflowEngine = {
       const discountPercent = parseFloat(item.discountPercent) || 0;
       const discountAmount = parseFloat(item.discountAmount) || (discountPercent > 0 ? (price * pQty * (discountPercent / 100)) : 0);
       const rowTotal = Math.max(0, (price * pQty) - discountAmount);
+      const vId = headerVendorId || item.vendorId || item.supplierId || null;
+      const vName = headerVendorName || item.vendorName || item.supplierName || null;
 
       return {
         ...item,
@@ -929,6 +934,10 @@ export const workflowEngine = {
         price,
         discountPercent,
         discountAmount,
+        vendorId: vId,
+        vendorName: vName,
+        supplierId: vId,
+        supplierName: vName,
         total: rowTotal,
         source: item.source === 'OFFICE' ? 'OFFICE' : 'FACTORY'
       };
@@ -942,7 +951,7 @@ export const workflowEngine = {
     let financials = null;
     let totalAmount = subtotal;
 
-    if (isSelfChannel && (prData.financials || prData.vatMode)) {
+    if (isSelfChannel && (prData.financials || prData.vatMode || prData.hasVat !== undefined)) {
       const fin = prData.financials || {};
       const combinedDiscountType = fin.combinedDiscountType || prData.combinedDiscountType || 'percent';
       const combinedDiscountValue = parseFloat(fin.combinedDiscountValue ?? prData.combinedDiscountValue) || 0;
@@ -952,9 +961,10 @@ export const workflowEngine = {
       const totalDiscount = itemDiscountTotal + combinedDiscountAmount;
       const netAfterAllDiscount = Math.max(0, subtotal - totalDiscount);
 
-      const vatMode = fin.vatMode || prData.vatMode || 'AFTER_DISCOUNT';
+      const hasVat = fin.hasVat !== undefined ? Boolean(fin.hasVat) : (prData.hasVat !== undefined ? Boolean(prData.hasVat) : true);
+      const vatMode = fin.vatMode || prData.vatMode || (hasVat ? 'AFTER_DISCOUNT' : 'NONE');
       const vatBase = vatMode === 'BEFORE_DISCOUNT' ? subtotal : netAfterAllDiscount;
-      const vatAmount = vatMode === 'NONE' ? 0 : (parseFloat((vatBase * 0.07).toFixed(2)) || 0);
+      const vatAmount = (vatMode === 'NONE' || !hasVat) ? 0 : (parseFloat((vatBase * 0.07).toFixed(2)) || 0);
       const roundingAdj = parseFloat(fin.roundingAdj ?? prData.roundingAdj) || 0;
       const shippingCost = parseFloat(fin.shippingCost ?? prData.shippingCost) || 0;
 
@@ -999,6 +1009,12 @@ export const workflowEngine = {
       department: prData.department,
       source: prData.source || 'FACTORY',
       purchaseChannel: prData.purchaseChannel || 'SELF',
+      vendorId: headerVendorId || prData.vendorId || null,
+      vendorName: headerVendorName || prData.vendorName || null,
+      vendor: prData.vendor || null,
+      supplierId: headerVendorId || prData.vendorId || prData.supplierId || null,
+      supplierName: headerVendorName || prData.vendorName || prData.supplierName || null,
+      hasVat: prData.hasVat !== undefined ? Boolean(prData.hasVat) : (financials?.hasVat ?? false),
       specUrl: prData.specUrl || '',
       attachments: prData.attachments || [],
       note: prData.note || '',
@@ -1397,21 +1413,37 @@ export const workflowEngine = {
       return existingPOs.length === 1 ? existingPOs[0] : existingPOs;
     }
     
-    // Group items by vendorId (from item.vendorId or master supplierId)
-    const groups = {};
-    pr.items.forEach(item => {
-      const prod = products.find(p => p.id === item.productId);
-      const supplierId = item.vendorId || item.supplierId || prod?.supplierId || prod?.preferredSupplier || 'NULL';
-      if (!groups[supplierId]) groups[supplierId] = [];
-      groups[supplierId].push(item);
-    });
+    // Group items for PO generation:
+    // 1. If Online Purchase: Exactly 1 PO routed to Online Procurement Hub
+    // 2. If Internal Purchase (SELF): Exactly 1 PO for the selected Master Vendor (1 PR = 1 Vendor)
+    // 3. Fallback for legacy records: Group by supplierId
+    let groups = {};
+    if (pr.purchaseChannel === 'ONLINE') {
+      groups['ONLINE'] = pr.items || [];
+    } else if (pr.vendorId || pr.vendor?.id) {
+      const vId = pr.vendorId || pr.vendor?.id;
+      groups[vId] = pr.items || [];
+    } else {
+      // Fallback for legacy PRs without header vendorId
+      (pr.items || []).forEach(item => {
+        const prod = products.find(p => p.id === item.productId);
+        const supplierId = item.vendorId || item.supplierId || prod?.supplierId || prod?.preferredSupplier || 'NULL';
+        if (!groups[supplierId]) groups[supplierId] = [];
+        groups[supplierId].push(item);
+      });
+    }
 
     const generatedPOs = [];
     let splitIdx = 0;
     const isSplit = Object.keys(groups).length > 1;
 
     for (const [vendorId, items] of Object.entries(groups)) {
-      const vendor = vendorId !== 'NULL' ? vendors.find(v => v.id === vendorId || v.code === vendorId || v.name === vendorId) : null;
+      let vendor = (vendorId !== 'NULL' && vendorId !== 'ONLINE') 
+        ? vendors.find(v => v.id === vendorId || v.code === vendorId || v.name === vendorId) 
+        : null;
+      if (!vendor && pr.vendor && typeof pr.vendor === 'object') {
+        vendor = pr.vendor;
+      }
       
       // Consecutive PO running numbers with collision guard (e.g. PO-PD-2026-005, PO-PD-2026-006)
       let poNo = this.generatePONo(pr.department, splitIdx);
@@ -1439,25 +1471,31 @@ export const workflowEngine = {
 
       if (pr.purchaseChannel === 'SELF') {
         const prFin = pr.financials || {};
-        const netAfterItemDiscount = Math.max(0, subtotal - itemDiscountTotal);
-        const vatAmount = hasVat ? parseFloat((netAfterItemDiscount * 0.07).toFixed(2)) : 0;
-        vat = vatAmount;
-        grandTotal = parseFloat((netAfterItemDiscount + vatAmount).toFixed(2));
+        if (!isSplit && prFin && prFin.grandTotal !== undefined) {
+          financials = { ...prFin };
+          vat = Number(prFin.vatAmount) || 0;
+          grandTotal = Number(prFin.grandTotal) || subtotal;
+        } else {
+          const netAfterItemDiscount = Math.max(0, subtotal - itemDiscountTotal);
+          const vatAmount = hasVat ? parseFloat((netAfterItemDiscount * 0.07).toFixed(2)) : 0;
+          vat = vatAmount;
+          grandTotal = parseFloat((netAfterItemDiscount + vatAmount).toFixed(2));
 
-        financials = {
-          subtotal,
-          itemDiscountTotal,
-          combinedDiscountType: 'fixed',
-          combinedDiscountValue: 0,
-          combinedDiscountAmount: 0,
-          totalDiscount: itemDiscountTotal,
-          hasVat,
-          vatMode: hasVat ? 'AFTER_DISCOUNT' : 'NONE',
-          vatAmount,
-          roundingAdj: 0,
-          shippingCost: 0,
-          grandTotal
-        };
+          financials = {
+            subtotal,
+            itemDiscountTotal,
+            combinedDiscountType: 'fixed',
+            combinedDiscountValue: 0,
+            combinedDiscountAmount: 0,
+            totalDiscount: itemDiscountTotal,
+            hasVat,
+            vatMode: hasVat ? 'AFTER_DISCOUNT' : 'NONE',
+            vatAmount,
+            roundingAdj: 0,
+            shippingCost: 0,
+            grandTotal
+          };
+        }
       } else {
         grandTotal = subtotal;
         financials = {
@@ -1478,8 +1516,8 @@ export const workflowEngine = {
 
       const poStatus = pr.purchaseChannel === 'ONLINE' ? 'IN_PROGRESS_ONLINE' : 'ISSUED';
       
-      let vId = vendor?.id || null;
-      let vName = vendor?.name || 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)';
+      let vId = vendor?.id || (pr.purchaseChannel === 'SELF' ? (pr.vendorId || (vendorId !== 'NULL' && vendorId !== 'ONLINE' ? vendorId : null)) : null);
+      let vName = vendor?.name || (pr.purchaseChannel === 'SELF' ? (pr.vendorName || vendor?.name || 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)') : 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)');
       if (pr.purchaseChannel === 'ONLINE') {
         vId = null;
         vName = pr.shopName || 'Shopee / Lazada (ระบุร้านภายหลัง)';
@@ -1495,7 +1533,7 @@ export const workflowEngine = {
         phone: vendor.phone || '',
         email: vendor.email || '',
         contactPerson: vendor.contactPerson || ''
-      } : null;
+      } : (pr.vendor && typeof pr.vendor === 'object' ? pr.vendor : null);
 
       const newPO = {
         id: `PO-${Date.now()}-${splitIdx}`,
@@ -1510,7 +1548,8 @@ export const workflowEngine = {
         department: pr.department,
         vendorId: vId,
         vendorName: vName,
-        vendor: vendorObj,
+        vendor: vendorObj || vName,
+        vendorDetails: vendorObj,
         purchaseChannel: pr.purchaseChannel,
         onlineLink: pr.onlineLink || null,
         specUrl: pr.specUrl || null,

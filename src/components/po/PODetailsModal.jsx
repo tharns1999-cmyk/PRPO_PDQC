@@ -18,6 +18,15 @@ import CollapsibleActivityTimeline from '../common/CollapsibleActivityTimeline';
 import { generatePoPdf } from '../../utils/generatePoPdf';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
 
+const getVendorDisplayName = (vendorData) => {
+  if (!vendorData) return '';
+  if (typeof vendorData === 'string') return vendorData;
+  if (typeof vendorData === 'object') {
+    return vendorData.name || vendorData.companyName || vendorData.code || '-';
+  }
+  return String(vendorData);
+};
+
 export default function PODetailsModal({ selectedPO, currentRole, onClose, onRefresh }) {
   const context = useAppContext();
   const currentUser = context?.currentUser;
@@ -30,7 +39,8 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
   const isPlantManager = role.includes('plant_mgr') || role.includes('plant manager');
   const isPurchaser = role.includes('purchaser');
 
-  const displayVendor = selectedPO.vendor || selectedPO.shopName || (selectedPO.vendorName && selectedPO.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)' ? selectedPO.vendorName : '');
+  const rawVendorName = selectedPO.vendorName && selectedPO.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)' ? selectedPO.vendorName : '';
+  const displayVendor = getVendorDisplayName(selectedPO.vendor || selectedPO.shopName || rawVendorName);
   const hasAssignedVendor = Boolean((selectedPO.vendorId && selectedPO.vendorId !== 'ONLINE') || (displayVendor && displayVendor.trim().length > 0) || (selectedPO.vendorId === 'ONLINE' && displayVendor));
 
   const [isReceiving, setIsReceiving] = useState(false);
@@ -697,7 +707,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                     <div>
                       <div className="font-semibold text-slate-800 flex items-center gap-2">
                         <span>🏪</span>
-                        <span>{displayVendor || selectedPO.vendorName || selectedPO.vendorId}</span>
+                        <span>{displayVendor || getVendorDisplayName(selectedPO.vendorName) || selectedPO.vendorId}</span>
                       </div>
                       <p className="text-[11px] text-slate-400 font-mono mt-0.5">
                         {selectedPO.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์' : (selectedPO.vendorId || 'ผู้ขาย')}
