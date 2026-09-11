@@ -222,6 +222,53 @@ export function wrapText(text, font, size, maxWidth) {
   return lines.length > 0 ? lines : [text];
 }
 
+/**
+ * ฟังก์ชันจัดรูปแบบวันเวลาเอกสาร (ISO, YYYY-MM-DD, Thai String) ให้อยู่ในฟอร์แมต "วันที่ DD/MM/YYYY เวลา HH:mm น." (ค.ศ.)
+ */
+export function formatDocDateTime(dt) {
+  if (!dt || dt === '-') return 'วันที่ ..... / ..... / .........';
+  try {
+    const str = String(dt).trim();
+    const cleanStr = str.replace(/^วันที่\s*/, '');
+    
+    // 1. ตรวจสอบว่าเป็น ISO String หรือ Date Parseable (ยกเว้นรูปแบบ DD/MM/YYYY ที่มีเครื่องหมาย / เพื่อป้องกัน JS ตีความเป็น MM/DD/YYYY)
+    const d = !cleanStr.includes('/') ? new Date(cleanStr) : new Date(NaN);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      let year = d.getFullYear();
+      if (year > 2400) year -= 543; // บังคับแปลง พ.ศ. เป็น ค.ศ.
+      
+      if (cleanStr.includes('T') || cleanStr.includes(':')) {
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `วันที่ ${day}/${month}/${year} เวลา ${hours}:${minutes} น.`;
+      }
+      return `วันที่ ${day}/${month}/${year}`;
+    }
+
+    // 2. จัดการกรณีสตริงภาษาไทยที่มีเวลาปนมา เช่น "11/09/2026 08:30" หรือ "11/9/2569 เวลา 21:42 น."
+    const match = cleanStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(?:เวลา\s*)?(\d{1,2}):(\d{1,2}))?/);
+    if (match) {
+      const [, day, month, rawYear, hh, mm] = match;
+      let year = Number(rawYear);
+      if (year > 2400) year -= 543;
+      const dd = String(Number(day)).padStart(2, '0');
+      const mmStr = String(Number(month)).padStart(2, '0');
+      if (hh !== undefined && mm !== undefined) {
+        return `วันที่ ${dd}/${mmStr}/${year} เวลา ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} น.`;
+      }
+      return `วันที่ ${dd}/${mmStr}/${year}`;
+    }
+
+    return str.startsWith('วันที่') ? str : `วันที่ ${str}`;
+  } catch {
+    return String(dt);
+  }
+}
+
+export const formatDateTime = formatDocDateTime;
+
 export async function generatePoPdf(po) {
   // Ensure Thai web fonts are loaded prior to rendering
   if (typeof document !== 'undefined' && document.fonts?.ready) {
@@ -357,7 +404,7 @@ export async function generatePoPdf(po) {
   // ── ชื่อเอกสาร "ใบสั่งซื้อสินค้า / PURCHASE ORDER" (กึ่งกลางหน้ากระดาษ พร้อมระยะเว้นบนและล่าง) ──
   const titleText = normalizeThaiText('ใบสั่งซื้อสินค้า / PURCHASE ORDER');
   const titleSize = 14;
-  const titleY = headerStartY - 46 - 24; // เว้นห่างจาก TAX ID บริษัทด้านบนลงมา 24 pt (headerStartY - 70)
+  const titleY = 700; // เว้นระยะห่างจาก TAX ID ด้านบนไม่น้อยกว่า 40 pt
   let titleX = 180;
   try {
     titleX = (width - boldFont.widthOfTextAtSize(titleText, titleSize)) / 2;
@@ -372,14 +419,19 @@ export async function generatePoPdf(po) {
     color: rgb(0.15, 0.25, 0.55),
   });
 
-  // ── อ้างอิง PR และแผนก (เว้นระยะจากชื่อเอกสารลงไป 20 pt) ──
-  const prRefY = titleY - 20;
-  page.drawText(normalizeThaiText(`อ้างอิงใบขอซื้อ (PR): ${po?.prNo || po?.prNumber || '-'}`), {
-    x: 42, y: prRefY, size: 9.5, font: customFont
+  // ── รวมบรรทัดอ้างอิง PR และแผนกผู้ขอ (Single Line) ──
+  let currentY = 678;
+  const prDeptText = `อ้างอิงใบขอซื้อ (PR): ${po?.prNo || po?.prNumber || po?.prId || '-'}   |   แผนกผู้ขอ: ${po?.department || 'ฝ่ายผลิตและควบคุมคุณภาพ (PD)'}`;
+  page.drawText(normalizeThaiText(prDeptText), {
+    x: 42,
+    y: currentY,
+    size: 9.5,
+    font: customFont,
+    color: rgb(0.2, 0.25, 0.3),
   });
-  page.drawText(normalizeThaiText(`แผนกผู้ขอ: ${po?.department || 'ฝ่ายผลิตและควบคุมคุณภาพ (PD)'}`), {
-    x: 42, y: prRefY - 16, size: 9.5, font: customFont
-  });
+
+  // เว้นระยะห่างก่อนขึ้นหัวข้อข้อมูลคู่ค้าอย่างน้อย 26 pt ป้องกันสระและวรรณยุกต์ชนกันเด็ดขาด
+  currentY -= 26; // 678 - 26 = 652
 
   // Fetch Master Vendor Data
   let vendors = [];
@@ -407,17 +459,21 @@ export async function generatePoPdf(po) {
 
   // ── Vendor Block: Grid Baseline Matching & Dynamic Y Flow ──
   const colLeftX = 42;
-  const maxLeftWidth = 340; // ห้ามข้อความฝั่งซ้ายเกินจุด x = 382 pt
-  const colRightX = 420; // ชิดขวามากขึ้น สอดรับกับแนวตารางสินค้าฝั่งขวา
-  const vendorTitleY = 660;
+  const maxLeftWidth = 365; // รองรับความกว้างสูงสุดได้ถึง 365 pt ก่อนตัดบรรทัดใหม่
+  const colRightX = 415; // แนวขนานกับตารางสินค้าและขอบขวาของเอกสาร
 
   // บรรทัดหัวข้อเดี่ยว (Standalone Title: ฝั่งขวาว่างไว้ ไม่วางรหัสผู้ขายที่บรรทัดนี้)
   page.drawText(normalizeThaiText('ข้อมูลคู่ค้า / ผู้จำหน่าย (VENDOR DETAILS):'), {
-    x: colLeftX, y: vendorTitleY, size: 10, font: boldFont
+    x: colLeftX,
+    y: currentY,
+    size: 10,
+    font: boldFont,
+    color: rgb(0.1, 0.1, 0.1),
   });
+  currentY -= 18; // 652 - 18 = 634 (เว้นระยะห่างก่อนเริ่มแถวข้อมูลแถวแรก)
 
-  // แถวที่ 1 (y = 642): ชื่อบริษัท/ร้านค้า (ซ้าย ตัดคำไม่เกิน 340 pt) + รหัสผู้ขาย (ขวา)
-  let vendorY = vendorTitleY - 18; // 642
+  // แถวที่ 1 (y = 634): ชื่อบริษัท (ซ้าย, x=42) คู่กับ รหัสผู้ขาย (ขวา, x=415)
+  let vendorY = currentY;
   const nameLines = wrapText(`ชื่อบริษัท/ร้านค้า: ${vendorName}`, customFont, 9, maxLeftWidth);
   nameLines.forEach((line, i) => {
     page.drawText(normalizeThaiText(line), { x: colLeftX, y: vendorY - (i * 16), size: 9, font: customFont });
@@ -427,7 +483,7 @@ export async function generatePoPdf(po) {
   });
   vendorY -= (nameLines.length > 1 ? (nameLines.length - 1) * 16 + 18 : 18);
 
-  // แถวที่ 2 (y = 624): เลขประจำตัวผู้เสียภาษี (ซ้าย) + ผู้ติดต่อ (ขวา)
+  // แถวที่ 2 (y = 616): เลขผู้เสียภาษี (ซ้าย, x=42) คู่กับ ผู้ติดต่อ (ขวา, x=415)
   page.drawText(normalizeThaiText(`เลขประจำตัวผู้เสียภาษี: ${vendorTaxId}`), {
     x: colLeftX, y: vendorY, size: 9, font: customFont
   });
@@ -436,7 +492,7 @@ export async function generatePoPdf(po) {
   });
   vendorY -= 18;
 
-  // แถวที่ 3 (y = 606): ที่อยู่ (ซ้าย ตัดคำไม่เกิน 340 pt) + โทรศัพท์ (ขวา)
+  // แถวที่ 3 (y = 598): ที่อยู่ (ซ้าย, x=42) คู่กับ โทรศัพท์ (ขวา, x=415)
   const addrLines = wrapText(`ที่อยู่: ${vendorAddress}`, customFont, 9, maxLeftWidth);
   addrLines.forEach((line, i) => {
     page.drawText(normalizeThaiText(line), { x: colLeftX, y: vendorY - (i * 16), size: 9, font: customFont });
@@ -446,8 +502,8 @@ export async function generatePoPdf(po) {
   });
   const lastAddrY = vendorY - (addrLines.length - 1) * 16;
 
-  // 6. ตารางรายการสินค้า (tableStartY ถูกดันลงมาตามบรรทัดที่อยู่ ไม่น้อยกว่า 24 pt)
-  const tableStartY = lastAddrY - 24;
+  // 6. ตารางรายการสินค้า (tableStartY อยู่ใต้บรรทัดที่อยู่ลงมาอย่างน้อย 24 pt, ประมาณ y = 568 pt)
+  const tableStartY = Math.min(568, lastAddrY - 24);
   const tableTop = tableStartY;
   page.drawRectangle({ x: 50, y: tableTop - 20, width: width - 100, height: 20, color: rgb(0.95, 0.96, 0.98) });
   page.drawText('#', { x: 58, y: tableTop - 14, size: 9, font: boldFont });
@@ -555,6 +611,37 @@ export async function generatePoPdf(po) {
     users = storageService.getUsers() || [];
   }
 
+  // Retrieve linked PR data for approval history and timestamps
+  let prData = po?.prData || null;
+  if (!prData) {
+    try {
+      const prs = storageService.getPRs();
+      if (Array.isArray(prs)) {
+        prData = prs.find(p =>
+          (po?.prId && p.id === po.prId) ||
+          (po?.prNo && (p.prNo === po.prNo || p.id === po.prNo)) ||
+          (po?.prNumber && (p.prNumber === po.prNumber || p.prNo === po.prNumber || p.id === po.prNumber))
+        );
+      }
+    } catch { }
+  }
+  if (!prData && (po?.prId || po?.prNo || po?.prNumber)) {
+    try {
+      const res = await fetch('http://localhost:3001/api/storage');
+      if (res.ok) {
+        const storageData = await res.json();
+        const prs = storageData?.prs || storageData?.PRS;
+        if (Array.isArray(prs)) {
+          prData = prs.find(p =>
+            (po?.prId && p.id === po.prId) ||
+            (po?.prNo && (p.prNo === po.prNo || p.id === po.prNo)) ||
+            (po?.prNumber && (p.prNumber === po.prNumber || p.prNo === po.prNumber || p.id === po.prNumber))
+          );
+        }
+      }
+    } catch { }
+  }
+
   // Find users for 4 signer roles
   const requesterUser = users.find(u => 
     u.name === po?.requestedBy || 
@@ -608,63 +695,55 @@ export async function generatePoPdf(po) {
     isCompleted ? embedSignature(receiverUser) : null,
   ]);
 
-  const formatDateTime = (dt) => {
-    if (!dt || dt === '-') return '';
-    try {
-      let str = String(dt).trim();
-      if (!str) return '';
-      str = str.replace(/^วันที่\s*/, '');
+  // ค้นหา Timestamp จาก Log ตอน Requester ส่ง PR หรือจากฟิลด์ submittedAt / createdAt ของ PR
+  const requesterLog = Array.isArray(prData?.approvalHistory)
+    ? prData.approvalHistory.find(h => h.action === 'SUBMITTED' || h.action === 'CREATED')
+    : null;
 
-      // Case 1: ISO string with T
-      if (str.includes('T')) {
-        const d = new Date(str);
-        if (!isNaN(d.getTime())) {
-          const day = String(d.getDate()).padStart(2, '0');
-          const month = String(d.getMonth() + 1).padStart(2, '0');
-          const year = d.getFullYear() > 2400 ? d.getFullYear() - 543 : d.getFullYear();
-          const hours = String(d.getHours()).padStart(2, '0');
-          const minutes = String(d.getMinutes()).padStart(2, '0');
-          return `วันที่ ${day}/${month}/${year} เวลา ${hours}:${minutes} น.`;
-        }
-      }
+  const requesterDate = requesterLog?.timestamp ||
+    requesterLog?.date ||
+    prData?.submittedAt ||
+    prData?.createdAt ||
+    po.createdAt ||
+    '';
 
-      // Case 2: YYYY-MM-DD or YYYY-MM-DD HH:mm
-      const ymdMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
-      if (ymdMatch) {
-        const [, y, m, d, hh, mm] = ymdMatch;
-        const day = String(Number(d)).padStart(2, '0');
-        const month = String(Number(m)).padStart(2, '0');
-        const year = Number(y) > 2400 ? Number(y) - 543 : y;
-        if (hh !== undefined && mm !== undefined) {
-          return `วันที่ ${day}/${month}/${year} เวลา ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} น.`;
-        }
-        return `วันที่ ${day}/${month}/${year}`;
-      }
-
-      // Case 3: Thai locale string
-      const cleanDt = str.replace(' น.', '').trim();
-      if (cleanDt.includes(' ')) {
-        const parts = cleanDt.split(' ');
-        const timePart = parts[1] ? parts[1].substring(0, 5) : '00:00';
-        return `วันที่ ${parts[0]} เวลา ${timePart} น.`;
-      }
-      return `วันที่ ${cleanDt}`;
-    } catch {
-      return String(dt);
-    }
-  };
+  // 2. ข้อมูลผู้ทบทวน (Reviewer)
+  const reviewedLog = Array.isArray(prData?.approvalHistory)
+    ? prData.approvalHistory.find(h => h.action === 'REVIEWED')
+    : null;
 
   const isReviewed = Boolean(
     po?.reviewedAt ||
     po?.reviewerName ||
     po?.reviewerSignature ||
-    po?.reviewedBy
+    po?.reviewedBy ||
+    prData?.reviewedBy ||
+    reviewedLog ||
+    ['REVIEWED', 'APPROVED', 'PO_ISSUED', 'IN_PROGRESS_ONLINE', 'CLOSED', 'COMPLETED'].includes(String(prData?.status || po?.status || '').toUpperCase())
   );
 
-  const reqTime = formatDateTime(po?.requestedAt || po?.createdAt || po?.issueDate) || 'วันที่ ..... / ..... / .........';
-  const revTime = isReviewed ? (formatDateTime(po?.reviewedAt || po?.createdAt) || 'วันที่ ..... / ..... / .........') : 'วันที่ ..... / ..... / .........';
-  const appTime = formatDateTime(po?.approvedAt || po?.createdAt || po?.issueDate) || 'วันที่ ..... / ..... / .........';
-  const recTime = (isCompleted && po?.receivedAt) ? formatDateTime(po.receivedAt) : 'วันที่ ..... / ..... / .........';
+  const reviewerDate = isReviewed ? (
+    po?.reviewedAt ||
+    (prData?.reviewedBy && typeof prData.reviewedBy === 'object' ? prData.reviewedBy.timestamp : null) ||
+    reviewedLog?.timestamp ||
+    reviewedLog?.date ||
+    po?.reviewedDate ||
+    ''
+  ) : '';
+
+  // 3. ข้อมูลผู้อนุมัติ (Approver)
+  const approvedLog = Array.isArray(prData?.approvalHistory)
+    ? prData.approvalHistory.find(h => h.action === 'APPROVED')
+    : null;
+
+  const approverDate = po?.approvedAt ||
+    approvedLog?.timestamp ||
+    approvedLog?.date ||
+    po?.createdAt ||
+    '';
+
+  // 4. ข้อมูลผู้ตรวจรับ (Receiver)
+  const receiverDate = (isCompleted && po?.receivedAt) ? po.receivedAt : '';
 
   let rawRevName = po?.reviewerName || (typeof po?.reviewedBy === 'string' && po.reviewedBy !== 'Admin System' ? po.reviewedBy : null) || (isReviewed ? (reviewerUser?.employeeName || 'คุณสมชาย มุ่งมั่น') : '');
   if (!rawRevName || rawRevName === 'Admin System') {
@@ -683,29 +762,29 @@ export async function generatePoPdf(po) {
   const stamps = [
     { 
       role: 'ผู้ขอซื้อ', 
-      name: requesterUser?.employeeName || requesterUser?.name || po?.requestedBy || 'คุณวิชัย สุขใจ', 
-      time: reqTime, 
+      name: requesterUser?.employeeName || requesterUser?.name || po?.requestedBy || prData?.requestedBy || 'คุณวิชัย สุขใจ', 
+      time: formatDocDateTime(requesterDate), 
       sigImg: reqSigImg,
       isSigned: true
     },
     { 
       role: 'ผู้ทบทวน', 
       name: revName, 
-      time: revTime, 
+      time: formatDocDateTime(reviewerDate), 
       sigImg: isReviewed ? revSigImg : null,
       isSigned: isReviewed
     },
     { 
       role: 'ผู้อนุมัติ', 
-      name: approverUser?.employeeName || approverUser?.name || 'คุณประเสริฐ ยิ่งยง', 
-      time: appTime, 
+      name: approverUser?.employeeName || approverUser?.name || po?.approvedBy || 'คุณประเสริฐ ยิ่งยง', 
+      time: formatDocDateTime(approverDate), 
       sigImg: appSigImg,
       isSigned: true
     },
     { 
       role: 'ผู้ตรวจรับ / บันทึกสต็อก', 
       name: recName, 
-      time: recTime, 
+      time: formatDocDateTime(receiverDate), 
       sigImg: (isCompleted && po?.receivedAt) ? recSigImg : null,
       isSigned: Boolean(isCompleted && po?.receivedAt)
     }

@@ -658,6 +658,7 @@ export default function PRCreateView({
         contactPerson: matchedHeaderVendor.contactPerson || ''
       } : null;
 
+      const nowIso = new Date().toISOString();
       const prPayload = {
         prNo: editingPR ? editingPR.prNo : nextPRNumber,
         department,
@@ -677,7 +678,9 @@ export default function PRCreateView({
         items: itemsFormatted,
         financials: financialsPayload,
         totalAmount: grandTotal,
-        memo: finalMemo
+        memo: finalMemo,
+        createdAt: editingPR?.createdAt || nowIso,
+        submittedAt: isDraft ? (editingPR?.submittedAt || null) : (editingPR?.submittedAt || nowIso)
       };
 
       if (editingPR) {

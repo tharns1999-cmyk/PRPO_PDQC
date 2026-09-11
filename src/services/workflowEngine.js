@@ -901,6 +901,7 @@ export const workflowEngine = {
     while (existingPrNos.has(prNo.toUpperCase())) {
       prNo = generateNextPRId([...prs, { prNo }], prData.department);
     }
+    const isoNow = new Date().toISOString();
     const timestamp = new Date().toLocaleString('th-TH');
 
     const draftFlag = isDraft || Boolean(prData.isDraft);
@@ -1025,8 +1026,19 @@ export const workflowEngine = {
       requestedBy: user.name,
       requestedByRole: user.title,
       requestedDept: user.department,
-      createdAt: timestamp,
-      updatedAt: timestamp,
+      createdAt: prData.createdAt || isoNow,
+      submittedAt: draftFlag ? null : (prData.submittedAt || isoNow),
+      updatedAt: isoNow,
+      approvalHistory: [
+        {
+          actorName: user.name,
+          actorRole: user.title || user.role,
+          action: draftFlag ? 'CREATED' : 'SUBMITTED',
+          date: isoNow,
+          timestamp: isoNow,
+          comment: draftFlag ? 'สร้างแบบร่าง PR' : 'ยื่นเสนอขอซื้อเข้าสู่ระบบ'
+        }
+      ],
       memo: prData.memo || null,
       activityLog: [
         {
@@ -1157,6 +1169,7 @@ export const workflowEngine = {
       newTotal = financials.grandTotal;
     }
 
+    const isoNow = new Date().toISOString();
     const timestamp = new Date().toLocaleString('th-TH');
     const draftFlag = isDraft || Boolean(prData.isDraft);
     const nextStatus = draftFlag ? 'DRAFT' : 'SUBMITTED';
@@ -1172,6 +1185,10 @@ export const workflowEngine = {
     pr.note = prData.note || '';
     if (prData.memo !== undefined) pr.memo = prData.memo;
     pr.status = nextStatus;
+    pr.updatedAt = isoNow;
+    if (!draftFlag && !pr.submittedAt) {
+      pr.submittedAt = isoNow;
+    }
 
     if (!Array.isArray(pr.activityLog)) pr.activityLog = [];
     pr.activityLog.push({
@@ -1183,6 +1200,18 @@ export const workflowEngine = {
         ? 'ผู้ขอซื้อแก้ไขข้อมูลและบันทึกแบบร่าง' 
         : `ผู้ขอซื้อแก้ไขข้อมูลและยื่นส่งใหม่อีกครั้ง (ยอดรวม ฿${newTotal.toLocaleString()})`
     });
+
+    if (!draftFlag) {
+      if (!Array.isArray(pr.approvalHistory)) pr.approvalHistory = [];
+      pr.approvalHistory.push({
+        actorName: user.name,
+        actorRole: user.title || user.role,
+        action: 'SUBMITTED',
+        date: isoNow,
+        timestamp: isoNow,
+        comment: 'ผู้ขอซื้อแก้ไขข้อมูลและยื่นส่งใหม่อีกครั้ง'
+      });
+    }
 
     storageService.savePRs(prs);
 
@@ -1223,13 +1252,28 @@ export const workflowEngine = {
       pr.memo = memoData;
     }
 
+    const isoNow = new Date().toISOString();
     pr.status = 'SUBMITTED';
+    pr.submittedAt = isoNow;
+    pr.updatedAt = isoNow;
+
+    if (!Array.isArray(pr.activityLog)) pr.activityLog = [];
     pr.activityLog.push({
       action: 'ส่งพิจารณา (Submit)',
       user: user.name,
       role: user.title,
       timestamp: new Date().toLocaleString('th-TH'),
       note: 'ส่ง PR เข้าสู่ระบบเพื่อพิจารณา'
+    });
+
+    if (!Array.isArray(pr.approvalHistory)) pr.approvalHistory = [];
+    pr.approvalHistory.push({
+      actorName: user.name,
+      actorRole: user.title || user.role,
+      action: 'SUBMITTED',
+      date: isoNow,
+      timestamp: isoNow,
+      comment: 'ส่ง PR เข้าสู่ระบบเพื่อพิจารณา'
     });
     
     storageService.savePRs(prs);

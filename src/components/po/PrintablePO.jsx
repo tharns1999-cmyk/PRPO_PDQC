@@ -19,44 +19,42 @@ function cleanThaiText(rawText) {
  * Formats ISO timestamps or Thai date strings to "วันที่ DD/MM/YYYY เวลา HH:mm น."
  */
 export function formatDocDateTime(dt) {
-  if (!dt || dt === '-') return '';
+  if (!dt || dt === '-') return 'วันที่ ..... / ..... / .........';
   try {
-    let str = String(dt).trim();
-    if (!str) return '';
-    str = str.replace(/^วันที่\s*/, '');
-
-    if (str.includes('T')) {
-      const d = new Date(str);
-      if (!isNaN(d.getTime())) {
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const year = d.getFullYear() > 2400 ? d.getFullYear() - 543 : d.getFullYear();
+    const str = String(dt).trim();
+    const cleanStr = str.replace(/^วันที่\s*/, '');
+    
+    // 1. ตรวจสอบว่าเป็น ISO String หรือ Date Parseable (ยกเว้นรูปแบบ DD/MM/YYYY ที่มีเครื่องหมาย / เพื่อป้องกัน JS ตีความเป็น MM/DD/YYYY)
+    const d = !cleanStr.includes('/') ? new Date(cleanStr) : new Date(NaN);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      let year = d.getFullYear();
+      if (year > 2400) year -= 543; // บังคับแปลง พ.ศ. เป็น ค.ศ.
+      
+      if (cleanStr.includes('T') || cleanStr.includes(':')) {
         const hours = String(d.getHours()).padStart(2, '0');
         const minutes = String(d.getMinutes()).padStart(2, '0');
         return `วันที่ ${day}/${month}/${year} เวลา ${hours}:${minutes} น.`;
       }
-    }
-
-    const ymdMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
-    if (ymdMatch) {
-      const [, y, m, d, hh, mm] = ymdMatch;
-      const day = String(Number(d)).padStart(2, '0');
-      const month = String(Number(m)).padStart(2, '0');
-      const year = Number(y) > 2400 ? Number(y) - 543 : y;
-      if (hh !== undefined && mm !== undefined) {
-        return `วันที่ ${day}/${month}/${year} เวลา ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} น.`;
-      }
       return `วันที่ ${day}/${month}/${year}`;
     }
 
-    const cleanDt = str.replace(' น.', '').trim();
-    if (cleanDt.includes(' ')) {
-      const parts = cleanDt.split(' ');
-      const timePart = parts[1] ? parts[1].substring(0, 5) : '00:00';
-      return `วันที่ ${parts[0]} เวลา ${timePart} น.`;
+    // 2. จัดการกรณีสตริงภาษาไทยที่มีเวลาปนมา เช่น "11/09/2026 08:30" หรือ "11/9/2569 เวลา 21:42 น."
+    const match = cleanStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(?:เวลา\s*)?(\d{1,2}):(\d{1,2}))?/);
+    if (match) {
+      const [, day, month, rawYear, hh, mm] = match;
+      let year = Number(rawYear);
+      if (year > 2400) year -= 543;
+      const dd = String(Number(day)).padStart(2, '0');
+      const mmStr = String(Number(month)).padStart(2, '0');
+      if (hh !== undefined && mm !== undefined) {
+        return `วันที่ ${dd}/${mmStr}/${year} เวลา ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} น.`;
+      }
+      return `วันที่ ${dd}/${mmStr}/${year}`;
     }
 
-    return `วันที่ ${cleanDt}`;
+    return str.startsWith('วันที่') ? str : `วันที่ ${str}`;
   } catch {
     return String(dt);
   }
@@ -100,7 +98,18 @@ export default function PrintablePO({ po }) {
     requesterUser?.signature ||
     storageService.getSignatureByRole?.(po.department === 'QC' ? 'REQUESTER_QC' : 'REQUESTER_PD')?.signatureUrl ||
     null;
-  const requesterDate = prData?.createdAt || po.createdAt || po.issueDate || '';
+
+  // ค้นหา Timestamp จาก Log ตอน Requester ส่ง PR หรือจากฟิลด์ submittedAt / createdAt ของ PR
+  const requesterLog = Array.isArray(prData?.approvalHistory)
+    ? prData.approvalHistory.find(h => h.action === 'SUBMITTED' || h.action === 'CREATED')
+    : null;
+
+  const requesterDate = requesterLog?.timestamp ||
+    requesterLog?.date ||
+    prData?.submittedAt ||
+    prData?.createdAt ||
+    po.createdAt ||
+    '';
 
   const isReviewed = Boolean(
     po.reviewedAt ||
@@ -166,7 +175,7 @@ export default function PrintablePO({ po }) {
     storageService.getSignatureByRole?.('PLANT_MANAGER')?.signatureUrl ||
     null;
 
-  const approverDate = po.approvedAt || approvedLog?.date || approvedLog?.timestamp || po.issueDate || po.createdAt || '';
+  const approverDate = po.approvedAt || approvedLog?.timestamp || approvedLog?.date || po.createdAt || '';
 
   const isReceived = Boolean(
     po.receivedAt &&
