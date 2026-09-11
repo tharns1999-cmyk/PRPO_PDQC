@@ -70,6 +70,13 @@ const _migrateLocalStorageCache = () => {
         } catch (e) {}
       }
 
+      // 3. Remove floating decoupled counters from localStorage (Directive 4: Single Source of Truth from documents)
+      try {
+        localStorage.removeItem(STORAGE_KEYS.PR_COUNTERS);
+        localStorage.removeItem('pr_counter');
+        localStorage.removeItem('currentRunningIndex');
+      } catch (e) {}
+
       localStorage.setItem('prpo_data_version', DATA_VERSION);
     }
   } catch (e) {
@@ -666,11 +673,20 @@ export const storageService = {
   },
 
   getPRCounters() {
-    const data = _getItem(STORAGE_KEYS.PR_COUNTERS);
-    return data || initialCounters;
+    // Live calculation from documents array (Directive 4: Single Source of Truth, no floating counter)
+    const prs = this.getPRs() || [];
+    const pos = this.getPOs() || [];
+    const pdPRs = prs.filter(p => p && (p.department === 'PD' || String(p.prNo).startsWith('PD'))).length;
+    const qcPRs = prs.filter(p => p && (p.department === 'QC' || String(p.prNo).startsWith('QC'))).length;
+    const pdPOs = pos.filter(p => p && (p.department === 'PD' || String(p.poNo).includes('-PD-'))).length;
+    const qcPOs = pos.filter(p => p && (p.department === 'QC' || String(p.poNo).includes('-QC-'))).length;
+    return {
+      PD: { PR: pdPRs, PO: pdPOs },
+      QC: { PR: qcPRs, PO: qcPOs }
+    };
   },
   savePRCounters(counters) {
-    _setItem(STORAGE_KEYS.PR_COUNTERS, counters);
+    // Dynamic single-source-of-truth from documents array - no decoupled floating counter
   },
 
   // Signatures Management (Admin Managed)

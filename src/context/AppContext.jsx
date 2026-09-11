@@ -455,6 +455,19 @@ export function AppProvider({ children }) {
   // ── Operational & Workflow Mutations (Await Backend API + LoadAllData) ──
   const handleCreatePR = useCallback(async (prPayload, isDraft = false) => {
     const newPR = await apiService.createPR(prPayload, currentRole, isDraft);
+    if (newPR) {
+      // Directive 3: Prevent Overwrite during save - Check if newPR.id already exists
+      setPRs(prev => {
+        const idx = prev.findIndex(p => p.id === newPR.id);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = newPR;
+          return updated;
+        }
+        // Create Mode: STRICTLY Prepend as new row, never overwrite existing index
+        return [newPR, ...prev];
+      });
+    }
     await loadAllData();
     return newPR;
   }, [currentRole, loadAllData]);
@@ -699,6 +712,7 @@ export function AppProvider({ children }) {
     updatePO,
     setPOs,
     createPR: handleCreatePR,
+    handleSavePR: handleCreatePR,
     updatePR,
     updatePRState: updatePR,
     handleUpdatePR: updatePR,

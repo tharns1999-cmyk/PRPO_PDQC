@@ -530,6 +530,7 @@ export const workflowEngine = {
       noteText += ` (หมายเหตุ: ${varianceNote.trim()})`;
     }
 
+    if (!Array.isArray(po.activityLog)) po.activityLog = [];
     po.activityLog.push({
       action: 'รับทราบและสั่งซื้อออนไลน์แล้ว (Online Order Placed)',
       user: user.name,
@@ -1022,9 +1023,17 @@ export const workflowEngine = {
       ]
     };
 
-    // Collision Guard: Prepend new PR without ever overwriting existing array items
-    const filteredPRs = prs.filter(p => p.id !== newPR.id && p.prNo !== newPR.prNo);
-    const updatedPRs = [newPR, ...filteredPRs];
+    // Directive 3: Prevent Overwrite during save - Check if newPR.id already exists
+    const existingIndex = prs.findIndex(p => p.id === newPR.id);
+    let updatedPRs;
+    if (existingIndex !== -1) {
+      // Edit Mode
+      updatedPRs = [...prs];
+      updatedPRs[existingIndex] = newPR;
+    } else {
+      // Create Mode: STRICTLY Prepend as new row, never overwrite existing index
+      updatedPRs = [newPR, ...prs];
+    }
     storageService.savePRs(updatedPRs);
 
     auditService.logAction({

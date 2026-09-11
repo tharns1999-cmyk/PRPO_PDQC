@@ -12,6 +12,7 @@ import FileUploader from '../components/common/FileUploader';
 import SearchableSelect from '../components/common/SearchableSelect';
 import { modalService } from '../services/modalService';
 import { sanitizeExternalUrl, getProductUrl } from '../utils/urlHelper';
+import { getNextPRNumber } from '../utils/idGenerator';
 
 export default function PRCreateView({ 
   products = [], 
@@ -25,11 +26,19 @@ export default function PRCreateView({
   editingPR,
   clearEditingPR,
   createPR,
-  updatePR
+  handleSavePR,
+  updatePR,
+  initialPRNo
 }) {
   // Submission Guard to prevent duplicate submissions
   const [isSubmitting, setIsSubmitting] = useState(false);
   const context = useAppContext ? useAppContext() : {};
+
+  // Existing PRs from Context or LocalStorage (Dynamic Max-ID Scanner)
+  const existingPRs = useMemo(() => {
+    if (Array.isArray(context?.prs) && context.prs.length > 0) return context.prs;
+    return storageService.getPRs?.() || [];
+  }, [context?.prs]);
 
   // Master Vendors integration (Directive 1)
   const masterVendors = useMemo(() => {
@@ -86,6 +95,22 @@ export default function PRCreateView({
         : (currentRole?.department || defaultCode));
 
   const [department, setDepartment] = useState(initialDept);
+
+  // Initial PR Number state calculated from real documents (Directive 2: No hardcoding, no useState(1))
+  const [nextPRNumber, setNextPRNumber] = useState(() => {
+    if (editingPR?.prNo) return editingPR.prNo;
+    if (initialPRNo) return initialPRNo;
+    const prs = (Array.isArray(context?.prs) && context.prs.length > 0) ? context.prs : (storageService.getPRs?.() || []);
+    return getNextPRNumber(prs, initialDept);
+  });
+
+  // Keep nextPRNumber in sync when department changes or existingPRs update
+  useEffect(() => {
+    if (!editingPR) {
+      setNextPRNumber(getNextPRNumber(existingPRs, department));
+    }
+  }, [department, existingPRs, editingPR]);
+
   const [purchaseChannel, setPurchaseChannel] = useState(editingPR?.purchaseChannel || 'SELF');
   
   // File attachments
@@ -599,6 +624,7 @@ export default function PRCreateView({
       };
 
       const prPayload = {
+        prNo: editingPR ? editingPR.prNo : nextPRNumber,
         department,
         purchaseChannel,
         hasVat: purchaseChannel === 'SELF' ? hasVat : false,
@@ -623,7 +649,9 @@ export default function PRCreateView({
         if (clearEditingPR) clearEditingPR();
         modalService.success(isDraft ? 'บันทึกแบบร่างเรียบร้อย' : 'แก้ไขและยื่นส่งใบขอซื้อ (PR) สำเร็จ');
       } else {
-        if (createPR) {
+        if (handleSavePR) {
+          await handleSavePR(prPayload, isDraft);
+        } else if (createPR) {
           await createPR(prPayload, isDraft);
         } else {
           await apiService.createPR(prPayload, currentRole, isDraft);
@@ -663,8 +691,13 @@ export default function PRCreateView({
           </button>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-                {editingPR ? `แก้ไขใบขอซื้อ (${editingPR.prNo})` : 'สร้างใบขอซื้อใหม่ (New PR)'}
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+                <span>{editingPR ? `แก้ไขใบขอซื้อ (${editingPR.prNo})` : 'สร้างใบขอซื้อใหม่ (New PR)'}</span>
+                {!editingPR && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    เลขที่: {nextPRNumber}
+                  </span>
+                )}
               </h2>
               {editingPR?.status && (
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
