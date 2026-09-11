@@ -20,9 +20,9 @@ export default function PrintablePO({ po }) {
 
   return (
       <div 
-        className="bg-white text-black p-8 max-w-[210mm] mx-auto text-sm thai-doc-container"
+        className="font-sarabun bg-white text-black p-8 max-w-[210mm] mx-auto text-sm thai-doc-container"
         style={{
-          fontFamily: "'Sarabun', 'TH Sarabun New', 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif",
+          fontFamily: "'TH Sarabun New', 'Sarabun', 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif",
           letterSpacing: '0px',
           fontVariantLigatures: 'normal',
           fontFeatureSettings: '"liga" 1, "kern" 1',
@@ -34,22 +34,54 @@ export default function PrintablePO({ po }) {
         }}
       >
       {/* Header */}
-      <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-4">
-        <div>
-          <h1 className="text-2xl font-bold uppercase">{cleanThaiText('บริษัท พีดีคิวซี จำกัด (PDQC Co., Ltd.)')}</h1>
-          <p className="text-sm mt-1">{cleanThaiText('123/45 ถนนอุตสาหกรรม ตำบลโรงงาน อำเภอผลิตผล 10000')}</p>
-          <p className="text-sm">{cleanThaiText('โทร: 02-123-4567 | อีเมล: info@pdqc.co.th')}</p>
-          <p className="text-sm mt-2 font-semibold">
-            {cleanThaiText('อ้างอิงใบขอซื้อ (PR Ref):')} <span className="font-bold">{cleanThaiText(po.prNo)}</span> 
-            <span className="ml-4">{cleanThaiText('แผนกที่ขอซื้อ:')} {cleanThaiText(po.department)}</span>
+      <div className="flex justify-between items-center border-b-2 border-black pb-4 mb-4">
+        <div className="flex items-center gap-3.5">
+          {/* ตราสัญลักษณ์บริษัท */}
+          <img 
+            src="/images/sc-logo.png" 
+            alt="Logo บริษัท เศรษฐชล จำกัด" 
+            className="h-11 w-auto max-w-none object-contain shrink-0" 
+            style={{
+              height: '44px',
+              width: 'auto',
+              maxWidth: 'none',
+              WebkitPrintColorAdjust: 'exact',
+              printColorAdjust: 'exact',
+            }}
+          />
+          {/* กลุ่มข้อความชื่อบริษัทและประเภทเอกสาร */}
+          <div className="flex flex-col">
+            <h1 className="text-base font-bold text-slate-900 leading-snug">
+              {cleanThaiText('บริษัท เศรษฐชล จำกัด (สำนักงานใหญ่)')}
+            </h1>
+            <p className="text-sm font-semibold text-blue-950/80 leading-tight">
+              {cleanThaiText('ใบสั่งซื้อสินค้า / PURCHASE ORDER')}
+            </p>
+            <p className="text-xs text-slate-600 mt-1">
+              {cleanThaiText('123/45 ถนนอุตสาหกรรม ตำบลโรงงาน อำเภอผลิตผล 10000 | โทร: 02-123-4567')}
+            </p>
+          </div>
+        </div>
+
+        {/* กล่องเลขที่ PO / วันที่ออก PO ฝั่งขวา */}
+        <div className="text-right border border-black p-2.5 rounded-sm min-w-[180px] bg-slate-50/50">
+          <p className="text-xs font-bold text-slate-900">
+            {cleanThaiText('เลขที่ PO:')} <span className="font-mono text-sm font-bold">{cleanThaiText(po.poNo || po.id || '-')}</span>
+          </p>
+          <p className="text-xs text-slate-700 mt-0.5">
+            {cleanThaiText('วันที่ออก PO:')} {cleanThaiText(po.issueDate || po.createdAt || '-')}
           </p>
         </div>
-        <div className="text-right">
-          <h2 className="text-3xl font-black uppercase text-gray-800">{cleanThaiText('ใบสั่งซื้อ')}</h2>
-          <h2 className="text-xl font-bold uppercase text-gray-600 mb-2">Purchase Order</h2>
-          <p className="font-bold text-lg">{cleanThaiText(po.poNo)}</p>
-          <p className="text-sm mt-1">{cleanThaiText('วันที่ (Date):')} {cleanThaiText(po.issueDate)}</p>
-        </div>
+      </div>
+
+      {/* PR Ref & Department Info */}
+      <div className="flex justify-between items-center mb-4 text-xs">
+        <p>
+          <span className="font-semibold">{cleanThaiText('อ้างอิงใบขอซื้อ (PR Ref):')}</span>{' '}
+          <span className="font-bold font-mono">{cleanThaiText(po.prNo || '-')}</span>
+          <span className="ml-4 font-semibold">{cleanThaiText('แผนกที่ขอซื้อ:')}</span>{' '}
+          <span>{cleanThaiText(po.department || '-')}</span>
+        </p>
       </div>
 
       {/* Vendor Info */}

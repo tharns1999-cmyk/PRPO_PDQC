@@ -37,7 +37,8 @@ export default {
         'xl': '0 20px 32px -6px rgba(15, 23, 42, 0.14), 0 8px 16px -4px rgba(15, 23, 42, 0.06)',
       },
       fontFamily: {
-        sans: ['Inter', 'Sarabun', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        sans: ['"IBM Plex Sans Thai"', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        sarabun: ['"TH Sarabun New"', 'Sarabun', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       keyframes: {

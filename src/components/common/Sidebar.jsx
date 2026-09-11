@@ -157,9 +157,8 @@ export default function Sidebar({
         { 
           id: 'dashboard', 
           path: '/dashboard', 
-          label: 'ภาพรวมระบบ',
-          subLabel: '(Dashboard)',
-          ariaLabel: 'ภาพรวมระบบ Dashboard',
+          label: 'ภาพรวม',
+          ariaLabel: 'ภาพรวม',
           icon: LayoutDashboard, 
           visible: !isOnlinePurchaser 
         },
@@ -167,10 +166,8 @@ export default function Sidebar({
           id: 'my-workspace', 
           path: '/my-workspace', 
           label: 'งานของฉัน',
-          subLabel: '(Workspace)',
-          ariaLabel: 'งานของฉัน (My Workspace)',
+          ariaLabel: 'งานของฉัน',
           icon: Sparkles, 
-          iconClassName: 'group-hover:text-amber-500 transition-colors',
           visible: !isOnlinePurchaser, 
           badge: taskCounts.total > 0 ? taskCounts.total : null 
         },
@@ -178,8 +175,7 @@ export default function Sidebar({
           id: 'online-tasks', 
           path: '/online-tasks', 
           label: 'งานจัดซื้อ',
-          subLabel: '(Tasks)',
-          ariaLabel: 'งานจัดซื้อ (Tasks)',
+          ariaLabel: 'งานจัดซื้อ',
           icon: ShoppingBag, 
           visible: currentRole?.canOnlinePurchase, 
           badge: taskCounts.onlineCount > 0 ? taskCounts.onlineCount : null 
@@ -193,8 +189,7 @@ export default function Sidebar({
           id: 'pr-list', 
           path: '/prs', 
           label: 'ใบขอซื้อ',
-          subLabel: '(PR)',
-          ariaLabel: 'ใบขอซื้อ (PR Workflow)',
+          ariaLabel: 'ใบขอซื้อ',
           icon: ScrollText, 
           visible: !isOnlinePurchaser, 
           badge: taskCounts.prCount > 0 ? taskCounts.prCount : null 
@@ -202,9 +197,8 @@ export default function Sidebar({
         { 
           id: 'po-list', 
           path: '/pos', 
-          label: isOnlinePurchaser ? 'ประวัติใบสั่งซื้อ' : 'ใบสั่งซื้อ',
-          subLabel: '(PO)',
-          ariaLabel: 'ใบสั่งซื้อ (PO / รับสินค้า)',
+          label: 'ใบสั่งซื้อ',
+          ariaLabel: 'ใบสั่งซื้อ',
           icon: ReceiptText, 
           visible: true, 
           badge: !isOnlinePurchaser && taskCounts.poCount > 0 ? taskCounts.poCount : null 
@@ -213,8 +207,7 @@ export default function Sidebar({
           id: 'budget', 
           path: '/budget', 
           label: 'งบประมาณ',
-          subLabel: '(Budget)',
-          ariaLabel: 'งบประมาณ (Budget)',
+          ariaLabel: 'งบประมาณ',
           icon: WalletCards, 
           visible: !isAdmin && !isOnlinePurchaser && currentRole?.canViewBudget 
         },
@@ -226,20 +219,17 @@ export default function Sidebar({
         { 
           id: 'stock-card', 
           path: '/inventory/stock-card', 
-          label: 'คลังสินค้า',
-          subLabel: '(Stock)',
-          ariaLabel: 'คลังสต็อก (Warehouse) คลังสินค้า (Stock)',
+          label: 'คลังพัสดุ',
+          ariaLabel: 'คลังพัสดุ',
           icon: Boxes, 
           visible: true 
         },
         { 
           id: 'quick-issue', 
           path: '/inventory/quick-issue', 
-          label: 'เบิกใช้งาน',
-          subLabel: '(Quick Issue)',
-          ariaLabel: 'เบิกสินค้า (Quick Issue) เบิกใช้งาน',
+          label: 'เบิกจ่ายด่วน',
+          ariaLabel: 'เบิกจ่ายด่วน',
           icon: Zap, 
-          iconClassName: 'group-hover:text-amber-500 transition-colors',
           visible: !isOnlinePurchaser 
         },
       ]
@@ -251,17 +241,15 @@ export default function Sidebar({
           id: 'budget', 
           path: '/budget', 
           label: 'งบประมาณ',
-          subLabel: '(Budget)',
-          ariaLabel: 'งบประมาณ (Budget)',
+          ariaLabel: 'งบประมาณ',
           icon: WalletCards, 
           visible: isAdmin 
         },
         { 
           id: 'master-data', 
           path: '/master-data', 
-          label: 'ข้อมูลหลัก',
-          subLabel: '(Master Data)',
-          ariaLabel: 'จัดการข้อมูลหลัก จัดการ Master Data ข้อมูลหลัก',
+          label: 'ข้อมูลระบบ',
+          ariaLabel: 'ข้อมูลระบบ',
           icon: SlidersHorizontal, 
           visible: !isOnlinePurchaser 
         },
@@ -272,42 +260,33 @@ export default function Sidebar({
   const renderNavContent = (onItemClick = null) => (
     <div className="flex flex-col h-full">
       {/* ── 1. Top Section: Logo + System Name + Notification Bell ── */}
-      <div className="px-1 pt-0 pb-3 border-b border-slate-100 shrink-0">
+      <div className="px-1 pt-0.5 pb-3.5 border-b border-slate-100 shrink-0">
         <div className="flex items-center justify-between gap-2">
           {/* Logo & Title */}
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 bg-indigo-600 text-white rounded-xl shrink-0 flex items-center justify-center shadow-xs shadow-indigo-600/25">
-              <Factory className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shadow-xs shrink-0">
+              <Factory className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <h1 className="font-bold text-sm tracking-tight text-slate-900 leading-tight whitespace-nowrap">
-                PR/PO & Inventory
+              <h1 className="text-sm font-black tracking-tight text-slate-900 leading-none truncate">
+                PR/PO & Stock
               </h1>
-              <div className="flex items-center gap-1.5 mt-0.5 whitespace-nowrap">
-                <span className="text-[11px] text-slate-500 font-normal">
-                  {isOnlinePurchaser ? 'จัดซื้อออนไลน์' : 'ฝ่ายผลิต & QC'}
-                </span>
+              <div className="flex items-center gap-1 mt-1">
                 {(() => {
                   const userDepts = getUserDepartments(currentRole || currentUser).filter(d => d !== 'ALL' && d !== '*');
-                  if (userDepts.length === 0) return null;
-                  return userDepts.map(dept => (
-                    <span key={dept} className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md border ${
-                      dept === 'PD' 
-                        ? 'bg-blue-50 text-blue-700 border-blue-200/70' 
-                        : dept === 'QC'
-                        ? 'bg-amber-50 text-amber-700 border-amber-200/70'
-                        : 'bg-slate-50 text-slate-700 border-slate-200/70'
-                    }`}>
-                      {dept}
+                  const deptText = userDepts.length > 0 ? userDepts.join(', ') : (isOnlinePurchaser ? 'Online' : 'ส่วนกลาง');
+                  return (
+                    <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md leading-none">
+                      {deptText}
                     </span>
-                  ));
+                  );
                 })()}
               </div>
             </div>
           </div>
 
           {/* Top Actions: Notification Bell & Mobile Close Button */}
-          <div className="flex items-center gap-1 shrink-0 ml-1">
+          <div className="flex items-center gap-1.5 shrink-0 ml-1">
             <NotificationBell 
               currentRole={currentRole} 
               count={unreadBadgeCount}
@@ -317,26 +296,26 @@ export default function Sidebar({
             {onItemClick && (
               <button 
                 onClick={onCloseMobile}
-                className="md:hidden p-1.5 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                className="md:hidden w-8 h-8 rounded-xl border border-slate-200/80 hover:bg-slate-100/80 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors cursor-pointer"
                 aria-label="Close menu"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* ── 2. Navigation Links (4-Tier Categorized Scrollable Center) ── */}
-      <nav className="flex-1 overflow-y-auto py-2 pr-1 custom-scrollbar min-h-0 space-y-4">
+      {/* ── 2. Navigation Links (Linear SaaS Style) ── */}
+      <nav className="flex-1 overflow-y-auto py-2 pr-0.5 custom-scrollbar min-h-0 space-y-1">
         {menuCategories.map((category) => {
           if (category.visible === false) return null;
           const visibleItems = category.items.filter(item => item.visible);
           if (visibleItems.length === 0) return null;
 
           return (
-            <div key={category.title} className="space-y-1">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 pt-1 pb-1">
+            <div key={category.title} className="space-y-0.5">
+              <div className="text-[11px] font-semibold text-slate-400 tracking-wider uppercase px-3 mb-1.5 mt-5 first:mt-2">
                 {category.title}
               </div>
 
@@ -354,10 +333,10 @@ export default function Sidebar({
                     }}
                     className={({ isActive: navActive }) => {
                       const isActive = navActive || activeView === item.id;
-                      return `group w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all duration-150 cursor-pointer ${
+                      return `group flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
                         isActive
-                          ? 'bg-indigo-50/80 text-indigo-700 font-semibold shadow-[inset_0_1px_1px_rgba(255,255,255,0.6)]'
-                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                          ? 'bg-slate-900 text-white font-semibold shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium'
                       }`;
                     }}
                   >
@@ -365,55 +344,34 @@ export default function Sidebar({
                       const isActive = navActive || activeView === item.id;
                       return (
                         <>
-                          <div className="flex items-center gap-2.5 overflow-hidden min-w-0">
-                            <span className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all shadow-xs shrink-0 ${
+                          <Icon 
+                            size={20} 
+                            strokeWidth={1.8} 
+                            className={`w-5 h-5 shrink-0 transition-colors ${
                               isActive 
-                                ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-600/20' 
-                                : 'bg-slate-100 group-hover:bg-white text-slate-500 group-hover:text-slate-900'
-                            }`}>
-                              <Icon size={17} strokeWidth={1.75} className={item.iconClassName || ''} />
-                            </span>
-                            <div className="flex items-center gap-1.5 truncate">
-                              <span className="truncate">{item.label}</span>
-                              {item.subLabel && (
-                                <span className={`text-[11px] font-mono font-normal transition-colors shrink-0 ${
-                                  isActive ? 'text-indigo-500/80' : 'text-slate-400'
-                                }`}>
-                                  {item.subLabel}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                                ? 'text-white' 
+                                : 'text-slate-400 group-hover:text-slate-700'
+                            }`} 
+                          />
+                          <span className="truncate">{item.label}</span>
 
                           {item.badge && Number(item.badge) > 0 && (
-                            item.id === 'online-tasks' ? (
-                              <div className="flex items-center gap-1.5 ml-auto shrink-0">
-                                {/* Ping Radar Dot */}
+                            isActive ? (
+                              <span className="ml-auto px-1.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-white/20 text-white leading-none shrink-0">
+                                {item.badge}
+                              </span>
+                            ) : (item.id === 'my-tasks' || item.id === 'my-workspace' || item.id === 'online-tasks') ? (
+                              <span className="ml-auto flex items-center gap-1.5 shrink-0">
                                 <span className="relative flex h-2 w-2">
                                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                                   <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
                                 </span>
-                                {/* Micro Capsule Count */}
-                                <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200 shadow-2xs">
-                                  {item.badge}
-                                </span>
-                              </div>
-                            ) : item.id === 'my-tasks' || item.id === 'my-workspace' ? (
-                              <span className="relative flex items-center justify-center ml-auto shrink-0">
-                                {/* วงแหวนเรดาร์สีสดแผ่ออก */}
-                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
-                                
-                                {/* เม็ด Badge สีแดงกุหลาบสด พร้อมลูกเล่นเด้งกระตุ้นสายตา */}
-                                <span className="relative inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1.5 font-mono text-[11px] font-extrabold text-white shadow-md shadow-rose-500/50 animate-bounce">
+                                <span className="px-1.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200 leading-none">
                                   {item.badge}
                                 </span>
                               </span>
                             ) : (
-                              <span className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold tabular-nums transition-colors shrink-0 ml-1.5 ${
-                                isActive 
-                                   ? 'bg-indigo-600 text-white' 
-                                   : 'bg-slate-100 text-slate-600 group-hover:bg-slate-200'
-                              }`}>
+                              <span className="ml-auto px-1.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-slate-100 text-slate-600 group-hover:bg-slate-200 transition-colors leading-none shrink-0">
                                 {item.badge}
                               </span>
                             )
@@ -429,63 +387,50 @@ export default function Sidebar({
         })}
       </nav>
 
-      {/* ── 3. Footer: User Profile & Role Card ── */}
-      <div className="mt-auto pt-3 border-t border-slate-100 shrink-0">
-        {/* User Card with Avatar, Name, Title, and Fast Switcher Button */}
-        <div className="p-2.5 border border-slate-200/80 bg-white/70 backdrop-blur-sm hover:bg-slate-50/90 rounded-2xl transition-all flex items-center justify-between gap-2 shadow-xs">
-          <button
-            type="button"
-            onClick={() => setShowProfileModal(true)}
-            className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer group"
-            title="คลิกเพื่อดูข้อมูลผู้ใช้งานและสลับบทบาทการทำงาน"
-          >
-            <div className="relative shrink-0">
-              {currentRole?.pictureUrl ? (
-                <img
-                  src={currentRole.pictureUrl}
-                  alt=""
-                  className="w-9 h-9 rounded-full object-cover border border-slate-200 shadow-2xs"
-                />
-              ) : (
-                <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs border border-indigo-200 shadow-2xs">
-                  {currentRole?.name?.charAt(0) || <User className="w-4 h-4" />}
-                </div>
-              )}
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5"></span>
-            </div>
+      {/* ── 3. Footer: Modern Minimalist User Profile ── */}
+      <div className="mt-auto pt-2.5 border-t border-slate-100 shrink-0">
+        <button
+          type="button"
+          onClick={() => setShowProfileModal(true)}
+          className="w-full p-2 rounded-2xl hover:bg-slate-100 transition-colors cursor-pointer border border-transparent hover:border-slate-200/60 flex items-center justify-between gap-2.5 group text-left"
+          title="คลิกเพื่อดูข้อมูลผู้ใช้งานและสลับบทบาทการทำงาน"
+        >
+          <div className="relative shrink-0">
+            {currentRole?.pictureUrl ? (
+              <img
+                src={currentRole.pictureUrl}
+                alt=""
+                className="w-9 h-9 rounded-full ring-2 ring-white object-cover shadow-2xs"
+              />
+            ) : (
+              <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs ring-2 ring-white shadow-2xs">
+                {currentRole?.name?.charAt(0) || <User className="w-4 h-4" />}
+              </div>
+            )}
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white absolute -bottom-0.5 -right-0.5"></span>
+          </div>
 
-            {(() => {
-              const userDepts = getUserDepartments(currentRole || currentUser).filter(d => d !== 'ALL' && d !== '*');
-              const rawTitle = currentRole?.title || 'Staff';
-              // If rawTitle already contains parentheses at the end, strip it so we can reformat cleanly
-              const baseTitle = rawTitle.replace(/\s*\([^)]*\)\s*$/, '').trim();
-              const deptText = userDepts.length > 0 ? `(${userDepts.join(', ')})` : '';
-              const displayTitle = deptText ? `${baseTitle} ${deptText}` : rawTitle;
+          {(() => {
+            const userDepts = getUserDepartments(currentRole || currentUser).filter(d => d !== 'ALL' && d !== '*');
+            const rawTitle = currentRole?.title || 'Staff';
+            const baseTitle = rawTitle.replace(/\s*\([^)]*\)\s*$/, '').trim();
+            const deptDisplay = userDepts.length > 0 ? `(${userDepts.join(', ')})` : '';
+            const displayRole = deptDisplay ? `${baseTitle} ${deptDisplay}` : rawTitle;
 
-              return (
-                <div className="overflow-hidden min-w-0">
-                  <span className="font-bold text-slate-900 block leading-tight text-xs truncate group-hover:text-indigo-600 transition-colors">
-                    {currentRole?.name || 'ผู้ใช้งาน'}
-                  </span>
-                  <span className="text-[10px] text-slate-500 block leading-tight font-normal truncate mt-0.5" title={displayTitle}>
-                    {displayTitle}
-                  </span>
-                </div>
-              );
-            })()}
-          </button>
+            return (
+              <div className="overflow-hidden min-w-0 flex-1">
+                <span className="text-sm font-semibold text-slate-900 truncate block leading-tight group-hover:text-indigo-600 transition-colors">
+                  {currentRole?.name || 'ผู้ใช้งาน'}
+                </span>
+                <span className="text-xs font-normal text-slate-500 truncate block leading-tight mt-0.5" title={displayRole}>
+                  {displayRole}
+                </span>
+              </div>
+            );
+          })()}
 
-          {/* Fast Switch User Button */}
-          <button
-            type="button"
-            onClick={() => setShowProfileModal(true)}
-            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors cursor-pointer shrink-0"
-            title="สลับบัญชีผู้ใช้งาน (Switch Account)"
-            aria-label="Switch User"
-          >
-            <ArrowRightLeft className="w-4 h-4" />
-          </button>
-        </div>
+          <ArrowRightLeft className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
+        </button>
       </div>
     </div>
   );

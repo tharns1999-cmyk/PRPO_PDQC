@@ -1,15 +1,26 @@
 /* src/assets/styles/print.css */
 
 /* Thai Typography & PO Document Container Rules */
+.font-sarabun,
+.font-sarabun *,
 .thai-doc-container,
 .thai-doc-container * {
-  font-family: 'Sarabun', 'TH Sarabun New', 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-family: 'TH Sarabun New', 'Sarabun', 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif !important;
   letter-spacing: 0 !important;
   font-variant-ligatures: normal !important;
   font-feature-settings: "liga" 1, "kern" 1 !important;
   text-rendering: optimizeLegibility !important;
   word-break: normal !important;
   overflow-wrap: break-word !important;
+}
+
+/* Ensure PO document logo preserves natural wide aspect ratio */
+.thai-doc-container img {
+  max-width: none !important;
+  height: 44px !important;
+  width: auto !important;
+  object-fit: contain !important;
+  flex-shrink: 0 !important;
 }
 
 @media print {
@@ -34,9 +45,11 @@
   }
 
   /* Force Thai typography and zero letter-spacing on print */
+  .font-sarabun,
+  .font-sarabun *,
   .thai-doc-container,
   .thai-doc-container * {
-    font-family: 'Sarabun', 'TH Sarabun New', 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    font-family: 'TH Sarabun New', 'Sarabun', 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif !important;
     letter-spacing: 0 !important;
     font-variant-ligatures: normal !important;
     font-feature-settings: "liga" 1, "kern" 1 !important;

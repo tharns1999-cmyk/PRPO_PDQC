@@ -531,7 +531,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
 
   return createPortal(
     <>
-      <div className="hidden print:block">
+      <div className="hidden print:block font-sarabun">
         <PrintablePO po={selectedPO} />
       </div>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden">

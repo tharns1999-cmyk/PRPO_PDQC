@@ -499,7 +499,7 @@ export default function StockCardView({
                         <td className="py-3 pl-5 whitespace-nowrap">
                           <span className={`font-mono text-xs px-2 py-0.5 rounded-md border ${
                             isInactive
-                              ? 'text-slate-500 bg-slate-100 border-slate-200/60 line-through decoration-slate-300'
+                              ? 'text-slate-500 bg-slate-100 border-slate-200/60'
                               : 'text-slate-700 bg-slate-100/90 border-slate-200/50'
                           }`}>
                             {prod.code}

@@ -235,13 +235,40 @@ export async function generatePoPdf(po) {
   const { width, height } = page.getSize();
 
 
+  // โหลดรูปภาพตราสัญลักษณ์บริษัท (SC Logo)
+  let logoImage = null;
+  try {
+    const logoRes = await fetch('/images/sc-logo.png');
+    if (logoRes.ok) {
+      const logoBytes = await logoRes.arrayBuffer();
+      logoImage = await pdfDoc.embedPng(logoBytes);
+    }
+  } catch (err) {
+    console.warn('Cannot load PO logo for PDF:', err);
+  }
+
   // 4. ส่วนหัวเอกสารควบคุม (QMS/DCC Header)
-  page.drawText(normalizeThaiText('บริษัท อุตสาหกรรมอาหาร จำกัด (สำนักงานใหญ่)'), { 
-    x: 50, y: height - 50, size: 14, font: boldFont, color: rgb(0.1, 0.1, 0.2) 
-  });
-  page.drawText(normalizeThaiText('ใบสั่งซื้อสินค้า / PURCHASE ORDER'), { 
-    x: 50, y: height - 68, size: 12, font: boldFont, color: rgb(0.2, 0.3, 0.6) 
-  });
+  if (logoImage) {
+    page.drawImage(logoImage, {
+      x: 50,
+      y: height - 74,
+      width: 42,
+      height: 36,
+    });
+    page.drawText(normalizeThaiText('บริษัท เศรษฐชล จำกัด (สำนักงานใหญ่)'), { 
+      x: 102, y: height - 50, size: 14, font: boldFont, color: rgb(0.1, 0.1, 0.2) 
+    });
+    page.drawText(normalizeThaiText('ใบสั่งซื้อสินค้า / PURCHASE ORDER'), { 
+      x: 102, y: height - 68, size: 12, font: boldFont, color: rgb(0.2, 0.3, 0.6) 
+    });
+  } else {
+    page.drawText(normalizeThaiText('บริษัท เศรษฐชล จำกัด (สำนักงานใหญ่)'), { 
+      x: 50, y: height - 50, size: 14, font: boldFont, color: rgb(0.1, 0.1, 0.2) 
+    });
+    page.drawText(normalizeThaiText('ใบสั่งซื้อสินค้า / PURCHASE ORDER'), { 
+      x: 50, y: height - 68, size: 12, font: boldFont, color: rgb(0.2, 0.3, 0.6) 
+    });
+  }
 
   // กล่องเลขที่เอกสาร
   page.drawRectangle({ x: width - 210, y: height - 105, width: 160, height: 45, borderColor: rgb(0.85, 0.85, 0.85), borderWidth: 1 });
