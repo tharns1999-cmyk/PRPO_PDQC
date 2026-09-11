@@ -82,9 +82,9 @@ export const workflowEngine = {
       return false;
     }
 
-    // 2. SUBMITTED or REJECTED_TO_L2 (Review Level 1 - Asst. Manager):
+    // 2. SUBMITTED or REJECTED_TO_L2 or waiting review (Review Level 1 - Asst. Manager):
     // Only Level 2 Reviewers / Asst Managers (strictly NOT Plant Manager Level 3, NOT Requesters Level 1, NOT Online Purchaser)
-    if (['SUBMITTED', 'REJECTED_TO_L2'].includes(pr.status)) {
+    if (['SUBMITTED', 'REJECTED_TO_L2', 'waiting_review', 'pending_review', 'รอตรวจทาน', 'รอตรวจสอบ'].includes(pr.status)) {
       if (isAdmin) return true;
       if (isOnlinePurchaser) return false;
       // Disallow Level 3 (Plant Mgr / Approvers) and Level 1 (Requesters)
@@ -153,7 +153,7 @@ export const workflowEngine = {
     const waitingStatusesFor = {
       plantMgr: [],
       asstMgr: ['REVIEWED'],
-      requester: ['SUBMITTED', 'REJECTED_TO_L2', 'REVIEWED'],
+      requester: ['SUBMITTED', 'REJECTED_TO_L2', 'REVIEWED', 'waiting_review', 'pending_review', 'รอตรวจทาน', 'รอตรวจสอบ'],
       onlinePurchaser: ['ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'],
     };
 
@@ -398,6 +398,8 @@ export const workflowEngine = {
 
     pr.status = nextStatus;
     pr.rejectReason = reason.trim();
+    pr.rejectionReason = reason.trim();
+    pr.returnComment = reason.trim();
     if (!Array.isArray(pr.activityLog)) pr.activityLog = [];
     pr.activityLog.push({
       action: actionLabel,
@@ -1255,7 +1257,7 @@ export const workflowEngine = {
     if (index === -1) throw new Error('PR not found');
 
     const pr = prs[index];
-    pr.status = nextStatus;
+    const previousStatus = pr.status;
     const timestamp = new Date().toLocaleString('th-TH');
 
     let actionLabel = 'อัพเดทสถานะ';
@@ -1272,10 +1274,34 @@ export const workflowEngine = {
       note: note || `เปลี่ยนสถานะเป็น ${PR_STATUS[nextStatus]?.label}`
     });
 
+    if (!Array.isArray(pr.approvalHistory)) pr.approvalHistory = [];
+    pr.approvalHistory.push({
+      actorName: user.name,
+      actorRole: user.title || user.role,
+      action: nextStatus,
+      date: timestamp,
+      timestamp,
+      comment: note || ''
+    });
+
     let generatedPO = null;
     if (nextStatus === 'APPROVED') {
+      const currentNorm = String(previousStatus || '').toLowerCase();
+      // State Machine Guard: Cannot approve or issue PO if PR has not been reviewed
+      if (['waiting_review', 'submitted', 'draft', 'rejected_to_draft', 'rejected_to_l2', 'waiting_approval'].includes(currentNorm)) {
+        throw new Error(`ไม่อนุญาตให้อนุมัติออกใบสั่งซื้อ (PO): ใบขอซื้อ ${pr.prNo || pr.id} อยู่ในสถานะ "${previousStatus}" ซึ่งยังไม่ผ่านการตรวจทาน (ต้องผ่านการตรวจทานเป็นสถานะ REVIEWED ก่อนเท่านั้น)`);
+      }
+      pr.status = 'APPROVED';
       generatedPO = await this.createPOFromPR(pr, user);
       pr.status = pr.purchaseChannel === 'ONLINE' ? 'IN_PROGRESS_ONLINE' : 'PO_ISSUED';
+      const firstPO = Array.isArray(generatedPO) ? generatedPO[0] : generatedPO;
+      if (firstPO) {
+        pr.poNumber = firstPO.poNo;
+        pr.poNo = firstPO.poNo;
+        pr.poId = firstPO.id;
+      }
+    } else {
+      pr.status = nextStatus;
     }
 
     storageService.savePRs(prs);
@@ -1316,6 +1342,15 @@ export const workflowEngine = {
 
   // Auto Create PO from PR (Workflow Engine Logic)
   async createPOFromPR(pr, user) {
+    if (!pr) throw new Error('ไม่พบข้อมูลใบขอซื้อ (PR not found)');
+
+    // Strict State Machine Guard: PO can ONLY be generated if PR status is 'approved'
+    const normalizedStatus = String(pr.status || '').toLowerCase();
+    const isApproved = ['approved', 'po_issued', 'in_progress_online'].includes(normalizedStatus);
+    if (!isApproved) {
+      throw new Error(`ไม่อนุญาตให้ออกใบสั่งซื้อ (PO): ใบขอซื้อ ${pr.prNo || pr.id} อยู่ในสถานะ "${pr.status}" ซึ่งยังไม่ผ่านการอนุมัติ (สถานะต้องผ่านการอนุมัติเป็น APPROVED จาก Plant Manager เท่านั้น ห้ามสร้างจาก waiting_review หรือ waiting_approval)`);
+    }
+
     const pos = storageService.getPOs();
     const vendors = storageService.getVendors();
     const products = storageService.getProducts();
@@ -1414,6 +1449,7 @@ export const workflowEngine = {
         poNo,
         prId: pr.id,
         prNo: pr.prNo,
+        prNumber: pr.prNo || pr.id,
         // ─── Snapshot PR ownership data so Requester can always access this PO ───
         requestedBy: pr.requestedBy || '',
         requesterId: pr.requesterId || null,
@@ -1893,6 +1929,11 @@ export const workflowEngine = {
         });
       }
     }
+
+    po.receivedBy = user.name;
+    po.receivedById = user.id || user.roleId || '';
+    po.receivedRole = user.title;
+    po.receivedAt = timestamp;
 
     storageService.savePOs(pos);
     storageService.saveProducts(products);

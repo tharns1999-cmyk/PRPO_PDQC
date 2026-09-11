@@ -1,9 +1,145 @@
 [
   {
+    "id": "PO-1789107220484-1",
+    "poNo": "PO-PD-2026-002",
+    "prId": "PR-1789102530747-1JM",
+    "prNo": "PD003/2026",
+    "prNumber": "PD003/2026",
+    "requestedBy": "คุณวิชัย (PD)",
+    "requesterId": null,
+    "department": "PD",
+    "vendorId": null,
+    "vendorName": "พหะพไะฟไพะัฟไะพภฟไะภไะไะฟไะไฟะภหพะไภะ",
+    "purchaseChannel": "ONLINE",
+    "onlineLink": null,
+    "specUrl": "SC document template.pdf",
+    "issueDate": "2026-09-11",
+    "status": "ORDERED_PENDING_DELIVERY",
+    "items": [
+      {
+        "productId": "PROD-PD-008",
+        "code": "PD-STF-001",
+        "name": "ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)",
+        "purchaseUnit": "ลัง (6 ม้วน)",
+        "stockUnit": "ม้วน",
+        "conversionRate": 6,
+        "purchaseQty": 6,
+        "stockQty": 36,
+        "qty": 6,
+        "unit": "ลัง (6 ม้วน)",
+        "price": 500,
+        "discountPercent": 0,
+        "discountAmount": 0,
+        "onlineUrl": "https://gemini.google.com/app/1a55b8f32d62b224",
+        "productUrl": "https://gemini.google.com/app/1a55b8f32d62b224",
+        "total": 1500,
+        "source": "FACTORY",
+        "isCustom": false,
+        "isUnitOverridden": false,
+        "orderedQty": 3,
+        "receivedQty": 0,
+        "receivedStockQty": 0,
+        "receivedNgQty": 0,
+        "remainingQty": 3,
+        "actUnitPrice": null,
+        "originalEstimatedPrice": 500,
+        "originalPurchaseQty": 3,
+        "unitPrice": 500,
+        "estimatedPrice": 500,
+        "actualPrice": 500,
+        "actualQty": 6,
+        "lineTotal": 3000
+      }
+    ],
+    "financials": {
+      "subtotal": 1500,
+      "itemDiscountTotal": 0,
+      "combinedDiscountType": "fixed",
+      "combinedDiscountValue": 0,
+      "combinedDiscountAmount": 0,
+      "totalDiscount": 0,
+      "vatMode": "NONE",
+      "vatAmount": 0,
+      "roundingAdj": 0,
+      "shippingCost": 0,
+      "grandTotal": 1500
+    },
+    "subtotal": 3000,
+    "vat": 0,
+    "grandTotal": 3000,
+    "activityLog": [
+      {
+        "action": "แปลง PR เป็น PO และออกใบสั่งซื้ออัตโนมัติ",
+        "user": "คุณประเสริฐ (Plant Mgr)",
+        "role": "Plant Manager",
+        "timestamp": "11/9/2569 13:13:40",
+        "note": "อนุมัติสร้างเอกสาร PO เลขที่ PO-PD-2026-002"
+      },
+      {
+        "action": "รับทราบและสั่งซื้อออนไลน์แล้ว (Online Order Placed)",
+        "user": "คุณนัท (Online Purchaser)",
+        "role": "Online Purchaser (คุณนัท)",
+        "timestamp": "11/9/2569 13:14:32",
+        "note": "สั่งซื้อจาก: พหะพไะฟไพะัฟไะพภฟไะภไะไะฟไะไฟะภหพะไภะ — ส่งต่อให้แผนกต้นทางตรวจรับและปิด PO | ปรับปรุงยอดสั่งซื้อจริง: [ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m): เดิม 3 @ ฿500 -> สั่งจริง 6 @ ฿500] (หมายเหตุ: ฟำพะไั้เฟไำพถัเะฟำไพถัเำไพถั)"
+      },
+      {
+        "action": "[ONLINE CLAIM] แจ้งปัญหาสินค้าสั่งซื้อออนไลน์",
+        "date": "11/9/2569 13:15:10",
+        "timestamp": "11/9/2569 13:15:10",
+        "user": "คุณวิชัย (PD)",
+        "userId": "REQUESTER",
+        "role": "Requester (PD)",
+        "note": "[ONLINE CLAIM] แจ้งปัญหา: สินค้าชำรุด/เสียหาย | พหะัฟำหพถัะุฟำถัะฟำไ โดย คุณวิชัย (PD)",
+        "type": "PO_CLAIM",
+        "channel": "ONLINE"
+      },
+      {
+        "action": "ดำเนินการเคลม (Resolution)",
+        "user": "คุณนัท (Online Purchaser)",
+        "userId": "ONLINE_PURCHASER",
+        "role": "Online Purchaser (คุณนัท)",
+        "timestamp": "11/9/2569 13:31:26",
+        "note": "[ONLINE CLAIM RESOLVED] ดำเนินการ: RESEND — จัดซื้อใหม่/ส่งสินค้าทดแทน (รอบที่ 1), คาดรับวันที่: 2026-09-11 — xxthzdthzdthdsxffhxfrhxrsfdth โดย คุณนัท (Online Purchaser)",
+        "type": "CLAIM_RESOLUTION",
+        "channel": "ONLINE"
+      }
+    ],
+    "vendor": "พหะพไะฟไพะัฟไะพภฟไะภไะไะฟไะไฟะภหพะไภะ",
+    "shopName": "พหะพไะฟไพะัฟไะพภฟไะภไะไะฟไะไฟะภหพะไภะ",
+    "orderedAt": "2026-09-11T06:14:32.832Z",
+    "totalAmount": 3000,
+    "claimData": null,
+    "claimRound": 1,
+    "claimHistory": [
+      {
+        "round": 1,
+        "reportData": {
+          "reason": "สินค้าชำรุด/เสียหาย",
+          "description": "พหะัฟำหพถัะุฟำถัะฟำไ",
+          "photo": null,
+          "reportedBy": "คุณวิชัย (PD)",
+          "reportedById": "REQUESTER",
+          "reportedAt": "11/9/2569 13:15:10",
+          "channel": "ONLINE"
+        },
+        "resolution": {
+          "type": "RESEND",
+          "note": "xxthzdthzdthdsxffhxfrhxrsfdth",
+          "expectedDate": "2026-09-11"
+        },
+        "resolvedBy": "คุณนัท (Online Purchaser)",
+        "resolvedById": "ONLINE_PURCHASER",
+        "resolvedAt": "11/9/2569 13:31:26",
+        "channel": "ONLINE"
+      }
+    ]
+  },
+  {
     "id": "PO-1789003809083-1",
     "poNo": "PO-PD-2026-001",
-    "prId": "PR-1788994095116-HAA",
-    "prNo": "PD002/2026",
+    "prId": "PR-PD001-2026",
+    "prNo": "PD001/2026",
+    "prNumber": "PD001/2026",
     "requestedBy": "คุณวิชัย (PD)",
     "requesterId": null,
     "department": "PD",

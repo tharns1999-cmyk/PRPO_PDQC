@@ -1,5 +1,14 @@
 [
   {
+    "code": "  itm-001  ",
+    "name": "ถุงมือยางใหม่",
+    "category": "PD",
+    "price": 15,
+    "stockUnit": "ชิ้น",
+    "department": "PD",
+    "id": "PROD-PD-1789102607194"
+  },
+  {
     "id": "PROD-PD-001",
     "code": "PD-OIL-068",
     "name": "น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)",
@@ -137,8 +146,8 @@
     "locationId": "LOC-PD-004",
     "locationName": "ห้องแพ็คเกจจิ้ง",
     "department": "PD",
-    "isActive": false,
-    "status": "INACTIVE"
+    "isActive": true,
+    "status": "ACTIVE"
   },
   {
     "id": "PROD-PD-009",
@@ -197,8 +206,8 @@
     "locationId": "LOC-QC-001",
     "locationName": "ตู้เก็บสารเคมีทดสอบ (Lab 1)",
     "department": "QC",
-    "isActive": false,
-    "status": "INACTIVE"
+    "isActive": true,
+    "status": "ACTIVE"
   },
   {
     "id": "PROD-QC-002",

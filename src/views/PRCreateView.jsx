@@ -9,6 +9,7 @@ import { MEMO_THRESHOLD, DEPARTMENTS } from '../config/constants';
 import FileUploader from '../components/common/FileUploader';
 import SearchableSelect from '../components/common/SearchableSelect';
 import { modalService } from '../services/modalService';
+import { sanitizeExternalUrl, getProductUrl } from '../utils/urlHelper';
 
 export default function PRCreateView({ 
   products = [], 
@@ -132,7 +133,8 @@ export default function PRCreateView({
         price: parseFloat(it.price) || 0,
         discountPercent: parseFloat(it.discountPercent) || 0,
         discountAmount: parseFloat(it.discountAmount) || 0,
-        onlineUrl: it.onlineUrl || '',
+        onlineUrl: getProductUrl(it) || '',
+        productUrl: getProductUrl(it) || '',
         source: it.source === 'OFFICE' ? 'OFFICE' : 'FACTORY',
         isCustom: Boolean(it.isCustom),
         customName: it.name,
@@ -358,6 +360,12 @@ export default function PRCreateView({
   const handleItemChange = (index, field, value) => {
     const updated = [...prItems];
     updated[index][field] = value;
+
+    // Keep productUrl and onlineUrl synchronized
+    if (field === 'onlineUrl' || field === 'productUrl') {
+      updated[index].onlineUrl = value;
+      updated[index].productUrl = value;
+    }
     
     // Auto-update price when product changes
     if (field === 'productId') {
@@ -462,7 +470,8 @@ export default function PRCreateView({
             price: price,
             discountPercent: discP,
             discountAmount: discA,
-            onlineUrl: item.onlineUrl,
+            onlineUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
+            productUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
             total: rowTotal,
             source: itemSource,
             isCustom: true
@@ -497,7 +506,8 @@ export default function PRCreateView({
           price: price,
           discountPercent: discP,
           discountAmount: discA,
-          onlineUrl: item.onlineUrl,
+          onlineUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
+          productUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
           total: rowTotal,
           source: itemSource,
           isCustom: false,

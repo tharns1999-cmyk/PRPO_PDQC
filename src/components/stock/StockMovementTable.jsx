@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { History, ArrowDownRight, ArrowUpRight, X, MapPin } from 'lucide-react';
 import Portal from '../common/Portal';
+import CollapsibleActivityTimeline from '../common/CollapsibleActivityTimeline';
 import { storageService } from '../../services/storageService';
 
 export default function StockMovementTable({ selectedProduct: propSelectedProduct, product, stockLogs = [], pos = [], onClose }) {
@@ -17,14 +18,37 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
     }
   }, [pos]);
 
-  if (!selectedProduct) return null;
-
   // Filter logs for this product, then apply IN/OUT filter
-  const productMovementLogs = stockLogs.filter(log => {
-    if (log.productId !== selectedProduct.id && log.productCode !== selectedProduct.code) return false;
-    if (filterType === 'ALL') return true;
-    return log.type === filterType;
-  });
+  const productMovementLogs = useMemo(() => {
+    if (!selectedProduct) return [];
+    return stockLogs.filter(log => {
+      if (log.productId !== selectedProduct.id && log.productCode !== selectedProduct.code) return false;
+      if (filterType === 'ALL') return true;
+      return log.type === filterType;
+    });
+  }, [stockLogs, selectedProduct, filterType]);
+
+  // Transform logs into progressive activity timeline events
+  const timelineEvents = useMemo(() => {
+    if (!selectedProduct) return [];
+    return productMovementLogs.map(log => {
+      const typeLabel = log.type === 'IN' ? 'รับเข้า (+IN)' : log.type === 'IN_NG' ? 'รับเข้าของเสีย (+IN NG)' : 'เบิกจ่าย (-OUT)';
+      const qtyStr = `${log.type === 'OUT' ? '-' : '+'}${Number(log.qty).toLocaleString()} ${selectedProduct.unit || 'ชิ้น'}`;
+      const docStr = log.docNo ? ` [เอกสาร: ${log.docNo}]` : '';
+      return {
+        id: log.id,
+        title: `${typeLabel} ${qtyStr}${docStr}`,
+        role: log.type,
+        actor: log.user || 'เจ้าหน้าที่คลัง',
+        time: log.date || '-',
+        note: [
+          log.note,
+          log.poNumber ? `PO: ${log.poNumber}` : null,
+          log.balance !== undefined ? `คงเหลือ: ${Number(log.balance).toLocaleString()} ${selectedProduct.unit || ''}` : null
+        ].filter(Boolean).join(' • ')
+      };
+    });
+  }, [productMovementLogs, selectedProduct]);
 
   // Helper to format currency numbers
   const formatCurrency = (val) => {
@@ -187,6 +211,16 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
               </button>
             </div>
           </div>
+
+          {/* Collapsible Movement Timeline */}
+          {timelineEvents.length > 0 && (
+            <CollapsibleActivityTimeline
+              events={timelineEvents}
+              title="ประวัติการเคลื่อนไหวสต็อก (Movement Timeline)"
+              defaultExpanded={false}
+              reverseOrder={false}
+            />
+          )}
 
           {/* Table Container with Horizontal Scroll & Min Width */}
           <div className="overflow-x-auto overflow-y-auto max-h-[28rem] border border-slate-200/80 rounded-2xl custom-scrollbar relative shadow-2xs">

@@ -1,77 +1,55 @@
 [
   {
-    "id": "PR-1789040675492-2BP",
-    "prNo": "PD001/2026",
+    "id": "PR-1789102530747-1JM",
+    "prNo": "PD003/2026",
     "department": "PD",
     "source": "FACTORY",
-    "purchaseChannel": "SELF",
-    "specUrl": "",
-    "attachments": [],
-    "note": "",
+    "purchaseChannel": "ONLINE",
+    "specUrl": "SC document template.pdf",
+    "attachments": [
+      {
+        "name": "SC document template.pdf",
+        "size": 778974,
+        "type": "application/pdf",
+        "previewUrl": "blob:http://localhost:5173/298e843d-4f4f-4d0c-8e96-90816430da87",
+        "category": "QUOTATION"
+      },
+      {
+        "name": "Picture1.png",
+        "size": 53049,
+        "type": "image/png",
+        "previewUrl": "blob:http://localhost:5173/e7517270-0100-4213-92d4-77671ff8f12a",
+        "category": "IMAGE"
+      }
+    ],
+    "note": "dezthrethgedthtdsthedhethdethdtghdthdetrhedrthedtheheth",
     "items": [
       {
-        "productId": "PROD-PD-1789017724471",
-        "code": "  itm-001  ",
-        "name": "ถุงมือยางใหม่",
-        "purchaseUnit": "ชิ้น",
-        "stockUnit": "ชิ้น",
-        "conversionRate": 1,
-        "purchaseQty": 16,
-        "stockQty": 16,
-        "qty": 16,
-        "unit": "ชิ้น",
-        "price": 10554,
+        "productId": "PROD-PD-008",
+        "code": "PD-STF-001",
+        "name": "ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)",
+        "purchaseUnit": "ลัง (6 ม้วน)",
+        "stockUnit": "ม้วน",
+        "conversionRate": 6,
+        "purchaseQty": 3,
+        "stockQty": 18,
+        "qty": 3,
+        "unit": "ลัง (6 ม้วน)",
+        "price": 500,
         "discountPercent": 0,
         "discountAmount": 0,
-        "onlineUrl": "",
-        "total": 168864,
-        "source": "FACTORY",
-        "isCustom": false,
-        "isUnitOverridden": false
-      },
-      {
-        "productId": "PROD-PD-005",
-        "code": "PD-CLN-IND",
-        "name": "น้ำยาทำความสะอาดคราบน้ำมันเครื่องจักร (Heavy Duty Degreaser Cleaner)",
-        "purchaseUnit": "แกลลอน (20L)",
-        "stockUnit": "ลิตร",
-        "conversionRate": 20,
-        "purchaseQty": 1,
-        "stockQty": 20,
-        "qty": 1,
-        "unit": "แกลลอน (20L)",
-        "price": 1850,
-        "discountPercent": 0,
-        "discountAmount": 0,
-        "total": 1850,
-        "source": "FACTORY",
-        "isCustom": false,
-        "isUnitOverridden": false
-      },
-      {
-        "productId": "PROD-PD-009",
-        "code": "PD-BRG-620",
-        "name": "ตลับลูกปืนเม็ดกลมร่องลึก (Deep Groove Ball Bearing 6205-2RS)",
-        "purchaseUnit": "ตลับ",
-        "stockUnit": "ตลับ",
-        "conversionRate": 1,
-        "purchaseQty": 1,
-        "stockQty": 1,
-        "qty": 1,
-        "unit": "ตลับ",
-        "price": 280,
-        "discountPercent": 0,
-        "discountAmount": 0,
-        "total": 280,
+        "onlineUrl": "https://gemini.google.com/app/1a55b8f32d62b224",
+        "productUrl": "https://gemini.google.com/app/1a55b8f32d62b224",
+        "total": 1500,
         "source": "FACTORY",
         "isCustom": false,
         "isUnitOverridden": false
       }
     ],
     "financials": {
-      "subtotal": 170994,
+      "subtotal": 1500,
       "itemDiscountTotal": 0,
-      "combinedDiscountType": "percent",
+      "combinedDiscountType": "fixed",
       "combinedDiscountValue": 0,
       "combinedDiscountAmount": 0,
       "totalDiscount": 0,
@@ -79,68 +57,95 @@
       "vatAmount": 0,
       "roundingAdj": 0,
       "shippingCost": 0,
-      "grandTotal": 170994
+      "grandTotal": 1500
     },
-    "totalAmount": 170994,
-    "status": "CANCELLED",
+    "totalAmount": 1500,
+    "status": "IN_PROGRESS_ONLINE",
     "requestedBy": "คุณวิชัย (PD)",
     "requestedByRole": "Requester (PD)",
     "requestedDept": "PD",
-    "createdAt": "10/9/2569 18:44:35",
-    "updatedAt": "10/9/2569 18:44:35",
-    "memo": {
-      "applicantDept": "PD",
-      "applicantName1": "คุณวิชัย (PD)",
-      "applicantName2": "-",
-      "date": "2026-09-10",
-      "approverManager": "-",
-      "approverConsultant": "-",
-      "approverGM": "คุณประเสริฐ",
-      "approverCFO": "-",
-      "approverBoD": "-",
-      "subject": "",
-      "purpose": "",
-      "background": "",
-      "estimatedCost": 170994,
-      "paymentTerm": "เครดิต 30 วัน",
-      "classification": "EXPENSE",
-      "remarkAttachedFile": "มีเอกสารแนบ",
-      "conclusion": "APPROVED",
-      "conclusionReason": ""
-    },
+    "createdAt": "11/9/2569 11:55:30",
+    "updatedAt": "11/9/2569 11:55:30",
+    "memo": null,
     "activityLog": [
       {
-        "action": "สร้างแบบร่าง PR (Draft Created)",
+        "action": "สร้างและยื่นส่ง PR (PR Submitted)",
         "user": "คุณวิชัย (PD)",
         "role": "Requester (PD)",
-        "timestamp": "10/9/2569 18:44:35",
-        "note": "บันทึกแบบร่าง"
+        "timestamp": "11/9/2569 11:55:30",
+        "note": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
       },
       {
-        "action": "แก้ไขและบันทึกแบบร่าง (Draft Updated)",
-        "user": "คุณวิชัย (PD)",
-        "role": "Requester (PD)",
-        "timestamp": "10/9/2569 18:52:33",
-        "note": "ผู้ขอซื้อแก้ไขข้อมูลและบันทึกแบบร่าง"
+        "action": "ส่งกลับให้ผู้ขอซื้อแก้ไข (Rejected to Draft)",
+        "user": "คุณสมชาย (Asst. Mgr)",
+        "role": "Assistant Manager",
+        "timestamp": "11/9/2569 13:12:37",
+        "note": "เหตุผลการส่งกลับ: พัุป้หพะดัี้ฟำหะัหกำพะัผำถัฟำหถัหำพะัีหำะถัหำถัำห-ภั"
       },
       {
-        "action": "ยกเลิกใบขอซื้อ (Cancelled PR)",
+        "action": "แก้ไขและส่งใบ PR ใหม่ (PR Resubmitted)",
         "user": "คุณวิชัย (PD)",
         "role": "Requester (PD)",
-        "timestamp": "10/9/2569 18:57:29",
-        "note": "เหตุผลการยกเลิก: าสวเาดหเวสำาพเาพวเสาำวเสาหวสดเากวสเากวสาเวสเากวดสเากวสเวกสเากวสดเากวสเากวสเากสวดเกวเสาเด"
+        "timestamp": "11/9/2569 13:13:04",
+        "note": "ผู้ขอซื้อแก้ไขข้อมูลและยื่นส่งใหม่อีกครั้ง (ยอดรวม ฿1,500)"
+      },
+      {
+        "action": "ตรวจสอบแล้ว (Level 1 - Asst Mgr)",
+        "user": "คุณสมชาย (Asst. Mgr)",
+        "role": "Assistant Manager",
+        "timestamp": "11/9/2569 13:13:20",
+        "note": "เปลี่ยนสถานะเป็น ผ่านตรวจ / รออนุมัติ (Plant Mgr)"
+      },
+      {
+        "action": "อนุมัติ (Final Approval - Plant Mgr)",
+        "user": "คุณประเสริฐ (Plant Mgr)",
+        "role": "Plant Manager",
+        "timestamp": "11/9/2569 13:13:40",
+        "note": "เปลี่ยนสถานะเป็น อนุมัติแล้ว (สร้าง PO)"
       }
-    ]
+    ],
+    "rejectReason": "พัุป้หพะดัี้ฟำหะัหกำพะัผำถัฟำหถัหำพะัีหำะถัหำถัำห-ภั",
+    "rejectionReason": "พัุป้หพะดัี้ฟำหะัหกำพะัผำถัฟำหถัหำพะัีหำะถัหำถัำห-ภั",
+    "returnComment": "พัุป้หพะดัี้ฟำหะัหกำพะัผำถัฟำหถัหำพะัีหำะถัหำถัำห-ภั",
+    "approvalHistory": [
+      {
+        "actorName": "คุณสมชาย (Asst. Mgr)",
+        "actorRole": "Assistant Manager",
+        "action": "REJECT",
+        "date": "11/9/2569 13:12:37",
+        "timestamp": "11/9/2569 13:12:37",
+        "comment": "พัุป้หพะดัี้ฟำหะัหกำพะัผำถัฟำหถัหำพะัีหำะถัหำถัำห-ภั"
+      },
+      {
+        "actorName": "คุณสมชาย (Asst. Mgr)",
+        "actorRole": "Assistant Manager",
+        "action": "REVIEWED",
+        "date": "11/9/2569 13:13:20",
+        "timestamp": "11/9/2569 13:13:20",
+        "comment": ""
+      },
+      {
+        "actorName": "คุณประเสริฐ (Plant Mgr)",
+        "actorRole": "Plant Manager",
+        "action": "APPROVED",
+        "date": "11/9/2569 13:13:40",
+        "timestamp": "11/9/2569 13:13:40",
+        "comment": ""
+      }
+    ],
+    "poNumber": "PO-PD-2026-002",
+    "poNo": "PO-PD-2026-002",
+    "poId": "PO-1789107220484-1"
   },
   {
-    "id": "PR-1788994095116-HAA",
-    "prNo": "PD002/2026",
+    "id": "PR-PD001-2026",
+    "prNo": "PD001/2026",
     "department": "PD",
     "source": "FACTORY",
     "purchaseChannel": "ONLINE",
     "specUrl": "",
     "attachments": [],
-    "note": "",
+    "note": "สั่งซื้อน้ำมันไฮดรอลิกสำหรับเครื่องจักรฝ่ายผลิต",
     "items": [
       {
         "productId": "PROD-PD-001",
@@ -156,7 +161,7 @@
         "price": 14500,
         "discountPercent": 0,
         "discountAmount": 0,
-        "onlineUrl": "ีร้่ร่้รี้่าา",
+        "onlineUrl": "https://example.com/oil",
         "total": 14500,
         "source": "FACTORY",
         "isCustom": false,
@@ -177,43 +182,114 @@
       "grandTotal": 14500
     },
     "totalAmount": 14500,
-    "status": "completed",
+    "status": "CLOSED",
     "poNumber": "PO-PD-2026-001",
     "poNo": "PO-PD-2026-001",
+    "poId": "PO-1789003809083-1",
     "requestedBy": "คุณวิชัย (PD)",
     "requestedByRole": "Requester (PD)",
     "requestedDept": "PD",
-    "createdAt": "10/9/2569 05:48:15",
-    "updatedAt": "10/9/2569 05:48:15",
+    "createdAt": "10/9/2569 08:15:00",
+    "updatedAt": "10/9/2569 13:29:51",
     "memo": null,
     "activityLog": [
       {
         "action": "สร้างและยื่นส่ง PR (PR Submitted)",
         "user": "คุณวิชัย (PD)",
         "role": "Requester (PD)",
-        "timestamp": "10/9/2569 05:48:15",
-        "note": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
+        "timestamp": "10/9/2569 08:15:00",
+        "note": "ยื่นเสนอขอซื้อน้ำมันไฮดรอลิก"
       },
       {
-        "action": "ตรวจสอบแล้ว (Level 1 - Asst Mgr)",
+        "action": "ตรวจสอบผ่าน (Level 1 Review)",
         "user": "คุณสมชาย (Asst. Mgr)",
         "role": "Assistant Manager",
-        "timestamp": "10/9/2569 08:23:17",
-        "note": "เปลี่ยนสถานะเป็น ผ่านตรวจ / รออนุมัติ (Plant Mgr)"
+        "timestamp": "10/9/2569 08:20:00",
+        "note": "ตรวจสอบข้อมูลครบถ้วน"
       },
       {
-        "action": "อนุมัติ (Final Approval - Plant Mgr)",
+        "action": "อนุมัติสั่งซื้อและออก PO อัตโนมัติ",
         "user": "คุณประเสริฐ (Plant Mgr)",
         "role": "Plant Manager",
         "timestamp": "10/9/2569 08:30:09",
-        "note": "เปลี่ยนสถานะเป็น อนุมัติแล้ว (สร้าง PO)"
+        "note": "อนุมัติสร้างเอกสาร PO เลขที่ PO-PD-2026-001"
+      }
+    ]
+  },
+  {
+    "id": "PR-1789100542800-9OZ",
+    "prNo": "PD002/2026",
+    "department": "PD",
+    "source": "FACTORY",
+    "purchaseChannel": "ONLINE",
+    "specUrl": "Quotation-PD-STF-001.pdf",
+    "attachments": [
+      {
+        "name": "Quotation-PD-STF-001.pdf",
+        "size": 118079,
+        "type": "application/pdf",
+        "previewUrl": "blob:http://localhost:5173/8a53bef9-965c-4298-abe4-b74efc92ed07",
+        "category": "QUOTATION"
       },
       {
-        "action": "ตรวจรับครบและปิด PO (Goods Received – Closed)",
+        "name": "Picture1.png",
+        "size": 53049,
+        "type": "image/png",
+        "previewUrl": "blob:http://localhost:5173/df6d7127-860c-4072-823e-d6a4d60b766d",
+        "category": "IMAGE"
+      }
+    ],
+    "note": "ขอสั่งซื้อฟิล์มยืดพันพาเลทสำหรับการแพ็คเกจจิ้งสินค้าสำเร็จรูป",
+    "items": [
+      {
+        "productId": "PROD-PD-008",
+        "code": "PD-STF-001",
+        "name": "ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)",
+        "purchaseUnit": "ลัง (6 ม้วน)",
+        "stockUnit": "ม้วน",
+        "conversionRate": 6,
+        "purchaseQty": 15,
+        "stockQty": 90,
+        "qty": 15,
+        "unit": "ลัง (6 ม้วน)",
+        "price": 1100,
+        "discountPercent": 0,
+        "discountAmount": 0,
+        "onlineUrl": "https://shopee.co.th/",
+        "total": 16500,
+        "source": "FACTORY",
+        "isCustom": false,
+        "isUnitOverridden": false
+      }
+    ],
+    "financials": {
+      "subtotal": 16500,
+      "itemDiscountTotal": 0,
+      "combinedDiscountType": "fixed",
+      "combinedDiscountValue": 0,
+      "combinedDiscountAmount": 0,
+      "totalDiscount": 0,
+      "vatMode": "NONE",
+      "vatAmount": 0,
+      "roundingAdj": 0,
+      "shippingCost": 0,
+      "grandTotal": 16500
+    },
+    "totalAmount": 16500,
+    "status": "WAITING_REVIEW",
+    "requestedBy": "คุณวิชัย (PD)",
+    "requestedByRole": "Requester (PD)",
+    "requestedDept": "PD",
+    "createdAt": "11/9/2569 11:22:22",
+    "updatedAt": "11/9/2569 11:22:22",
+    "memo": null,
+    "activityLog": [
+      {
+        "action": "สร้างและยื่นส่ง PR (PR Submitted)",
         "user": "คุณวิชัย (PD)",
         "role": "Requester (PD)",
-        "timestamp": "10/9/2569 13:00:00",
-        "note": "PO PO-PD-2026-001 รับสินค้าครบแล้ว ปิดใบ PR อัตโนมัติ"
+        "timestamp": "11/9/2569 11:22:22",
+        "note": "ยื่นเสนอขอซื้อเข้าสู่ระบบ รอตรวจทาน"
       }
     ]
   }

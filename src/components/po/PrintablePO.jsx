@@ -1,4 +1,5 @@
 import React from 'react';
+import { storageService } from '../../services/storageService.js';
 
 /**
  * Thai Unicode Text Normalizer
@@ -17,6 +18,53 @@ function cleanThaiText(rawText) {
 
 export default function PrintablePO({ po }) {
   if (!po) return null;
+
+  // Extract Reviewer & Approver dynamically from PR if possible
+  let prData = null;
+  try {
+    const prs = storageService.getPRs();
+    prData = prs.find(p => p.id === po.prId || p.prNo === po.prNo);
+  } catch(e) {}
+
+  let reviewerName = po.reviewedBy || '';
+  let reviewerDate = po.reviewedDate || '';
+  let approverName = po.approvedBy || '';
+  let approverDate = po.approvedAt || '';
+
+  if (prData && Array.isArray(prData.approvalHistory)) {
+    // Reviewer is typically action 'REVIEWED' or level 2
+    const reviewedLog = prData.approvalHistory.find(h => h.action === 'REVIEWED');
+    if (reviewedLog) {
+      reviewerName = reviewedLog.actorName || reviewerName;
+      reviewerDate = reviewedLog.date || reviewerDate;
+    }
+    // Approver is typically action 'APPROVED' or level 3
+    const approvedLog = prData.approvalHistory.find(h => h.action === 'APPROVED');
+    if (approvedLog) {
+      approverName = approvedLog.actorName || approverName;
+      approverDate = approvedLog.date || approverDate;
+    }
+  }
+
+  // Fallbacks
+  const requesterName = po.createdBy || po.createdByName || po.requesterName || po.requestedBy || '-';
+  const requesterDate = po.issuedDate || po.createdAt || '-';
+  const rTime = requesterDate.includes(' ') ? requesterDate.split(' ')[1].substring(0, 5) : '-';
+  const rDate = requesterDate.includes(' ') ? requesterDate.split(' ')[0] : requesterDate;
+
+  reviewerName = reviewerName || '-';
+  reviewerDate = reviewerDate || '-';
+  const revTime = reviewerDate.includes(' ') ? reviewerDate.split(' ')[1].substring(0, 5) : '-';
+  const revDate = reviewerDate.includes(' ') ? reviewerDate.split(' ')[0] : reviewerDate;
+
+  approverName = approverName || '-';
+  approverDate = approverDate || '-';
+  const appTime = approverDate.includes(' ') ? approverDate.split(' ')[1].substring(0, 5) : '-';
+  const appDate = approverDate.includes(' ') ? approverDate.split(' ')[0] : approverDate;
+
+  const receiverName = po.receivedBy || '-';
+  const receiverDate = po.receivedAt ? po.receivedAt.split(' ')[0] : '-';
+  const receiverTime = po.receivedAt && po.receivedAt.includes(' ') ? po.receivedAt.split(' ')[1].substring(0, 5) : '-';
 
   return (
       <div 
@@ -181,17 +229,17 @@ export default function PrintablePO({ po }) {
         <tbody>
           <tr>
             {[ 
-              { name: po.createdBy || po.createdByName || po.requesterName || 'คุณวิชัย สุขใจ', date: po.issuedDate || po.createdAt || '10/09/2026', time: '08:15' },
-              { name: po.reviewedBy || 'คุณมานะ อดทน', date: po.reviewedDate || po.createdAt || '10/09/2026', time: '08:20' },
-              { name: po.approvedBy || 'คุณประเสริฐ ยิ่งยง', date: po.approvedAt || po.issuedDate || '10/09/2026', time: '08:30' },
-              { name: po.receivedBy || 'คุณวิชัย สุขใจ', date: po.receivedAt ? po.receivedAt.split(' ')[0] : '-', time: po.receivedAt ? po.receivedAt.split(' ')[1] || '-' : '-' }
+              { name: requesterName, date: rDate, time: rTime },
+              { name: reviewerName, date: revDate, time: revTime },
+              { name: approverName, date: appDate, time: appTime },
+              { name: receiverName, date: receiverDate, time: receiverTime }
             ].map((stamp, idx) => (
               <td key={idx} className={`w-1/4 p-2 align-top ${idx < 3 ? 'border-r border-black' : ''}`}>
                 <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
                   <div className="h-12 w-full mb-2 flex items-center justify-center"></div> {/* Image Placeholder */}
-                  <p className="text-[11px] font-medium text-slate-800">{cleanThaiText(`( ${stamp.name} )`)}</p>
+                  <p className="text-[11px] font-medium text-slate-800">{cleanThaiText(stamp.name === '-' ? '-' : `( ${stamp.name} )`)}</p>
                   {stamp.date !== '-' && (
-                    <p className="text-[10px] text-slate-500 mt-1">{cleanThaiText(`วันที่ ${stamp.date} เวลา ${stamp.time} น.`)}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">{cleanThaiText(`วันที่ ${stamp.date}${stamp.time !== '-' ? ` เวลา ${stamp.time} น.` : ''}`)}</p>
                   )}
                 </div>
               </td>

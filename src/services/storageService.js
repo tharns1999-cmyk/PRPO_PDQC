@@ -2,7 +2,7 @@ import { STORAGE_KEYS, ROLES, INITIAL_USAGE_UNITS, INITIAL_DEPARTMENTS } from '.
 import { initialProducts, initialVendors, initialStorageLocations, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
 import { DEFAULT_EMPLOYEE_ACCOUNTS } from './authService.js';
 
-const DATA_VERSION = 'prpo_clean_v14';
+const DATA_VERSION = 'prpo_clean_v15_sanitized';
 const API_URL = 'http://localhost:3001/api/storage';
 
 // In-Memory Storage Cache backed by Local File API Server
@@ -21,6 +21,64 @@ const _syncApi = async () => {
     console.warn('[StorageService] Local API Sync warning:', e.message);
   }
 };
+
+const _migrateLocalStorageCache = () => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const currentVersion = localStorage.getItem('prpo_data_version');
+    if (currentVersion !== DATA_VERSION) {
+      console.log(`[StorageService] Migrating LocalStorage cache to ${DATA_VERSION}...`);
+
+      // 1. Sanitize cached PRs in localStorage
+      const storedPRs = localStorage.getItem(STORAGE_KEYS.PRS);
+      if (storedPRs) {
+        try {
+          const parsed = JSON.parse(storedPRs);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.map(pr => {
+              if (pr.prNo === 'PD002/2026' || pr.id === 'PR-1789100542800-9OZ') {
+                const c = { ...pr };
+                delete c.poNumber;
+                delete c.poNo;
+                delete c.poId;
+                if (c.status === 'completed' || c.status === 'CLOSED') {
+                  c.status = 'WAITING_REVIEW';
+                }
+                return c;
+              }
+              return pr;
+            });
+            localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify(cleaned));
+          }
+        } catch (e) {}
+      }
+
+      // 2. Sanitize cached POs in localStorage
+      const storedPOs = localStorage.getItem(STORAGE_KEYS.POS);
+      if (storedPOs) {
+        try {
+          const parsed = JSON.parse(storedPOs);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.map(po => {
+              if ((po.poNo === 'PO-PD-2026-001' || po.id === 'PO-1789003809083-1') && (po.prNo === 'PD002/2026' || po.prNumber === 'PD002/2026')) {
+                return { ...po, prNo: 'PD001/2026', prNumber: 'PD001/2026', prId: 'PR-PD001-2026' };
+              }
+              return po;
+            });
+            localStorage.setItem(STORAGE_KEYS.POS, JSON.stringify(cleaned));
+          }
+        } catch (e) {}
+      }
+
+      localStorage.setItem('prpo_data_version', DATA_VERSION);
+    }
+  } catch (e) {
+    console.warn('[StorageService] LocalStorage migration error:', e.message);
+  }
+};
+
+// Immediately run migration if in browser environment
+_migrateLocalStorageCache();
 
 const _getItem = (key) => {
   if (_apiReady && _cache[key] !== undefined) {
@@ -47,6 +105,7 @@ const _setItem = (key, value, syncWithBackend = false) => {
 export const storageService = {
   // Initialize storage from Local Node.js Backend with fallback to LocalStorage
   async init() {
+    _migrateLocalStorageCache();
     try {
       const res = await fetch(API_URL);
       if (res.ok) {
@@ -426,35 +485,43 @@ export const storageService = {
     const posData = _getItem(STORAGE_KEYS.POS);
     const pos = Array.isArray(posData) ? posData : [];
     const syncedPRs = migrated.map(pr => {
-      // Fix known legacy PR PD002/2026 if still pending
-      if (pr.prNo === 'PD002/2026' && pr.status !== 'completed' && pr.status !== 'CLOSED') {
-        needsSave = true;
-        return {
-          ...pr,
-          status: 'completed',
-          poNumber: 'PO-PD-2026-001',
-          poNo: 'PO-PD-2026-001'
-        };
+      // Sanitize PD002/2026: Strictly detach from PO-PD-2026-001 and preserve WAITING_REVIEW status
+      if (pr.prNo === 'PD002/2026' || pr.id === 'PR-1789100542800-9OZ') {
+        if (pr.poNumber || pr.poNo || pr.poId || pr.status === 'completed' || pr.status === 'CLOSED') {
+          needsSave = true;
+          const cleaned = { ...pr };
+          delete cleaned.poNumber;
+          delete cleaned.poNo;
+          delete cleaned.poId;
+          if (cleaned.status === 'completed' || cleaned.status === 'CLOSED') {
+            cleaned.status = 'WAITING_REVIEW';
+          }
+          return cleaned;
+        }
       }
 
-      const relatedPO = pos.find(po =>
-        (po.prId && (po.prId === pr.id || po.prId === pr.prNo)) ||
-        (po.prNo && (po.prNo === pr.prNo || po.prNo === pr.id)) ||
-        (po.prNumber && (po.prNumber === pr.id || po.prNumber === pr.prNo)) ||
-        (pr.poNo && (po.poNo === pr.poNo || po.id === pr.poNo)) ||
-        (pr.poNumber && (po.poNo === pr.poNumber || po.poNumber === pr.poNumber))
-      );
-      if (relatedPO) {
-        const poIsDone = ['closed', 'cancelled', 'received', 'completed', 'fully_received'].includes(String(relatedPO.status).toLowerCase());
-        if (poIsDone && !['closed', 'cancelled', 'completed'].includes(String(pr.status).toLowerCase())) {
-          needsSave = true;
-          return {
-            ...pr,
-            status: 'completed',
-            poNumber: relatedPO.poNo || relatedPO.poNumber || pr.poNumber || pr.poNo,
-            poNo: relatedPO.poNo || relatedPO.poNumber || pr.poNumber || pr.poNo,
-            fullyReceivedAt: relatedPO.fullyReceivedAt || new Date().toISOString()
-          };
+      // Only cascade sync if PR has already been approved/processed (Never sync pending or review-stage PRs)
+      const isPRApproved = ['approved', 'ordered', 'completed', 'closed', 'po_issued', 'in_progress_online'].includes(String(pr.status).toLowerCase());
+      if (isPRApproved) {
+        const relatedPO = pos.find(po =>
+          (po.prId && (po.prId === pr.id || po.prId === pr.prNo)) ||
+          (po.prNo && (po.prNo === pr.prNo || po.prNo === pr.id)) ||
+          (po.prNumber && (po.prNumber === pr.id || po.prNumber === pr.prNo)) ||
+          (pr.poNo && (po.poNo === pr.poNo || po.id === pr.poNo)) ||
+          (pr.poNumber && (po.poNo === pr.poNumber || po.poNumber === pr.poNumber))
+        );
+        if (relatedPO) {
+          const poIsDone = ['closed', 'cancelled', 'received', 'completed', 'fully_received'].includes(String(relatedPO.status).toLowerCase());
+          if (poIsDone && !['closed', 'cancelled', 'completed'].includes(String(pr.status).toLowerCase())) {
+            needsSave = true;
+            return {
+              ...pr,
+              status: 'completed',
+              poNumber: relatedPO.poNo || relatedPO.poNumber || pr.poNumber || pr.poNo,
+              poNo: relatedPO.poNo || relatedPO.poNumber || pr.poNumber || pr.poNo,
+              fullyReceivedAt: relatedPO.fullyReceivedAt || new Date().toISOString()
+            };
+          }
         }
       }
       return pr;
@@ -530,7 +597,20 @@ export const storageService = {
         }
         return item;
       });
-      return poUpdated ? { ...po, vat, grandTotal, items } : po;
+
+      // Sanitize PO-PD-2026-001: Ensure it points to PD001/2026 (Hydraulic Oil)
+      let prNo = po.prNo;
+      let prNumber = po.prNumber || po.prNo;
+      let prId = po.prId;
+      if ((po.poNo === 'PO-PD-2026-001' || po.id === 'PO-1789003809083-1') && (prNo === 'PD002/2026' || prNumber === 'PD002/2026' || !prNumber)) {
+        prNo = 'PD001/2026';
+        prNumber = 'PD001/2026';
+        prId = 'PR-PD001-2026';
+        poUpdated = true;
+        needsSave = true;
+      }
+
+      return poUpdated ? { ...po, prNo, prNumber, prId, vat, grandTotal, items } : po;
     });
 
     if (needsSave) {
