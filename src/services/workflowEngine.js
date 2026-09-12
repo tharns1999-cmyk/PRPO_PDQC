@@ -509,11 +509,27 @@ export const workflowEngine = {
             qty: newQty,
             actualQty: newQty,
             stockQty: newStockQty,
-            lineTotal: newPrice * newQty
+            lineTotal: newPrice * newQty,
+            actualStoreName: matchingUpdated.actualStoreName || origItem.actualStoreName || origItem.storeName || '',
+            storePlatform: matchingUpdated.storePlatform || origItem.storePlatform || origItem.platform || 'Shopee',
+            orderRefNo: matchingUpdated.orderRefNo || origItem.orderRefNo || ''
           };
         }
         return origItem;
       });
+
+      // Update Header Vendor based on Line Items Stores (Directive 1 & 3)
+      const stores = Array.from(new Set(po.items.map(u => (u.actualStoreName || '').trim()).filter(s => s && !s.includes('ระบุร้านภายหลัง'))));
+      if (stores.length === 1) {
+        po.vendorName = stores[0];
+        po.vendor = stores[0];
+        po.shopName = stores[0];
+      } else if (stores.length > 1) {
+        const multiVendorStr = 'แพลตฟอร์ม Shopee / Lazada Marketplace (สั่งซื้อออนไลน์)';
+        po.vendorName = multiVendorStr;
+        po.vendor = multiVendorStr;
+        po.shopName = multiVendorStr;
+      }
 
       // Recalculate PO total
       const newTotal = po.items.reduce((sum, item) => sum + ((item.purchaseQty ?? item.qty) * (item.unitPrice || item.estimatedPrice || item.price || 0)), 0);
@@ -1564,7 +1580,14 @@ export const workflowEngine = {
       let vName = vendor?.name || (pr.purchaseChannel === 'SELF' ? (pr.vendorName || vendor?.name || 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)') : 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)');
       if (pr.purchaseChannel === 'ONLINE') {
         vId = null;
-        vName = pr.shopName || 'Shopee / Lazada (ระบุร้านภายหลัง)';
+        const onlineStores = Array.from(new Set((items || []).map(i => (i.storeName || i.actualStoreName || '').trim()).filter(Boolean)));
+        if (onlineStores.length === 1) {
+          vName = onlineStores[0];
+        } else if (onlineStores.length > 1) {
+          vName = 'แพลตฟอร์ม Shopee / Lazada Marketplace (สั่งซื้อออนไลน์)';
+        } else {
+          vName = pr.shopName || 'Shopee / Lazada (ระบุร้านภายหลัง)';
+        }
       }
 
       // Copy complete Vendor Object from Master Data (5 points: name, taxId, address, contactPerson, phone)
@@ -1626,7 +1649,10 @@ export const workflowEngine = {
             actUnitPrice: null,
             source: item.source || 'FACTORY',
             discountPercent: parseFloat(item.discountPercent) || 0,
-            discountAmount: parseFloat(item.discountAmount) || 0
+            discountAmount: parseFloat(item.discountAmount) || 0,
+            actualStoreName: item.actualStoreName || item.storeName || '',
+            storePlatform: item.storePlatform || item.platform || 'Shopee',
+            orderRefNo: item.orderRefNo || ''
           };
         }),
         financials,

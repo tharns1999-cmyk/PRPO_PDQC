@@ -279,7 +279,7 @@
     "conversionRate": 500,
     "unit": "กรัม",
     "price": 2850,
-    "stockBalance": 2500,
+    "stockBalance": 2496,
     "reorderPoint": 1000,
     "leadTimeDays": 10,
     "supplierId": null,

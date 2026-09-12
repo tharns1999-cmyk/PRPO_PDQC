@@ -16,6 +16,7 @@ import BudgetView from '../views/BudgetView';
 import MasterDataView from '../views/MasterDataView';
 import OnlineTaskView from '../views/OnlineTaskView';
 import UserMasterView from '../views/admin/UserMasterView';
+import AuditLogView from '../views/admin/AuditLogView';
 
 // Technical Loading Screen during initial session hydration
 function AppLoadingScreen() {
@@ -295,6 +296,36 @@ function UserMasterRoute() {
   );
 }
 
+function AuditLogRoute() {
+  const { currentRole, currentUser, refreshData } = useAppContext();
+  const isAdmin = currentUser?.role === 'admin' || 
+                  currentUser?.roleId === 'ADMIN' || 
+                  currentRole?.role === 'admin' || 
+                  currentRole?.roleId === 'ADMIN' || 
+                  currentRole?.id === 'ADMIN' || 
+                  (currentRole?.level && currentRole.level >= 99);
+
+  if (!isAdmin) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 bg-white rounded-3xl border border-slate-200 shadow-sm my-6">
+        <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center mb-4 text-2xl font-bold">🔒</div>
+        <h2 className="text-xl font-bold text-slate-800 mb-2">สิทธิ์การเข้าถึงถูกจำกัด (Restricted Access)</h2>
+        <p className="text-sm text-slate-500 max-w-md">หน้าบันทึกประวัติระบบ (Audit Logs) สงวนสิทธิ์สำหรับผู้ดูแลระบบ (System Admin) เท่านั้น</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full space-y-6 pb-10">
+      <AuditLogView 
+        currentRole={currentRole} 
+        currentUser={currentUser}
+        onRefresh={refreshData}
+      />
+    </div>
+  );
+}
+
 // ── Router Definition with Semantic Paths (No Login Gate, Direct Entry) ──
 export const router = createBrowserRouter([
   {
@@ -336,7 +367,11 @@ export const router = createBrowserRouter([
           { path: 'master-data', element: <MasterDataRoute /> },
           { path: 'master-data/users', element: <UserMasterRoute /> },
           { path: 'admin/users', element: <UserMasterRoute /> },
+          { path: 'admin/audit-logs', element: <AuditLogRoute /> },
+          { path: 'audit-logs', element: <Navigate to="/admin/audit-logs" replace /> },
           { path: 'online-tasks', element: <OnlineTaskRoute /> },
+          { path: 'online-procurement', element: <Navigate to="/online-tasks" replace /> },
+          { path: 'procurement/online', element: <Navigate to="/online-tasks" replace /> },
 
           // 404 Inside Layout
           { path: '*', element: <NotFoundView /> }

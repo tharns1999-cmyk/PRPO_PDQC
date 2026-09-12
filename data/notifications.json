@@ -1,1 +1,110 @@
-[]
+[
+  {
+    "id": "NOTI-1789173405482-776",
+    "type": "STOCK_ISSUED",
+    "typeInfo": {
+      "id": "STOCK_ISSUED",
+      "label": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+      "badgeColor": "bg-slate-100 text-slate-800 border-slate-200",
+      "icon": "ArrowDownRight",
+      "colorHex": "#475569",
+      "priority": "INFO"
+    },
+    "title": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+    "message": "เบิกจ่าย อาหารเลี้ยงเชื้อ Plate Count Agar (PCA) สำหรับทดสอบจุลชีววิทยา (500g) (QC-AGR-PCA) จำนวน 2 กรัม คงเหลือ 2496 กรัม",
+    "docNo": "REQ-5482",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-QC-005",
+    "department": "QC",
+    "targetRoles": [
+      "REQUESTER_QC",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "Admin System",
+    "timestamp": "2026-09-12T00:36:45.482Z",
+    "timeFormatted": "12/9/69 07:36",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789173402711-695",
+    "type": "STOCK_ISSUED",
+    "typeInfo": {
+      "id": "STOCK_ISSUED",
+      "label": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+      "badgeColor": "bg-slate-100 text-slate-800 border-slate-200",
+      "icon": "ArrowDownRight",
+      "colorHex": "#475569",
+      "priority": "INFO"
+    },
+    "title": "เบิกจ่ายสินค้าสำเร็จ (-OUT)",
+    "message": "เบิกจ่าย อาหารเลี้ยงเชื้อ Plate Count Agar (PCA) สำหรับทดสอบจุลชีววิทยา (500g) (QC-AGR-PCA) จำนวน 2 กรัม คงเหลือ 2498 กรัม",
+    "docNo": "REQ-2711",
+    "refDocType": "STOCK",
+    "refDocId": "PROD-QC-005",
+    "department": "QC",
+    "targetRoles": [
+      "REQUESTER_QC",
+      "ADMIN"
+    ],
+    "amount": null,
+    "actor": "Admin System",
+    "timestamp": "2026-09-12T00:36:42.711Z",
+    "timeFormatted": "12/9/69 07:36",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789172239513-872",
+    "type": "ONLINE_TASK",
+    "typeInfo": {
+      "id": "ONLINE_TASK",
+      "label": "งานสั่งซื้อออนไลน์ (Shopee/Lazada)",
+      "badgeColor": "bg-purple-100 text-purple-800 border-purple-200",
+      "icon": "ShoppingBag",
+      "colorHex": "#7C3AED",
+      "priority": "URGENT"
+    },
+    "title": "มีงานสั่งซื้อออนไลน์ใหม่ (Shopee / Lazada)",
+    "message": "ใบสั่งซื้อออนไลน์เลขที่ PO-QC-2026-001 อ้างอิง PR QC001/2026 ยอดประเมิน ฿2,060 รอคุณนัทดำเนินการสั่งซื้อ",
+    "docNo": "PO-QC-2026-001",
+    "refDocType": "PO",
+    "refDocId": "PO-1789172239513-1",
+    "department": "QC",
+    "targetRoles": [
+      "ONLINE_PURCHASER",
+      "ADMIN"
+    ],
+    "amount": 2060,
+    "actor": "คุณประเสริฐ (Plant Mgr)",
+    "timestamp": "2026-09-12T00:17:19.513Z",
+    "timeFormatted": "12/9/69 07:17",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789172213773-988",
+    "type": "PR_REVIEWED",
+    "typeInfo": {
+      "id": "PR_REVIEWED",
+      "label": "PR ผ่านการตรวจ รออนุมัติ (Final Approve)",
+      "badgeColor": "bg-blue-100 text-blue-800 border-blue-200",
+      "icon": "ShieldCheck",
+      "colorHex": "#2563EB",
+      "priority": "URGENT"
+    },
+    "title": "PR ผ่านการตรวจสอบแล้ว รออนุมัติสั่งซื้อ (Final Approve)",
+    "message": "ใบขอซื้อเลขที่ QC001/2026 แผนก QC ยอดเงิน ฿2,060 ผ่านการตรวจ Level 1 แล้ว รอคุณประเสริฐ (Plant Manager) อนุมัติ",
+    "docNo": "QC001/2026",
+    "refDocType": "PR",
+    "refDocId": "PR-1789172200035-CR4",
+    "department": "QC",
+    "targetRoles": [
+      "PLANT_MANAGER",
+      "ADMIN"
+    ],
+    "amount": 2060,
+    "actor": "คุณสมชาย (Asst. Mgr)",
+    "timestamp": "2026-09-12T00:16:53.773Z",
+    "timeFormatted": "12/9/69 07:16",
+    "isRead": false
+  }
+]

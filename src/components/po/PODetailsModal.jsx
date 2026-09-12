@@ -39,8 +39,26 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
   const isPlantManager = role.includes('plant_mgr') || role.includes('plant manager');
   const isPurchaser = role.includes('purchaser');
 
-  const rawVendorName = selectedPO.vendorName && selectedPO.vendorName !== 'Shopee / Lazada (ระบุร้านภายหลัง)' ? selectedPO.vendorName : '';
-  const displayVendor = getVendorDisplayName(selectedPO.vendor || selectedPO.shopName || rawVendorName);
+  // Multi-store resolution for Online PO (Directive 3)
+  const isOnlinePO = selectedPO.purchaseChannel === 'ONLINE' || 
+                     selectedPO.purchaseType === 'ONLINE' || 
+                     (selectedPO.items || []).some(it => it.actualStoreName || it.storeName || it.storePlatform);
+  const onlineStores = Array.from(new Set(
+    (selectedPO.items || [])
+      .map(it => (it.actualStoreName || it.storeName || '').trim())
+      .filter(s => s && !s.includes('ระบุร้านภายหลัง'))
+  ));
+
+  const rawVendorName = selectedPO.vendorName && !selectedPO.vendorName.includes('ระบุร้านภายหลัง') ? selectedPO.vendorName : '';
+  let resolvedDisplayVendor = getVendorDisplayName(selectedPO.vendor || selectedPO.shopName || rawVendorName);
+  if (isOnlinePO) {
+    if (onlineStores.length === 1) {
+      resolvedDisplayVendor = onlineStores[0];
+    } else if (onlineStores.length > 1) {
+      resolvedDisplayVendor = 'แพลตฟอร์ม Shopee / Lazada Marketplace (สั่งซื้อออนไลน์)';
+    }
+  }
+  const displayVendor = resolvedDisplayVendor;
   const hasAssignedVendor = Boolean((selectedPO.vendorId && selectedPO.vendorId !== 'ONLINE') || (displayVendor && displayVendor.trim().length > 0) || (selectedPO.vendorId === 'ONLINE' && displayVendor));
 
   const [isReceiving, setIsReceiving] = useState(false);
@@ -910,6 +928,11 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                             </td>
                             <td className="px-3 py-3">
                               <div className="font-semibold text-slate-800 leading-snug break-words max-w-xs">{item.name}</div>
+                              {(isOnlinePO || item.actualStoreName || item.storeName) && (
+                                <span className="text-[11px] text-slate-500 font-sans italic block mt-0.5">
+                                  [ร้านค้า: {item.actualStoreName || item.storeName || (onlineStores.length === 1 ? onlineStores[0] : (selectedPO.vendorName || '-'))}]
+                                </span>
+                              )}
                               {(() => {
                                 const rawUrl = getProductUrl(item);
                                 if (!rawUrl) return null;

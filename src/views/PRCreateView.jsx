@@ -5,7 +5,7 @@ import { useAppContext } from '../context/AppContext';
 import { 
   ArrowLeft, AlertTriangle, Plus, Minus, Trash2, Building2, 
   Globe, Sparkles, CheckCircle2, ShoppingCart, 
-  Factory, Building, Receipt, Loader2, Wallet
+  Factory, Building, Receipt, Loader2, Wallet, Link as LinkIcon
 } from 'lucide-react';
 import { MEMO_THRESHOLD, DEPARTMENTS } from '../config/constants';
 import FileUploader from '../components/common/FileUploader';
@@ -135,7 +135,6 @@ export default function PRCreateView({
   }, [masterVendors, selectedVendorId]);
 
   // File attachments
-  const [onlineLink, setOnlineLink] = useState(editingPR?.specUrl || '');
   const [quotationFiles, setQuotationFiles] = useState(() => {
     return (editingPR?.attachments || []).filter(a => a.category === 'QUOTATION' || a.type === 'application/pdf');
   });
@@ -214,6 +213,8 @@ export default function PRCreateView({
         discountPercent: parseFloat(it.discountPercent) || 0,
         discountAmount: parseFloat(it.discountAmount) || 0,
         vendorId: it.vendorId || it.supplierId || '',
+        platform: it.platform || 'Shopee',
+        storeName: it.storeName || '',
         onlineUrl: getProductUrl(it) || '',
         productUrl: getProductUrl(it) || '',
         source: it.source === 'OFFICE' ? 'OFFICE' : 'FACTORY',
@@ -235,7 +236,10 @@ export default function PRCreateView({
         discountPercent: 0,
         discountAmount: 0,
         vendorId: getDefaultVendorId(preselectedProduct),
+        platform: 'Shopee',
+        storeName: '',
         onlineUrl: '',
+        productUrl: '',
         source: 'FACTORY'
       }];
     }
@@ -250,7 +254,10 @@ export default function PRCreateView({
       discountPercent: 0,
       discountAmount: 0,
       vendorId: getDefaultVendorId(initialList[0]),
+      platform: 'Shopee',
+      storeName: '',
       onlineUrl: '',
+      productUrl: '',
       source: 'FACTORY'
     }];
   });
@@ -268,7 +275,10 @@ export default function PRCreateView({
             discountPercent: 0,
             discountAmount: 0,
             vendorId: getDefaultVendorId(availableProducts[0]),
+            platform: 'Shopee',
+            storeName: '',
             onlineUrl: '',
+            productUrl: '',
             source: 'FACTORY'
           }];
         }
@@ -395,6 +405,10 @@ export default function PRCreateView({
         discountPercent: 0, 
         discountAmount: 0, 
         vendorId: getDefaultVendorId(defaultProd),
+        platform: 'Shopee',
+        storeName: '',
+        onlineUrl: '',
+        productUrl: '',
         source: 'FACTORY',
         isCustom: false 
       }
@@ -425,7 +439,10 @@ export default function PRCreateView({
         discountPercent: 0,
         discountAmount: 0,
         vendorId: current.vendorId || masterVendors[0]?.id || '',
+        platform: current.platform || 'Shopee',
+        storeName: current.storeName || '',
         onlineUrl: current.onlineUrl || '',
+        productUrl: current.productUrl || current.onlineUrl || '',
         source: current.source || 'FACTORY'
       };
     } else {
@@ -442,9 +459,29 @@ export default function PRCreateView({
         discountPercent: 0,
         discountAmount: 0,
         vendorId: current.vendorId || getDefaultVendorId(defaultProd),
+        platform: current.platform || 'Shopee',
+        storeName: current.storeName || '',
         onlineUrl: current.onlineUrl || '',
+        productUrl: current.productUrl || current.onlineUrl || '',
         source: current.source || 'FACTORY'
       };
+    }
+    setPrItems(updated);
+  };
+
+  // Smart Item Link URL handler with auto-detect platform logic (Directive 2)
+  const handleUrlChange = (index, value) => {
+    const updated = [...prItems];
+    const url = value || '';
+    updated[index].onlineUrl = url;
+    updated[index].productUrl = url;
+
+    // Auto-detect platform logic: 'shopee' -> 'Shopee', 'lazada' -> 'Lazada'
+    const lower = url.toLowerCase();
+    if (lower.includes('shopee')) {
+      updated[index].platform = 'Shopee';
+    } else if (lower.includes('lazada')) {
+      updated[index].platform = 'Lazada';
     }
     setPrItems(updated);
   };
@@ -453,10 +490,16 @@ export default function PRCreateView({
     const updated = [...prItems];
     updated[index][field] = value;
 
-    // Keep productUrl and onlineUrl synchronized
+    // Keep productUrl and onlineUrl synchronized with platform auto-detection
     if (field === 'onlineUrl' || field === 'productUrl') {
       updated[index].onlineUrl = value;
       updated[index].productUrl = value;
+      const lower = (value || '').toLowerCase();
+      if (lower.includes('shopee')) {
+        updated[index].platform = 'Shopee';
+      } else if (lower.includes('lazada')) {
+        updated[index].platform = 'Lazada';
+      }
     }
     
     // Auto-update price and preferred vendor when product changes
@@ -526,9 +569,9 @@ export default function PRCreateView({
       }
 
       if (isOnline && !requiresMemo) {
-        const hasLink = !!onlineLink.trim() || prItems.some(item => !!(item.productUrl || item.onlineUrl || '').trim());
+        const hasLink = prItems.some(item => !!(item.productUrl || item.onlineUrl || '').trim());
         if (!hasLink) {
-          return modalService.warning('กรุณาระบุ Online Link (Shopee/Lazada) สำหรับการสั่งซื้อออนไลน์อย่างน้อย 1 รายการ หรือในส่วนรายละเอียดเอกสาร');
+          return modalService.warning('กรุณาระบุลิงก์สินค้า (Shopee/Lazada/เว็บไซต์) สำหรับการสั่งซื้อออนไลน์อย่างน้อย 1 รายการ');
         }
       }
       
@@ -587,6 +630,8 @@ export default function PRCreateView({
           supplierName: vName,
           onlineUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
           productUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
+          platform: item.platform || 'Shopee',
+          storeName: item.storeName || '',
           total: rowTotal,
           source: itemSource,
           isCustom: Boolean(item.isCustom),
@@ -719,7 +764,7 @@ export default function PRCreateView({
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in pb-16">
+    <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in pb-24 lg:pb-32">
       
       {/* ── Top Header & Navigation ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -907,20 +952,6 @@ export default function PRCreateView({
                 )}
               </div>
             )}
-
-            {/* Online Channel URL helper (if ONLINE is selected) */}
-            {purchaseChannel === 'ONLINE' && (
-              <div className="pt-2 border-t border-slate-100 flex items-center gap-2.5 animate-fade-in">
-                <Globe className="w-4 h-4 text-purple-600 shrink-0" />
-                <input
-                  type="url"
-                  value={onlineLink}
-                  onChange={e => setOnlineLink(e.target.value)}
-                  placeholder="ลิงก์ร้านค้าหรือหน้าตะกร้าหลัก (Shopee / Lazada / เว็บไซต์ผู้จำหน่าย)..."
-                  className="flex-1 bg-purple-50/30 border border-purple-200 rounded-xl px-3.5 py-2 text-xs text-purple-950 placeholder:text-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
-                />
-              </div>
-            )}
           </div>
 
           {/* Card 2: Minimalist Items Selection List (Directive 4) */}
@@ -985,6 +1016,23 @@ export default function PRCreateView({
                               required
                             />
                           )}
+
+                          {/* Clean Status Subtext under Product / SKU (Directive 3) */}
+                          {selProd ? (
+                            <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-400 font-mono flex-wrap">
+                              <span>รหัส: <strong className="font-semibold text-slate-600">{selProd.code}</strong></span>
+                              <span>•</span>
+                              <span>คงเหลือ: <span className="font-semibold text-slate-600">{selProd.stockBalance || 0} {selProd.stockUnit || selProd.unit}</span></span>
+                              <span>•</span>
+                              <span className={selProd.stockBalance <= selProd.reorderPoint ? 'text-amber-600 font-semibold' : ''}>
+                                ROP: {selProd.reorderPoint || 0} {selProd.stockUnit || selProd.unit}
+                              </span>
+                            </div>
+                          ) : item.isCustom ? (
+                            <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-400 font-mono">
+                              <span className="text-purple-600 font-medium">สินค้านอกแคตตาล็อก (Non-Catalog)</span>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
 
@@ -1077,7 +1125,7 @@ export default function PRCreateView({
                       </div>
                     </div>
 
-                    {/* Sub-row: Destination pill switcher & Minimalist Subtle Stock Chips */}
+                    {/* Sub-row: Destination pill switcher & Ghost Action Text (Directive 3) */}
                     <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-100 text-xs">
                       <div className="flex flex-wrap items-center gap-2">
                         
@@ -1109,58 +1157,29 @@ export default function PRCreateView({
                           </button>
                         </div>
 
-                        {/* Subtle Minimalist Stock Chips (Directive 4) */}
-                        {selProd && (
-                          <>
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-medium border border-slate-200/60">
-                              <span className="text-slate-400">คงเหลือ:</span>
-                              <span className="font-mono font-semibold text-slate-800 tabular-nums">
-                                {selProd.stockBalance || 0} {selProd.stockUnit || selProd.unit}
+                        {/* Conversion Rate Badge (if applicable) */}
+                        {selProd && (() => {
+                          const effectiveRate = (item.overrideUnit && Number(item.customRate) > 0)
+                            ? Number(item.customRate)
+                            : (Number(selProd.conversionRate) > 0 ? Number(selProd.conversionRate) : 1);
+                          const effectiveStockUnit = (item.overrideUnit && item.customStockUnit?.trim())
+                            ? item.customStockUnit.trim()
+                            : (selProd.stockUnit || selProd.unit || 'ชิ้น');
+
+                          if (effectiveRate > 1 || item.overrideUnit) {
+                            return (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-medium border border-indigo-200/70">
+                                <Sparkles className="w-3 h-3 text-indigo-500" />
+                                <span>เข้าคลัง: {(Number(item.qty || 0) * effectiveRate).toLocaleString()} {effectiveStockUnit}</span>
                               </span>
-                            </span>
-
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${
-                              (selProd.stockBalance <= selProd.reorderPoint)
-                                ? 'bg-amber-50 text-amber-800 border-amber-200/80'
-                                : 'bg-slate-100 text-slate-600 border-slate-200/60'
-                            }`}>
-                              <span className="text-slate-400">ROP:</span>
-                              <span className="font-mono font-semibold tabular-nums">
-                                {selProd.reorderPoint || 0} {selProd.stockUnit || selProd.unit}
-                              </span>
-                            </span>
-
-                            {(() => {
-                              const effectiveRate = (item.overrideUnit && Number(item.customRate) > 0)
-                                ? Number(item.customRate)
-                                : (Number(selProd.conversionRate) > 0 ? Number(selProd.conversionRate) : 1);
-                              const effectiveStockUnit = (item.overrideUnit && item.customStockUnit?.trim())
-                                ? item.customStockUnit.trim()
-                                : (selProd.stockUnit || selProd.unit || 'ชิ้น');
-
-                              if (effectiveRate > 1 || item.overrideUnit) {
-                                return (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-medium border border-indigo-200/70">
-                                    <Sparkles className="w-3 h-3 text-indigo-500" />
-                                    <span>เข้าคลัง: {(Number(item.qty || 0) * effectiveRate).toLocaleString()} {effectiveStockUnit}</span>
-                                  </span>
-                                );
-                              }
-                              return null;
-                            })()}
-                          </>
-                        )}
-
-                        {item.isCustom && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[11px] font-medium border border-purple-200">
-                            <Sparkles className="w-3 h-3" />
-                            สินค้านอกแคตตาล็อก
-                          </span>
-                        )}
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
 
-                      {/* Customization & Non-catalog Toggles */}
-                      <div className="flex items-center gap-2 ml-auto">
+                      {/* Right: Ghost Action Text (Directive 3) */}
+                      <div className="flex items-center gap-3 ml-auto">
                         {selProd && (
                           <button
                             type="button"
@@ -1173,11 +1192,11 @@ export default function PRCreateView({
                                 handleItemChange(idx, 'customStockUnit', selProd.stockUnit || selProd.unit);
                               }
                             }}
-                            className={`text-[11px] font-medium px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
-                              item.overrideUnit ? 'bg-amber-100 text-amber-800' : 'text-slate-400 hover:text-slate-700'
+                            className={`text-[11px] font-medium transition-colors cursor-pointer ${
+                              item.overrideUnit ? 'text-indigo-600 font-semibold' : 'text-slate-400 hover:text-slate-700'
                             }`}
                           >
-                            {item.overrideUnit ? 'สเปกเฉพาะใบนี้ (เปิด)' : '⚙️ สเปกเฉพาะ'}
+                            {item.overrideUnit ? 'สเปกเฉพาะ (เปิดอยู่)' : '+ สเปกเฉพาะ'}
                           </button>
                         )}
 
@@ -1186,7 +1205,7 @@ export default function PRCreateView({
                           onClick={() => handleToggleCustomItem(idx)}
                           className="text-[11px] font-medium text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
                         >
-                          {item.isCustom ? '← เลือกจากระบบ' : '+ นอกแคตตาล็อก'}
+                          {item.isCustom ? '← เลือกจากระบบ' : '+ นอกแคตาล็อก'}
                         </button>
                       </div>
                     </div>
@@ -1229,16 +1248,40 @@ export default function PRCreateView({
                       </div>
                     )}
 
-                    {/* Online Link for item (If channel is ONLINE) */}
+                    {/* Smart Item Link for Online Procurement (Directive 2) */}
                     {purchaseChannel === 'ONLINE' && (
-                      <div className="p-2.5 bg-purple-50/50 border border-purple-200 rounded-xl flex items-center gap-2 animate-fade-in">
-                        <Globe className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                      <div className="mt-2.5 pt-2 border-t border-slate-150/60 flex items-center gap-2 animate-fade-in">
+                        {/* Dropdown / Chip เลือกแพลตฟอร์ม */}
+                        <select 
+                          value={item.platform || 'Shopee'} 
+                          onChange={(e) => handleItemChange(idx, 'platform', e.target.value)}
+                          className="h-8 px-2.5 text-xs font-semibold rounded-lg bg-slate-100 border border-slate-200 text-slate-700 outline-none focus:border-indigo-500 cursor-pointer shrink-0"
+                        >
+                          <option value="Shopee">Shopee</option>
+                          <option value="Lazada">Lazada</option>
+                          <option value="Official">เว็บไซต์ทางการ</option>
+                          <option value="Other">ร้านค้าภายนอก</option>
+                        </select>
+
+                        {/* ช่องกรอก URL สินค้า พร้อมระบบ Auto-detect แพลตฟอร์ม */}
+                        <div className="relative flex-1">
+                          <input
+                            type="url"
+                            placeholder="วางลิงก์หน้าสินค้า (Product URL)..."
+                            value={item.productUrl || item.onlineUrl || ''}
+                            onChange={(e) => handleUrlChange(idx, e.target.value)}
+                            className="w-full h-8 pl-8 pr-3 text-xs rounded-lg bg-slate-50/70 border border-slate-200 focus:bg-white focus:border-indigo-500 font-sans outline-none transition-all"
+                          />
+                          <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5"/>
+                        </div>
+
+                        {/* ช่องระบุชื่อร้านค้าแนะนำ (Optional) */}
                         <input
-                          type="url"
-                          placeholder="ลิงก์สินค้าสำหรับรายการนี้ (Shopee / Lazada / เว็บไซต์)... *"
-                          value={item.productUrl || item.onlineUrl || ''}
-                          onChange={e => handleItemChange(idx, 'productUrl', e.target.value)}
-                          className="flex-1 bg-white border border-purple-200 rounded-lg px-2.5 py-1 text-xs text-purple-950 placeholder:text-purple-400 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          type="text"
+                          placeholder="ชื่อร้านค้า (ถ้าทราบ)"
+                          value={item.storeName || ''}
+                          onChange={(e) => handleItemChange(idx, 'storeName', e.target.value)}
+                          className="w-44 h-8 px-3 text-xs rounded-lg bg-slate-50/70 border border-slate-200 focus:bg-white focus:border-indigo-500 text-slate-700 outline-none transition-all shrink-0"
                         />
                       </div>
                     )}
@@ -1406,7 +1449,7 @@ export default function PRCreateView({
            RIGHT COLUMN: Sticky Sidebar (lg:col-span-4)
            Contains: Payment Summary, Department Budget Usage Bar, Actions
            ══════════════════════════════════════════════════════════════ */}
-        <div className="lg:col-span-4 lg:sticky lg:top-6 space-y-5">
+        <div className="lg:col-span-4 lg:sticky lg:top-6 space-y-5 pb-8 lg:pb-16">
           
           {/* Box 1: Payment Summary Card (Directive 1 & 2) */}
           <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-4">
@@ -1682,8 +1725,8 @@ export default function PRCreateView({
             </div>
           )}
 
-          {/* Box 3: Main Action Buttons (Directive 1 & 5) */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm space-y-2.5">
+          {/* Box 3: Main Action Buttons (Directive 4) */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-sm space-y-3">
             {/* Vendor validation warning */}
             {isMissingVendor && (
               <div className="p-2.5 bg-rose-50 border border-rose-200/80 rounded-xl text-center">
@@ -1694,12 +1737,12 @@ export default function PRCreateView({
               </div>
             )}
 
-            {/* Primary Submit Button */}
+            {/* Primary Submit Button (Directive 4) */}
             <button
               type="button"
               disabled={isSubmitting || isMissingVendor}
               onClick={(e) => handleCreateSubmit(e, false)}
-              className={`w-full py-3 rounded-xl font-semibold text-xs sm:text-sm text-white bg-indigo-600 hover:bg-indigo-700 shadow-md hover:shadow-lg active:scale-[0.99] transition-all cursor-pointer flex items-center justify-center gap-2 ${
+              className={`h-11 w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs hover:shadow-sm active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer ${
                 isSubmitting || isMissingVendor ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
               }`}
             >
@@ -1720,21 +1763,23 @@ export default function PRCreateView({
               type="button"
               disabled={isSubmitting}
               onClick={(e) => handleCreateSubmit(e, true)}
-              className={`w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 shadow-2xs hover:shadow-xs transition-all cursor-pointer ${
+              className={`h-10 w-full rounded-xl font-semibold text-xs text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 shadow-2xs hover:shadow-xs transition-all cursor-pointer ${
                 isSubmitting ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''
               }`}
             >
               {editingPR ? 'บันทึกแบบร่าง (Save Draft)' : 'บันทึกแบบร่าง (Draft)'}
             </button>
 
-            {/* Cancel / Back Link */}
-            <button
-              type="button"
-              onClick={handleCancelAndBack}
-              className="w-full py-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors text-center cursor-pointer"
-            >
-              ยกเลิกและย้อนกลับ
-            </button>
+            {/* Cancel / Back Link (Directive 4: comfortable bottom spacing) */}
+            <div className="pt-1.5 pb-0.5">
+              <button
+                type="button"
+                onClick={handleCancelAndBack}
+                className="w-full py-2 text-xs text-slate-400 hover:text-slate-600 transition-colors text-center cursor-pointer font-medium"
+              >
+                ยกเลิกและย้อนกลับ
+              </button>
+            </div>
           </div>
 
         </div>

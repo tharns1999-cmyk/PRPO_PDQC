@@ -1,3 +1,5 @@
-import OnlineTaskView from '../OnlineTaskView';
+import OnlineTaskView, { OnlineOrderCard, OnlinePurchaseActionCard, OnlineTaskCard } from '../OnlineTaskView';
+
 export default OnlineTaskView;
-export * from '../OnlineTaskView';
+export { OnlineOrderCard, OnlinePurchaseActionCard, OnlineTaskCard, OnlineTaskView };
+

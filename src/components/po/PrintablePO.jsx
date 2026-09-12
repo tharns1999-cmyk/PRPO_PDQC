@@ -228,6 +228,32 @@ export default function PrintablePO({ po }) {
         ? Number(po.totalAmount)
         : parseFloat((subtotal + vatAmount).toFixed(2))));
 
+  // Online PO & Store Resolution (Directive 3)
+  const isOnlinePO = po.purchaseType === 'ONLINE' || 
+                     po.purchaseChannel === 'ONLINE' || 
+                     po.isOnlineOrder || 
+                     (po.items || []).some(it => it.isOnlineItem || it.actualStoreName || it.storeName || it.storePlatform);
+
+  const validItemStores = (po.items || [])
+    .map(it => (it.actualStoreName || it.storeName || '').trim())
+    .filter(name => name && !name.includes('ระบุร้านภายหลัง'));
+  const distinctStores = Array.from(new Set(validItemStores));
+
+  let resolvedVendorName = po.vendorName || po.vendorDetails?.name || '-';
+  if (isOnlinePO) {
+    if (distinctStores.length === 1) {
+      resolvedVendorName = distinctStores[0];
+    } else if (distinctStores.length > 1) {
+      resolvedVendorName = 'แพลตฟอร์ม Shopee / Lazada Marketplace (สั่งซื้อออนไลน์)';
+    } else if (po.storeName && !po.storeName.includes('ระบุร้านภายหลัง')) {
+      resolvedVendorName = po.storeName;
+    } else if (po.vendorName && !po.vendorName.includes('ระบุร้านภายหลัง')) {
+      resolvedVendorName = po.vendorName;
+    } else {
+      resolvedVendorName = 'แพลตฟอร์ม Shopee / Lazada Marketplace (สั่งซื้อออนไลน์)';
+    }
+  }
+
   return (
     <div
       className="font-sarabun text-slate-900 bg-white p-8 max-w-[210mm] mx-auto text-sm thai-doc-container"
@@ -297,7 +323,7 @@ export default function PrintablePO({ po }) {
         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
           <div>
             <span className="font-medium text-slate-600">{cleanThaiText('ชื่อบริษัท/ร้านค้า:')}</span>{' '}
-            <span className="text-slate-900 font-semibold break-words">{cleanThaiText(po.vendorName || po.vendorDetails?.name || '-')}</span>
+            <span className="text-slate-900 font-semibold break-words">{cleanThaiText(resolvedVendorName)}</span>
           </div>
           <div>
             <span className="font-medium text-slate-600">{cleanThaiText('ผู้ติดต่อ:')}</span>{' '}
@@ -331,16 +357,29 @@ export default function PrintablePO({ po }) {
           </tr>
         </thead>
         <tbody>
-          {(po.items || []).map((item, index) => (
-            <tr key={index}>
-              <td className="border border-black p-4 text-center">{index + 1}</td>
-              <td className="border border-black p-4 text-center font-mono text-sm">{cleanThaiText(item.code)}</td>
-              <td className="border border-black p-4 break-words whitespace-normal text-xs leading-relaxed">{cleanThaiText(item.name)}</td>
-              <td className="border border-black p-4 text-center">{item.qty} {cleanThaiText(item.unit)}</td>
-              <td className="border border-black p-4 text-right">{(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-              <td className="border border-black p-4 text-right">{(item.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-            </tr>
-          ))}
+          {(po.items || []).map((item, index) => {
+            const itemActualStore = (item.actualStoreName || item.storeName || (isOnlinePO ? (distinctStores.length === 1 ? distinctStores[0] : (po.storeName || po.vendorName)) : '') || '').trim();
+            return (
+              <tr key={index}>
+                <td className="border border-black p-4 text-center">{index + 1}</td>
+                <td className="border border-black p-4 text-center font-mono text-sm">{cleanThaiText(item.code)}</td>
+                <td className="border border-black p-4 break-words whitespace-normal text-xs leading-relaxed">
+                  <div className="font-medium text-slate-900">{cleanThaiText(item.name)}</div>
+                  {item.specification && (
+                    <div className="text-[11px] text-slate-600 mt-0.5">{cleanThaiText(item.specification)}</div>
+                  )}
+                  {(isOnlinePO || item.actualStoreName || item.storeName) && (
+                    <span className="text-[11px] text-slate-500 font-sans italic block mt-0.5">
+                      [ร้านค้า: {cleanThaiText(itemActualStore || '-')}]
+                    </span>
+                  )}
+                </td>
+                <td className="border border-black p-4 text-center">{item.qty} {cleanThaiText(item.unit)}</td>
+                <td className="border border-black p-4 text-right">{(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                <td className="border border-black p-4 text-right">{(item.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+              </tr>
+            );
+          })}
 
           {(po.items || []).length < 5 && Array.from({ length: 5 - (po.items || []).length }).map((_, i) => (
             <tr key={`empty-${i}`}>

@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from '../config/constants.js';
+import { logAuditEvent } from './auditLogger.js';
 
 /**
  * Audit Service for tracking all system actions, document status changes, 
@@ -46,6 +47,41 @@ export const auditService = {
       const existing = this.getLogs();
       const updated = [logEntry, ...existing].slice(0, 1000); // Keep latest 1000 logs
       localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS || 'prpo_audit_logs', JSON.stringify(updated));
+
+      // Also forward to centralized auditLogger for app_audit_logs
+      try {
+        const moduleMap = {
+          PR: 'PURCHASE',
+          PO: 'PURCHASE',
+          STOCK: 'INVENTORY',
+          PRODUCT: 'MASTER',
+          VENDOR: 'MASTER',
+          USAGE_UNIT: 'MASTER',
+          DEPARTMENT: 'MASTER',
+          USER: 'RBAC',
+          SIGNATURE: 'RBAC',
+          AUTH: 'RBAC',
+          BUDGET: 'BUDGET'
+        };
+        const upperAct = String(action || '').toUpperCase();
+        let normAction = 'UPDATE';
+        if (upperAct.includes('APPROV')) normAction = 'APPROVE';
+        else if (upperAct.includes('REJECT') || upperAct.includes('CANCEL')) normAction = 'REJECT';
+        else if (upperAct.includes('RECEIV') || upperAct.includes('ISSUE')) normAction = 'RECEIVE';
+        else if (upperAct.includes('CREATE') || upperAct.includes('NEW') || upperAct.includes('SUBMIT')) normAction = 'CREATE';
+        else if (upperAct.includes('UPDATE') || upperAct.includes('EDIT') || upperAct.includes('SAVE')) normAction = 'UPDATE';
+
+        logAuditEvent({
+          action: normAction,
+          module: moduleMap[docType] || 'SYSTEM',
+          targetRef: docNo || '-',
+          summary: details || `${action} (${docNo || '-'})`,
+          changes,
+          currentUser: typeof actor === 'object' ? actor : { name: actorName, role: actorRole, department: actorDept }
+        });
+      } catch (logErr) {
+        console.warn('[AuditService] auditLogger sync error:', logErr);
+      }
 
       console.log(`[AuditService] Action logged: ${action} by ${actorName} (${docNo})`);
 

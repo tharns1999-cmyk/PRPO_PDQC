@@ -4,7 +4,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, Sparkles, ScrollText, ReceiptText, Boxes, Zap, 
   SlidersHorizontal, WalletCards, ShoppingBag, Factory, X,
-  User, ArrowRightLeft
+  User, ArrowRightLeft, ShieldCheck
 } from 'lucide-react';
 import { workflowEngine } from '../../services/workflowEngine';
 import NotificationBell from './NotificationBell';
@@ -252,6 +252,14 @@ export default function Sidebar({
           ariaLabel: 'ข้อมูลระบบ',
           icon: SlidersHorizontal, 
           visible: !isOnlinePurchaser 
+        },
+        { 
+          id: 'audit-logs', 
+          path: '/admin/audit-logs', 
+          label: 'บันทึกระบบ (Audit Logs)',
+          ariaLabel: 'บันทึกระบบ (Audit Logs)',
+          icon: ShieldCheck, 
+          visible: isAdmin 
         },
       ]
     }
