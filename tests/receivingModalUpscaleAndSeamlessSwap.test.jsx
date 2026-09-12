@@ -30,17 +30,18 @@ describe('ReceivingModal Upscale Typography & Seamless Modal Swapping', () => {
     storageService.resetData();
   });
 
-  it('1. Renders seamless "← กลับไปใบ PO" button when onBack or onBackToPO is provided', () => {
+  it('1. Renders seamless "กลับไปใบ PO" button with single icon when onBack or onBackToPO is provided', () => {
     const htmlWithBack = renderToStaticMarkup(
       <ReceivingModal po={basePO} isOpen={true} onBack={() => {}} />
     );
-    expect(htmlWithBack).toContain('← กลับไปใบ PO');
+    expect(htmlWithBack).toContain('กลับไปใบ PO');
+    expect(htmlWithBack).not.toContain('← กลับไปใบ PO');
     expect(htmlWithBack).toContain('title="กลับไปที่หน้าต่างใบสั่งซื้อ (PO)"');
 
     const htmlWithoutBack = renderToStaticMarkup(
       <ReceivingModal po={basePO} isOpen={true} />
     );
-    expect(htmlWithoutBack).not.toContain('← กลับไปใบ PO');
+    expect(htmlWithoutBack).not.toContain('กลับไปใบ PO');
   });
 
   it('2. Upscales Header and Table Header Typography', () => {

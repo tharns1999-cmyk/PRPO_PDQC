@@ -1078,6 +1078,22 @@ export const workflowEngine = {
     return generateNextPOId(pos, deptId, new Date().getFullYear(), offset);
   },
 
+  // Validate PR Business Rules (Directive 1)
+  validatePR(prData, isDraft = false) {
+    const draftFlag = isDraft || Boolean(prData?.isDraft);
+    const isOnline = (prData?.purchaseChannel || prData?.orderType) === 'ONLINE';
+    if (!draftFlag && isOnline) {
+      const hasMissingImage = (prData?.items || []).some(item => {
+        const imgs = item.images || item.attachments || [];
+        return !imgs || imgs.length === 0;
+      });
+      if (hasMissingImage) {
+        throw new Error('กรุณาแนบรูปภาพสินค้าให้ครบทุกรายการสำหรับงานจัดซื้อออนไลน์');
+      }
+    }
+    return true;
+  },
+
   // Create PR (Draft or Submitted)
   async createPR(prData, user, isDraft = false) {
     const prs = storageService.getPRs() || [];
@@ -1091,6 +1107,11 @@ export const workflowEngine = {
 
     const draftFlag = isDraft || Boolean(prData.isDraft);
     const status = draftFlag ? 'DRAFT' : 'SUBMITTED';
+
+    // Mandatory Image Enforcement for Online Procurement (Directive 1)
+    if (prData.enforceImageValidation || prData.validateImages) {
+      this.validatePR(prData, draftFlag);
+    }
 
     const headerVendorId = prData.purchaseChannel === 'SELF' ? (prData.vendorId || prData.supplierId || prData.vendor?.id || null) : null;
     const headerVendorName = prData.purchaseChannel === 'SELF' ? (prData.vendorName || prData.supplierName || prData.vendor?.name || null) : null;
@@ -1108,8 +1129,14 @@ export const workflowEngine = {
       const vId = headerVendorId || item.vendorId || item.supplierId || null;
       const vName = headerVendorName || item.vendorName || item.supplierName || null;
 
+      const userImages = (Array.isArray(item.images) && item.images.length > 0)
+        ? item.images
+        : (Array.isArray(item.attachments) ? item.attachments : []);
+
       return {
         ...item,
+        images: userImages,
+        attachments: userImages,
         purchaseQty: pQty,
         stockQty: sQty,
         qty: pQty,
@@ -1267,6 +1294,11 @@ export const workflowEngine = {
     const pr = prs.find(p => p.id === prId);
     if (!pr) throw new Error('ไม่พบเอกสาร PR ในระบบ');
 
+    const draftFlag = isDraft || Boolean(prData.isDraft);
+    if (prData.enforceImageValidation || prData.validateImages) {
+      this.validatePR({ ...pr, ...prData, isDraft: draftFlag }, draftFlag);
+    }
+
     const formattedItems = (prData.items || []).map(item => {
       const pQty = Number(item.purchaseQty ?? item.qty) || 1;
       const rate = Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1;
@@ -1278,8 +1310,14 @@ export const workflowEngine = {
       const discountAmount = parseFloat(item.discountAmount) || (discountPercent > 0 ? (price * pQty * (discountPercent / 100)) : 0);
       const rowTotal = Math.max(0, (price * pQty) - discountAmount);
 
+      const userImages = (Array.isArray(item.images) && item.images.length > 0)
+        ? item.images
+        : (Array.isArray(item.attachments) ? item.attachments : []);
+
       return {
         ...item,
+        images: userImages,
+        attachments: userImages,
         purchaseQty: pQty,
         stockQty: sQty,
         qty: pQty,
@@ -1356,7 +1394,6 @@ export const workflowEngine = {
 
     const isoNow = new Date().toISOString();
     const timestamp = new Date().toLocaleString('th-TH');
-    const draftFlag = isDraft || Boolean(prData.isDraft);
     const nextStatus = draftFlag ? 'DRAFT' : 'SUBMITTED';
 
     pr.department = prData.department || pr.department;
@@ -1809,10 +1846,14 @@ export const workflowEngine = {
         items: items.map(item => {
           const pQty = Number(item.purchaseQty ?? item.qty) || 0;
           const cleanCode = String(item.code || item.sku || item.productId || '').trim().toUpperCase();
-          const fallbackImages = FALLBACK_SEED_ATTACHMENTS[cleanCode] || [];
-          const rawAttachments = (item.images && item.images.length > 0)
+
+          // ✅ ตรวจสอบรูปภาพจริงของผู้ใช้เป็นลำดับแรก (User Upload First)
+          const userImages = (Array.isArray(item.images) && item.images.length > 0)
             ? item.images
-            : ((item.attachments && item.attachments.length > 0) ? item.attachments : fallbackImages);
+            : ((Array.isArray(item.attachments) && item.attachments.length > 0) ? item.attachments : null);
+
+          // ดึง fallback เฉพาะเมื่อผู้ใช้ไม่ได้แนบรูปมาจริง ๆ เท่านั้น
+          const finalAttachments = userImages || FALLBACK_SEED_ATTACHMENTS[cleanCode] || [];
 
           return {
             ...item,
@@ -1831,8 +1872,8 @@ export const workflowEngine = {
             actualStoreName: item.actualStoreName || item.storeName || '',
             storePlatform: item.storePlatform || item.platform || 'Shopee',
             orderRefNo: item.orderRefNo || '',
-            attachments: rawAttachments,
-            images: rawAttachments,
+            attachments: finalAttachments,
+            images: finalAttachments,
             productUrl: item.productUrl || item.onlineUrl || item.link || ''
           };
         }),
@@ -2612,9 +2653,9 @@ export const workflowEngine = {
         });
       }
 
-    } else if (['CLOSE_WITH_REFUND', 'REFUND'].includes(resolution.type)) {
-      po.status = 'CLOSED';
-      po.claimStatus = 'REFUNDED';
+    } else if (['CLOSE_WITH_REFUND', 'REFUND', 'CANCEL'].includes(resolution.type)) {
+      po.status = 'COMPLETED';
+      po.claimStatus = resolution.type === 'CANCEL' ? 'CANCELLED' : 'REFUNDED';
 
       // ── Budget Restore: คืนงบประมาณกลับฝ่ายต้นทาง ──
       const refundAmt = Math.round((Number(resolution.refundAmount) || 0) * 100) / 100;
@@ -2651,18 +2692,41 @@ export const workflowEngine = {
           amount: refundAmt,
           refId: po.poNo,
           poId: po.id,
-          note: `ได้เงินคืนจากการเคลมสินค้า (PO: ${po.poNo}) — ${resolution.note || '-'}`,
+          note: `จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${refundAmt.toLocaleString()} เข้าแผนก (PO: ${po.poNo}) — ${resolution.note || '-'}`,
           date: new Date().toISOString(),
           resolvedBy: user.name
         });
       }
 
-      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: ${resolution.type} — ได้รับเงินคืน ฿${refundAmt.toLocaleString()} ปิดเคสแล้ว | ${resolution.note} โดย ${user.name}`;
+      noteMsg = `[${channel} CLAIM RESOLVED] จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${refundAmt.toLocaleString()} เข้าแผนก | ${resolution.note || ''} โดย ${user.name}`;
     } else if (resolution.type === 'CLOSE_NO_ACTION') {
-      po.status = 'CLOSED';
-      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: CLOSE_NO_ACTION — ปิดเคสโดยไม่ดำเนินการต่อ | ${resolution.note} โดย ${user.name}`;
+      po.status = 'COMPLETED';
+      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: CLOSE_NO_ACTION — ปิดเคสโดยไม่ดำเนินการต่อ | ${resolution.note || ''} โดย ${user.name}`;
     }
 
+    // Support store-level claims for multi-store online procurement
+    if (resolution.storeKey) {
+      po.storeClaims = po.storeClaims || {};
+      po.storeClaims[resolution.storeKey] = {
+        status: 'RESOLVED',
+        type: resolution.type,
+        refundAmount: Number(resolution.refundAmount || 0),
+        note: resolution.note || '',
+        newTrackingNo: resolution.newTrackingNo || '',
+        expectedDate: resolution.expectedDate || '',
+        resolvedAt: new Date().toISOString(),
+        resolvedBy: user.name
+      };
+
+      if (resolution.allStoresResolved) {
+        po.status = 'COMPLETED';
+        po.claimStatus = 'RESOLVED';
+      } else {
+        po.status = 'IN_CLAIM';
+      }
+    }
+
+    po.activityLog = po.activityLog || [];
     po.activityLog.push({
       action: actionLabel,
       user: user.name,

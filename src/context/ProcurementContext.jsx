@@ -92,7 +92,7 @@ export async function recordGoodsReceipt(poId, grnPayload = {}) {
   }
 
   const isCompletedReceipt = allReceived || nextStatus === 'CLOSED' || nextStatus === 'COMPLETED';
-  if (isCompletedReceipt) {
+  if (isCompletedReceipt && !grnPayload.statusOverride) {
     nextStatus = 'COMPLETED';
   }
 

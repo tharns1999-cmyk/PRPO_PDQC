@@ -66,19 +66,25 @@ export default function OnlineOrderCard({
   const getItemAttachments = (item) => {
     if (!item) return [];
     const cleanCode = String(item.code || item.sku || '').trim().toUpperCase();
-    const fallbackList = getFallbackAttachmentsForCode(cleanCode);
-    const rawList = (item.attachments && item.attachments.length > 0)
+
+    // ✅ ตรวจสอบรูปภาพจริงของผู้ใช้ก่อนเสมอ (User Upload First)
+    const userAttachments = (Array.isArray(item.attachments) && item.attachments.length > 0)
       ? item.attachments
-      : ((item.images && item.images.length > 0) ? item.images : fallbackList);
+      : ((Array.isArray(item.images) && item.images.length > 0) ? item.images : null);
+
+    // ดึง fallback เฉพาะเมื่อผู้ใช้ไม่ได้แนบรูปมาจริง ๆ เท่านั้น
+    const rawList = userAttachments || getFallbackAttachmentsForCode(cleanCode) || [];
 
     return (Array.isArray(rawList) ? rawList : [rawList]).map((img, idx) => {
       if (typeof img === 'string') {
-        return { url: img, name: item.name || `รูปที่ ${idx + 1}` };
+        return { url: img, previewUrl: img, name: item.name || `รูปที่ ${idx + 1}` };
       }
+      const imgUrl = img?.previewUrl || img?.url || img?.dataUrl || '';
       return {
-        url: img.previewUrl || img.url || img.dataUrl || '',
-        name: img.name || item.name || `รูปที่ ${idx + 1}`,
-        type: img.type || 'image/jpeg'
+        url: imgUrl,
+        previewUrl: imgUrl,
+        name: img?.name || item.name || `รูปที่ ${idx + 1}`,
+        type: img?.type || 'image/jpeg'
       };
     }).filter(img => Boolean(img.url));
   };
@@ -176,12 +182,19 @@ export default function OnlineOrderCard({
   // ── State for Items ──
   const [itemData, setItemData] = useState(() => 
     (po.items || []).map((item, idx) => ({
+      ...item,
       id: item.id || item.sku || `item-${idx}`,
       code: item.code || item.sku || '',
       name: item.name || '',
       note: item.note || '',
       unit: item.unit || item.purchaseUnit || 'ชิ้น',
       purchaseUnit: item.purchaseUnit || item.unit || 'ชิ้น',
+      attachments: (Array.isArray(item.attachments) && item.attachments.length > 0)
+        ? item.attachments
+        : (Array.isArray(item.images) ? item.images : []),
+      images: (Array.isArray(item.images) && item.images.length > 0)
+        ? item.images
+        : (Array.isArray(item.attachments) ? item.attachments : []),
       actualStoreName: (item.actualStoreName && !item.actualStoreName.includes('ระบุร้านภายหลัง')) 
         ? item.actualStoreName 
         : (item.storeName && !item.storeName.includes('ระบุร้านภายหลัง')) 
@@ -202,12 +215,19 @@ export default function OnlineOrderCard({
   useEffect(() => {
     setItemData(
       (po.items || []).map((item, idx) => ({
+        ...item,
         id: item.id || item.sku || `item-${idx}`,
         code: item.code || item.sku || '',
         name: item.name || '',
         note: item.note || '',
         unit: item.unit || item.purchaseUnit || 'ชิ้น',
         purchaseUnit: item.purchaseUnit || item.unit || 'ชิ้น',
+        attachments: (Array.isArray(item.attachments) && item.attachments.length > 0)
+          ? item.attachments
+          : (Array.isArray(item.images) ? item.images : []),
+        images: (Array.isArray(item.images) && item.images.length > 0)
+          ? item.images
+          : (Array.isArray(item.attachments) ? item.attachments : []),
         actualStoreName: (item.actualStoreName && !item.actualStoreName.includes('ระบุร้านภายหลัง')) 
           ? item.actualStoreName 
           : (item.storeName && !item.storeName.includes('ระบุร้านภายหลัง')) 
@@ -742,6 +762,7 @@ export default function OnlineOrderCard({
   };
 
   // ── Action: Resolve Store Claim (Mode 2: จัดการเคลมเฉพาะร้านค้า) ──
+  // ── Action: Resolve Store Claim (Mode 2: จัดการเคลมเฉพาะร้านค้า - Directive 4) ──
   const handleResolveStoreClaim = async (storeKey) => {
     const claimState = storeClaimStates[storeKey];
     if (!claimState) return;
@@ -754,9 +775,9 @@ export default function OnlineOrderCard({
       if (!newTrackingNo?.trim()) {
         return modalService.warning('กรุณาระบุเลขพัสดุจัดส่งรอบใหม่ (New Tracking No.)');
       }
-    } else if (claimResolutionType === 'REFUND') {
-      if (refundAmount === '' || isNaN(Number(refundAmount)) || Number(refundAmount) <= 0) {
-        return modalService.warning('กรุณาระบุยอดเงินที่ได้รับคืนจริงให้ถูกต้อง (มากกว่า 0 บาท)');
+    } else if (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL') {
+      if (refundAmount === '' || isNaN(Number(refundAmount)) || Number(refundAmount) < 0) {
+        return modalService.warning('กรุณาระบุยอดเงินที่ได้รับคืนจริงให้ถูกต้อง');
       }
     }
 
@@ -764,11 +785,11 @@ export default function OnlineOrderCard({
       return modalService.warning('กรุณาระบุหมายเหตุ/ความคืบหน้าการติดต่อร้านค้า');
     }
 
-    const resolvedRefundNum = claimResolutionType === 'REFUND' ? Number(refundAmount) : 0;
+    const resolvedRefundNum = (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL') ? Number(refundAmount) : 0;
     const storeObj = storesGroup.find(g => g.storeKey === storeKey);
     const storeName = storeObj ? storeObj.storeName : '';
     
-    const confirmMsg = claimResolutionType === 'REFUND'
+    const confirmMsg = (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL')
       ? `ยืนยันบันทึกผลการเคลมเป็นคืนเงิน ฿${resolvedRefundNum.toLocaleString()} จากร้าน "${storeName}" คืนงบประมาณให้ฝ่าย ${po?.department || ''} และปิดงานของร้านนี้ ใช่หรือไม่?`
       : `ยืนยันบันทึกผลการเคลมเป็นส่งของใหม่จากร้าน "${storeName}" (เลขพัสดุ: ${newTrackingNo.trim()}) ใช่หรือไม่?`;
 
@@ -804,13 +825,25 @@ export default function OnlineOrderCard({
         !g.hasDispute || g.storeKey === storeKey || g.status === 'RESOLVED' || currentStoreClaims[g.storeKey]?.status === 'RESOLVED'
       );
       
+      // Directive 4: เมื่อผู้ใช้กดยืนยันบันทึกผลเจรจาครบทุกร้านใน PO: ปรับสถานะ PO ให้เป็น RESOLVED ➔ COMPLETED
       let nextOrderStatus = po.status;
       if (allOtherDisputesResolved) {
-        const hasRefund = Object.values(nextStoreClaims).some(c => c.type === 'REFUND');
-        if (hasRefund) {
-          nextOrderStatus = 'COMPLETED_WITH_REFUND';
-        } else {
-          nextOrderStatus = 'WAITING_DELIVERY_ROUND_2';
+        nextOrderStatus = 'COMPLETED';
+      }
+
+      // Automated Budget Rollback (Directive 4)
+      if ((claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL') && resolvedRefundNum > 0) {
+        const rollbackReason = `จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${resolvedRefundNum.toLocaleString()} เข้าแผนก (ร้าน: ${storeName}, PO: ${po?.poNo || po?.id})`;
+        const doRollback = rollbackBudget || standaloneRollbackBudget;
+        if (typeof doRollback === 'function') {
+          await doRollback(
+            po.department, 
+            resolvedRefundNum, 
+            rollbackReason, 
+            { docNo: po?.poNo || po?.id, refDocNo: po?.poNo || po?.id, user: currentUser, actor: currentUser?.name || 'Online Purchaser' }
+          );
+        } else if (typeof refundBudget === 'function') {
+          await refundBudget(po.department, resolvedRefundNum);
         }
       }
 
@@ -819,34 +852,39 @@ export default function OnlineOrderCard({
         refundAmount: resolvedRefundNum,
         note: `[ร้าน ${storeName}]: ${(claimNote || '').trim()}`,
         expectedDate: claimExpectedDate || '',
-        newTrackingNo: (newTrackingNo || '').trim()
+        newTrackingNo: (newTrackingNo || '').trim(),
+        storeKey: storeKey,
+        allStoresResolved: allOtherDisputesResolved
       }, currentRole || currentUser);
 
-      if (claimResolutionType === 'REFUND' && resolvedRefundNum > 0) {
-        const refundReason = `คืนเงินเคลมสินค้าร้าน ${storeName} (PO ${po?.poNo || po?.id})`;
-        if (typeof rollbackBudget === 'function') {
-          await rollbackBudget(po.department, resolvedRefundNum, refundReason, { docNo: po?.poNo || po?.id, user: currentUser });
-        } else if (typeof refundBudget === 'function') {
-          await refundBudget(po.department, resolvedRefundNum);
-        } else if (typeof standaloneRollbackBudget === 'function') {
-          await standaloneRollbackBudget(po.department, resolvedRefundNum, refundReason, { docNo: po?.poNo || po?.id, user: currentUser });
-        }
-      }
+      // Directive 4: บันทึก Activity Timeline: "จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿{amount} เข้าแผนก"
+      const timelineTitle = (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL')
+        ? `จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${resolvedRefundNum.toLocaleString()} เข้าแผนก`
+        : `จัดซื้อเจรจาเคลมสำเร็จ ร้าน "${storeName}" ส่งสินค้าใหม่ทดแทน (เลขพัสดุ: ${(newTrackingNo || '').trim() || '-'})`;
 
       const updatedOrder = {
         ...(res || po),
         status: nextOrderStatus,
+        claimStatus: allOtherDisputesResolved ? 'RESOLVED' : (po.claimStatus || 'IN_CLAIM'),
         storeClaims: nextStoreClaims,
         timeline: [
           ...(po.timeline || po.activityLog || []),
           {
-            action: claimResolutionType === 'REFUND' ? 'CLAIM_REFUNDED' : 'CLAIM_REPLACEMENT_SHIPPED',
-            title: claimResolutionType === 'REFUND' 
-              ? `ร้าน "${storeName}" คืนเงิน ฿${resolvedRefundNum.toLocaleString()} (คืนงบประมาณเรียบร้อย)` 
-              : `ร้าน "${storeName}" ส่งสินค้าใหม่ทดแทน (เลขพัสดุ: ${(newTrackingNo || '').trim()})`,
+            action: 'CLAIM_SETTLED',
+            title: timelineTitle,
             actor: currentUser?.name || currentRole?.name || 'Online Purchaser',
             timestamp: new Date().toISOString(),
             note: (claimNote || '').trim()
+          }
+        ],
+        activityLog: [
+          ...(po.activityLog || []),
+          {
+            action: 'CLAIM_SETTLED',
+            title: timelineTitle,
+            user: currentUser?.name || currentRole?.name || 'Online Purchaser',
+            timestamp: new Date().toLocaleString('th-TH'),
+            note: `${timelineTitle} | ${(claimNote || '').trim()}`
           }
         ]
       };
@@ -859,8 +897,10 @@ export default function OnlineOrderCard({
       }));
 
       await modalService.success(
-        'ดำเนินการเรียบร้อย',
-        `บันทึกผลการเจรจาสำหรับร้าน "${storeName}" เรียบร้อยแล้ว`
+        'บันทึกผลเจรจาสำเร็จ',
+        allOtherDisputesResolved
+          ? `เจรจาเคลมครบทุกร้านแล้ว! PO ${po.poNo || po.id} ปิดงานสำเร็จและย้ายไปแท็บ "ปิดงานสำเร็จ"`
+          : `บันทึกผลการเจรจาสำหรับร้าน "${storeName}" เรียบร้อยแล้ว`
       );
     } catch (err) {
       modalService.error('เกิดข้อผิดพลาดในการบันทึก', err?.message || 'ไม่สามารถบันทึกข้อมูลได้');
@@ -883,21 +923,12 @@ export default function OnlineOrderCard({
       );
     }
 
-    // Mode 2: Claim Mode (รอเคลมสินค้า) - only when really in claim
-    if (isClaimOrder && disputedStoresCount > 0) {
+    // Mode 2: Claim Mode (รอเคลมสินค้า) - Directive 1: Strict Red Badge in Claim Tab
+    if (activeTab === 'CLAIM' || (isClaimOrder && disputedStoresCount > 0)) {
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs whitespace-nowrap">
           <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-          รอเคลม ({disputedStoresCount} ร้าน)
-        </span>
-      );
-    }
-
-    if (isClaimOrder && isAllResolved) {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs whitespace-nowrap">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-          ปิดงานสำเร็จ (เคลมครบ)
+          <span>🔴 รอเคลม ({disputedStoresCount || 1} ร้านค้า)</span>
         </span>
       );
     }
@@ -1027,7 +1058,7 @@ export default function OnlineOrderCard({
       <div className="space-y-4 my-3">
         {storesGroup.map((group) => {
           const storeClaimState = storeClaimStates[group.storeKey] || {};
-          const isStoreClaimActive = isClaimOrder && group.hasDispute && storeClaimState.showResolutionForm && !isClosed;
+          const isStoreClaimActive = isClaimOrder && group.hasDispute && (storeClaimState.showResolutionForm ?? true) && group.status !== 'RESOLVED' && !isClosed;
           
           return (
             <div key={group.storeKey} className="bg-slate-50/50 rounded-2xl border border-slate-200/60 overflow-hidden shadow-2xs">
@@ -1085,7 +1116,17 @@ export default function OnlineOrderCard({
                     const actualIdx = isPending ? group.itemIndices[localIdx] : items.findIndex(it => it.id === item.id);
                     const resolvedIdx = actualIdx >= 0 ? actualIdx : localIdx;
                     const currentItem = isPending ? (itemData[resolvedIdx] || item) : item;
-                    const itemImages = getItemAttachments(currentItem);
+                    const currentItemWithMedia = {
+                      ...item,
+                      ...currentItem,
+                      attachments: (Array.isArray(currentItem?.attachments) && currentItem.attachments.length > 0)
+                        ? currentItem.attachments
+                        : (Array.isArray(item?.attachments) && item.attachments.length > 0 ? item.attachments : (currentItem?.images || item?.images || [])),
+                      images: (Array.isArray(currentItem?.images) && currentItem.images.length > 0)
+                        ? currentItem.images
+                        : (Array.isArray(item?.images) && item.images.length > 0 ? item.images : (currentItem?.attachments || item?.attachments || []))
+                    };
+                    const itemImages = getItemAttachments(currentItemWithMedia);
 
                     const pQty = currentItem.purchaseQty !== '' ? Number(currentItem.purchaseQty ?? currentItem.actualQty ?? currentItem.qty) : '';
                     const price = currentItem.unitPrice !== '' ? Number(currentItem.unitPrice ?? currentItem.actualPrice ?? currentItem.price) : '';
@@ -1256,7 +1297,17 @@ export default function OnlineOrderCard({
                     const actualIdx = isPending ? group.itemIndices[localIdx] : items.findIndex(it => it.id === item.id);
                     const resolvedIdx = actualIdx >= 0 ? actualIdx : localIdx;
                     const currentItem = isPending ? (itemData[resolvedIdx] || item) : item;
-                    const itemImages = getItemAttachments(currentItem);
+                    const currentItemWithMedia = {
+                      ...item,
+                      ...currentItem,
+                      attachments: (Array.isArray(currentItem?.attachments) && currentItem.attachments.length > 0)
+                        ? currentItem.attachments
+                        : (Array.isArray(item?.attachments) && item.attachments.length > 0 ? item.attachments : (currentItem?.images || item?.images || [])),
+                      images: (Array.isArray(currentItem?.images) && currentItem.images.length > 0)
+                        ? currentItem.images
+                        : (Array.isArray(item?.images) && item.images.length > 0 ? item.images : (currentItem?.attachments || item?.attachments || []))
+                    };
+                    const itemImages = getItemAttachments(currentItemWithMedia);
 
                     const pQty = Number(currentItem.purchaseQty ?? currentItem.actualQty ?? currentItem.qty) || 1;
                     const price = Number(currentItem.unitPrice ?? currentItem.actualPrice ?? currentItem.price) || 0;
@@ -1335,8 +1386,7 @@ export default function OnlineOrderCard({
                 </div>
               )}
 
-              {/* Store Claim Resolution Panel (Directive 1: STRICTLY ONLY IN CLAIM MODE) */}
-              {isClaimOrder && group.hasDispute && !storeClaimState.showResolutionForm && group.status !== 'RESOLVED' && !isClosed && (
+              {isClaimOrder && group.hasDispute && !isStoreClaimActive && group.status !== 'RESOLVED' && !isClosed && (
                 <div className="p-3 bg-white border-t border-slate-100 flex justify-end">
                   <button 
                     type="button"
@@ -1348,144 +1398,178 @@ export default function OnlineOrderCard({
                 </div>
               )}
               
-              {isStoreClaimActive && (
-                <div className="p-4 bg-gradient-to-b from-rose-50/60 to-white border-t border-rose-200/80">
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-rose-900">
-                      <AlertTriangle className="w-4 h-4 text-rose-600" /> เจรจาร้านค้า: {group.storeName}
-                    </div>
-                    <button 
-                      type="button"
-                      onClick={() => setStoreClaimStates(prev => ({ ...prev, [group.storeKey]: { ...prev[group.storeKey], showResolutionForm: false } }))} 
-                      className="text-[11px] text-rose-500 cursor-pointer hover:underline"
-                    >
-                      พับเก็บ
-                    </button>
-                  </div>
-                  
-                  {/* Issue Items for this store */}
-                  <div className="mb-3.5 p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-xs">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-bold text-amber-900 flex items-center gap-1.5">
-                        <Package className="w-3.5 h-3.5" /> สินค้าที่พบปัญหา ({group.issueItems.length})
-                      </span>
-                      <span className="font-mono text-[11px] text-amber-800 bg-amber-200/60 px-2 py-0.5 rounded font-semibold">
-                        มูลค่าตามสัดส่วน: ฿{group.defaultRefund.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="divide-y divide-amber-200/60">
-                      {group.issueItems.map((it, idx) => (
-                        <div key={idx} className="py-1.5 flex justify-between items-center gap-2">
-                          <div className="font-semibold text-slate-900 min-w-0 truncate">
-                            {it.name} <span className="text-slate-400 font-mono text-[10px]">({it.code || it.sku})</span>
-                          </div>
-                          <div className="flex gap-1.5 shrink-0">
-                            {Number(it.shortageQty) > 0 && <span className="px-2 py-0.5 rounded bg-amber-200/80 text-amber-900 font-mono font-bold text-[10px]">ขาด: {it.shortageQty}</span>}
-                            {Number(it.damagedQty) > 0 && <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-mono font-bold text-[10px]">ชำรุด: {it.damagedQty}</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+              {isStoreClaimActive && (() => {
+                const currentResolutionType = storeClaimState.claimResolutionType || group.claimData?.type || 'REFUND';
+                const currentRefundAmount = storeClaimState.refundAmount !== undefined 
+                  ? storeClaimState.refundAmount 
+                  : (group.claimData?.refundAmount !== undefined ? group.claimData.refundAmount : (Math.round(group.defaultRefund * 100) / 100));
+                const currentTrackingNo = storeClaimState.newTrackingNo !== undefined 
+                  ? storeClaimState.newTrackingNo 
+                  : (group.claimData?.replacementTrackingNo || group.claimData?.newTrackingNo || '');
+                const currentClaimNote = storeClaimState.claimNote !== undefined 
+                  ? storeClaimState.claimNote 
+                  : (group.claimData?.note || '');
 
-                  {/* Form */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">แนวทางแก้ปัญหา *</label>
-                      <select 
-                        value={storeClaimState.claimResolutionType || 'REFUND'} 
-                        onChange={e => {
-                          const val = e.target.value;
-                          setStoreClaimStates(prev => ({
-                            ...prev, 
-                            [group.storeKey]: { 
-                              ...prev[group.storeKey], 
-                              claimResolutionType: val, 
-                              refundAmount: val === 'REFUND' && (!prev[group.storeKey]?.refundAmount) ? group.defaultRefund : prev[group.storeKey]?.refundAmount 
-                            }
-                          }));
-                        }} 
-                        className="w-full h-9 px-2 text-xs rounded-lg border border-rose-200 outline-none bg-white cursor-pointer"
-                      >
-                        <option value="REFUND">💰 คืนเงินเฉพาะร้านนี้ (Refund)</option>
-                        <option value="REPLACEMENT">📦 ส่งของมาใหม่ (Replacement)</option>
-                      </select>
+                return (
+                  <div className="p-3 sm:p-4 bg-white border-t border-slate-200/90 space-y-2.5">
+                    {/* Clean Bordered Settlement Card: Compact Issue Alert Banner */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-900 text-xs shadow-2xs">
+                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                        <span className="font-bold text-amber-900 flex items-center gap-1 shrink-0">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                          <span>⚠️ คลังแจ้งปัญหา:</span>
+                        </span>
+                        {group.issueItems.map((item, idx) => {
+                          const short = Number(item.shortageQty || 0);
+                          const dmg = Number(item.damagedQty || 0);
+                          const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
+                          const price = Number(item.unitPrice ?? item.actualPrice ?? item.price ?? 0);
+                          const itemLossAmount = (short + dmg) * price;
+                          return (
+                            <span key={idx} className="inline-flex items-center gap-1 font-medium">
+                              <span className="font-bold text-slate-800">{item.name}</span>
+                              {short > 0 && <span className="text-rose-700 font-semibold">ขาด {short} {pUnit}</span>}
+                              {dmg > 0 && <span className="text-amber-800 font-semibold">{short > 0 ? ',' : ''} ชำรุด {dmg} {pUnit}</span>}
+                              <span className="text-slate-500 font-mono">(มูลค่า ฿{itemLossAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
+                              {idx < group.issueItems.length - 1 && <span className="text-amber-400 font-bold">•</span>}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-mono text-xs font-bold text-amber-950 bg-amber-200/60 px-2 py-0.5 rounded-md">
+                          มูลค่าเคลม: ฿{group.defaultRefund.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setStoreClaimStates(prev => ({
+                            ...prev,
+                            [group.storeKey]: { ...prev[group.storeKey], showResolutionForm: false }
+                          }))}
+                          className="text-xs text-slate-400 hover:text-slate-700 px-1 py-0.5 cursor-pointer"
+                          title="ย่อฟอร์ม"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
-                    {storeClaimState.claimResolutionType === 'REFUND' ? (
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <label className="text-xs font-semibold text-slate-700">ยอดเงินที่ได้รับคืนจริง (บาท) *</label>
-                          <button 
+
+                    {/* Eye-Level Single Row / Grid Settlement Bar */}
+                    <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2 bg-slate-50/90 p-2 sm:p-2.5 rounded-xl border border-slate-200">
+                      {/* Column 1: Dropdown แนวทางแก้ไข */}
+                      <div className="w-full lg:w-56 shrink-0">
+                        <select
+                          value={currentResolutionType}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setStoreClaimStates(prev => ({
+                              ...prev,
+                              [group.storeKey]: {
+                                ...prev[group.storeKey],
+                                claimResolutionType: val,
+                                refundAmount: val === 'REFUND'
+                                  ? (prev[group.storeKey]?.refundAmount !== undefined ? prev[group.storeKey]?.refundAmount : group.defaultRefund)
+                                  : (val === 'CANCEL' ? group.totalAmount : 0)
+                              }
+                            }));
+                          }}
+                          className="w-full h-9 px-2.5 text-xs font-medium rounded-lg border border-slate-300 bg-white hover:border-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer text-slate-800 shadow-2xs"
+                        >
+                          <option value="REFUND">💰 คืนเงิน (Refund)</option>
+                          <option value="REPLACEMENT">📦 ร้านส่งของใหม่มาเปลี่ยน (Replacement)</option>
+                          <option value="CANCEL">❌ ยกเลิกรายการ</option>
+                        </select>
+                      </div>
+
+                      {/* Column 2: ช่องกรอกยอดเงินคืนจริง (w-32) พร้อมปุ่มเล็ก คืนเต็มจำนวน */}
+                      {currentResolutionType === 'REPLACEMENT' ? (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <input
+                            type="text"
+                            value={currentTrackingNo}
+                            onChange={e => setStoreClaimStates(prev => ({
+                              ...prev,
+                              [group.storeKey]: { ...prev[group.storeKey], newTrackingNo: e.target.value }
+                            }))}
+                            placeholder="เลขพัสดุใหม่ (Tracking No.)"
+                            className="w-full sm:w-44 h-9 px-2.5 text-xs font-mono font-bold rounded-lg border border-sky-300 bg-white text-slate-900 focus:border-sky-500 uppercase shadow-2xs"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-mono">฿</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={currentRefundAmount ?? ''}
+                              onChange={e => setStoreClaimStates(prev => ({
+                                ...prev,
+                                [group.storeKey]: { ...prev[group.storeKey], refundAmount: e.target.value }
+                              }))}
+                              placeholder="0.00"
+                              className="w-28 sm:w-32 h-9 pl-6 pr-2 text-xs font-mono font-bold rounded-lg border border-slate-300 bg-white text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-right shadow-2xs"
+                              title="ยอดเงินคืนจริง"
+                            />
+                          </div>
+                          <button
                             type="button"
-                            onClick={() => setStoreClaimStates(prev => ({ ...prev, [group.storeKey]: { ...prev[group.storeKey], refundAmount: group.defaultRefund } }))} 
-                            className="text-[10px] text-indigo-600 cursor-pointer hover:underline"
+                            onClick={() => setStoreClaimStates(prev => ({
+                              ...prev,
+                              [group.storeKey]: {
+                                ...prev[group.storeKey],
+                                refundAmount: currentResolutionType === 'CANCEL' ? group.totalAmount : group.defaultRefund
+                              }
+                            }))}
+                            className="h-9 px-2 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors whitespace-nowrap cursor-pointer shadow-2xs"
+                            title="คลิกเพื่อกรอกยอดคืนเต็มจำนวน"
                           >
-                            คืนตามสัดส่วน
+                            คืนเต็มจำนวน
                           </button>
                         </div>
-                        <input 
-                          type="number" 
-                          min="0" 
-                          step="0.01" 
-                          value={storeClaimState.refundAmount || ''} 
-                          onChange={e => setStoreClaimStates(prev => ({ ...prev, [group.storeKey]: { ...prev[group.storeKey], refundAmount: e.target.value } }))} 
-                          className="w-full h-9 px-3 text-xs font-mono font-bold rounded-lg border border-rose-200 outline-none" 
-                          placeholder="0.00" 
+                      )}
+
+                      {/* Column 3: ช่องข้อความบันทึกความคืบหน้าสั้น ๆ */}
+                      <div className="flex-1 min-w-[140px]">
+                        <input
+                          type="text"
+                          value={currentClaimNote}
+                          onChange={e => setStoreClaimStates(prev => ({
+                            ...prev,
+                            [group.storeKey]: { ...prev[group.storeKey], claimNote: e.target.value }
+                          }))}
+                          placeholder="บันทึกความคืบหน้าสั้น ๆ เช่น แชทร้านค้าโอนเงินคืนแล้ว..."
+                          className="w-full h-9 px-3 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400 shadow-2xs"
                         />
                       </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">เลขพัสดุรอบใหม่ *</label>
-                          <input 
-                            type="text" 
-                            value={storeClaimState.newTrackingNo || ''} 
-                            onChange={e => setStoreClaimStates(prev => ({ ...prev, [group.storeKey]: { ...prev[group.storeKey], newTrackingNo: e.target.value } }))} 
-                            className="w-full h-9 px-2 text-[11px] font-mono font-bold rounded-lg border border-sky-300 outline-none uppercase" 
-                            placeholder="Tracking No."
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-700 mb-1">วันที่รับของ *</label>
-                          <input 
-                            type="date" 
-                            value={storeClaimState.claimExpectedDate || ''} 
-                            onChange={e => setStoreClaimStates(prev => ({ ...prev, [group.storeKey]: { ...prev[group.storeKey], claimExpectedDate: e.target.value } }))} 
-                            className="w-full h-9 px-2 text-[11px] rounded-lg border border-rose-200 outline-none" 
-                          />
-                        </div>
+
+                      {/* Column 4: ปุ่มบันทึก [ ✓ บันทึกผลเจรจา ] สไตล์ Indigo/Emerald (เลิกใช้ปุ่มสีแดง) */}
+                      <div className="flex items-center gap-1.5 shrink-0 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setStoreClaimStates(prev => ({
+                            ...prev,
+                            [group.storeKey]: { ...prev[group.storeKey], showResolutionForm: false }
+                          }))}
+                          className="h-9 px-2.5 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
+                        >
+                          ยกเลิก
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleResolveStoreClaim(group.storeKey)}
+                          disabled={isSubmitting}
+                          className="h-9 px-3.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>✓ บันทึกผลเจรจา</span>
+                        </button>
                       </div>
-                    )}
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">บันทึกการติดต่อ / ความคืบหน้า *</label>
-                    <textarea 
-                      rows="2" 
-                      value={storeClaimState.claimNote || ''} 
-                      onChange={e => setStoreClaimStates(prev => ({ ...prev, [group.storeKey]: { ...prev[group.storeKey], claimNote: e.target.value } }))} 
-                      className="w-full text-xs rounded-lg border border-rose-200 p-2.5 outline-none" 
-                      placeholder="เช่น ติดต่อผ่านแชทร้านค้าแจ้งเรื่องแล้ว..." 
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2 mt-3 pt-2 border-t border-rose-100">
-                    <button 
-                      type="button"
-                      onClick={() => setStoreClaimStates(prev => ({ ...prev, [group.storeKey]: { ...prev[group.storeKey], showResolutionForm: false } }))} 
-                      className="px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
-                    >
-                      ยกเลิก
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => handleResolveStoreClaim(group.storeKey)} 
-                      disabled={isSubmitting} 
-                      className="px-4 py-2 text-[11px] font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors shadow-2xs"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" /> บันทึกสถานะร้านค้านี้
-                    </button>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           );
         })}

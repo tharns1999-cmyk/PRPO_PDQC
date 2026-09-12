@@ -153,6 +153,7 @@ export default function PRCreateView({
   const [imageFiles, setImageFiles] = useState(() => {
     return (editingPR?.attachments || []).filter(a => a.category === 'IMAGE' || a.type?.startsWith('image/'));
   });
+  const [previewImage, setPreviewImage] = useState(null);
   
   const [note, setNote] = useState(editingPR?.note || '');
 
@@ -240,8 +241,8 @@ export default function PRCreateView({
           overrideUnit: Boolean(it.isUnitOverridden),
           customPurchaseUnit: it.purchaseUnit,
           customStockUnit: it.stockUnit,
-          customRate: it.conversionRate,
-          images: it.images || it.attachments || []
+          images: it.images || it.attachments || [],
+          attachments: it.attachments || it.images || []
         };
       });
     }
@@ -599,7 +600,7 @@ export default function PRCreateView({
     handleItemChange(index, 'qty', currentQty + 1);
   };
 
-  // Item-Level Multi-Image Upload (Phase 1)
+  // Item-Level Multi-Image Upload & Drag-and-Drop (Gen-Z Media Strip)
   const fileInputRefs = useRef({});
 
   const triggerUpload = (itemId) => {
@@ -608,18 +609,18 @@ export default function PRCreateView({
     }
   };
 
-  const handleItemImageUpload = (index, event) => {
-    const files = Array.from(event.target.files || []);
-    if (!files.length) return;
+  const processItemImageFiles = (index, files) => {
+    const validFiles = Array.from(files || []).filter(file => file.type?.startsWith('image/') || /\.(jpe?g|png|gif|webp|svg)$/i.test(file.name));
+    if (!validFiles.length) return;
 
-    const filePromises = files.map(file => {
+    const filePromises = validFiles.map(file => {
       return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => {
           resolve({
             name: file.name,
             size: file.size,
-            type: file.type,
+            type: file.type || 'image/jpeg',
             previewUrl: e.target.result,
             url: e.target.result
           });
@@ -640,8 +641,24 @@ export default function PRCreateView({
         };
         return updated;
       });
-      event.target.value = '';
     });
+  };
+
+  const handleItemImageUpload = (index, event) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      processItemImageFiles(index, files);
+    }
+    event.target.value = '';
+  };
+
+  const handleItemImageDrop = (index, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) {
+      processItemImageFiles(index, files);
+    }
   };
 
   const handleRemoveItemImage = (itemIdx, imgIdx) => {
@@ -657,6 +674,10 @@ export default function PRCreateView({
       };
       return updated;
     });
+  };
+
+  const handlePreviewImage = (img) => {
+    setPreviewImage(typeof img === 'string' ? { url: img, previewUrl: img } : img);
   };
 
   const handleCreateSubmit = async (e, isDraft) => {
@@ -678,10 +699,32 @@ export default function PRCreateView({
         return modalService.warning('กรุณาระบุผู้จัดจำหน่าย (Vendor) ที่หัวเอกสารสำหรับการขอซื้อภายใน');
       }
 
-      if (isOnline && !requiresMemo) {
-        const hasLink = prItems.some(item => !!(item.productUrl || item.onlineUrl || '').trim());
-        if (!hasLink) {
-          return modalService.warning('กรุณาระบุลิงก์สินค้า (Shopee/Lazada/เว็บไซต์) สำหรับการสั่งซื้อออนไลน์อย่างน้อย 1 รายการ');
+      if (isOnline) {
+        if (!requiresMemo) {
+          const hasLink = prItems.some(item => !!(item.productUrl || item.onlineUrl || '').trim());
+          if (!hasLink) {
+            return modalService.warning('กรุณาระบุลิงก์สินค้า (Shopee/Lazada/เว็บไซต์) สำหรับการสั่งซื้อออนไลน์อย่างน้อย 1 รายการ');
+          }
+        }
+
+        // Directive 1: Mandatory Image Enforcement for Online Procurement
+        const missingImageIndex = prItems.findIndex(item => {
+          const imgs = item.images || item.attachments || [];
+          return !imgs || imgs.length === 0;
+        });
+
+        if (missingImageIndex !== -1) {
+          const missingItem = prItems[missingImageIndex];
+          const targetId = `pr-item-${missingItem.id || missingImageIndex}`;
+          const el = document.getElementById(targetId);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('ring-2', 'ring-rose-400');
+            setTimeout(() => {
+              el.classList.remove('ring-2', 'ring-rose-400');
+            }, 3000);
+          }
+          return modalService.warning('กรุณาแนบรูปภาพสินค้าให้ครบทุกรายการสำหรับงานจัดซื้อออนไลน์');
         }
       }
       
@@ -751,8 +794,30 @@ export default function PRCreateView({
           source: itemLocation,
           isCustom: Boolean(item.isCustom),
           isUnitOverridden: Boolean(item.overrideUnit && Number(item.customRate) > 0),
-          images: (item.images || item.attachments || []).map(img => typeof img === 'string' ? { url: img, previewUrl: img } : img),
-          attachments: (item.images || item.attachments || []).map(img => typeof img === 'string' ? { url: img, previewUrl: img } : img)
+          images: (item.images || item.attachments || []).map((img, i) => {
+            if (typeof img === 'string') {
+              return { url: img, previewUrl: img, name: item.name || `item-image-${i + 1}` };
+            }
+            const dataUrl = img?.previewUrl || img?.url || img?.dataUrl || '';
+            return {
+              ...img,
+              url: dataUrl,
+              previewUrl: dataUrl,
+              name: img?.name || item.name || `item-image-${i + 1}`
+            };
+          }).filter(img => Boolean(img.url)),
+          attachments: (item.images || item.attachments || []).map((img, i) => {
+            if (typeof img === 'string') {
+              return { url: img, previewUrl: img, name: item.name || `item-image-${i + 1}` };
+            }
+            const dataUrl = img?.previewUrl || img?.url || img?.dataUrl || '';
+            return {
+              ...img,
+              url: dataUrl,
+              previewUrl: dataUrl,
+              name: img?.name || item.name || `item-image-${i + 1}`
+            };
+          }).filter(img => Boolean(img.url))
         };
       });
 
@@ -825,6 +890,7 @@ export default function PRCreateView({
         prNo: editingPR ? editingPR.prNo : nextPRNumber,
         department,
         purchaseChannel,
+        enforceImageValidation: true,
         vendorId: vId,
         vendorName: vName,
         vendor: vendorObj,
@@ -1092,11 +1158,19 @@ export default function PRCreateView({
                 const selProd = !item.isCustom ? (availableProducts.find(p => p.id === item.productId) || products.find(p => p.id === item.productId)) : null;
                 const itemGross = (parseFloat(item.price) || 0) * (parseFloat(item.qty) || 0);
                 const itemRowNet = Math.max(0, itemGross - (parseFloat(item.discountAmount) || 0));
+                const itemImages = item.images || item.attachments || [];
+                const hasImages = itemImages.length > 0;
+                const isMissingRequiredImage = isOnline && !hasImages;
 
                 return (
                   <div
-                    key={idx}
-                    className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 sm:p-5 shadow-sm transition-all space-y-3.5"
+                    key={item.id || idx}
+                    id={`pr-item-${item.id || idx}`}
+                    className={`bg-white border rounded-2xl p-4 sm:p-5 shadow-sm transition-all space-y-3.5 ${
+                      isMissingRequiredImage
+                        ? 'border-rose-300 ring-1 ring-rose-200 bg-rose-50/10'
+                        : 'border-slate-200/80 hover:border-slate-300'
+                    }`}
                   >
                     {/* Primary Row: Standardized h-11 (44px) Elements along exact Baseline */}
                     <div className="flex items-center gap-2.5 w-full flex-wrap sm:flex-nowrap">
@@ -1289,7 +1363,7 @@ export default function PRCreateView({
                         })()}
                       </div>
 
-                      {/* Right: Ghost Action Text (Directive 3) & Item-Level Image Upload (Phase 1) */}
+                      {/* Right: Ghost Action Text (Directive 3) & Item-Level Image Input */}
                       <div className="flex items-center gap-3 ml-auto">
                         <input
                           type="file"
@@ -1299,19 +1373,6 @@ export default function PRCreateView({
                           onChange={(e) => handleItemImageUpload(idx, e)}
                           className="hidden"
                         />
-                        <button
-                          type="button"
-                          onClick={() => triggerUpload(item.id || idx)}
-                          className="text-xs font-semibold text-slate-600 hover:text-indigo-600 flex items-center gap-1 cursor-pointer transition-colors"
-                          title="แนบรูปภาพสำหรับสินค้ารายการนี้"
-                        >
-                          <span>📷 แนบรูป</span>
-                          {item.images?.length > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-bold border border-indigo-200">
-                              ({item.images.length})
-                            </span>
-                          )}
-                        </button>
 
                         {selProd && (
                           <button
@@ -1382,75 +1443,166 @@ export default function PRCreateView({
                     )}
 
                     {/* Smart Item Link for Online Procurement (Directive 2) */}
+                    {/* Smart Item Link & Gen-Z Media Strip for Online Procurement (Directives 1 & 2) */}
                     {purchaseChannel === 'ONLINE' && (
-                      <div className="mt-2.5 pt-2 border-t border-slate-150/60 flex items-center gap-2 animate-fade-in">
-                        {/* Dropdown / Chip เลือกแพลตฟอร์ม */}
-                        <select 
-                          value={item.platform || 'Shopee'} 
-                          onChange={(e) => handleItemChange(idx, 'platform', e.target.value)}
-                          className="h-8 px-2.5 text-xs font-semibold rounded-lg bg-slate-100 border border-slate-200 text-slate-700 outline-none focus:border-indigo-500 cursor-pointer shrink-0"
-                        >
-                          <option value="Shopee">Shopee</option>
-                          <option value="Lazada">Lazada</option>
-                          <option value="Official">เว็บไซต์ทางการ</option>
-                          <option value="Other">ร้านค้าภายนอก</option>
-                        </select>
+                      <div className="space-y-2.5 animate-fade-in">
+                        <div className="mt-2.5 pt-2 border-t border-slate-150/60 flex items-center gap-2">
+                          {/* Dropdown / Chip เลือกแพลตฟอร์ม */}
+                          <select 
+                            value={item.platform || 'Shopee'} 
+                            onChange={(e) => handleItemChange(idx, 'platform', e.target.value)}
+                            className="h-8 px-2.5 text-xs font-semibold rounded-lg bg-slate-100 border border-slate-200 text-slate-700 outline-none focus:border-indigo-500 cursor-pointer shrink-0"
+                          >
+                            <option value="Shopee">Shopee</option>
+                            <option value="Lazada">Lazada</option>
+                            <option value="Official">เว็บไซต์ทางการ</option>
+                            <option value="Other">ร้านค้าภายนอก</option>
+                          </select>
 
-                        {/* ช่องกรอก URL สินค้า พร้อมระบบ Auto-detect แพลตฟอร์ม */}
-                        <div className="relative flex-1">
+                          {/* ช่องกรอก URL สินค้า พร้อมระบบ Auto-detect แพลตฟอร์ม */}
+                          <div className="relative flex-1">
+                            <input
+                              type="url"
+                              placeholder="วางลิงก์หน้าสินค้า (Product URL)..."
+                              value={item.productUrl || item.onlineUrl || ''}
+                              onChange={(e) => handleUrlChange(idx, e.target.value)}
+                              className="w-full h-8 pl-8 pr-3 text-xs rounded-lg bg-slate-50/70 border border-slate-200 focus:bg-white focus:border-indigo-500 font-sans outline-none transition-all"
+                            />
+                            <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5"/>
+                          </div>
+
+                          {/* ช่องระบุชื่อร้านค้าแนะนำ (Optional) */}
                           <input
-                            type="url"
-                            placeholder="วางลิงก์หน้าสินค้า (Product URL)..."
-                            value={item.productUrl || item.onlineUrl || ''}
-                            onChange={(e) => handleUrlChange(idx, e.target.value)}
-                            className="w-full h-8 pl-8 pr-3 text-xs rounded-lg bg-slate-50/70 border border-slate-200 focus:bg-white focus:border-indigo-500 font-sans outline-none transition-all"
+                            type="text"
+                            placeholder="ชื่อร้านค้า (ถ้าทราบ)"
+                            value={item.storeName || ''}
+                            onChange={(e) => handleItemChange(idx, 'storeName', e.target.value)}
+                            className="w-44 h-8 px-3 text-xs rounded-lg bg-slate-50/70 border border-slate-200 focus:bg-white focus:border-indigo-500 text-slate-700 outline-none transition-all shrink-0"
                           />
-                          <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5"/>
                         </div>
 
-                        {/* ช่องระบุชื่อร้านค้าแนะนำ (Optional) */}
-                        <input
-                          type="text"
-                          placeholder="ชื่อร้านค้า (ถ้าทราบ)"
-                          value={item.storeName || ''}
-                          onChange={(e) => handleItemChange(idx, 'storeName', e.target.value)}
-                          className="w-44 h-8 px-3 text-xs rounded-lg bg-slate-50/70 border border-slate-200 focus:bg-white focus:border-indigo-500 text-slate-700 outline-none transition-all shrink-0"
-                        />
+                        {/* Gen-Z SaaS Media Strip & Gallery (Directive 2) */}
+                        {!hasImages ? (
+                          /* State A: ยังไม่แนบรูป (Empty State) */
+                          <div className="space-y-1">
+                            <div 
+                              onClick={() => triggerUpload(item.id || idx)}
+                              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                              onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                              onDrop={(e) => handleItemImageDrop(idx, e)}
+                              className="mt-2.5 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-dashed border-rose-300 bg-rose-50/50 hover:bg-rose-50 text-rose-700 cursor-pointer transition-all group"
+                            >
+                              <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center font-bold text-sm group-hover:scale-110 transition-transform">
+                                📷
+                              </div>
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                                <span className="text-xs font-bold">แนบรูปภาพสินค้าจริง *</span>
+                                <span className="text-[11px] text-rose-500 font-medium">(จำเป็นสำหรับจัดซื้อออนไลน์ — คลิกหรือลากวางรูปภาพที่นี่)</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 pl-1 text-[11px] font-semibold text-rose-600">
+                              <span>* กรุณาแนบรูปสินค้าจริงสำหรับจัดซื้อออนไลน์</span>
+                            </div>
+                          </div>
+                        ) : (
+                          /* State B: แนบรูปแล้ว (Filled Modern Gallery) */
+                          <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-md flex items-center gap-1 shrink-0">
+                              ✓ แนบแล้ว ({itemImages.length})
+                            </span>
+
+                            {/* Thumbnail Cards 48x48px */}
+                            {itemImages.map((img, imgIdx) => {
+                              const imgSrc = img.url || img.previewUrl || (typeof img === 'string' ? img : '');
+                              return (
+                                <div key={imgIdx} className="relative group w-12 h-12 rounded-xl overflow-hidden border-2 border-white ring-1 ring-slate-200 shadow-2xs">
+                                  <img 
+                                    src={imgSrc} 
+                                    alt={img.name || `preview-${imgIdx}`} 
+                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform cursor-pointer"
+                                    onClick={() => handlePreviewImage(img)}
+                                  />
+                                  {/* Hover Action Overlay */}
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                    <button 
+                                      type="button" 
+                                      onClick={(e) => { e.stopPropagation(); handleRemoveItemImage(idx, imgIdx); }}
+                                      className="w-5 h-5 rounded-full bg-rose-600 text-white flex items-center justify-center text-[10px] hover:bg-rose-700 cursor-pointer"
+                                      title="ลบรูปนี้"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {/* ปุ่ม + เพิ่มรูปอีก */}
+                            <button
+                              type="button"
+                              onClick={() => triggerUpload(item.id || idx)}
+                              className="w-12 h-12 rounded-xl border-2 border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/50 text-slate-400 hover:text-indigo-600 flex flex-col items-center justify-center transition-all cursor-pointer"
+                              title="เพิ่มรูปภาพอีก"
+                            >
+                              <span className="text-base font-bold leading-none">+</span>
+                              <span className="text-[8px] font-medium mt-0.5">เพิ่ม</span>
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {/* Item Thumbnail Preview Strip (Phase 1: 24x24px with delete button) */}
-                    {item.images && item.images.length > 0 && (
-                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-2 flex-wrap">
-                        <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
-                          📷 รูปสินค้า ({item.images.length}):
-                        </span>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {item.images.map((img, imgIdx) => {
-                            const src = img.previewUrl || img.url || (typeof img === 'string' ? img : '');
-                            return (
-                              <div 
-                                key={imgIdx} 
-                                className="relative group/thumb w-6 h-6 rounded border border-slate-200 overflow-hidden bg-slate-100 shrink-0 shadow-2xs"
-                                title={img.name || `รูปที่ ${imgIdx + 1}`}
-                              >
-                                <img
-                                  src={src}
-                                  alt={img.name || `thumb-${imgIdx}`}
-                                  className="w-full h-full object-cover"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveItemImage(idx, imgIdx)}
-                                  className="absolute inset-0 bg-rose-900/80 text-white flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity text-[10px] font-bold cursor-pointer"
-                                  title="ลบรูปภาพนี้"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
+                    {/* Gallery for Non-Online (Offline / SELF) mode */}
+                    {purchaseChannel !== 'ONLINE' && (
+                      <div className="mt-2.5 pt-2 border-t border-slate-100">
+                        {hasImages ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md flex items-center gap-1 shrink-0">
+                              📷 รูปแนบ ({itemImages.length})
+                            </span>
+                            {itemImages.map((img, imgIdx) => {
+                              const imgSrc = img.url || img.previewUrl || (typeof img === 'string' ? img : '');
+                              return (
+                                <div key={imgIdx} className="relative group w-12 h-12 rounded-xl overflow-hidden border-2 border-white ring-1 ring-slate-200 shadow-2xs">
+                                  <img 
+                                    src={imgSrc} 
+                                    alt={img.name || `preview-${imgIdx}`} 
+                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform cursor-pointer"
+                                    onClick={() => handlePreviewImage(img)}
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                    <button 
+                                      type="button" 
+                                      onClick={(e) => { e.stopPropagation(); handleRemoveItemImage(idx, imgIdx); }}
+                                      className="w-5 h-5 rounded-full bg-rose-600 text-white flex items-center justify-center text-[10px] hover:bg-rose-700 cursor-pointer"
+                                      title="ลบรูปนี้"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            <button
+                              type="button"
+                              onClick={() => triggerUpload(item.id || idx)}
+                              className="w-12 h-12 rounded-xl border-2 border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/50 text-slate-400 hover:text-indigo-600 flex flex-col items-center justify-center transition-all cursor-pointer"
+                              title="เพิ่มรูปภาพอีก"
+                            >
+                              <span className="text-base font-bold leading-none">+</span>
+                              <span className="text-[8px] font-medium mt-0.5">เพิ่ม</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => triggerUpload(item.id || idx)}
+                            className="text-[11px] font-medium text-slate-400 hover:text-indigo-600 flex items-center gap-1 transition-colors cursor-pointer"
+                            title="แนบรูปภาพสำหรับสินค้ารายการนี้ (ทางเลือก)"
+                          >
+                            <span>📷 แนบรูปสินค้า (ทางเลือก)</span>
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -1980,6 +2132,40 @@ export default function PRCreateView({
         </div>
 
       </form>
+
+      {/* Gen-Z SaaS Lightbox Image Preview Modal */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div 
+            className="relative max-w-2xl max-h-[85vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2 border border-white/20 animate-scale-up"
+            onClick={e => e.stopPropagation()}
+          >
+            <button 
+              type="button"
+              onClick={() => setPreviewImage(null)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center font-bold text-sm shadow-md transition-colors z-10 cursor-pointer"
+              title="ปิดหน้าต่าง"
+            >
+              ✕
+            </button>
+            <div className="flex items-center justify-center overflow-auto max-h-[80vh] rounded-xl bg-slate-100">
+              <img 
+                src={previewImage.url || previewImage.previewUrl || (typeof previewImage === 'string' ? previewImage : '')} 
+                alt="Product preview" 
+                className="max-w-full max-h-[78vh] object-contain rounded-lg"
+              />
+            </div>
+            {previewImage.name && (
+              <p className="text-center text-xs font-semibold text-slate-600 mt-2 px-4 py-1 truncate">
+                {previewImage.name}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

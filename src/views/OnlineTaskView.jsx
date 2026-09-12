@@ -13,10 +13,69 @@ import PODetailsModal from '../components/po/PODetailsModal';
 import { modalService } from '../services/modalService';
 import OnlineOrderCard, { OnlinePurchaseActionCard } from './procurement/OnlineOrderCard';
 
+// Helper: check if PO has genuine unresolved claim
+export function hasUnresolvedClaim(po) {
+  if (!po) return false;
+  const s = String(po.status || '').toLowerCase();
+
+  // If PO is already closed/completed/cancelled/resolved, it must NEVER be in CLAIM
+  if (['completed', 'closed', 'resolved', 'cancelled', 'completed_with_refund', 'received', 'fully_received'].includes(s) || s.startsWith('completed') || s.startsWith('closed')) {
+    return false;
+  }
+
+  // Must have claim indicator in status or items
+  const isClaimStatus = s.includes('claim') || s.includes('dispute') || s === 'partially_received_in_claim';
+  const hasDisputedItem = (po.items || []).some(it => 
+    Number(it.shortageQty) > 0 || Number(it.damagedQty) > 0 || it.claimStatus === 'PENDING'
+  );
+
+  if (!isClaimStatus && !hasDisputedItem) {
+    return false;
+  }
+
+  // Check store claims: identify all stores that have issues
+  const storeClaims = po.storeClaims || {};
+  const disputedStoreKeys = new Set();
+  
+  (po.items || []).forEach(it => {
+    if (Number(it.shortageQty) > 0 || Number(it.damagedQty) > 0 || it.claimStatus === 'PENDING') {
+      const plat = it.storePlatform || it.platform || 'Shopee';
+      const sName = (it.actualStoreName || it.storeName || po.vendorName || '').trim();
+      const key = `${plat}_${sName || 'group_' + plat}`;
+      disputedStoreKeys.add(key);
+    }
+  });
+
+  if (disputedStoreKeys.size === 0) {
+    const claimValues = Object.values(storeClaims);
+    if (claimValues.length > 0 && claimValues.every(c => c.status === 'RESOLVED' || c.status === 'COMPLETED')) {
+      return false;
+    }
+    return isClaimStatus;
+  }
+
+  // Check if at least ONE disputed store is NOT resolved
+  for (const storeKey of disputedStoreKeys) {
+    const claim = storeClaims[storeKey];
+    if (!claim || (claim.status !== 'RESOLVED' && claim.status !== 'COMPLETED')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export default function OnlineTaskView({ currentRole, onRefresh }) {
   const { updatePO } = useAppContext();
-  const [pos, setPOs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [pos, setPOs] = useState(() => {
+    try {
+      const cached = storageService.getPOs();
+      return (cached || []).filter(p => p.purchaseChannel === 'ONLINE');
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('PENDING'); // PENDING | ORDERED | CLAIM | CLOSED | ALL
   const [searchQuery, setSearchQuery] = useState('');
   const [deptFilter, setDeptFilter] = useState('ALL');
@@ -60,14 +119,23 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
       const amount = Number(po.totalAmount || po.grandTotal || po.estimatedAmount || 0);
       totalAmount += amount;
 
-      if (['in_progress_online', 'pending_order', 'pending', 'waiting_order', 'waiting', 'issued', 'รอดำเนินการ', 'รอดำเนินการสั่งซื้อ'].includes(s)) {
+      const isPending = ['in_progress_online', 'pending_order', 'pending', 'waiting_order', 'waiting', 'issued', 'รอดำเนินการ', 'รอดำเนินการสั่งซื้อ'].includes(s);
+      const isClaim = hasUnresolvedClaim(po);
+      const isClosed = !isClaim && !isPending && (
+        ['completed', 'received', 'fully_received', 'closed', 'completed_with_refund', 'resolved'].includes(s) || 
+        s.startsWith('completed') || 
+        s.startsWith('closed')
+      );
+      const isOrdered = !isPending && !isClaim && !isClosed;
+
+      if (isPending) {
         pending++;
-      } else if (['ordered_pending_delivery', 'in_delivery', 'ordered', 'partial_received', 'partially_received', 'waiting_delivery', 'waiting_delivery_round_2'].includes(s) || s.startsWith('waiting_delivery')) {
-        ordered++;
-      } else if (s.includes('claim') && !s.includes('refund')) {
+      } else if (isClaim) {
         claim++;
-      } else if (['completed', 'received', 'fully_received', 'closed', 'completed_with_refund'].includes(s) || s.startsWith('completed')) {
+      } else if (isClosed) {
         closed++;
+      } else if (isOrdered) {
+        ordered++;
       }
     });
 
@@ -79,16 +147,25 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
     return pos.filter(po => {
       const s = String(po.status || '').toLowerCase();
 
-      // Tab filter
+      // Tab filter (Strict separation)
       let matchTab = true;
       if (activeTab === 'PENDING') {
         matchTab = ['in_progress_online', 'pending_order', 'pending', 'waiting_order', 'waiting', 'issued', 'รอดำเนินการ', 'รอดำเนินการสั่งซื้อ'].includes(s);
       } else if (activeTab === 'ORDERED') {
-        matchTab = ['ordered_pending_delivery', 'in_delivery', 'ordered', 'partial_received', 'partially_received', 'waiting_delivery', 'waiting_delivery_round_2'].includes(s) || s.startsWith('waiting_delivery');
+        matchTab = !hasUnresolvedClaim(po) && (
+          ['ordered_pending_delivery', 'in_delivery', 'ordered', 'partial_received', 'partially_received', 'waiting_delivery', 'waiting_delivery_round_2'].includes(s) || 
+          s.startsWith('waiting_delivery')
+        ) && !(['completed', 'received', 'fully_received', 'closed', 'completed_with_refund', 'resolved'].includes(s) || s.startsWith('completed'));
       } else if (activeTab === 'CLAIM') {
-        matchTab = s.includes('claim') && !s.includes('refund');
+        // Directive 1: แสดงเฉพาะ PO ที่มีอย่างน้อย 1 ร้านค้า ที่สถานะเคลมยังเป็น UNRESOLVED / PENDING เท่านั้น
+        matchTab = hasUnresolvedClaim(po);
       } else if (activeTab === 'CLOSED') {
-        matchTab = ['completed', 'received', 'fully_received', 'closed', 'completed_with_refund'].includes(s) || s.startsWith('completed');
+        // Directive 1: หากเคลมจบครบหมด หรือ COMPLETED / CLOSED ย้ายมาแสดงที่นี่
+        matchTab = !hasUnresolvedClaim(po) && (
+          ['completed', 'received', 'fully_received', 'closed', 'completed_with_refund', 'resolved'].includes(s) || 
+          s.startsWith('completed') || 
+          s.startsWith('closed')
+        );
       }
 
       // Dept filter
@@ -206,7 +283,7 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
             </span>
           </button>
 
-          {/* Step 3: Claim */}
+          {/* Step 3: Claim (Urgent SLA Pulse Indicator) */}
           <button
             type="button"
             onClick={() => setActiveTab('CLAIM')}
@@ -216,11 +293,15 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
             }`}
           >
-            <AlertTriangle className={`w-3.5 h-3.5 ${activeTab === 'CLAIM' || metrics.claim > 0 ? 'text-amber-600' : 'text-slate-400'}`} />
+            <AlertTriangle className={`w-3.5 h-3.5 ${activeTab === 'CLAIM' || metrics.claim > 0 ? 'text-rose-600' : 'text-slate-400'}`} />
             <span>รอเคลม</span>
             {metrics.claim > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full font-mono text-[10px] font-bold bg-amber-100 text-amber-800">
-                {metrics.claim}
+              <span className="inline-flex items-center bg-rose-500 text-white font-bold px-2 py-0.5 rounded-full text-xs animate-pulse">
+                <span className="relative flex h-2 w-2 mr-1">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                </span>
+                <span className="font-mono">{metrics.claim}</span>
               </span>
             )}
           </button>

@@ -10,7 +10,7 @@ import {
   ExternalLink, ShoppingCart, Info, X, Building2, Calendar, FileText, 
   CheckCircle2, Store, Truck, ArrowRight, MapPin, AlertOctagon,
   UploadCloud, Paperclip, Camera, Trash2, Eye, ShieldAlert, Check, Percent, Globe, Package,
-  RotateCcw, Coins, ChevronRight
+  RotateCcw, Coins, ChevronRight, ArrowLeft
 } from 'lucide-react';
 import PrintablePO from './PrintablePO';
 import AttachmentViewerModal from '../common/AttachmentViewerModal';
@@ -28,7 +28,7 @@ const getVendorDisplayName = (vendorData) => {
   return String(vendorData);
 };
 
-export default function PODetailsModal({ selectedPO, currentRole, onClose, onRefresh }) {
+export default function PODetailsModal({ selectedPO, currentRole, onClose, onRefresh, initialView = 'DETAIL' }) {
   let context = null;
   try {
     context = useAppContext();
@@ -72,8 +72,8 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
   const [isReceiving, setIsReceiving] = useState(false);
   const [showReceivingModal, setShowReceivingModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Unified Action State: 'NONE' = view mode, 'RECEIVE' = goods receiving, 'CLAIM' = report claim
-  const [activeAction, setActiveAction] = useState('NONE');
+  // Unified View-Swapping State: 'DETAIL' | 'CLAIM'
+  const [activeView, setActiveView] = useState(initialView);
   const [receivingQtys, setReceivingQtys] = useState({});
   const [problematicItems, setProblematicItems] = useState({});
   const [grAttachments, setGrAttachments] = useState([]);
@@ -606,842 +606,827 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     );
   }
 
+  const itemsSubtotal = (selectedPO.items || []).reduce((sum, item) => {
+    const p = parseFloat(item.price ?? item.actualPrice ?? item.unitPrice ?? item.estimatedPrice) || 0;
+    const q = parseFloat(item.qty ?? item.actualQty ?? item.purchaseQty) || 1;
+    return sum + (p * q);
+  }, 0);
+
+  const subtotalAmount = (selectedPO.financials?.subtotal !== undefined && Number(selectedPO.financials.subtotal) > 0)
+    ? Number(selectedPO.financials.subtotal)
+    : ((selectedPO.subtotal !== undefined && Number(selectedPO.subtotal) > 0) ? Number(selectedPO.subtotal) : itemsSubtotal);
+
+  const hasVat = selectedPO.hasVat !== undefined
+    ? Boolean(selectedPO.hasVat)
+    : (selectedPO.financials?.hasVat !== undefined
+        ? Boolean(selectedPO.financials.hasVat)
+        : (selectedPO.financials?.vatMode ? selectedPO.financials.vatMode !== 'NONE' : Number(selectedPO.vat) > 0));
+
+  const vatAmount = hasVat
+    ? (selectedPO.financials?.vatAmount !== undefined
+        ? Number(selectedPO.financials.vatAmount)
+        : (selectedPO.vat !== undefined && Number(selectedPO.vat) > 0 ? Number(selectedPO.vat) : parseFloat((subtotalAmount * 0.07).toFixed(2))))
+    : 0;
+
+  const grandTotalAmount = (selectedPO.financials?.grandTotal !== undefined && Number(selectedPO.financials.grandTotal) > 0)
+    ? Number(selectedPO.financials.grandTotal)
+    : (selectedPO.grandTotal !== undefined && Number(selectedPO.grandTotal) > 0
+        ? Number(selectedPO.grandTotal)
+        : parseFloat((subtotalAmount + vatAmount).toFixed(2)));
+
   const modalContent = (
     <>
       <div className="hidden print:block font-sarabun">
         <PrintablePO po={selectedPO} />
       </div>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden">
-        <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in">
-          {/* ── ZONE 1: Modern High-End Header & Segmented Ribbon (Linear / Raycast Style) ── */}
-          <div className="shrink-0 px-6 py-4 border-b border-slate-100 bg-white sticky top-0 z-20">
-            {/* Top Action Bar: PO ID & Subtitle on Left, Controls on Right */}
-            <div className="flex items-start sm:items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h2 className="text-xl font-black font-mono tracking-tight text-slate-900">
-                    {selectedPO.poNo || selectedPO.id}
-                  </h2>
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                    selectedPO.status === 'CLOSED'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs'
-                      : `${statusInfo.color} shadow-2xs`
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${
-                      selectedPO.status === 'CLOSED' ? 'bg-emerald-500' : 'bg-current opacity-80'
-                    } animate-pulse`}></span>
-                    {statusInfo.label}
-                  </span>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden">
+        {activeView === 'CLAIM' ? (
+          /* ══════════════════════════════════════════════════════════════
+             DEDICATED CLAIM VIEW (View-Swapping Mode / No Duplicate CTA)
+             ══════════════════════════════════════════════════════════════ */
+          <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in">
+            {/* Header */}
+            <div className="shrink-0 px-6 py-4 border-b border-slate-100 bg-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveView('DETAIL')}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer shadow-2xs"
+                  title="กลับไปที่หน้าต่างรายละเอียด PO"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>← กลับไปหน้า PO</span>
+                </button>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span className="p-1 bg-rose-100 text-rose-600 rounded-lg">
+                      <AlertTriangle className="w-4 h-4" />
+                    </span>
+                    <span>แจ้งปัญหา / รายงานเคลมสินค้า</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    PO: <strong className="font-mono text-slate-800">{selectedPO.poNo || selectedPO.id}</strong> • {displayVendor || getVendorDisplayName(selectedPO.vendorName) || '-'}
+                  </p>
                 </div>
-                <p className="mt-1 text-xs font-medium text-slate-500 flex items-center gap-2 flex-wrap">
-                  <span>อ้างอิง {selectedPO.prNo || '-'}</span>
-                  <span className="text-slate-300">•</span>
-                  <span>ฝ่าย {selectedPO.department}</span>
-                  <span className="text-slate-300">•</span>
-                  {selectedPO.purchaseChannel === 'ONLINE' ? (
-                    <span className="text-purple-600 font-semibold">จัดซื้อออนไลน์</span>
-                  ) : (
-                    <span className="text-slate-600 font-semibold">จัดซื้อทั่วไป</span>
-                  )}
-                  {selectedPO.issueDate && (
-                    <>
-                      <span className="text-slate-300">•</span>
-                      <span className="font-mono text-slate-400">{selectedPO.issueDate}</span>
-                    </>
-                  )}
-                </p>
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 shrink-0">
-                <button 
-                  type="button"
-                  onClick={handlePrint} 
-                  disabled={isGeneratingPdf}
-                  className="h-8 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed text-xs font-semibold text-slate-700 transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
-                  title="พิมพ์ PO / ดาวน์โหลด PDF"
-                >
-                  {isGeneratingPdf ? (
-                    <>
-                      <span className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
-                      <span className="hidden sm:inline text-indigo-600">กำลังสร้าง PDF...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Printer className="w-3.5 h-3.5 text-slate-600" />
-                      <span className="hidden sm:inline">พิมพ์ PO</span>
-                    </>
-                  )}
-                </button>
-                <button 
-                  type="button"
-                  onClick={onClose} 
-                  className="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
-                  aria-label="Close modal"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                aria-label="Close modal"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {/* Modern Segmented Progress Ribbon */}
-            {!isSpecial && (
-              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-2.5 mt-4 overflow-x-auto scrollbar-none">
-                <div className="flex items-center justify-between gap-1 min-w-[500px] sm:min-w-0">
-                  {lifecycleSteps.map((step, i) => {
-                    const isAllCompleted = selectedPO.status === 'CLOSED';
-                    const isDone = isAllCompleted || (currentStepIndex >= 0 && i < currentStepIndex);
-                    const isCurrent = !isAllCompleted && (i === currentStepIndex);
-                    const isLast = i === lifecycleSteps.length - 1;
-
-                    return (
-                      <React.Fragment key={step.key}>
-                        <div 
-                          className={`flex items-center justify-center gap-1.5 px-2 py-1 rounded-xl transition-all flex-1 min-w-0 ${
-                            isCurrent 
-                              ? 'bg-white shadow-2xs border border-indigo-200/90' 
-                              : isDone 
-                                ? 'bg-emerald-50/70 border border-emerald-100/80' 
-                                : 'bg-slate-100/60 border border-transparent'
-                          }`}
-                        >
-                          {isDone ? (
-                            <div className="w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                              <Check className="w-2.5 h-2.5 stroke-[2.5]" />
-                            </div>
-                          ) : isCurrent ? (
-                            <div className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
-                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
-                            </div>
-                          ) : (
-                            <div className="w-4 h-4 rounded-full bg-slate-200/80 flex items-center justify-center shrink-0">
-                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                            </div>
-                          )}
-                          <span className={`text-[11px] font-semibold truncate ${
-                            isCurrent 
-                              ? 'text-indigo-700 font-bold' 
-                              : isDone 
-                                ? 'text-slate-700' 
-                                : 'text-slate-400'
-                          }`}>
-                            {step.label}
-                          </span>
-                        </div>
-                        {!isLast && (
-                          <ChevronRight className={`w-3.5 h-3.5 shrink-0 ${
-                            isDone ? 'text-emerald-400' : 'text-slate-300'
-                          }`} />
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
+            {/* Body */}
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh] bg-slate-50/40" style={{ scrollbarWidth: 'thin' }}>
+              {/* PO Items Summary Card */}
+              <div className="bg-white rounded-xl border border-slate-200 p-3.5 text-xs space-y-2 shadow-2xs">
+                <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-slate-400" />
+                  รายการสินค้าในเอกสาร ({selectedPO.items?.length || 0} รายการ)
+                </span>
+                <div className="divide-y divide-slate-100">
+                  {selectedPO.items?.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-center text-slate-600 py-1">
+                      <span className="truncate max-w-sm"><strong className="font-mono text-slate-800">[{item.code || '-'}]</strong> {item.name}</span>
+                      <span className="font-mono shrink-0 ml-2 font-semibold text-slate-700">
+                        {item.qty || item.actualQty || item.purchaseQty || 1} {item.unit || item.purchaseUnit || 'ชิ้น'}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            )}
 
-            {/* Special Status Banner */}
-            {isSpecial && (
-              <div className={`mt-3 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 ${
-                selectedPO.status === 'CANCELLED'
-                  ? 'bg-slate-100 text-slate-600 border border-slate-200'
-                  : 'bg-rose-50 text-rose-800 border border-rose-200'
-              }`}>
-                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
-                <span>
-                  {selectedPO.status === 'CANCELLED' ? 'ใบสั่งซื้อนี้ถูกยกเลิกแล้ว' :
-                   selectedPO.status === 'CLAIM_REPORTED' ? '🚨 มีการแจ้งปัญหาสินค้า — รอดำเนินการแก้ไข' :
-                   '🔧 อยู่ระหว่างดำเนินการแก้ไขปัญหาสินค้า'}
-                </span>
-              </div>
-            )}
-          </div>
+              {/* Claim Form Fields */}
+              <div className="bg-white rounded-xl border border-rose-200 p-4 space-y-3.5 shadow-2xs">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    หัวข้อปัญหา <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    value={claimReason}
+                    onChange={e => setClaimReason(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-medium outline-none cursor-pointer focus:bg-white focus:ring-2 focus:ring-rose-400/20 focus:border-rose-500"
+                  >
+                    <option value="สินค้าชำรุด/เสียหาย">💥 สินค้าชำรุด / เสียหาย</option>
+                    <option value="สินค้าไม่ตรงสเปก/ผิดรุ่น">⚠️ สินค้าไม่ตรงสเปก / ผิดรุ่น</option>
+                    <option value="ได้รับสินค้าไม่ครบ">📦 ได้รับสินค้าไม่ครบ</option>
+                    <option value="อื่นๆ (ระบุในรายละเอียด)">📝 อื่นๆ (ระบุในรายละเอียด)</option>
+                  </select>
+                </div>
 
-          {/* ════ ZONE 2 — SCROLLABLE BODY ════ */}
-          <div className="flex-1 overflow-y-auto bg-slate-50/40" style={{ scrollbarWidth: 'thin' }}>
-            <div className="p-4 sm:p-5 space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    รายละเอียดปัญหา <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    value={claimDescription}
+                    onChange={e => setClaimDescription(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs outline-none h-28 resize-none font-medium focus:bg-white focus:ring-2 focus:ring-rose-400/20 focus:border-rose-500"
+                    placeholder="อธิบายปัญหาที่พบอย่างละเอียด เช่น สินค้าบุบ แตก หัก ไม่ตรงสเปก หรือได้รับจำนวนไม่ครบตาม PO..."
+                  />
+                </div>
 
-              {/* Vendor + Delivery 2-col grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2.5">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                    <Store className="w-3.5 h-3.5 text-indigo-500" />
-                    ผู้ขาย / Vendor
-                  </div>
-                  {hasAssignedVendor ? (
-                    <div>
-                      <div className="font-semibold text-slate-800 flex items-center gap-2">
-                        <span>🏪</span>
-                        <span>{displayVendor || getVendorDisplayName(selectedPO.vendorName) || selectedPO.vendorId}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                        {selectedPO.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์' : (selectedPO.vendorId || 'ผู้ขาย')}
-                      </p>
-                    </div>
-                  ) : (isPurchaser || role === 'admin') ? (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
-                      <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />รอระบุผู้ขาย
-                      </p>
-                      <div className="flex gap-2">
-                        {selectedPO.purchaseChannel === 'ONLINE' ? (
-                          <input type="text" value={customVendorName} onChange={e => setCustomVendorName(e.target.value)}
-                            placeholder="ชื่อร้านค้าออนไลน์ (Shopee / Lazada...)"
-                            className="flex-1 text-xs bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-amber-400/30 outline-none" />
-                        ) : (
-                          <select value={selectedVendorId} onChange={e => setSelectedVendorId(e.target.value)}
-                            className="flex-1 text-xs bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-amber-400/30 outline-none">
-                            <option value="">-- เลือกผู้ขาย --</option>
-                            {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                          </select>
-                        )}
-                        <button onClick={handleAssignVendor}
-                          disabled={isAssigning || (selectedPO.purchaseChannel === 'ONLINE' ? !customVendorName.trim() : !selectedVendorId)}
-                          className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer">
-                          {isAssigning ? 'บันทึก...' : 'บันทึก'}
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                    รูปภาพหลักฐาน (ถ้ามี)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={claimFileInputRef}
+                    onChange={async (e) => {
+                      if (e.target.files?.[0]) {
+                        const c = await compressImageFile(e.target.files[0]);
+                        setClaimPhoto(c);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <div className="flex gap-3 items-center">
+                    <button
+                      type="button"
+                      onClick={() => claimFileInputRef.current?.click()}
+                      className="px-3.5 py-2 bg-white text-rose-700 border border-rose-300 hover:bg-rose-50 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                    >
+                      <Camera className="w-3.5 h-3.5" />
+                      <span>{claimPhoto ? 'เปลี่ยนรูปภาพ' : '+ อัปโหลดรูปภาพหลักฐาน'}</span>
+                    </button>
+                    {claimPhoto && (
+                      <div className="relative group rounded-xl overflow-hidden border border-rose-300 w-14 h-14 shadow-2xs">
+                        <img src={claimPhoto.previewUrl} alt="Claim photo" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setClaimPhoto(null)}
+                          className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                          title="ลบรูปภาพ"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 px-3 py-2 rounded-lg font-medium">รอฝ่ายจัดซื้อระบุร้านค้า</p>
-                  )}
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2.5">
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
-                    <Truck className="w-3.5 h-3.5 text-indigo-500" />
-                    การจัดส่ง & อ้างอิง
-                  </div>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between text-slate-500">
-                      <span>วันที่ออก PO</span>
-                      <span className="font-mono font-semibold text-slate-800">{selectedPO.issueDate}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-500">
-                      <span>ช่องทางการซื้อ</span>
-                      <span className="font-semibold text-slate-800">{selectedPO.purchaseChannel === 'ONLINE' ? 'ออนไลน์' : 'จัดซื้อตรง'}</span>
-                    </div>
-                    {selectedPO.specUrl && (
-                      <button type="button"
-                        onClick={() => setViewingAttachment({ url: selectedPO.specUrl, title: 'เอกสารอ้างอิง / ลิงก์สินค้า' })}
-                        className="w-full flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100/70 border border-indigo-100 p-2 rounded-lg transition-colors cursor-pointer text-left mt-1">
-                        <ExternalLink className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold text-indigo-800">ดูเอกสารอ้างอิง PR</p>
-                          <p className="text-[10px] text-indigo-400 truncate">{selectedPO.specUrl}</p>
-                        </div>
-                      </button>
                     )}
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* Active Claim Banner */}
-              {isClaimStatus && selectedPO.claimData && (
-                <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 space-y-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-2.5">
-                      <div className="p-1.5 bg-rose-100 rounded-lg shrink-0 mt-0.5">
-                        <AlertTriangle className="w-4 h-4 text-rose-600" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-rose-900">
-                          🚨 พบสินค้ามีปัญหา: {selectedPO.claimData.reason}
-                          {selectedPO.claimRound > 0 && (
-                            <span className="ml-2 text-[10px] font-bold bg-rose-200 text-rose-800 px-2 py-0.5 rounded-full font-mono">รอบที่ {selectedPO.claimRound}</span>
-                          )}
-                        </p>
-                        <p className="text-xs text-rose-700 mt-0.5">{selectedPO.claimData.description}</p>
-                      </div>
-                    </div>
-                    <div className="text-right text-[10px] text-rose-400 shrink-0">
-                      <span>{selectedPO.claimData.reportedBy || '-'}</span>
-                      <span className="block font-mono mt-0.5">{selectedPO.claimData.reportedAt || '-'}</span>
-                    </div>
+            {/* Footer (Single Unified Action Row) */}
+            <div className="shrink-0 bg-white border-t border-slate-100 px-6 py-4 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setActiveView('DETAIL')}
+                className="px-4 py-2 bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+              >
+                ← ยกเลิกและย้อนกลับ
+              </button>
+
+              <button
+                type="button"
+                disabled={isSubmittingClaim || !claimDescription.trim()}
+                onClick={async () => {
+                  setIsSubmittingClaim(true);
+                  try {
+                    await apiService.fileOnlineClaim(selectedPO.id, { reason: claimReason, description: claimDescription, photo: claimPhoto }, currentRole);
+                    await modalService.success('ส่งเรื่องเคลมสำเร็จ', 'ระบบได้แจ้งเตือนไปยังผู้สั่งซื้อแล้ว');
+                    if (onRefresh) onRefresh();
+                    onClose();
+                  } catch (err) {
+                    modalService.error('เกิดข้อผิดพลาด', err.message);
+                  } finally {
+                    setIsSubmittingClaim(false);
+                  }
+                }}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-all shadow-sm"
+              >
+                <AlertOctagon className="w-4 h-4" />
+                <span>{isSubmittingClaim ? 'กำลังส่งข้อมูล...' : '⚠️ ยืนยันส่งเรื่องแจ้งเคลมไปยังจัดซื้อ'}</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* ══════════════════════════════════════════════════════════════
+             STANDARD PO DETAIL VIEW
+             ══════════════════════════════════════════════════════════════ */
+          <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in">
+            {/* ── ZONE 1: Modern High-End Header & Slim Stepper ── */}
+            <div className="shrink-0 px-6 py-4 border-b border-slate-100 bg-white sticky top-0 z-20">
+              {/* Top Action Bar */}
+              <div className="flex items-start sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h2 className="text-xl font-black font-mono tracking-tight text-slate-900">
+                      {selectedPO.poNo || selectedPO.id}
+                    </h2>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                      selectedPO.status === 'CLOSED'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs'
+                        : `${statusInfo.color} shadow-2xs`
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${
+                        selectedPO.status === 'CLOSED' ? 'bg-emerald-500' : 'bg-current opacity-80'
+                      } animate-pulse`}></span>
+                      {statusInfo.label}
+                    </span>
                   </div>
+                  <p className="mt-1 text-xs font-medium text-slate-500 flex items-center gap-2 flex-wrap">
+                    <span>อ้างอิง {selectedPO.prNo || '-'}</span>
+                    <span className="text-slate-300">•</span>
+                    <span>ฝ่าย {selectedPO.department}</span>
+                    <span className="text-slate-300">•</span>
+                    {selectedPO.purchaseChannel === 'ONLINE' ? (
+                      <span className="text-purple-600 font-semibold">จัดซื้อออนไลน์</span>
+                    ) : (
+                      <span className="text-slate-600 font-semibold">จัดซื้อทั่วไป</span>
+                    )}
+                    {selectedPO.issueDate && (
+                      <>
+                        <span className="text-slate-300">•</span>
+                        <span className="font-mono text-slate-400">{selectedPO.issueDate}</span>
+                      </>
+                    )}
+                  </p>
                 </div>
-              )}
 
-              {/* Self-buy Claim Resolution Panel */}
-              {isClaimStatus && selectedPO.purchaseChannel === 'SELF' && showSelfClaimResolution && (
-                <div className="bg-white border-2 border-rose-200 rounded-xl p-4 space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-rose-100 rounded-lg"><ShieldAlert className="w-4 h-4 text-rose-600" /></div>
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900">🔧 จัดการเคสสินค้ามีปัญหา</h3>
-                        <p className="text-[11px] text-slate-400 mt-0.5">เลือกแนวทางแก้ไขและระบุรายละเอียด</p>
-                      </div>
-                    </div>
-                    <button type="button" onClick={() => setShowSelfClaimResolution(false)}
-                      className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  {canResolveSelfClaim ? (
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        {[
-                          { value: 'RESEND', icon: '🔄', label: 'จัดซื้อใหม่ / ส่งทดแทน', desc: 'รอสินค้าชิ้นใหม่ → PO กลับสู่สถานะ "รอตรวจรับ"' },
-                          { value: 'CLOSE_WITH_REFUND', icon: '💰', label: 'ได้รับเงินคืน / ปิดงาน', desc: 'ร้านค้าโอนเงินคืน → ปิด PO (CLOSED)' },
-                          { value: 'CLOSE_NO_ACTION', icon: '❌', label: 'ยอมรับสภาพ / ปิดงาน', desc: 'ไม่เคลม หรือยอมรับของ → ปิด PO (CLOSED)' },
-                        ].map(opt => (
-                          <label key={opt.value} className={`flex flex-col p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                            selfClaimResolutionType === opt.value ? 'bg-rose-50 border-rose-400' : 'bg-white border-slate-200 hover:border-slate-300'
-                          }`}>
-                            <div className="flex items-start gap-2">
-                              <input type="radio" name="selfClaimRes" value={opt.value}
-                                checked={selfClaimResolutionType === opt.value}
-                                onChange={() => setSelfClaimResolutionType(opt.value)}
-                                className="w-3.5 h-3.5 mt-0.5 cursor-pointer text-rose-600" />
-                              <div>
-                                <p className="text-xs font-bold text-slate-800">{opt.icon} {opt.label}</p>
-                                <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{opt.desc}</p>
-                              </div>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                      {selfClaimResolutionType === 'RESEND' && (
-                        <div>
-                          <label className="text-xs font-semibold text-slate-700 block mb-1">วันที่คาดว่าจะได้รับสินค้าใหม่ <span className="text-rose-500">*</span></label>
-                          <input type="date" value={selfClaimExpectedDate} onChange={e => setSelfClaimExpectedDate(e.target.value)}
-                            className="w-full sm:w-56 bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-medium focus:bg-white outline-none focus:ring-2 focus:ring-rose-400/20 focus:border-rose-400" />
-                        </div>
-                      )}
-                      {selfClaimResolutionType === 'CLOSE_WITH_REFUND' && (
-                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
-                          <label className="text-xs font-semibold text-emerald-900 block">💰 ยอดเงินที่ได้รับคืน <span className="text-rose-500">*</span></label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-700">฿</span>
-                            <input type="number" min="0.01" step="0.01" value={selfClaimRefundAmount}
-                              onChange={e => setSelfClaimRefundAmount(e.target.value)}
-                              placeholder={`0.00 (รวม PO: ฿${(selectedPO.grandTotal || 0).toLocaleString()})`}
-                              className="w-full pl-7 pr-3 py-2 bg-white border border-emerald-300 rounded-lg text-xs font-mono font-medium outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-emerald-500" />
+                {/* Top Controls */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <button 
+                    type="button"
+                    onClick={handlePrint} 
+                    disabled={isGeneratingPdf}
+                    className="h-8 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed text-xs font-semibold text-slate-700 transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                    title="พิมพ์ PO / ดาวน์โหลด PDF"
+                  >
+                    {isGeneratingPdf ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
+                        <span className="hidden sm:inline text-indigo-600">กำลังสร้าง PDF...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Printer className="w-3.5 h-3.5 text-slate-600" />
+                        <span className="hidden sm:inline">พิมพ์ PO</span>
+                      </>
+                    )}
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={onClose} 
+                    className="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                    aria-label="Close modal"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Slim Modern Stepper (Compact Indicator Bar < h-8) */}
+              {!isSpecial && (
+                <div className="h-8 bg-slate-50 border border-slate-200/80 rounded-xl px-3 mt-3 flex items-center overflow-x-auto scrollbar-none shadow-2xs">
+                  <div className="flex items-center justify-between w-full gap-1 min-w-[480px] sm:min-w-0">
+                    {lifecycleSteps.map((step, i) => {
+                      const isAllCompleted = selectedPO.status === 'CLOSED';
+                      const isDone = isAllCompleted || (currentStepIndex >= 0 && i < currentStepIndex);
+                      const isCurrent = !isAllCompleted && (i === currentStepIndex);
+                      const isLast = i === lifecycleSteps.length - 1;
+
+                      return (
+                        <React.Fragment key={step.key}>
+                          <div className="flex items-center gap-1.5 min-w-0 shrink-0">
+                            {isDone ? (
+                              <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                <Check className="w-2 h-2 stroke-[3]" />
+                              </span>
+                            ) : isCurrent ? (
+                              <span className="relative flex h-3 w-3 shrink-0 items-center justify-center">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-600"></span>
+                              </span>
+                            ) : (
+                              <span className="w-2 h-2 rounded-full bg-slate-300 shrink-0"></span>
+                            )}
+                            <span className={`text-[11px] font-semibold truncate ${
+                              isCurrent 
+                                ? 'text-indigo-700 font-bold' 
+                                : isDone 
+                                  ? 'text-slate-700' 
+                                  : 'text-slate-400'
+                            }`}>
+                              {step.label}
+                            </span>
                           </div>
-                          <p className="text-[10px] text-emerald-700 font-medium">ยอดนี้จะถูกคืนกลับเข้างบประมาณฝ่าย {selectedPO.department} อัตโนมัติ</p>
-                        </div>
-                      )}
-                      <div>
-                        <label className="text-xs font-semibold text-slate-700 block mb-1">บันทึกผลการประสานงาน <span className="text-rose-500">*</span></label>
-                        <textarea value={selfClaimNote} onChange={e => setSelfClaimNote(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-rose-400/20 focus:border-rose-400 h-20 resize-none"
-                          placeholder="ระบุผลการติดต่อร้านค้า ข้อตกลง หรือเหตุผลที่ตัดสินใจ..." />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-                      <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-xs font-bold text-amber-900">อยู่ระหว่างผู้จัดซื้อดำเนินการแก้ไข</p>
-                        <p className="text-[11px] text-amber-700 mt-0.5">PO นี้อยู่ในสถานะ CLAIM — รอผู้จัดซื้อต้นทางประสานงานแก้ไขปัญหา</p>
-                      </div>
-                    </div>
-                  )}
+                          {!isLast && (
+                            <div className={`flex-1 h-0.5 mx-1.5 rounded-full ${
+                              isDone ? 'bg-emerald-400' : 'bg-slate-200'
+                            }`} />
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
-              {/* Items Table */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                    <Package className="w-3.5 h-3.5 text-slate-400" />
-                    รายการสินค้าที่สั่งซื้อ
-                    <span className="text-[10px] font-semibold text-slate-400 bg-slate-200/70 px-2 py-0.5 rounded-full">{selectedPO.items?.length || 0} รายการ</span>
+              {/* Special Status Banner */}
+              {isSpecial && (
+                <div className={`mt-3 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                  selectedPO.status === 'CANCELLED'
+                    ? 'bg-slate-100 text-slate-600 border border-slate-200'
+                    : 'bg-rose-50 text-rose-800 border border-rose-200'
+                }`}>
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+                  <span>
+                    {selectedPO.status === 'CANCELLED' ? 'ใบสั่งซื้อนี้ถูกยกเลิกแล้ว' :
+                     selectedPO.status === 'CLAIM_REPORTED' ? '🚨 มีการแจ้งปัญหาสินค้า — รอดำเนินการแก้ไข' :
+                     '🔧 อยู่ระหว่างดำเนินการแก้ไขปัญหาสินค้า'}
                   </span>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="bg-slate-50/80 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                        <th className="pl-4 pr-3 py-2.5 whitespace-nowrap">รหัส</th>
-                        <th className="px-3 py-2.5">ชื่อสินค้า</th>
-                        <th className="text-center px-3 py-2.5 whitespace-nowrap">จำนวนสั่ง</th>
-                        <th className="text-center px-3 py-2.5 whitespace-nowrap">รับแล้ว</th>
-                        <th className="text-right px-3 py-2.5 whitespace-nowrap">ราคา/หน่วย</th>
-                        <th className="text-right pl-3 pr-4 py-2.5 whitespace-nowrap">รวม (฿)</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {selectedPO.items.map((item, idx) => {
-                        const pQty = item.actualQty ?? item.purchaseQty ?? item.qty;
-                        const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
-                        const price = item.actualPrice ?? item.unitPrice ?? item.estimatedPrice ?? item.price ?? 0;
-                        const isFullyReceived = Number(item.receivedQty || 0) >= Number(pQty);
-                        return (
-                          <tr key={idx} className={`hover:bg-slate-50/60 transition-colors ${idx % 2 === 1 ? 'bg-slate-50/20' : ''}`}>
-                            <td className="pl-4 pr-3 py-3 whitespace-nowrap">
-                              <span className="font-mono text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-medium">{item.code || '-'}</span>
-                            </td>
-                            <td className="px-3 py-3">
-                              <div className="font-semibold text-slate-800 leading-snug break-words max-w-xs">{item.name}</div>
-                              {(isOnlinePO || item.actualStoreName || item.storeName) && (
-                                <div className="text-[11px] text-slate-500 font-sans italic mt-0.5">
-                                  [ช่องทาง: {item.storePlatform || 'ออนไลน์'} • ร้านค้า: {item.actualStoreName || item.storeName || '-'}]
+              )}
+            </div>
+
+            {/* ════ ZONE 2 — SCROLLABLE BODY ════ */}
+            <div className="flex-1 overflow-y-auto bg-slate-50/40" style={{ scrollbarWidth: 'thin' }}>
+              <div className="p-4 sm:p-5 space-y-4">
+
+                {/* Vendor + Delivery 2-col grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2.5 shadow-2xs">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                      <Store className="w-3.5 h-3.5 text-indigo-500" />
+                      ผู้ขาย / Vendor
+                    </div>
+                    {hasAssignedVendor ? (
+                      <div>
+                        <div className="font-semibold text-slate-800 flex items-center gap-2">
+                          <span>🏪</span>
+                          <span>{displayVendor || getVendorDisplayName(selectedPO.vendorName) || selectedPO.vendorId}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                          {selectedPO.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์' : (selectedPO.vendorId || 'ผู้ขาย')}
+                        </p>
+                      </div>
+                    ) : (isPurchaser || role === 'admin') ? (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+                        <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />รอระบุผู้ขาย
+                        </p>
+                        <div className="flex gap-2">
+                          {selectedPO.purchaseChannel === 'ONLINE' ? (
+                            <input type="text" value={customVendorName} onChange={e => setCustomVendorName(e.target.value)}
+                              placeholder="ชื่อร้านค้าออนไลน์ (Shopee / Lazada...)"
+                              className="flex-1 text-xs bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-amber-400/30 outline-none" />
+                          ) : (
+                            <select value={selectedVendorId} onChange={e => setSelectedVendorId(e.target.value)}
+                              className="flex-1 text-xs bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-amber-400/30 outline-none">
+                              <option value="">-- เลือกผู้ขาย --</option>
+                              {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                            </select>
+                          )}
+                          <button onClick={handleAssignVendor}
+                            disabled={isAssigning || (selectedPO.purchaseChannel === 'ONLINE' ? !customVendorName.trim() : !selectedVendorId)}
+                            className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer">
+                            {isAssigning ? 'บันทึก...' : 'บันทึก'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 px-3 py-2 rounded-lg font-medium">รอฝ่ายจัดซื้อระบุร้านค้า</p>
+                    )}
+                  </div>
+
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-2.5 shadow-2xs">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase tracking-widest">
+                      <Truck className="w-3.5 h-3.5 text-indigo-500" />
+                      การจัดส่ง & อ้างอิง
+                    </div>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between text-slate-500">
+                        <span>วันที่ออก PO</span>
+                        <span className="font-mono font-semibold text-slate-800">{selectedPO.issueDate}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>ช่องทางการซื้อ</span>
+                        <span className="font-semibold text-slate-800">{selectedPO.purchaseChannel === 'ONLINE' ? 'ออนไลน์' : 'จัดซื้อตรง'}</span>
+                      </div>
+                      {selectedPO.specUrl && (
+                        <button type="button"
+                          onClick={() => setViewingAttachment({ url: selectedPO.specUrl, title: 'เอกสารอ้างอิง / ลิงก์สินค้า' })}
+                          className="w-full flex items-center gap-2 bg-indigo-50 hover:bg-indigo-100/70 border border-indigo-100 p-2 rounded-lg transition-colors cursor-pointer text-left mt-1">
+                          <ExternalLink className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-indigo-800">ดูเอกสารอ้างอิง PR</p>
+                            <p className="text-[10px] text-indigo-400 truncate">{selectedPO.specUrl}</p>
+                          </div>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Active Claim Banner */}
+                {isClaimStatus && selectedPO.claimData && (
+                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 space-y-2 shadow-2xs">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        <div className="p-1.5 bg-rose-100 rounded-lg shrink-0 mt-0.5">
+                          <AlertTriangle className="w-4 h-4 text-rose-600" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-rose-900">
+                            🚨 พบสินค้ามีปัญหา: {selectedPO.claimData.reason}
+                            {selectedPO.claimRound > 0 && (
+                              <span className="ml-2 text-[10px] font-bold bg-rose-200 text-rose-800 px-2 py-0.5 rounded-full font-mono">รอบที่ {selectedPO.claimRound}</span>
+                            )}
+                          </p>
+                          <p className="text-xs text-rose-700 mt-0.5">{selectedPO.claimData.description}</p>
+                        </div>
+                      </div>
+                      <div className="text-right text-[10px] text-rose-400 shrink-0">
+                        <span>{selectedPO.claimData.reportedBy || '-'}</span>
+                        <span className="block font-mono mt-0.5">{selectedPO.claimData.reportedAt || '-'}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Self-buy Claim Resolution Panel */}
+                {isClaimStatus && selectedPO.purchaseChannel === 'SELF' && showSelfClaimResolution && (
+                  <div className="bg-white border-2 border-rose-200 rounded-xl p-4 space-y-4 shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-rose-100 rounded-lg"><ShieldAlert className="w-4 h-4 text-rose-600" /></div>
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900">🔧 จัดการเคสสินค้ามีปัญหา</h3>
+                          <p className="text-[11px] text-slate-400 mt-0.5">เลือกแนวทางแก้ไขและระบุรายละเอียด</p>
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => setShowSelfClaimResolution(false)}
+                        className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    {canResolveSelfClaim ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {[
+                            { value: 'RESEND', icon: '🔄', label: 'จัดซื้อใหม่ / ส่งทดแทน', desc: 'รอสินค้าชิ้นใหม่ → PO กลับสู่สถานะ "รอตรวจรับ"' },
+                            { value: 'CLOSE_WITH_REFUND', icon: '💰', label: 'ได้รับเงินคืน / ปิดงาน', desc: 'ร้านค้าโอนเงินคืน → ปิด PO (CLOSED)' },
+                            { value: 'CLOSE_NO_ACTION', icon: '❌', label: 'ยอมรับสภาพ / ปิดงาน', desc: 'ไม่เคลม หรือยอมรับของ → ปิด PO (CLOSED)' },
+                          ].map(opt => (
+                            <label key={opt.value} className={`flex flex-col p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                              selfClaimResolutionType === opt.value ? 'bg-rose-50 border-rose-400' : 'bg-white border-slate-200 hover:border-slate-300'
+                            }`}>
+                              <div className="flex items-start gap-2">
+                                <input type="radio" name="selfClaimRes" value={opt.value}
+                                  checked={selfClaimResolutionType === opt.value}
+                                  onChange={() => setSelfClaimResolutionType(opt.value)}
+                                  className="w-3.5 h-3.5 mt-0.5 cursor-pointer text-rose-600" />
+                                <div>
+                                  <p className="text-xs font-bold text-slate-800">{opt.icon} {opt.label}</p>
+                                  <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{opt.desc}</p>
                                 </div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                        {selfClaimResolutionType === 'RESEND' && (
+                          <div>
+                            <label className="text-xs font-semibold text-slate-700 block mb-1">วันที่คาดว่าจะได้รับสินค้าใหม่ <span className="text-rose-500">*</span></label>
+                            <input type="date" value={selfClaimExpectedDate} onChange={e => setSelfClaimExpectedDate(e.target.value)}
+                              className="w-full sm:w-56 bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-medium focus:bg-white outline-none focus:ring-2 focus:ring-rose-400/20 focus:border-rose-400" />
+                          </div>
+                        )}
+                        {selfClaimResolutionType === 'CLOSE_WITH_REFUND' && (
+                          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 space-y-2">
+                            <label className="text-xs font-semibold text-emerald-900 block">💰 ยอดเงินที่ได้รับคืน <span className="text-rose-500">*</span></label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-700">฿</span>
+                              <input type="number" min="0.01" step="0.01" value={selfClaimRefundAmount}
+                                onChange={e => setSelfClaimRefundAmount(e.target.value)}
+                                placeholder={`0.00 (รวม PO: ฿${(selectedPO.grandTotal || 0).toLocaleString()})`}
+                                className="w-full pl-7 pr-3 py-2 bg-white border border-emerald-300 rounded-lg text-xs font-mono font-medium outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-emerald-500" />
+                            </div>
+                            <p className="text-[10px] text-emerald-700 font-medium">ยอดนี้จะถูกคืนกลับเข้างบประมาณฝ่าย {selectedPO.department} อัตโนมัติ</p>
+                          </div>
+                        )}
+                        <div>
+                          <label className="text-xs font-semibold text-slate-700 block mb-1">บันทึกผลการประสานงาน <span className="text-rose-500">*</span></label>
+                          <textarea value={selfClaimNote} onChange={e => setSelfClaimNote(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-rose-400/20 focus:border-rose-400 h-20 resize-none"
+                            placeholder="ระบุผลการติดต่อร้านค้า ข้อตกลง หรือเหตุผลที่ตัดสินใจ..." />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-bold text-amber-900">อยู่ระหว่างผู้จัดซื้อดำเนินการแก้ไข</p>
+                          <p className="text-[11px] text-amber-700 mt-0.5">PO นี้อยู่ในสถานะ CLAIM — รอผู้จัดซื้อต้นทางประสานงานแก้ไขปัญหา</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Items Section: High-Density Item Cards (Kill the Table Desert) ── */}
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs">
+                  <div className="bg-slate-50/80 px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                      <Package className="w-4 h-4 text-indigo-500" />
+                      <span>รายการสินค้าที่สั่งซื้อ</span>
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2 py-0.5 rounded-full font-mono">
+                        {selectedPO.items?.length || 0} รายการ
+                      </span>
+                    </span>
+                  </div>
+
+                  <div className="divide-y divide-slate-100">
+                    {selectedPO.items?.map((item, idx) => {
+                      const pQty = item.actualQty ?? item.purchaseQty ?? item.qty;
+                      const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
+                      const price = item.actualPrice ?? item.unitPrice ?? item.estimatedPrice ?? item.price ?? 0;
+                      const isFullyReceived = Number(item.receivedQty || 0) >= Number(pQty);
+                      const lineTotal = item.total !== undefined ? Number(item.total) : (price * pQty);
+
+                      return (
+                        <div key={idx} className="p-3.5 sm:p-4 hover:bg-slate-50/60 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          {/* Left: SKU, Item Name, Platform & Store Link */}
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200/80 px-2 py-0.5 rounded-lg shrink-0 shadow-2xs">
+                                {item.code || '-'}
+                              </span>
+                              <h4 className="text-sm font-bold text-slate-800 leading-snug break-words">
+                                {item.name}
+                              </h4>
+                            </div>
+
+                            {/* Platform Tag & External Link */}
+                            <div className="flex items-center gap-2 flex-wrap text-xs pt-0.5">
+                              {item.storePlatform && (
+                                <span className={`px-2 py-0.5 rounded-md font-semibold text-[11px] ${
+                                  String(item.storePlatform).toLowerCase().includes('shopee')
+                                    ? 'bg-orange-50 text-orange-700 border border-orange-200'
+                                    : String(item.storePlatform).toLowerCase().includes('lazada')
+                                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                      : 'bg-purple-50 text-purple-700 border border-purple-200'
+                                }`}>
+                                  {item.storePlatform}
+                                </span>
+                              )}
+                              {(item.actualStoreName || item.storeName) && (
+                                <span className="text-slate-500 font-medium text-[11px] truncate">
+                                  ร้าน: <strong className="text-slate-700 font-semibold">{item.actualStoreName || item.storeName}</strong>
+                                </span>
                               )}
                               {(() => {
                                 const rawUrl = getProductUrl(item);
                                 if (!rawUrl) return null;
                                 return (
-                                  <div className="mt-1">
-                                    <a
-                                      href={sanitizeExternalUrl(rawUrl)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50/80 hover:bg-indigo-100/80 border border-indigo-200/60 transition-all shadow-2xs group"
-                                    >
-                                      <span>ดูร้านค้าออนไลน์</span>
-                                      <ExternalLink className="w-3 h-3 text-indigo-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                                    </a>
-                                  </div>
+                                  <a
+                                    href={sanitizeExternalUrl(rawUrl)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline transition-colors shrink-0"
+                                    title="เปิดลิงก์หน้าร้านค้าภายนอก"
+                                  >
+                                    <span>เปิดร้านค้า</span>
+                                    <ExternalLink className="w-3 h-3 text-indigo-500" />
+                                  </a>
                                 );
                               })()}
-                            </td>
-                            <td className="px-3 py-3 text-center whitespace-nowrap">
-                              <span className="font-bold font-mono text-slate-800">{Number(pQty).toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>{' '}
-                              <span className="text-slate-400">{pUnit}</span>
-                            </td>
-                            <td className="px-3 py-3 text-center whitespace-nowrap">
-                              <span className={`px-2 py-0.5 rounded font-mono font-semibold text-[11px] ${isFullyReceived ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60' : 'bg-slate-100 text-slate-600'}`}>
-                                {Number(item.receivedQty || 0).toLocaleString()} {pUnit}
+                            </div>
+                          </div>
+
+                          {/* Right: Grouped Numbers */}
+                          <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 font-mono">
+                            <div className="text-left sm:text-right text-xs space-y-0.5">
+                              <div className="text-slate-500 text-[11px]">
+                                สั่ง: <span className="font-bold text-slate-800">{Number(pQty).toLocaleString()}</span> {pUnit}
+                                <span className="mx-1.5 text-slate-300">|</span>
+                                รับแล้ว: <span className={`font-bold ${isFullyReceived ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                  {Number(item.receivedQty || 0).toLocaleString()}
+                                </span>
+                                {isFullyReceived && <Check className="w-3 h-3 text-emerald-500 inline ml-0.5" />}
+                              </div>
+                              <div className="text-[11px] text-slate-400">
+                                @ ฿{Number(price).toLocaleString()} / {pUnit}
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0 pl-3 sm:border-l sm:border-slate-100">
+                              <span className="text-[10px] text-slate-400 block uppercase font-sans font-medium">รวม</span>
+                              <span className="font-mono text-sm font-bold text-slate-900">
+                                ฿{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>
-                              {isFullyReceived && <Check className="w-3 h-3 text-emerald-500 inline ml-1" />}
-                            </td>
-                            <td className="px-3 py-3 text-right whitespace-nowrap font-mono font-semibold text-slate-700">฿{Number(price).toLocaleString()}</td>
-                            <td className="pl-3 pr-4 py-3 text-right font-mono font-bold text-slate-800 whitespace-nowrap">฿{(item.total || (price * pQty))?.toLocaleString()}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {/* Grand Total bar */}
-                <div className="border-t border-slate-200 bg-slate-800 px-4 py-3 flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-300">ยอดสุทธิ (Grand Total)</span>
-                  <span className="text-base font-bold font-mono text-white tracking-tight">
-                    ฿{((selectedPO.financials?.grandTotal ?? selectedPO.grandTotal) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
-
-              {/* Short Close Banner */}
-              {selectedPO.closedEarly && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-start gap-2.5">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="font-semibold text-xs text-amber-900">ปิด PO ก่อนรับของครบ (Short-Closed)</h4>
-                    <p className="text-xs text-amber-700 mt-0.5"><strong>เหตุผล:</strong> {selectedPO.shortCloseReason || 'ไม่ระบุ'}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* NG Items */}
-              {selectedPO.ngItems && selectedPO.ngItems.length > 0 && (
-                <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-2">
-                  <div className="flex items-center gap-2 font-semibold text-xs text-rose-800">
-                    <ShieldAlert className="w-4 h-4 text-rose-600" />
-                    บันทึกสินค้าชำรุด (Defective Items)
-                  </div>
-                  <div className="divide-y divide-rose-200/50">
-                    {selectedPO.ngItems.map((ng, i) => (
-                      <div key={i} className="py-2 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5">
-                        <div className="font-medium text-rose-900">
-                          <span className="font-semibold font-mono">[{ng.code || ng.productId}]</span> {ng.name}
-                          <span className="text-rose-600 ml-2 font-mono">{ng.qty} {ng.unit}</span>
-                        </div>
-                        <div className="text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-rose-200/70 text-[11px]">
-                          <span className="text-rose-700 font-semibold">อาการ:</span> {ng.defectReason}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* GR Attachments */}
-              {selectedPO.grAttachments && selectedPO.grAttachments.length > 0 && (
-                <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-                  <div className="flex items-center gap-2 font-semibold text-xs text-slate-700">
-                    <Camera className="w-4 h-4 text-indigo-500" />
-                    ภาพถ่ายและเอกสารการตรวจรับ
-                  </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                    {selectedPO.grAttachments.map((att, i) => (
-                      <button key={i} type="button"
-                        onClick={() => setViewingAttachment({ url: att.previewUrl || att.dataUrl, title: att.name })}
-                        className="group bg-slate-50 border border-slate-200 rounded-xl p-1.5 hover:border-indigo-300 hover:shadow-sm transition-all cursor-pointer flex flex-col items-center">
-                        {att.type === 'application/pdf' ? (
-                          <div className="w-full h-16 bg-rose-50 rounded-lg flex flex-col items-center justify-center text-rose-500">
-                            <FileText className="w-5 h-5" /><span className="text-[9px] font-bold mt-0.5">PDF</span>
-                          </div>
-                        ) : (
-                          <img src={att.previewUrl || att.dataUrl} alt={att.name} className="w-full h-16 object-cover rounded-lg group-hover:scale-105 transition-transform" />
-                        )}
-                        <p className="text-[10px] font-medium text-slate-600 truncate w-full mt-1 text-center">{att.name}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* ── RECEIVE mode panel ── */}
-              {activeAction === 'RECEIVE' && isOperational && canReceiveGoods && isReceivable && (
-                <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl overflow-hidden">
-                  <div className="bg-emerald-600 px-4 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-white">
-                      <Download className="w-4 h-4" />
-                      <span className="text-sm font-bold">บันทึกตรวจรับสินค้าเข้าคลัง (+IN)</span>
-                    </div>
-                    <button type="button" onClick={handleFillAll}
-                      className="text-xs font-bold bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-lg transition-all cursor-pointer">
-                      รับทั้งหมด
-                    </button>
-                  </div>
-                  <div className="p-4 space-y-3">
-                    {selectedPO.items.map((item, idx) => {
-                      const ordered = Number(item.orderedQty ?? item.purchaseQty ?? item.qty) || 0;
-                      const received = Number(item.receivedQty) || 0;
-                      const remaining = Math.max(0, ordered - received);
-                      const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
-                      const isDefective = problematicItems[item.productId]?.isProblematic;
-                      const thisQty = receivingQtys[item.productId] ?? 0;
-                      return (
-                        <div key={idx} className={`rounded-xl border p-3.5 transition-all ${isDefective ? 'bg-rose-50/60 border-rose-300' : 'bg-white border-emerald-200/80'}`}>
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-slate-900 truncate">{item.name} <span className="font-mono text-[10px] text-slate-400">({item.code})</span></p>
-                              <p className="text-xs text-slate-500 mt-0.5">
-                                สั่ง <span className="font-mono font-semibold text-slate-700">{ordered}</span> /
-                                รับแล้ว <span className="font-mono font-semibold text-emerald-700">{received}</span> /
-                                คงเหลือ <span className="font-mono font-semibold text-amber-700">{remaining}</span> {pUnit}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
-                              <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer transition-all text-xs font-semibold ${isDefective ? 'bg-rose-600 border-rose-600 text-white' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
-                                <input type="checkbox" checked={Boolean(isDefective)}
-                                  onChange={e => {
-                                    const checked = e.target.checked;
-                                    setProblematicItems(prev => ({ ...prev, [item.productId]: { isProblematic: checked, claimedQty: checked ? (prev[item.productId]?.claimedQty || remaining || 1) : 0, reason: prev[item.productId]?.reason || 'DAMAGED', description: prev[item.productId]?.description || '', photo: prev[item.productId]?.photo || null } }));
-                                  }}
-                                  className="w-3.5 h-3.5 rounded text-rose-600 cursor-pointer" />
-                                <AlertTriangle className={`w-3 h-3 ${isDefective ? 'text-white' : 'text-rose-500'}`} />
-                                <span>มีปัญหา</span>
-                              </label>
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-xs font-semibold text-slate-500">รับ:</span>
-                                <input type="number" min="0" max={remaining} step="any" value={thisQty}
-                                  onChange={e => setReceivingQtys(prev => ({ ...prev, [item.productId]: Number(e.target.value) }))}
-                                  disabled={remaining <= 0}
-                                  className="w-20 text-center text-xs font-mono font-bold bg-white border border-emerald-300 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-emerald-500 disabled:bg-slate-100 disabled:text-slate-400" />
-                                <span className="text-xs text-slate-500">{pUnit}</span>
-                              </div>
                             </div>
                           </div>
-                          {isDefective && (
-                            <div className="mt-3 p-3.5 bg-white/90 border border-rose-200 rounded-xl space-y-2.5">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div>
-                                  <label className="text-xs font-semibold text-slate-700 block mb-1">จำนวนที่มีปัญหา <span className="text-rose-500">*</span></label>
-                                  <input type="number" min="1" max={ordered} step="any"
-                                    value={problematicItems[item.productId]?.claimedQty ?? (remaining || 1)}
-                                    onChange={e => setProblematicItems(prev => ({ ...prev, [item.productId]: { ...prev[item.productId], claimedQty: Math.max(1, Number(e.target.value)) } }))}
-                                    className="w-full text-xs font-mono font-bold bg-white border border-rose-300 rounded-lg px-3 py-2 text-rose-950 outline-none focus:ring-2 focus:ring-rose-400/20" />
-                                </div>
-                                <div>
-                                  <label className="text-xs font-semibold text-slate-700 block mb-1">สาเหตุ <span className="text-rose-500">*</span></label>
-                                  <select value={problematicItems[item.productId]?.reason || 'DAMAGED'}
-                                    onChange={e => setProblematicItems(prev => ({ ...prev, [item.productId]: { ...prev[item.productId], reason: e.target.value } }))}
-                                    className="w-full text-xs bg-white border border-rose-300 rounded-lg px-3 py-2 font-medium outline-none cursor-pointer">
-                                    <option value="DAMAGED">💥 ชำรุด / เสียหาย</option>
-                                    <option value="SHORT_SHIPMENT">📦 ได้รับไม่ครบ</option>
-                                    <option value="WRONG_SPEC">⚠️ ไม่ตรงสเปก / ผิดรุ่น</option>
-                                    <option value="OTHER">📝 อื่นๆ</option>
-                                  </select>
-                                </div>
-                              </div>
-                              <div>
-                                <label className="text-xs font-semibold text-slate-700 block mb-1">รายละเอียดปัญหา <span className="text-rose-500">*</span></label>
-                                <textarea
-                                  value={problematicItems[item.productId]?.description || ''}
-                                  onChange={e => setProblematicItems(prev => ({ ...prev, [item.productId]: { ...prev[item.productId], description: e.target.value, defectReason: e.target.value } }))}
-                                  placeholder="อธิบายอาการ เช่น ชำรุด 2 ชิ้น, บรรจุภัณฑ์ฉีก..."
-                                  className="w-full text-xs bg-white border border-rose-300 rounded-lg px-3 py-2 font-medium outline-none h-14 resize-none focus:ring-2 focus:ring-rose-400/20" />
-                              </div>
-                              <label className="px-3 py-1.5 bg-white text-rose-700 border border-rose-300 hover:bg-rose-50 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5 w-fit transition-all">
-                                <Camera className="w-3.5 h-3.5" />
-                                {problematicItems[item.productId]?.photo ? 'เปลี่ยนรูป' : '+ แนบรูปหลักฐาน'}
-                                <input type="file" accept="image/*" className="hidden"
-                                  onChange={async (e) => {
-                                    if (e.target.files?.[0]) {
-                                      const compressed = await compressImageFile(e.target.files[0]);
-                                      setProblematicItems(prev => ({ ...prev, [item.productId]: { ...prev[item.productId], photo: compressed } }));
-                                    }
-                                  }} />
-                              </label>
-                            </div>
-                          )}
                         </div>
                       );
                     })}
-                    {/* GR Attachments upload */}
-                    <div className="bg-white rounded-xl border border-emerald-200 p-3.5 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                          <UploadCloud className="w-3.5 h-3.5 text-indigo-500" /> แนบรูปถ่าย / ใบส่งของ
+                  </div>
+
+                  {/* Clean Financial Summary (Replaces Harsh Black Bar) */}
+                  <div className="p-4 bg-slate-50/70 border-t border-slate-200 flex justify-end">
+                    <div className="w-full sm:w-80 space-y-1.5 font-mono">
+                      <div className="flex justify-between items-center text-xs text-slate-500">
+                        <span>รวมมูลค่าสินค้า (Subtotal):</span>
+                        <span className="font-bold text-slate-700">
+                          ฿{subtotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
-                        <label className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-all">
-                          <UploadCloud className="w-3 h-3" />
-                          {isUploading ? 'ประมวลผล...' : '+ เพิ่มไฟล์'}
-                          <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple onChange={handleFileUpload} disabled={isUploading} className="hidden" />
-                        </label>
                       </div>
-                      {grAttachments.length > 0 && (
-                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                          {grAttachments.map((file, idx) => (
-                            <div key={idx} className="relative group bg-slate-50 border border-slate-200 rounded-lg p-1 overflow-hidden">
-                              {file.type === 'application/pdf' ? (
-                                <div className="h-12 bg-rose-50 rounded flex flex-col items-center justify-center text-rose-500">
-                                  <FileText className="w-4 h-4" /><span className="text-[8px] font-bold mt-0.5">PDF</span>
-                                </div>
-                              ) : (
-                                <img src={file.previewUrl || file.dataUrl} alt={file.name} className="h-12 w-full object-cover rounded" />
-                              )}
-                              <p className="text-[9px] text-slate-500 truncate mt-0.5 text-center">{file.name}</p>
-                              <button type="button" onClick={() => handleRemoveAttachment(idx)}
-                                className="absolute top-0.5 right-0.5 p-0.5 bg-rose-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                                <Trash2 className="w-2.5 h-2.5" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+
+                      <div className="flex justify-between items-center text-xs text-slate-500">
+                        <span>ภาษีมูลค่าเพิ่ม 7% (VAT 7%):</span>
+                        <span className="font-bold text-slate-700">
+                          {hasVat && vatAmount > 0
+                            ? `฿${vatAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : 'ไม่มี VAT (0%)'}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-between items-center bg-emerald-50/80 border border-emerald-200 text-emerald-800 rounded-lg px-3 py-1.5 mt-1">
+                        <span className="text-xs font-bold font-sans">ยอดเงินรวมสุทธิ (Grand Total):</span>
+                        <span className="text-sm font-bold font-mono text-emerald-900">
+                          ฿{grandTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
                     </div>
-                    <input type="text" value={receiveNote} onChange={e => setReceiveNote(e.target.value)}
-                      placeholder="หมายเหตุการรับของ (เช่น สภาพสมบูรณ์, ตรวจนับตาม Packing List ครบถ้วน)"
-                      className="w-full text-xs bg-white border border-emerald-300 rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-emerald-400/20 focus:border-emerald-500" />
-                    <button type="button" onClick={handleShortClosePO}
-                      disabled={isShortClosing || isReceiving || isSubmitting}
-                      className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50">
-                      <AlertOctagon className="w-3.5 h-3.5 text-amber-600" />
-                      {isShortClosing ? 'กำลังปิด PO...' : 'ปิด PO (กรณีได้ของไม่ครบ)'}
-                    </button>
                   </div>
                 </div>
-              )}
 
-              {/* ── CLAIM mode panel ── */}
-              {activeAction === 'CLAIM' && canReportClaim && (
-                <div className="bg-rose-50 border-2 border-rose-300 rounded-xl overflow-hidden">
-                  <div className="bg-rose-600 px-4 py-3 flex items-center gap-2 text-white">
-                    <AlertTriangle className="w-4 h-4" />
-                    <span className="text-sm font-bold">แจ้งเคลม / รายงานปัญหาสินค้า{selectedPO.purchaseChannel === 'ONLINE' ? ' (ออนไลน์)' : ' (จัดซื้อทั่วไป)'}</span>
+                {/* Short Close Banner */}
+                {selectedPO.closedEarly && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-start gap-2.5 shadow-2xs">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-semibold text-xs text-amber-900">ปิด PO ก่อนรับของครบ (Short-Closed)</h4>
+                      <p className="text-xs text-amber-700 mt-0.5"><strong>เหตุผล:</strong> {selectedPO.shortCloseReason || 'ไม่ระบุ'}</p>
+                    </div>
                   </div>
-                  <div className="p-4 space-y-3">
-                    <div>
-                      <label className="text-xs font-semibold text-slate-700 block mb-1">หัวข้อปัญหา <span className="text-rose-500">*</span></label>
-                      <select value={claimReason} onChange={e => setClaimReason(e.target.value)}
-                        className="w-full bg-white border border-rose-300 rounded-xl px-3 py-2.5 text-xs font-medium outline-none cursor-pointer focus:ring-2 focus:ring-rose-400/20 focus:border-rose-500">
-                        <option value="สินค้าชำรุด/เสียหาย">💥 สินค้าชำรุด / เสียหาย</option>
-                        <option value="สินค้าไม่ตรงสเปก/ผิดรุ่น">⚠️ สินค้าไม่ตรงสเปก / ผิดรุ่น</option>
-                        <option value="ได้รับสินค้าไม่ครบ">📦 ได้รับสินค้าไม่ครบ</option>
-                        <option value="อื่นๆ (ระบุในรายละเอียด)">📝 อื่นๆ (ระบุในรายละเอียด)</option>
-                      </select>
+                )}
+
+                {/* NG Items */}
+                {selectedPO.ngItems && selectedPO.ngItems.length > 0 && (
+                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-2 shadow-2xs">
+                    <div className="flex items-center gap-2 font-semibold text-xs text-rose-800">
+                      <ShieldAlert className="w-4 h-4 text-rose-600" />
+                      บันทึกสินค้าชำรุด (Defective Items)
                     </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-700 block mb-1">รายละเอียดปัญหา <span className="text-rose-500">*</span></label>
-                      <textarea value={claimDescription} onChange={e => setClaimDescription(e.target.value)}
-                        className="w-full bg-white border border-rose-300 rounded-xl px-3.5 py-2.5 text-xs outline-none h-24 resize-none font-medium focus:ring-2 focus:ring-rose-400/20 focus:border-rose-500"
-                        placeholder="อธิบายปัญหาที่พบ เช่น สินค้าบุบ แตก หรือไม่ตรงสเปก..." />
-                    </div>
-                    <div>
-                      <label className="text-xs font-semibold text-slate-700 block mb-1.5">รูปภาพหลักฐาน</label>
-                      <input type="file" accept="image/*" ref={claimFileInputRef}
-                        onChange={async (e) => { if (e.target.files?.[0]) { const c = await compressImageFile(e.target.files[0]); setClaimPhoto(c); } }}
-                        className="hidden" />
-                      <div className="flex gap-3 items-center">
-                        <button type="button" onClick={() => claimFileInputRef.current?.click()}
-                          className="px-3 py-1.5 bg-white text-rose-700 border border-rose-300 hover:bg-rose-50 rounded-lg text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all">
-                          <Camera className="w-3.5 h-3.5" />
-                          {claimPhoto ? 'เปลี่ยนรูปภาพ' : '+ อัปโหลดรูปภาพ'}
-                        </button>
-                        {claimPhoto && (
-                          <div className="relative group rounded-lg overflow-hidden border border-rose-300 w-12 h-12">
-                            <img src={claimPhoto.previewUrl} alt="Claim photo" className="w-full h-full object-cover" />
-                            <button type="button" onClick={() => setClaimPhoto(null)}
-                              className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                              <Trash2 className="w-3 h-3" />
-                            </button>
+                    <div className="divide-y divide-rose-200/50">
+                      {selectedPO.ngItems.map((ng, i) => (
+                        <div key={i} className="py-2 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5">
+                          <div className="font-medium text-rose-900">
+                            <span className="font-semibold font-mono">[{ng.code || ng.productId}]</span> {ng.name}
+                            <span className="text-rose-600 ml-2 font-mono">{ng.qty} {ng.unit}</span>
                           </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 pt-2 border-t border-rose-200">
-                      <button type="button" onClick={() => setActiveAction('NONE')}
-                        className="px-4 py-2 bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-semibold transition-all cursor-pointer">
-                        ยกเลิก / กลับ
-                      </button>
-                      <button type="button" disabled={isSubmittingClaim || !claimDescription.trim()}
-                        onClick={async () => {
-                          setIsSubmittingClaim(true);
-                          try {
-                            await apiService.fileOnlineClaim(selectedPO.id, { reason: claimReason, description: claimDescription, photo: claimPhoto }, currentRole);
-                            await modalService.success('ส่งเรื่องเคลมสำเร็จ', 'ระบบได้แจ้งเตือนไปยังผู้สั่งซื้อแล้ว');
-                            onRefresh(); onClose();
-                          } catch (err) { modalService.error('เกิดข้อผิดพลาด', err.message); }
-                          finally { setIsSubmittingClaim(false); }
-                        }}
-                        className="px-5 py-2 bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all">
-                        <AlertOctagon className="w-3.5 h-3.5" />
-                        {isSubmittingClaim ? 'กำลังส่ง...' : '⚠️ ส่งเรื่องแจ้งเคลมไปยังจัดซื้อ'}
-                      </button>
+                          <div className="text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-rose-200/70 text-[11px]">
+                            <span className="text-rose-700 font-semibold">อาการ:</span> {ng.defectReason}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Activity Log (Collapsible & Compact) */}
-              {selectedPO.activityLog && selectedPO.activityLog.length > 0 && (
-                <CollapsibleActivityTimeline
-                  events={selectedPO.activityLog}
-                  title="ประวัติการดำเนินงาน (Activity Timeline)"
-                  defaultExpanded={selectedPO.activityLog.length < 2}
-                />
-              )}
+                {/* GR Attachments */}
+                {selectedPO.grAttachments && selectedPO.grAttachments.length > 0 && (
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs">
+                    <div className="flex items-center gap-2 font-semibold text-xs text-slate-700">
+                      <Camera className="w-4 h-4 text-indigo-500" />
+                      ภาพถ่ายและเอกสารการตรวจรับ
+                    </div>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                      {selectedPO.grAttachments.map((att, i) => (
+                        <button key={i} type="button"
+                          onClick={() => setViewingAttachment({ url: att.previewUrl || att.dataUrl, title: att.name })}
+                          className="group bg-slate-50 border border-slate-200 rounded-xl p-1.5 hover:border-indigo-300 hover:shadow-sm transition-all cursor-pointer flex flex-col items-center">
+                          {att.type === 'application/pdf' ? (
+                            <div className="w-full h-16 bg-rose-50 rounded-lg flex flex-col items-center justify-center text-rose-500">
+                              <FileText className="w-5 h-5" /><span className="text-[9px] font-bold mt-0.5">PDF</span>
+                            </div>
+                          ) : (
+                            <img src={att.previewUrl || att.dataUrl} alt={att.name} className="w-full h-16 object-cover rounded-lg group-hover:scale-105 transition-transform" />
+                          )}
+                          <p className="text-[10px] font-medium text-slate-600 truncate w-full mt-1 text-center">{att.name}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
+                {/* Activity Log (Collapsible & Compact) */}
+                {selectedPO.activityLog && selectedPO.activityLog.length > 0 && (
+                  <CollapsibleActivityTimeline
+                    events={selectedPO.activityLog}
+                    title="ประวัติการดำเนินงาน (Activity Timeline)"
+                    defaultExpanded={selectedPO.activityLog.length < 2}
+                  />
+                )}
+
+              </div>
             </div>
-          </div>
 
-          {/* ════ ZONE 3 — STICKY FOOTER ACTION DOCK ════ */}
-          <div className="shrink-0 bg-white border-t border-slate-100 z-20">
-            <div className="px-4 sm:px-5 py-3.5 flex items-center justify-between flex-wrap gap-2.5">
-              {/* Left: Close button */}
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={onClose}
-                  className="bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer">
-                  ปิดหน้าต่าง
-                </button>
+            {/* ════ ZONE 3 — STICKY FOOTER ACTION DOCK (Clear Action Priority) ════ */}
+            <div className="shrink-0 bg-white border-t border-slate-100 z-20">
+              <div className="px-4 sm:px-6 py-3.5 flex items-center justify-between flex-wrap gap-2.5">
+                {/* Left: Close button (Ghost button Slate) */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs"
+                  >
+                    ✕ ปิดหน้าต่าง
+                  </button>
+                </div>
+
+                {/* Center / Subtle: Cancel PO */}
                 {!isPlantManager && isPOCancellable && canCancelPO && (
-                  <button type="button" onClick={handleCancelPO} disabled={isCancelling}
-                    className="px-3.5 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50">
-                    <XCircle className="w-3.5 h-3.5" />{isCancelling ? 'กำลังยกเลิก...' : 'ยกเลิก PO'}
+                  <button
+                    type="button"
+                    onClick={handleCancelPO}
+                    disabled={isCancelling}
+                    className="text-xs font-medium text-slate-400 hover:text-rose-600 px-2.5 py-1.5 transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                    title="ยกเลิกใบสั่งซื้อ"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>{isCancelling ? 'กำลังยกเลิก...' : 'ยกเลิก PO'}</span>
                   </button>
                 )}
-              </div>
 
-              {/* Right: Active Action Buttons */}
-              <div className="flex items-center gap-2 ml-auto flex-wrap">
-
-                {/* SELF Claim Resolution toolbar */}
-                {isOperational && isClaimStatus && selectedPO.purchaseChannel === 'SELF' && showSelfClaimResolution && (
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setShowSelfClaimResolution(false)}
-                      className="px-4 py-2 bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-semibold transition-all cursor-pointer">ยกเลิก</button>
-                    <button type="button" disabled={isResolvingSelfClaim || !selfClaimNote.trim()} onClick={handleResolveSelfClaim}
-                      className="px-5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer transition-all">
-                      <Check className="w-4 h-4" />{isResolvingSelfClaim ? 'กำลังบันทึก...' : 'ยืนยันการจัดการเคส'}
-                    </button>
-                  </div>
-                )}
-
-                {/* RECEIVE mode footer buttons */}
-                {activeAction === 'RECEIVE' && (
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setActiveAction('NONE')}
-                      className="px-4 py-2 bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-semibold transition-all cursor-pointer">ยกเลิก / กลับ</button>
-                    {Object.values(problematicItems).some(p => p.isProblematic) ? (
-                      <button type="button" onClick={handleSubmitReceiving}
-                        disabled={isReceiving || isSubmitting || isShortClosing}
-                        className="px-5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-all ring-2 ring-rose-200">
-                        <AlertTriangle className="w-4 h-4" />{isReceiving || isSubmitting ? 'กำลังบันทึก...' : '🚨 ยืนยันรับพร้อมแจ้งเคลม'}
-                      </button>
-                    ) : (
-                      <button type="button" onClick={handleSubmitReceiving}
-                        disabled={isReceiving || isSubmitting || isShortClosing}
-                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-all">
-                        <CheckCircle2 className="w-4 h-4" />{isReceiving || isSubmitting ? 'กำลังบันทึก...' : '✓ ยืนยันตรวจรับเข้าคลัง (+IN)'}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* CLAIM mode footer buttons */}
-                {activeAction === 'CLAIM' && (
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setActiveAction('NONE')}
-                      className="px-4 py-2 bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-xl text-xs font-semibold transition-all cursor-pointer">ยกเลิก / กลับ</button>
-                    <button type="button" disabled={isSubmittingClaim || !claimDescription.trim()}
+                {/* Right: Prioritized Action Buttons */}
+                <div className="flex items-center gap-2.5 ml-auto flex-wrap">
+                  {/* Purchaser Action: Mark Ordered */}
+                  {!isPlantManager && (selectedPO.status === 'ISSUED' || selectedPO.status === 'IN_PROGRESS_ONLINE') &&
+                    (isPurchaser || role === 'admin' || currentRole?.id === 'ADMIN' || currentRole?.canOnlinePurchase) && (
+                    <button
                       onClick={async () => {
-                        setIsSubmittingClaim(true);
-                        try {
-                          await apiService.fileOnlineClaim(selectedPO.id, { reason: claimReason, description: claimDescription, photo: claimPhoto }, currentRole);
-                          await modalService.success('ส่งเรื่องเคลมสำเร็จ', 'ระบบได้แจ้งเตือนไปยังผู้สั่งซื้อแล้ว');
-                          onRefresh(); onClose();
-                        } catch (err) { modalService.error('เกิดข้อผิดพลาด', err.message); }
-                        finally { setIsSubmittingClaim(false); }
+                        const targetStatus = selectedPO.purchaseChannel === 'ONLINE' ? 'ORDERED_PENDING_DELIVERY' : 'IN_DELIVERY';
+                        const confirmed = await modalService.confirm({ title: 'ยืนยันการสั่งซื้อสินค้า', message: `ยืนยันสั่งซื้อ PO ${selectedPO.poNo}?`, confirmText: 'ยืนยันสั่งซื้อแล้ว', cancelText: 'ยกเลิก' });
+                        if (confirmed) {
+                          try {
+                            const updated = await apiService.updatePOStatus(selectedPO.id, targetStatus, currentRole);
+                            const updatedPayload = updated || { ...selectedPO, status: targetStatus };
+                            if (context?.updatePO) context.updatePO(selectedPO.id, updatedPayload);
+                            if (onRefresh) onRefresh(updatedPayload);
+                            await modalService.success('บันทึกสั่งซื้อแล้ว', `PO ${selectedPO.poNo} เปลี่ยนสถานะเป็นกำลังจัดส่ง`);
+                            onClose();
+                          } catch (err) { modalService.error('เกิดข้อผิดพลาด', err.message); }
+                        }
                       }}
-                      className="px-5 py-2 bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all">
-                      <AlertOctagon className="w-4 h-4" />{isSubmittingClaim ? 'กำลังส่ง...' : '⚠️ ส่งเรื่องแจ้งเคลม'}
+                      disabled={!hasAssignedVendor}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-all shadow-2xs"
+                    >
+                      <ShoppingCart className="w-3.5 h-3.5" />บันทึกสั่งซื้อแล้ว
                     </button>
-                  </div>
-                )}
+                  )}
 
-                {/* NONE mode buttons */}
-                {activeAction === 'NONE' && !showSelfClaimResolution && (
-                  <>
-                    {isOperational && isClaimStatus && selectedPO.purchaseChannel === 'SELF' && canResolveSelfClaim && (
-                      <button onClick={() => setShowSelfClaimResolution(p => !p)}
-                        className="px-4 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-all bg-rose-600 text-white hover:bg-rose-700">
-                        <ShieldAlert className="w-3.5 h-3.5" />จัดการเคสปัญหา
-                      </button>
-                    )}
-                    {!isPlantManager && (selectedPO.status === 'ISSUED' || selectedPO.status === 'IN_PROGRESS_ONLINE') &&
-                      (isPurchaser || role === 'admin' || currentRole?.id === 'ADMIN' || currentRole?.canOnlinePurchase) && (
-                      <button
-                        onClick={async () => {
-                          const targetStatus = selectedPO.purchaseChannel === 'ONLINE' ? 'ORDERED_PENDING_DELIVERY' : 'IN_DELIVERY';
-                          const confirmed = await modalService.confirm({ title: 'ยืนยันการสั่งซื้อสินค้า', message: `ยืนยันสั่งซื้อ PO ${selectedPO.poNo}?`, confirmText: 'ยืนยันสั่งซื้อแล้ว', cancelText: 'ยกเลิก' });
-                          if (confirmed) {
-                            try {
-                              const updated = await apiService.updatePOStatus(selectedPO.id, targetStatus, currentRole);
-                              const updatedPayload = updated || { ...selectedPO, status: targetStatus };
-                              if (context?.updatePO) context.updatePO(selectedPO.id, updatedPayload);
-                              if (onRefresh) onRefresh(updatedPayload);
-                              await modalService.success('บันทึกสั่งซื้อแล้ว', `PO ${selectedPO.poNo} เปลี่ยนสถานะเป็นกำลังจัดส่ง`);
-                              onClose();
-                            } catch (err) { modalService.error('เกิดข้อผิดพลาด', err.message); }
-                          }
-                        }}
-                        disabled={!hasAssignedVendor}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-all">
-                        <ShoppingCart className="w-3.5 h-3.5" />บันทึกสั่งซื้อแล้ว
-                      </button>
-                    )}
-                    {isOperational && canReceiveGoods && isReceivable && canReportClaim && (
-                      <button onClick={() => setActiveAction('CLAIM')}
-                        className="px-4 py-2 bg-white text-rose-700 border border-rose-300 hover:bg-rose-50 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-all">
-                        <AlertTriangle className="w-3.5 h-3.5" />⚠️ แจ้งปัญหา / เคลม
-                      </button>
-                    )}
-                    {isOperational && canReceiveGoods && isReceivable && (
-                      <button onClick={() => setShowReceivingModal(true)}
-                        className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-all shadow-sm shadow-emerald-200">
-                        <Download className="w-3.5 h-3.5" />📦 บันทึกตรวจรับสินค้า (+IN)
-                      </button>
-                    )}
-                    {selectedPO.status === 'CLOSED' && (
-                      <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-xl text-xs font-bold">
-                        <CheckCircle2 className="w-3.5 h-3.5" />รับเข้าคลังครบแล้ว (+IN)
-                      </div>
-                    )}
-                  </>
-                )}
+                  {/* Self Claim Resolution button */}
+                  {isOperational && isClaimStatus && selectedPO.purchaseChannel === 'SELF' && canResolveSelfClaim && (
+                    <button
+                      onClick={() => setShowSelfClaimResolution(p => !p)}
+                      className="px-4 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-all bg-rose-600 text-white hover:bg-rose-700 shadow-2xs"
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5" />จัดการเคสปัญหา
+                    </button>
+                  )}
+
+                  {/* Secondary Outline: [ 🚨 แจ้งปัญหา / ติดตามร้าน ] */}
+                  {isOperational && canReceiveGoods && isReceivable && canReportClaim && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveView('CLAIM')}
+                      className="border border-rose-200 text-rose-700 bg-rose-50/60 hover:bg-rose-100 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                    >
+                      <span>🚨 แจ้งปัญหา / ติดตามร้าน</span>
+                    </button>
+                  )}
+
+                  {/* Primary Solid CTA: [ 📥 บันทึกตรวจรับสินค้า (+IN) ➔ ] */}
+                  {isOperational && canReceiveGoods && isReceivable && (
+                    <button
+                      type="button"
+                      onClick={() => setShowReceivingModal(true)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl shadow-sm text-xs flex items-center gap-2 cursor-pointer transition-all"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>📥 บันทึกตรวจรับสินค้า (+IN) ➔</span>
+                    </button>
+                  )}
+
+                  {selectedPO.status === 'CLOSED' && (
+                    <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3.5 py-2 rounded-xl text-xs font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5" />รับเข้าคลังครบแล้ว (+IN)
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-
-        </div>
+        )}
       </div>
 
       {/* AttachmentViewerModal */}

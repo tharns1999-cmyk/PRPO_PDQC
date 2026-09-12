@@ -37,6 +37,7 @@ export const CLAIM_STATUSES = [
 export const CLOSED_STATUSES = [
   'closed',
   'completed',
+  'resolved',
   'received',
   'fully_received',
   'completed_with_refund',

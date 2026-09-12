@@ -1,5 +1,37 @@
 [
   {
+    "id": "LOG-1789218365998-5863",
+    "grNumber": "GRN-PO-PD-2026-005-01",
+    "date": "12/9/2569 20:06:05",
+    "productId": "PROD-PD-008",
+    "productCode": "PD-STF-001",
+    "type": "IN",
+    "docNo": "PO-PD-2026-005",
+    "qty": 15,
+    "unit": "ม้วน",
+    "balance": 177,
+    "user": "คุณวิชัย (PD) (Requester (PD))",
+    "locationId": "LOC-PD-004",
+    "locationName": "ห้องแพ็คเกจจิ้ง",
+    "note": "รับสินค้า 2.5 ลัง (= 15 ม้วน) จาก PO PO-PD-2026-005"
+  },
+  {
+    "id": "LOG-1789218365998-7592",
+    "grNumber": "GRN-PO-PD-2026-005-01",
+    "date": "12/9/2569 20:06:05",
+    "productId": "PROD-PD-1789102607194",
+    "productCode": "ITM-001",
+    "type": "IN",
+    "docNo": "PO-PD-2026-005",
+    "qty": 400,
+    "unit": "ชิ้น",
+    "balance": 451,
+    "user": "คุณวิชัย (PD) (Requester (PD))",
+    "locationId": "",
+    "locationName": "",
+    "note": "รับสินค้า 4 กล่อง (= 400 ชิ้น) จาก PO PO-PD-2026-005"
+  },
+  {
     "id": "LOG-1789181482175-4804",
     "grNumber": "GR-PO-PD-2026-004-1789181482165",
     "date": "12/9/2569 09:51:22",

@@ -543,11 +543,11 @@ export default function ReceivingModal({
               <button
                 type="button"
                 onClick={handleBackToPO}
-                className="flex items-center gap-1 text-xs font-semibold text-slate-300 hover:text-white mr-1 sm:mr-3 px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0 border border-slate-700/80 shadow-2xs"
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 hover:text-white mr-1 sm:mr-3 px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0 border border-slate-700/80 shadow-2xs"
                 title="กลับไปที่หน้าต่างใบสั่งซื้อ (PO)"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>← กลับไปใบ PO</span>
+                <span>กลับไปใบ PO</span>
               </button>
             )}
             <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white shadow-xs shrink-0">
