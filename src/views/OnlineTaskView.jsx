@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { apiService } from '../services/apiService';
+import { storageService } from '../services/storageService';
 import { useAppContext } from '../context/AppContext';
 import { 
   ShoppingCart, CheckCircle2, Package, AlertCircle, Send, Check, 
@@ -59,13 +60,13 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
       const amount = Number(po.totalAmount || po.grandTotal || po.estimatedAmount || 0);
       totalAmount += amount;
 
-      if (['in_progress_online', 'pending_order', 'pending'].includes(s)) {
+      if (['in_progress_online', 'pending_order', 'pending', 'waiting_order', 'waiting', 'issued', 'รอดำเนินการ', 'รอดำเนินการสั่งซื้อ'].includes(s)) {
         pending++;
-      } else if (['ordered_pending_delivery', 'in_delivery', 'ordered', 'partial_received', 'partially_received'].includes(s)) {
+      } else if (['ordered_pending_delivery', 'in_delivery', 'ordered', 'partial_received', 'partially_received', 'waiting_delivery', 'waiting_delivery_round_2'].includes(s) || s.startsWith('waiting_delivery')) {
         ordered++;
-      } else if (s.includes('claim')) {
+      } else if (s.includes('claim') && !s.includes('refund')) {
         claim++;
-      } else if (['completed', 'received', 'fully_received', 'closed'].includes(s)) {
+      } else if (['completed', 'received', 'fully_received', 'closed', 'completed_with_refund'].includes(s) || s.startsWith('completed')) {
         closed++;
       }
     });
@@ -81,13 +82,13 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
       // Tab filter
       let matchTab = true;
       if (activeTab === 'PENDING') {
-        matchTab = ['in_progress_online', 'pending_order', 'pending'].includes(s);
+        matchTab = ['in_progress_online', 'pending_order', 'pending', 'waiting_order', 'waiting', 'issued', 'รอดำเนินการ', 'รอดำเนินการสั่งซื้อ'].includes(s);
       } else if (activeTab === 'ORDERED') {
-        matchTab = ['ordered_pending_delivery', 'in_delivery', 'ordered', 'partial_received', 'partially_received'].includes(s);
+        matchTab = ['ordered_pending_delivery', 'in_delivery', 'ordered', 'partial_received', 'partially_received', 'waiting_delivery', 'waiting_delivery_round_2'].includes(s) || s.startsWith('waiting_delivery');
       } else if (activeTab === 'CLAIM') {
-        matchTab = s.includes('claim');
+        matchTab = s.includes('claim') && !s.includes('refund');
       } else if (activeTab === 'CLOSED') {
-        matchTab = ['completed', 'received', 'fully_received', 'closed'].includes(s);
+        matchTab = ['completed', 'received', 'fully_received', 'closed', 'completed_with_refund'].includes(s) || s.startsWith('completed');
       }
 
       // Dept filter
@@ -123,16 +124,42 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
           </p>
         </div>
 
-        {/* Total Value Capsule */}
-        <div className="flex items-center gap-3 px-3 py-1.5 bg-white rounded-xl border border-slate-200/80 shadow-2xs shrink-0 self-start sm:self-auto">
-          <div className="text-right">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">มูลค่าคำขอในมือ</span>
-            <span className="font-mono font-bold text-slate-800 text-sm">
-              ฿{metrics.totalAmount.toLocaleString()}
-            </span>
-          </div>
-          <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-mono text-xs font-bold">
-            {metrics.total}
+        {/* Actions & Total Value Capsule */}
+        <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+          {/* Reset Mock Data Button */}
+          <button
+            type="button"
+            onClick={async () => {
+              const confirmed = await modalService.confirm({
+                title: 'รีเซ็ตข้อมูลจำลอง PO-QC-2026-001',
+                message: 'ต้องการกู้คืนข้อมูล PO-QC-2026-001 ให้ตรงตามใบ PR ต้นทาง (รายการที่ 1: 2 ขวด @ ฿750 = ฿1,500, รายการที่ 2: 8 ขวด @ ฿70 = ฿560, รวม ฿2,060) หรือไม่?',
+                confirmText: 'ยืนยันรีเซ็ต',
+                cancelText: 'ยกเลิก'
+              });
+              if (confirmed) {
+                await apiService.resetPOQC2026001();
+                await fetchPOs();
+                modalService.success('กู้คืนข้อมูลสำเร็จ', 'รีเซ็ตข้อมูล PO-QC-2026-001 ยอดรวม ฿2,060 เรียบร้อยแล้ว');
+              }
+            }}
+            className="h-9 px-3 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-xl border border-slate-200/80 shadow-2xs text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+            title="รีเซ็ตค่า PO-QC-2026-001 ให้ตรงตาม PR"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+            <span className="hidden sm:inline">รีเซ็ตข้อมูล Mock PO</span>
+          </button>
+
+          {/* Total Value Capsule */}
+          <div className="flex items-center gap-3 px-3 py-1.5 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
+            <div className="text-right">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">มูลค่าคำขอในมือ</span>
+              <span className="font-mono font-bold text-slate-800 text-sm">
+                ฿{metrics.totalAmount.toLocaleString()}
+              </span>
+            </div>
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-mono text-xs font-bold">
+              {metrics.total}
+            </div>
           </div>
         </div>
       </div>
@@ -300,6 +327,7 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
             <OnlineOrderCard 
               key={po.id} 
               po={po} 
+              activeTab={activeTab}
               currentRole={currentRole}
               onViewAttachment={setViewingAttachment}
               onShowDetails={setSelectedPO}

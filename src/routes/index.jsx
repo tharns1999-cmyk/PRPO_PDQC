@@ -1,6 +1,9 @@
 import React from 'react';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { AppProvider, useAppContext } from '../context/AppContext';
+import { ProcurementProvider } from '../context/ProcurementContext';
+import { BudgetProvider } from '../context/BudgetContext';
+import { InventoryProvider } from '../context/InventoryContext';
 import MainLayout from '../layouts/MainLayout';
 import NotFoundView from '../views/NotFoundView';
 
@@ -35,11 +38,17 @@ function AppLoadingScreen() {
   );
 }
 
-// Root Layout wrapping the router with AppProvider
+// Root Layout wrapping the router with AppProvider, ProcurementProvider, BudgetProvider, InventoryProvider
 function AppRootLayout() {
   return (
     <AppProvider>
-      <Outlet />
+      <ProcurementProvider>
+        <BudgetProvider>
+          <InventoryProvider>
+            <Outlet />
+          </InventoryProvider>
+        </BudgetProvider>
+      </ProcurementProvider>
     </AppProvider>
   );
 }

@@ -5,6 +5,44 @@ import { auditService } from './auditService.js';
 import { hasDepartmentAccess } from '../utils/permissions.js';
 import { generateNextPRId, generateNextPOId } from '../utils/idGenerator.js';
 
+// ─── Fallback Mock Attachment Assets (Phase 2) ───
+const GLOVE_PACKAGE_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="100%" height="100%"><rect width="400" height="400" fill="%23f8fafc"/><rect x="50" y="80" width="300" height="240" rx="16" fill="%230284c7" stroke="%230369a1" stroke-width="4"/><rect x="70" y="100" width="260" height="120" rx="10" fill="%2338bdf8" fill-opacity="0.3"/><path d="M120 160 Q150 130 180 160 T240 160 T280 150" fill="none" stroke="%23ffffff" stroke-width="5" stroke-linecap="round"/><circle cx="150" cy="150" r="12" fill="%23ffffff"/><circle cx="180" cy="140" r="14" fill="%23ffffff"/><circle cx="210" cy="145" r="13" fill="%23ffffff"/><circle cx="240" cy="160" r="11" fill="%23ffffff"/><rect x="80" y="235" width="240" height="65" rx="8" fill="%23075985"/><text x="200" y="260" font-family="sans-serif" font-size="16" font-weight="bold" fill="%23ffffff" text-anchor="middle">NITRILE EXAMINATION GLOVES</text><text x="200" y="285" font-family="sans-serif" font-size="13" fill="%23bae6fd" text-anchor="middle">กล่องบรรจุ 100 ชิ้น (Package)</text></svg>`;
+
+const GLOVE_PRODUCT_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="100%" height="100%"><rect width="400" height="400" fill="%23f0fdf4"/><circle cx="200" cy="200" r="170" fill="%23e0f2fe"/><path d="M160 290 C150 250 140 210 145 180 C148 160 140 130 145 110 C148 100 160 100 165 115 C170 135 170 150 172 160 C175 140 178 100 183 80 C186 70 198 70 200 85 C205 110 203 145 204 160 C208 140 215 95 220 85 C224 75 235 78 236 90 C238 120 234 150 234 165 C239 150 248 120 255 115 C262 110 270 120 266 135 C260 160 252 190 250 210 C245 250 240 290 230 310 Z" fill="%230284c7" stroke="%230369a1" stroke-width="4" stroke-linejoin="round"/><path d="M155 295 L235 295" stroke="%23075985" stroke-width="8" stroke-linecap="round"/><rect x="60" y="330" width="280" height="45" rx="8" fill="%230f172a"/><text x="200" y="358" font-family="sans-serif" font-size="13" font-weight="bold" fill="%2338bdf8" text-anchor="middle">ถุงมือยางไนไตรล์สีฟ้า (สินค้าจริง)</text></svg>`;
+
+const STRETCH_FILM_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="100%" height="100%"><rect width="400" height="400" fill="%23f8fafc"/><ellipse cx="200" cy="110" rx="90" ry="35" fill="%23cbd5e1" stroke="%2394a3b8" stroke-width="3"/><ellipse cx="200" cy="110" rx="35" ry="14" fill="%2378350f"/><path d="M110 110 L110 270 C110 295 150 315 200 315 C250 315 290 295 290 270 L290 110" fill="%23e2e8f0" fill-opacity="0.85" stroke="%2394a3b8" stroke-width="3"/><path d="M125 150 C150 170 250 170 275 150 M125 210 C150 230 250 230 275 210" fill="none" stroke="%2338bdf8" stroke-width="3" stroke-dasharray="6,6"/><rect x="60" y="335" width="280" height="45" rx="8" fill="%230f172a"/><text x="200" y="362" font-family="sans-serif" font-size="13" font-weight="bold" fill="%2338bdf8" text-anchor="middle">ฟิล์มยืดพันพาเลท 15 Micron (สินค้าจริง)</text></svg>`;
+
+export const FALLBACK_SEED_ATTACHMENTS = {
+  'ITM-001': [
+    {
+      name: 'รูปแพ็คเกจ: ถุงมือยางไนไตรล์ (100 ชิ้น/กล่อง)',
+      url: GLOVE_PACKAGE_SVG,
+      previewUrl: GLOVE_PACKAGE_SVG,
+      type: 'image/svg+xml'
+    },
+    {
+      name: 'รูปสินค้าจริง: ถุงมือยางไนไตรล์สีฟ้า ไร้แป้ง',
+      url: GLOVE_PRODUCT_SVG,
+      previewUrl: GLOVE_PRODUCT_SVG,
+      type: 'image/svg+xml'
+    }
+  ],
+  'PD-STF-001': [
+    {
+      name: 'รูปสินค้าจริง: ฟิล์มยืดพันพาเลท 15 Micron 500mm x 300m',
+      url: STRETCH_FILM_SVG,
+      previewUrl: STRETCH_FILM_SVG,
+      type: 'image/svg+xml'
+    }
+  ]
+};
+
+export const getFallbackAttachmentsForCode = (code) => {
+  if (!code) return [];
+  const clean = String(code).trim().toUpperCase();
+  return FALLBACK_SEED_ATTACHMENTS[clean] || [];
+};
+
 export const workflowEngine = {
   
   canActionPO(role, po) {
@@ -479,63 +517,184 @@ export const workflowEngine = {
     let varianceDetails = [];
 
     if (Array.isArray(updatedItems) && updatedItems.length > 0) {
-      po.items = po.items.map(origItem => {
-        const matchingUpdated = updatedItems.find(u => u.code === origItem.code || u.id === origItem.id);
+      po.items = po.items.map((origItem, origIdx) => {
+        // Strict indexed mapping: Prioritize row index directly. Never match by non-unique code/sku
+        const matchingUpdated = (origIdx < updatedItems.length && updatedItems[origIdx])
+          ? updatedItems[origIdx]
+          : ((origItem.id && updatedItems.find(u => u.id && String(u.id) === String(origItem.id))) || origItem);
+
         if (matchingUpdated) {
-          const oldPrice = origItem.unitPrice || origItem.estimatedPrice || origItem.price || 0;
-          const oldQty = origItem.purchaseQty ?? origItem.qty;
-          const newPrice = Number(matchingUpdated.unitPrice) >= 0 ? Number(matchingUpdated.unitPrice) : oldPrice;
-          const newQty = Number(matchingUpdated.purchaseQty) > 0 ? Number(matchingUpdated.purchaseQty) : oldQty;
+          const oldPrice = Number(origItem.actualPrice ?? origItem.unitPrice ?? origItem.estimatedPrice ?? origItem.price) || 0;
+          const oldQty = Number(origItem.actualQty ?? origItem.purchaseQty ?? origItem.qty) || 1;
+          const newPrice = matchingUpdated.actualPrice !== undefined && matchingUpdated.actualPrice !== ''
+            ? Number(matchingUpdated.actualPrice)
+            : (matchingUpdated.unitPrice !== undefined && matchingUpdated.unitPrice !== '' ? Number(matchingUpdated.unitPrice) : oldPrice);
+          const newQty = matchingUpdated.actualQty !== undefined && matchingUpdated.actualQty !== ''
+            ? Number(matchingUpdated.actualQty)
+            : (matchingUpdated.purchaseQty !== undefined && matchingUpdated.purchaseQty !== '' ? Number(matchingUpdated.purchaseQty) : oldQty);
           const rate = Number(origItem.conversionRate) > 0 ? Number(origItem.conversionRate) : 1;
           const newStockQty = newQty * rate;
 
           // Preserve original PR values if not already preserved
-          const originalEstimatedPrice = origItem.originalEstimatedPrice ?? oldPrice;
-          const originalPurchaseQty = origItem.originalPurchaseQty ?? oldQty;
+          const originalEstimatedPrice = origItem.originalEstimatedPrice ?? origItem.estimatedPrice ?? oldPrice;
+          const originalPurchaseQty = origItem.originalPurchaseQty ?? origItem.qty ?? oldQty;
 
           if (newPrice !== oldPrice || newQty !== oldQty) {
             varianceDetails.push(`${origItem.name}: เดิม ${oldQty} @ ฿${oldPrice.toLocaleString()} -> สั่งจริง ${newQty} @ ฿${newPrice.toLocaleString()}`);
           }
 
+          const lineTotal = newPrice * newQty;
+
           return {
             ...origItem,
+            ...matchingUpdated,
             originalEstimatedPrice,
             originalPurchaseQty,
             unitPrice: newPrice,
             estimatedPrice: newPrice,
             price: newPrice,
             actualPrice: newPrice,
+            actUnitPrice: newPrice,
             purchaseQty: newQty,
             qty: newQty,
+            orderedQty: newQty,
             actualQty: newQty,
             stockQty: newStockQty,
-            lineTotal: newPrice * newQty,
-            actualStoreName: matchingUpdated.actualStoreName || origItem.actualStoreName || origItem.storeName || '',
+            lineTotal,
+            total: lineTotal,
+            actualStoreName: (matchingUpdated.actualStoreName !== undefined ? matchingUpdated.actualStoreName : (origItem.actualStoreName || origItem.storeName || '')).trim(),
             storePlatform: matchingUpdated.storePlatform || origItem.storePlatform || origItem.platform || 'Shopee',
-            orderRefNo: matchingUpdated.orderRefNo || origItem.orderRefNo || ''
+            orderRefNo: (matchingUpdated.orderRefNo || origItem.orderRefNo || '').trim()
           };
         }
         return origItem;
       });
 
-      // Update Header Vendor based on Line Items Stores (Directive 1 & 3)
+      // Update Header Vendor based on Line Items Stores (Directive 2)
       const stores = Array.from(new Set(po.items.map(u => (u.actualStoreName || '').trim()).filter(s => s && !s.includes('ระบุร้านภายหลัง'))));
-      if (stores.length === 1) {
+      const platforms = Array.from(new Set(po.items.map(u => (u.storePlatform || '').trim()).filter(Boolean)));
+      if (stores.length === 1 && platforms.length <= 1) {
         po.vendorName = stores[0];
         po.vendor = stores[0];
         po.shopName = stores[0];
-      } else if (stores.length > 1) {
-        const multiVendorStr = 'แพลตฟอร์ม Shopee / Lazada Marketplace (สั่งซื้อออนไลน์)';
+      } else {
+        const multiVendorStr = 'ผู้จำหน่าย: ตลาดออนไลน์ Shopee / Lazada (สั่งซื้อออนไลน์หลายร้านค้า)';
         po.vendorName = multiVendorStr;
         po.vendor = multiVendorStr;
         po.shopName = multiVendorStr;
       }
 
-      // Recalculate PO total
-      const newTotal = po.items.reduce((sum, item) => sum + ((item.purchaseQty ?? item.qty) * (item.unitPrice || item.estimatedPrice || item.price || 0)), 0);
+      // Recalculate PO total accurately: sum of (actualQty * actualPrice)
+      const newTotal = po.items.reduce((sum, item) => sum + ((item.actualQty ?? item.purchaseQty ?? item.qty) * (item.actualPrice ?? item.unitPrice ?? item.price ?? 0)), 0);
       po.grandTotal = newTotal;
       po.totalAmount = newTotal;
       po.subtotal = newTotal;
+      if (po.financials) {
+        po.financials.subtotal = newTotal;
+        po.financials.grandTotal = newTotal;
+      }
+
+      // ── Detailed Item-Level History Logging (Directive 3.4) ──
+      if (!Array.isArray(po.activityLog)) po.activityLog = [];
+      po.items.forEach(item => {
+        const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
+        const origQ = item.originalPurchaseQty;
+        const curQ = item.actualQty ?? item.purchaseQty ?? item.qty;
+        const origP = item.originalEstimatedPrice;
+        const curP = item.actualPrice ?? item.unitPrice ?? item.price;
+        const itemCode = item.code || item.sku || item.name;
+
+        if (origQ !== undefined && Number(curQ) !== Number(origQ)) {
+          po.activityLog.push({
+            action: 'ปรับปรุงจำนวนสั่งซื้อจริง',
+            user: user.name || 'Online Purchaser',
+            role: user.title || user.role || 'Purchaser',
+            timestamp,
+            note: `จัดซื้อปรับจำนวน ${itemCode} จาก ${origQ} เป็น ${curQ} ${pUnit}`
+          });
+        }
+        if (origP !== undefined && Number(curP) !== Number(origP)) {
+          po.activityLog.push({
+            action: 'ปรับปรุงราคาซื้อจริง',
+            user: user.name || 'Online Purchaser',
+            role: user.title || user.role || 'Purchaser',
+            timestamp,
+            note: `จัดซื้อปรับราคา ${itemCode} จาก ฿${Number(origP).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} เป็น ฿${Number(curP).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          });
+        }
+      });
+
+      // ── Department Budget Reconciliation (Directive 3) ──
+      const initialTotal = po.items.reduce((sum, item) => sum + ((Number(item.originalPurchaseQty ?? item.qty ?? 1)) * (Number(item.originalEstimatedPrice ?? item.price ?? 0))), 0);
+      const budgetDiff = newTotal - initialTotal; // diff > 0 is overspend, diff < 0 is saving
+
+      const dept = (po.department || 'PD').toUpperCase();
+      const budgets = storageService.getBudgets();
+      if (!budgets[dept]) budgets[dept] = { monthlyBudget: 0, spent: 0, actualExpense: 0, pending: 0, variance: 0, history: {}, historicalSpent: {}, refundCredits: {} };
+
+      const curSpent = Number(budgets[dept].spent ?? budgets[dept].actualExpense ?? 0);
+      const poMonth = po.issueDate ? po.issueDate.substring(0, 7) : `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+
+      if (budgetDiff < 0) {
+        // Savings: Credit/rollback to department budget
+        const savedAmt = Math.abs(budgetDiff);
+        const newSpent = Math.max(0, curSpent - savedAmt);
+        budgets[dept].spent = newSpent;
+        budgets[dept].actualExpense = newSpent;
+        const monthly = Number(budgets[dept].monthlyBudget || 0);
+        budgets[dept].variance = monthly - newSpent;
+        budgets[dept].remainingBudget = monthly - newSpent;
+
+        if (!budgets[dept].refundCredits) budgets[dept].refundCredits = {};
+        budgets[dept].refundCredits[poMonth] = Math.round(((budgets[dept].refundCredits[poMonth] || 0) + savedAmt) * 100) / 100;
+
+        storageService.saveBudgets(budgets);
+
+        storageService.appendBudgetTransaction({
+          id: `BTX-SAVINGS-${Date.now()}`,
+          date: new Date().toISOString().replace('T', ' ').slice(0, 19),
+          createdAt: new Date().toISOString(),
+          dept,
+          type: 'BUDGET_ROLLBACK',
+          typeLabel: 'คืนงบประมาณจากการประหยัด (Procurement Savings)',
+          previousAmount: curSpent,
+          newAmount: newSpent,
+          amount: savedAmt,
+          delta: savedAmt,
+          actor: user.name,
+          refDocNo: po.poNo || po.id,
+          note: `คืนงบประมาณส่วนต่างจากการสั่งซื้อออนไลน์ได้ราคา/จำนวนถูกลง (PO: ${po.poNo})`,
+          targetMonth: poMonth
+        });
+      } else if (budgetDiff > 0) {
+        // Over-budget: Deduct extra from department budget
+        const extraAmt = budgetDiff;
+        const newSpent = curSpent + extraAmt;
+        budgets[dept].spent = newSpent;
+        budgets[dept].actualExpense = newSpent;
+        const monthly = Number(budgets[dept].monthlyBudget || 0);
+        budgets[dept].variance = monthly - newSpent;
+        budgets[dept].remainingBudget = monthly - newSpent;
+
+        storageService.saveBudgets(budgets);
+
+        storageService.appendBudgetTransaction({
+          id: `BTX-OVERSPENT-${Date.now()}`,
+          date: new Date().toISOString().replace('T', ' ').slice(0, 19),
+          createdAt: new Date().toISOString(),
+          dept,
+          type: 'BUDGET_OVERSPENT',
+          typeLabel: 'หักงบประมาณเพิ่มเติม (Over-Budget Adjustment)',
+          previousAmount: curSpent,
+          newAmount: newSpent,
+          amount: extraAmt,
+          delta: -extraAmt,
+          actor: user.name,
+          refDocNo: po.poNo || po.id,
+          note: `หักงบประมาณเพิ่มเติมเนื่องจากยอดสั่งซื้อจริงเกินงบ PR (PO: ${po.poNo})`,
+          targetMonth: poMonth
+        });
+      }
     }
 
     let noteText = `สั่งซื้อจาก: ${vendorName.trim()} — ส่งต่อให้แผนกต้นทางตรวจรับและปิด PO`;
@@ -554,6 +713,16 @@ export const workflowEngine = {
       timestamp,
       note: noteText
     });
+
+    if (Array.isArray(po.timeline)) {
+      po.timeline.push({
+        status: 'ORDERED_PENDING_DELIVERY',
+        title: 'สั่งซื้อสินค้าออนไลน์แล้ว',
+        description: noteText,
+        user: user.name,
+        date: new Date().toISOString()
+      });
+    }
 
     storageService.savePOs(pos);
 
@@ -1639,22 +1808,40 @@ export const workflowEngine = {
         receivedAt: null,
         items: items.map(item => {
           const pQty = Number(item.purchaseQty ?? item.qty) || 0;
+          const cleanCode = String(item.code || item.sku || item.productId || '').trim().toUpperCase();
+          const fallbackImages = FALLBACK_SEED_ATTACHMENTS[cleanCode] || [];
+          const rawAttachments = (item.images && item.images.length > 0)
+            ? item.images
+            : ((item.attachments && item.attachments.length > 0) ? item.attachments : fallbackImages);
+
           return {
             ...item,
             orderedQty: pQty,
             receivedQty: 0,
+            damagedQty: 0,
+            shortageQty: 0,
             receivedStockQty: 0,
             receivedNgQty: 0,
             remainingQty: pQty,
+            claimStatus: null,
             actUnitPrice: null,
             source: item.source || 'FACTORY',
             discountPercent: parseFloat(item.discountPercent) || 0,
             discountAmount: parseFloat(item.discountAmount) || 0,
             actualStoreName: item.actualStoreName || item.storeName || '',
             storePlatform: item.storePlatform || item.platform || 'Shopee',
-            orderRefNo: item.orderRefNo || ''
+            orderRefNo: item.orderRefNo || '',
+            attachments: rawAttachments,
+            images: rawAttachments,
+            productUrl: item.productUrl || item.onlineUrl || item.link || ''
           };
         }),
+        prAttachments: [
+          ...(pr.quotationFiles || []),
+          ...(pr.generalAttachments || []),
+          ...(pr.attachments || []),
+          ...(pr.images || [])
+        ],
         financials,
         subtotal,
         vat,
@@ -2036,6 +2223,10 @@ export const workflowEngine = {
       if (receivedSummaryParts.length > 0) parts.push(`รับปกติ: ${receivedSummaryParts.join(', ')}`);
       const summaryNote = parts.length > 0 ? `${parts.join(' | ')}${note ? ` — ${note}` : ''}` : (note || 'รับสินค้าบางส่วน');
 
+      if (!Array.isArray(po.activityLog)) {
+        po.activityLog = [];
+      }
+
       po.activityLog.push({
         action: allFullyReceived ? 'รับสินค้าครบและปิด PO (Goods Received – Closed)' : 'รับสินค้าบางส่วน (Partial Receiving)',
         user: user.name,
@@ -2119,8 +2310,13 @@ export const workflowEngine = {
     po.receiverName = realReceiverName;
     po.receivedById = user?.id || user?.roleId || '';
     po.receivedRole = user?.title || '';
-    po.receiverSignature = recUserSig;
+    po.receiverSignature = recUserSig || '/signatures/receiver-default.png';
     po.receivedAt = timestamp;
+    po.receivingInfo = {
+      receiverName: realReceiverName,
+      receiverSignature: recUserSig || '/signatures/receiver-default.png',
+      receivedAt: new Date().toISOString()
+    };
 
     storageService.savePOs(pos);
     storageService.saveProducts(products);
@@ -2380,9 +2576,11 @@ export const workflowEngine = {
     
     const requesterRole = po.department === 'PD' ? 'REQUESTER_PD' : 'REQUESTER_QC';
 
-    if (resolution.type === 'RESEND') {
+    if (['RESEND', 'REPLACEMENT'].includes(resolution.type)) {
       po.status = 'ORDERED_PENDING_DELIVERY';
-      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: RESEND — จัดซื้อใหม่/ส่งสินค้าทดแทน (รอบที่ ${po.claimRound}), คาดรับวันที่: ${resolution.expectedDate || '-'} — ${resolution.note} โดย ${user.name}`;
+      po.claimStatus = 'REPLACEMENT_PENDING';
+      po.refundAmount = 0;
+      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: ${resolution.type} — จัดซื้อใหม่/ส่งสินค้าทดแทน (รอบที่ ${po.claimRound}), คาดรับวันที่: ${resolution.expectedDate || '-'} — ${resolution.note} โดย ${user.name}`;
       
       if (channel === 'ONLINE') {
         // ONLINE RESEND: notify Requester to wait for re-delivery
@@ -2414,11 +2612,13 @@ export const workflowEngine = {
         });
       }
 
-    } else if (resolution.type === 'CLOSE_WITH_REFUND') {
+    } else if (['CLOSE_WITH_REFUND', 'REFUND'].includes(resolution.type)) {
       po.status = 'CLOSED';
+      po.claimStatus = 'REFUNDED';
 
       // ── Budget Restore: คืนงบประมาณกลับฝ่ายต้นทาง ──
       const refundAmt = Math.round((Number(resolution.refundAmount) || 0) * 100) / 100;
+      po.refundAmount = refundAmt;
       if (refundAmt > 0) {
         const budgets = storageService.getBudgets();
         const dept = po.department;
@@ -2457,7 +2657,7 @@ export const workflowEngine = {
         });
       }
 
-      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: CLOSE_WITH_REFUND — ได้รับเงินคืน ฿${refundAmt.toLocaleString()} ปิดเคสแล้ว | ${resolution.note} โดย ${user.name}`;
+      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: ${resolution.type} — ได้รับเงินคืน ฿${refundAmt.toLocaleString()} ปิดเคสแล้ว | ${resolution.note} โดย ${user.name}`;
     } else if (resolution.type === 'CLOSE_NO_ACTION') {
       po.status = 'CLOSED';
       noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: CLOSE_NO_ACTION — ปิดเคสโดยไม่ดำเนินการต่อ | ${resolution.note} โดย ${user.name}`;
@@ -2475,7 +2675,7 @@ export const workflowEngine = {
     });
 
     // Handle closing PR if PO is now closed
-    if (['CLOSE_WITH_REFUND', 'CLOSE_NO_ACTION'].includes(resolution.type) && po.prId) {
+    if (['CLOSE_WITH_REFUND', 'REFUND', 'CLOSE_NO_ACTION'].includes(resolution.type) && po.prId) {
       const prs = storageService.getPRs();
       const pr = prs.find(p => p.id === po.prId);
       if (pr) {
@@ -2509,6 +2709,13 @@ export const workflowEngine = {
     }
 
     po.claimData = null; // Clear active claim data
+    po.claimResolution = {
+      type: resolution.type,
+      refundAmount: Number(resolution.refundAmount || 0),
+      note: resolution.note || '',
+      resolvedAt: new Date().toISOString(),
+      resolvedBy: user.name
+    };
     storageService.savePOs(pos);
     return po;
   },

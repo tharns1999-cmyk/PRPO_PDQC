@@ -15,11 +15,11 @@ function cleanThaiText(rawText) {
 }
 
 /**
- * Document Date Time Formatter
- * Formats ISO timestamps or Thai date strings to "วันที่ DD/MM/YYYY เวลา HH:mm น."
+ * Thai Date Time Formatter
+ * Returns "DD/MM/YYYY เวลา HH:mm น." (e.g. "12/09/2026 เวลา 10:15 น.") or "..... / ..... / ........."
  */
-export function formatDocDateTime(dt) {
-  if (!dt || dt === '-') return 'วันที่ ..... / ..... / .........';
+export function formatThaiDateTime(dt) {
+  if (!dt || dt === '-') return '..... / ..... / .........';
   try {
     const str = String(dt).trim();
     const cleanStr = str.replace(/^วันที่\s*/, '');
@@ -30,14 +30,11 @@ export function formatDocDateTime(dt) {
       const day = String(d.getDate()).padStart(2, '0');
       const month = String(d.getMonth() + 1).padStart(2, '0');
       let year = d.getFullYear();
-      if (year > 2400) year -= 543; // บังคับแปลง พ.ศ. เป็น ค.ศ.
+      if (year > 2400) year -= 543; // แปลง พ.ศ. เป็น ค.ศ.
       
-      if (cleanStr.includes('T') || cleanStr.includes(':')) {
-        const hours = String(d.getHours()).padStart(2, '0');
-        const minutes = String(d.getMinutes()).padStart(2, '0');
-        return `วันที่ ${day}/${month}/${year} เวลา ${hours}:${minutes} น.`;
-      }
-      return `วันที่ ${day}/${month}/${year}`;
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${day}/${month}/${year} เวลา ${hours}:${minutes} น.`;
     }
 
     // 2. จัดการกรณีสตริงภาษาไทยที่มีเวลาปนมา เช่น "11/09/2026 08:30" หรือ "11/9/2569 เวลา 21:42 น."
@@ -49,15 +46,26 @@ export function formatDocDateTime(dt) {
       const dd = String(Number(day)).padStart(2, '0');
       const mmStr = String(Number(month)).padStart(2, '0');
       if (hh !== undefined && mm !== undefined) {
-        return `วันที่ ${dd}/${mmStr}/${year} เวลา ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} น.`;
+        return `${dd}/${mmStr}/${year} เวลา ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} น.`;
       }
-      return `วันที่ ${dd}/${mmStr}/${year}`;
+      return `${dd}/${mmStr}/${year}`;
     }
 
-    return str.startsWith('วันที่') ? str : `วันที่ ${str}`;
+    return cleanStr;
   } catch {
     return String(dt);
   }
+}
+
+/**
+ * Document Date Time Formatter
+ * Formats ISO timestamps or Thai date strings to "วันที่ DD/MM/YYYY เวลา HH:mm น."
+ */
+export function formatDocDateTime(dt) {
+  if (!dt || dt === '-') return 'วันที่ ..... / ..... / .........';
+  const formatted = formatThaiDateTime(dt);
+  if (formatted === '..... / ..... / .........') return 'วันที่ ..... / ..... / .........';
+  return formatted.startsWith('วันที่') ? formatted : `วันที่ ${formatted}`;
 }
 
 export default function PrintablePO({ po }) {
@@ -179,34 +187,56 @@ export default function PrintablePO({ po }) {
   const approverDate = po.approvedAt || approvedLog?.timestamp || approvedLog?.date || po.createdAt || '';
 
   const isReceived = Boolean(
-    po.receivedAt &&
-    ['COMPLETED', 'CLOSED', 'RECEIVED'].includes(String(po.status || '').toUpperCase())
+    po.receivingInfo ||
+    po.receivedAt ||
+    po.receiverSignature ||
+    ['COMPLETED', 'CLOSED', 'RECEIVED', 'ตรวจรับครบ', 'ปิดงาน'].includes(String(po.status || '').toUpperCase())
   );
 
   const receiverUser = users.find(u =>
+    (po.receivingInfo?.receiverId && u.id === po.receivingInfo.receiverId) ||
     (po.receivedById && u.id === po.receivedById) ||
-    (po.receivedBy && (u.name === po.receivedBy || u.employeeName === po.receivedBy || u.displayName === po.receivedBy)) ||
-    (po.receiverName && (u.name === po.receiverName || u.employeeName === po.receiverName || u.displayName === po.receiverName))
+    (po.receivingInfo?.receiverName && (u.name === po.receivingInfo.receiverName || u.employeeName === po.receivingInfo.receiverName)) ||
+    (po.receiverName && (u.name === po.receiverName || u.employeeName === po.receiverName)) ||
+    (po.receivedBy && (u.name === po.receivedBy || u.employeeName === po.receivedBy)) ||
+    u.roleId === 'REQUESTER_PD'
   );
 
-  let receiverName = po.receiverName || po.receivedBy || receiverUser?.employeeName || receiverUser?.name || '';
-  if (receiverName === 'Admin System') {
-    receiverName = '';
+  let receiverName = po.receivingInfo?.receiverName ||
+    po.receiverName ||
+    po.receivedBy ||
+    receiverUser?.employeeName ||
+    receiverUser?.name ||
+    (isReceived ? 'คุณวิชัย สุขใจ' : '');
+  if (!receiverName || receiverName === 'Admin System') {
+    receiverName = isReceived ? 'คุณวิชัย สุขใจ' : '';
   }
 
-  const receiverSig = po.receiverSignature || receiverUser?.signature || null;
+  const defaultReceiverSig = storageService.getSignatureByRole?.('REQUESTER_PD')?.signatureUrl ||
+    storageService.getSignatures?.()?.[receiverUser?.roleId || 'REQUESTER_PD']?.signatureUrl ||
+    receiverUser?.signature ||
+    '/signatures/receiver-default.png';
 
-  const itemsSubtotal = (po.items || []).reduce((sum, item) => {
-    const p = parseFloat(item.price) || 0;
-    const q = parseFloat(item.qty ?? item.purchaseQty) || 1;
-    const disc = parseFloat(item.discountAmount) || 0;
-    const lineTotal = item.total !== undefined ? parseFloat(item.total) : ((p * q) - disc);
-    return sum + (lineTotal > 0 ? lineTotal : 0);
+  const receiverSig = po.receivingInfo?.receiverSignature ||
+    po.receiverSignature ||
+    (isReceived ? defaultReceiverSig : null);
+
+  const receiverDate = po.receivingInfo?.receivedAt ||
+    po.receivedAt ||
+    (po.grnHistory?.length > 0 ? po.grnHistory[po.grnHistory.length - 1].date : '') ||
+    '';
+
+  const calculatedItemsTotal = (po.items || []).reduce((sum, item) => {
+    const q = Number(item.actualQty ?? item.qty ?? item.purchaseQty) || 0;
+    const p = Number(item.actualPrice ?? item.price ?? item.unitPrice ?? item.estimatedPrice) || 0;
+    return sum + (q * p);
   }, 0);
 
-  const subtotal = (po.financials?.subtotal !== undefined && Number(po.financials.subtotal) > 0)
-    ? Number(po.financials.subtotal)
-    : ((po.subtotal !== undefined && Number(po.subtotal) > 0) ? Number(po.subtotal) : itemsSubtotal);
+  const subtotal = calculatedItemsTotal > 0
+    ? calculatedItemsTotal
+    : ((po.financials?.subtotal !== undefined && Number(po.financials.subtotal) > 0)
+      ? Number(po.financials.subtotal)
+      : ((po.subtotal !== undefined && Number(po.subtotal) > 0) ? Number(po.subtotal) : 0));
 
   const hasVat = po.hasVat !== undefined
     ? Boolean(po.hasVat)
@@ -220,39 +250,54 @@ export default function PrintablePO({ po }) {
       : (po.vat !== undefined && Number(po.vat) > 0 ? Number(po.vat) : parseFloat((subtotal * 0.07).toFixed(2))))
     : 0;
 
-  const grandTotal = (po.financials?.grandTotal !== undefined && Number(po.financials.grandTotal) > 0)
-    ? Number(po.financials.grandTotal)
-    : (po.grandTotal !== undefined && Number(po.grandTotal) > 0
-      ? Number(po.grandTotal)
-      : (po.totalAmount !== undefined && Number(po.totalAmount) > 0
-        ? Number(po.totalAmount)
-        : parseFloat((subtotal + vatAmount).toFixed(2))));
+  const grandTotal = hasVat ? parseFloat((subtotal + vatAmount).toFixed(2)) : subtotal;
 
-  // Online PO & Store Resolution (Directive 3)
-  const isOnlinePO = po.purchaseType === 'ONLINE' || 
-                     po.purchaseChannel === 'ONLINE' || 
-                     po.isOnlineOrder || 
-                     (po.items || []).some(it => it.isOnlineItem || it.actualStoreName || it.storeName || it.storePlatform);
+  // Online PO & Store Resolution (Directive 1 & 2)
+  const isOnline = Boolean(
+    po.purchaseChannel === 'ONLINE' || 
+    po.orderType === 'ONLINE' ||
+    po.channel === 'online'
+  );
+
+  const isOnlinePO = isOnline;
 
   const validItemStores = (po.items || [])
     .map(it => (it.actualStoreName || it.storeName || '').trim())
     .filter(name => name && !name.includes('ระบุร้านภายหลัง'));
   const distinctStores = Array.from(new Set(validItemStores));
+  const distinctPlatforms = Array.from(new Set((po.items || []).map(it => (it.storePlatform || '').trim()).filter(Boolean)));
+
+  const isMultiStoreOrPlatform = distinctStores.length > 1 || distinctPlatforms.length > 1;
+
+  const cleanVendorPrefix = (str) => {
+    if (!str) return '-';
+    let val = String(str).trim();
+    if (val.startsWith('ผู้จำหน่าย:')) {
+      val = val.replace(/^ผู้จำหน่าย:\s*/, '');
+    }
+    return val || '-';
+  };
 
   let resolvedVendorName = po.vendorName || po.vendorDetails?.name || '-';
-  if (isOnlinePO) {
-    if (distinctStores.length === 1) {
+  if (isOnline) {
+    if (distinctStores.length === 1 && distinctPlatforms.length <= 1) {
       resolvedVendorName = distinctStores[0];
-    } else if (distinctStores.length > 1) {
-      resolvedVendorName = 'แพลตฟอร์ม Shopee / Lazada Marketplace (สั่งซื้อออนไลน์)';
+    } else if (isMultiStoreOrPlatform) {
+      resolvedVendorName = 'ตลาดออนไลน์ Shopee / Lazada (สั่งซื้อออนไลน์หลายร้านค้า)';
     } else if (po.storeName && !po.storeName.includes('ระบุร้านภายหลัง')) {
       resolvedVendorName = po.storeName;
     } else if (po.vendorName && !po.vendorName.includes('ระบุร้านภายหลัง')) {
       resolvedVendorName = po.vendorName;
     } else {
-      resolvedVendorName = 'แพลตฟอร์ม Shopee / Lazada Marketplace (สั่งซื้อออนไลน์)';
+      resolvedVendorName = 'ตลาดออนไลน์ Shopee / Lazada (สั่งซื้อออนไลน์หลายร้านค้า)';
     }
   }
+
+  const displayVendorName = cleanVendorPrefix(
+    isMultiStoreOrPlatform
+      ? 'ตลาดออนไลน์ Shopee / Lazada (สั่งซื้อออนไลน์หลายร้านค้า)'
+      : resolvedVendorName
+  );
 
   return (
     <div
@@ -323,7 +368,9 @@ export default function PrintablePO({ po }) {
         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
           <div>
             <span className="font-medium text-slate-600">{cleanThaiText('ชื่อบริษัท/ร้านค้า:')}</span>{' '}
-            <span className="text-slate-900 font-semibold break-words">{cleanThaiText(resolvedVendorName)}</span>
+            <span className="text-slate-900 font-semibold break-words">
+              {cleanThaiText(displayVendorName)}
+            </span>
           </div>
           <div>
             <span className="font-medium text-slate-600">{cleanThaiText('ผู้ติดต่อ:')}</span>{' '}
@@ -352,31 +399,34 @@ export default function PrintablePO({ po }) {
             <th className="border border-black p-4 w-24 text-center">{cleanThaiText('รหัสสินค้า')}<br />(Code)</th>
             <th className="border border-black p-4 text-left">{cleanThaiText('รายการสินค้า')}<br />(Description)</th>
             <th className="border border-black p-4 w-20 text-center">{cleanThaiText('จำนวน')}<br />(Qty)</th>
-            <th className="border border-black p-4 w-24 text-right">{cleanThaiText('ราคาหน่วย')}<br />(Unit Price)</th>
-            <th className="border border-black p-4 w-32 text-right">{cleanThaiText('จำนวนเงิน')}<br />(Amount)</th>
+            <th className="border border-black p-4 w-24 text-right">{cleanThaiText('ราคา/หน่วย')}<br />(Unit Price)</th>
+            <th className="border border-black p-4 w-32 text-right">{cleanThaiText('รวมเงิน (บาท)')}<br />(Amount)</th>
           </tr>
         </thead>
         <tbody>
           {(po.items || []).map((item, index) => {
-            const itemActualStore = (item.actualStoreName || item.storeName || (isOnlinePO ? (distinctStores.length === 1 ? distinctStores[0] : (po.storeName || po.vendorName)) : '') || '').trim();
+            const itemQty = Number(item.actualQty ?? item.qty ?? item.purchaseQty) || 0;
+            const itemPrice = Number(item.actualPrice ?? item.price ?? item.unitPrice ?? item.estimatedPrice) || 0;
+            const itemTotal = itemQty * itemPrice;
+
             return (
-              <tr key={index}>
+              <tr key={item.id || item.sku || index}>
                 <td className="border border-black p-4 text-center">{index + 1}</td>
-                <td className="border border-black p-4 text-center font-mono text-sm">{cleanThaiText(item.code)}</td>
+                <td className="border border-black p-4 text-center font-mono text-sm">{cleanThaiText(item.code || item.sku || '-')}</td>
                 <td className="border border-black p-4 break-words whitespace-normal text-xs leading-relaxed">
                   <div className="font-medium text-slate-900">{cleanThaiText(item.name)}</div>
                   {item.specification && (
                     <div className="text-[11px] text-slate-600 mt-0.5">{cleanThaiText(item.specification)}</div>
                   )}
-                  {(isOnlinePO || item.actualStoreName || item.storeName) && (
-                    <span className="text-[11px] text-slate-500 font-sans italic block mt-0.5">
-                      [ร้านค้า: {cleanThaiText(itemActualStore || '-')}]
-                    </span>
+                  {isOnline && (item.actualStoreName || item.storePlatform) && (
+                    <div className="text-[11px] text-slate-500 font-sans italic mt-0.5">
+                      [ช่องทาง: {item.storePlatform || 'ออนไลน์'} • ร้านค้า: {item.actualStoreName || '-'}]
+                    </div>
                   )}
                 </td>
-                <td className="border border-black p-4 text-center">{item.qty} {cleanThaiText(item.unit)}</td>
-                <td className="border border-black p-4 text-right">{(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                <td className="border border-black p-4 text-right">{(item.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                <td className="border border-black p-4 text-center">{itemQty} {cleanThaiText(item.unit || item.purchaseUnit || 'หน่วย')}</td>
+                <td className="border border-black p-4 text-right font-mono">{itemPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td className="border border-black p-4 text-right font-mono">{itemTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
               </tr>
             );
           })}
@@ -398,38 +448,43 @@ export default function PrintablePO({ po }) {
       </table>
 
       {/* Financial Summary Breakdown */}
-      <div className="flex justify-between items-start my-4 text-xs">
+      <div className="flex justify-between items-start my-3 text-xs">
         <div className="w-1/2 align-top text-slate-700 pr-4">
-          <span className="font-semibold text-sm text-slate-900">{cleanThaiText('หมายเหตุ (Remarks):')}</span>
-          <p className="mt-1 leading-relaxed">{cleanThaiText('1. โปรดระบุเลขที่ใบสั่งซื้อ (PO No.) ในเอกสารใบกำกับภาษีทุกครั้ง')}</p>
-          <p className="leading-relaxed">{cleanThaiText('2. กรณีส่งมอบล่าช้ากว่ากำหนด บริษัทขอสงวนสิทธิ์ในการคิดค่าปรับตามระเบียบบริษัท')}</p>
+          <span className="font-semibold text-xs text-slate-900">{cleanThaiText('หมายเหตุ (Remarks):')}</span>
+          <p className="mt-0.5 leading-relaxed text-[11px] text-slate-600">{cleanThaiText('1. โปรดระบุเลขที่ใบสั่งซื้อ (PO No.) ในเอกสารใบกำกับภาษีทุกครั้ง')}</p>
+          <p className="leading-relaxed text-[11px] text-slate-600">{cleanThaiText('2. กรณีส่งมอบล่าช้ากว่ากำหนด บริษัทขอสงวนสิทธิ์ในการคิดค่าปรับตามระเบียบบริษัท')}</p>
           {po.note && (
-            <p className="mt-1 text-slate-800 leading-relaxed font-medium break-words whitespace-normal">
+            <p className="mt-1 text-slate-800 leading-relaxed font-medium break-words whitespace-normal text-[11px]">
               <strong>{cleanThaiText('ข้อความเพิ่มเติม: ')}</strong>{cleanThaiText(po.note)}
             </p>
           )}
         </div>
-        <div className="flex flex-col items-end">
-          <div className="w-80 border-t border-slate-300 pt-2 space-y-1.5">
-            <div className="flex justify-between text-slate-700">
+        <div className="flex justify-end pt-3.5 pb-1" style={{ paddingTop: '12px' }}>
+          <div className="w-64 space-y-1 text-right">
+            {/* แถว Subtotal & VAT: บังคับฟอนต์ 10px */}
+            <div style={{ fontSize: '10px', lineHeight: '14px' }} className="flex justify-between items-center text-[10px] leading-tight text-slate-600">
               <span className="font-medium">{cleanThaiText('รวมมูลค่าสินค้า (Subtotal):')}</span>
-              <span className="font-mono font-semibold text-slate-900">
+              <span style={{ fontFamily: 'monospace' }} className="text-[10px] font-mono text-slate-800">
                 ฿{subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
 
-            <div className="flex justify-between text-slate-700">
+            <div style={{ fontSize: '10px', lineHeight: '14px' }} className="flex justify-between items-center text-[10px] leading-tight text-slate-600">
               <span className="font-medium">{cleanThaiText('ภาษีมูลค่าเพิ่ม 7% (VAT 7%):')}</span>
-              <span className="font-mono font-semibold text-slate-900">
+              <span style={{ fontFamily: 'monospace' }} className="text-[10px] font-mono text-slate-700">
                 {hasVat && vatAmount > 0
                   ? `฿${vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   : cleanThaiText('ไม่มี VAT (0%)')}
               </span>
             </div>
 
-            <div className="flex justify-between font-bold text-sm text-slate-900 border-t-2 border-slate-800 pt-2 mt-1.5">
+            {/* เส้นคั่นบาง */}
+            <div style={{ borderTop: '1px solid #E2E8F0', margin: '3px 0' }} />
+
+            {/* แถว Grand Total: บังคับฟอนต์ 11px ตัวหนา */}
+            <div style={{ fontSize: '11px', lineHeight: '16px', fontWeight: 'bold' }} className="flex justify-between items-center text-[11px] leading-tight font-bold text-slate-900">
               <span>{cleanThaiText('ยอดเงินรวมสุทธิ (Grand Total):')}</span>
-              <span className="font-mono text-emerald-800 text-base">
+              <span style={{ fontFamily: 'monospace', color: '#047857' }} className="text-[11px] font-mono font-bold">
                 ฿{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
@@ -536,33 +591,33 @@ export default function PrintablePO({ po }) {
             </td>
 
             <td className="w-1/4 p-2 align-top">
-              <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
-                {isReceived ? (
-                  <>
-                    <div className="h-14 flex items-center justify-center">
-                      {receiverSig ? (
-                        <img
-                          src={receiverSig}
-                          alt="Receiver Signature"
-                          className="h-12 max-h-12 max-w-[120px] object-contain"
-                        />
-                      ) : null}
-                    </div>
-                    <p className="text-[11px] font-medium text-slate-800">
-                      ( {cleanThaiText(receiverName || 'คุณวิชัย สุขใจ')} )
-                    </p>
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      {cleanThaiText(formatDocDateTime(po.receivedAt) || 'วันที่ ..... / ..... / .........')}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <div className="h-14 flex items-center justify-center"></div>
-                    <p className="text-xs text-slate-600">( ............................................................ )</p>
-                    <p className="text-[11px] text-slate-400 mt-1">วันที่ ..... / ..... / .........</p>
-                  </>
-                )}
-              </div>
+              {/* ตรวจสอบว่ามีข้อมูลการรับของหรือสถานะเป็น COMPLETED หรือไม่ */}
+              {po.receivingInfo?.receivedAt || po.status === 'COMPLETED' || isReceived ? (
+                <div className="flex flex-col items-center justify-between h-24 py-1">
+                  {/* ลายเซ็นดิจิทัล */}
+                  <div className="h-10 flex items-center justify-center">
+                    <img
+                      src={po.receivingInfo?.receiverSignature || po.receiverSignature || receiverSig || '/signatures/receiver-default.png'}
+                      alt="Receiver Signature"
+                      className="h-10 max-w-[120px] object-contain"
+                    />
+                  </div>
+                  {/* ชื่อผู้ตรวจรับ */}
+                  <div className="text-xs text-slate-800 font-medium">
+                    ( {cleanThaiText(po.receivingInfo?.receiverName || po.receiverName || po.receivedBy || receiverName || 'คุณวิชัย สุขใจ')} )
+                  </div>
+                  {/* วันที่และเวลาภาษาไทย */}
+                  <div className="text-[11px] text-slate-500 font-mono">
+                    วันที่ {formatThaiDateTime(po.receivingInfo?.receivedAt || po.receivedAt || receiverDate)}
+                  </div>
+                </div>
+              ) : (
+                /* กรณีของยังมาไม่ถึง ให้แสดง Placeholder สำหรับพิมพ์ไปเซ็นมือตามเดิม */
+                <div className="flex flex-col items-center justify-end h-24 pb-2 text-slate-400">
+                  <div className="text-xs mb-1">( ........................................... )</div>
+                  <div className="text-[11px]">วันที่ ..... / ..... / .........</div>
+                </div>
+              )}
             </td>
           </tr>
         </tbody>

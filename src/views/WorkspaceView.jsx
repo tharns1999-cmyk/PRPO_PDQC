@@ -125,9 +125,9 @@ export default function WorkspaceView({
       return workflowEngine.canAction(user, task);
     }
     if (task.docType === 'PO') {
-      const isDone = ['CLOSED', 'CANCELLED', 'RECEIVED'].includes(task.status);
+      const isDone = ['CLOSED', 'CANCELLED', 'RECEIVED', 'COMPLETED', 'COMPLETED_WITH_REFUND'].includes(task.status);
       if (isDone) return false;
-      const isClaim = ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(task.status);
+      const isClaim = ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS', 'PARTIALLY_RECEIVED_IN_CLAIM'].includes(task.status);
       if (isClaim) {
         if (user?.id === 'ADMIN' || user?.roleId === 'ADMIN' || Number(user?.level || 1) >= 99) return true;
         if (task.purchaseChannel === 'ONLINE' && (user?.roleId === 'ONLINE_PURCHASER' || user?.canOnlinePurchase)) return true;
@@ -143,7 +143,7 @@ export default function WorkspaceView({
     const isPR = task.docType === 'PR';
     const isDone = isPR 
       ? ['PO_ISSUED', 'APPROVED', 'CLOSED', 'CANCELLED', 'completed', 'received'].includes(task.status)
-      : ['CLOSED', 'CANCELLED', 'RECEIVED'].includes(task.status);
+      : ['CLOSED', 'CANCELLED', 'RECEIVED', 'COMPLETED', 'COMPLETED_WITH_REFUND'].includes(task.status);
     
     if (!isDone) return false;
 
@@ -167,7 +167,7 @@ export default function WorkspaceView({
     const isPR = task.docType === 'PR';
     const isDone = isPR 
       ? ['PO_ISSUED', 'APPROVED', 'CLOSED', 'CANCELLED', 'completed', 'received'].includes(task.status)
-      : ['CLOSED', 'CANCELLED', 'RECEIVED'].includes(task.status);
+      : ['CLOSED', 'CANCELLED', 'RECEIVED', 'COMPLETED', 'COMPLETED_WITH_REFUND'].includes(task.status);
     if (isDone) return false;
 
     // 3. Strict Classification based on User Involvement and Waiting Statuses
@@ -201,7 +201,7 @@ export default function WorkspaceView({
       }
       // Requesters/Reviewers waiting for PO delivery
       if (userLevel <= 2) {
-        return ['IN_PROGRESS_ONLINE', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL', 'ISSUED', 'CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(task.status);
+        return ['IN_PROGRESS_ONLINE', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL', 'WAITING_DELIVERY_ROUND_2', 'ISSUED', 'CLAIM_REPORTED', 'CLAIM_IN_PROGRESS', 'PARTIALLY_RECEIVED_IN_CLAIM'].includes(task.status);
       }
     }
     
@@ -417,6 +417,9 @@ export default function WorkspaceView({
                 activeTab={activeTab}
                 currentRole={currentRole}
                 onClick={() => handleTaskClick(task)}
+                onReorderShortage={(draft) => {
+                  if (onEditPR) onEditPR(draft);
+                }}
               />
             ))}
           </div>

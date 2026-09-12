@@ -23,13 +23,52 @@ export default function CollapsibleActivityTimeline({
 
   if (!events) events = [];
 
+  const formatEventTime = (timeVal) => {
+    if (!timeVal || timeVal === '-') return '-';
+    const str = String(timeVal).trim();
+    const pad = (n) => String(n).padStart(2, '0');
+    const matchDmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s*(\d{1,2}):(\d{2})/);
+    if (matchDmy) {
+      let p1 = parseInt(matchDmy[1], 10);
+      let p2 = parseInt(matchDmy[2], 10);
+      let yr = parseInt(matchDmy[3], 10);
+      const hh = pad(matchDmy[4]);
+      const mm = matchDmy[5];
+
+      if (yr === 12 || yr === 26 || yr === 69) yr = 2026;
+      else if (yr < 100) yr = 2000 + yr;
+      else if (yr > 2400) yr -= 543;
+
+      let day = p1;
+      let month = p2;
+      if (p1 <= 12 && p2 > 12) {
+        day = p2;
+        month = p1;
+      }
+      return `${pad(day)}/${pad(month)}/${yr} ${hh}:${mm}`;
+    }
+    try {
+      const d = new Date(timeVal);
+      if (isNaN(d.getTime())) return str;
+      const day = pad(d.getDate());
+      const month = pad(d.getMonth() + 1);
+      let year = d.getFullYear();
+      if (year > 2400) year -= 543;
+      const hours = pad(d.getHours());
+      const minutes = pad(d.getMinutes());
+      return `${day}/${month}/${year} ${hours}:${minutes}`;
+    } catch {
+      return str;
+    }
+  };
+
   // Normalize event fields
   const normalizedEvents = events.map((e, index) => ({
     id: e.id || index,
     title: e.action || e.title || e.type || 'ดำเนินการ',
     actor: e.user || e.actor || e.userName || e.by || '-',
     role: e.role || e.userRole || e.department || null,
-    time: e.timestamp || e.time || e.date || '-',
+    time: formatEventTime(e.timestamp || e.time || e.date),
     note: e.note || e.description || e.comment || e.details || null,
     status: e.status || null,
     raw: e

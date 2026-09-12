@@ -17,6 +17,7 @@ import AttachmentViewerModal from '../common/AttachmentViewerModal';
 import CollapsibleActivityTimeline from '../common/CollapsibleActivityTimeline';
 import { generatePoPdf } from '../../utils/generatePoPdf';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
+import ReceivingModal from '../../views/inventory/ReceivingModal';
 
 const getVendorDisplayName = (vendorData) => {
   if (!vendorData) return '';
@@ -28,7 +29,12 @@ const getVendorDisplayName = (vendorData) => {
 };
 
 export default function PODetailsModal({ selectedPO, currentRole, onClose, onRefresh }) {
-  const context = useAppContext();
+  let context = null;
+  try {
+    context = useAppContext();
+  } catch {
+    context = null;
+  }
   const currentUser = context?.currentUser;
   const rawRole = typeof currentUser?.role === 'object' 
     ? (currentUser?.role?.id || currentUser?.role?.name || '') 
@@ -40,9 +46,11 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
   const isPurchaser = role.includes('purchaser');
 
   // Multi-store resolution for Online PO (Directive 3)
-  const isOnlinePO = selectedPO.purchaseChannel === 'ONLINE' || 
-                     selectedPO.purchaseType === 'ONLINE' || 
-                     (selectedPO.items || []).some(it => it.actualStoreName || it.storeName || it.storePlatform);
+  const isOnlinePO = Boolean(
+    selectedPO.purchaseChannel === 'ONLINE' || 
+    selectedPO.orderType === 'ONLINE' ||
+    selectedPO.channel === 'online'
+  );
   const onlineStores = Array.from(new Set(
     (selectedPO.items || [])
       .map(it => (it.actualStoreName || it.storeName || '').trim())
@@ -62,6 +70,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
   const hasAssignedVendor = Boolean((selectedPO.vendorId && selectedPO.vendorId !== 'ONLINE') || (displayVendor && displayVendor.trim().length > 0) || (selectedPO.vendorId === 'ONLINE' && displayVendor));
 
   const [isReceiving, setIsReceiving] = useState(false);
+  const [showReceivingModal, setShowReceivingModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Unified Action State: 'NONE' = view mode, 'RECEIVE' = goods receiving, 'CLAIM' = report claim
   const [activeAction, setActiveAction] = useState('NONE');
@@ -318,8 +327,26 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
       } else {
         // Cascading Completion on 100% Goods Receipt
         if (allRemaining) {
+          const recAt = new Date().toISOString();
+          const recName = (currentUser?.name && currentUser.name !== 'Admin System') 
+            ? currentUser.name 
+            : (currentUser?.employeeName || 'คุณวิชัย สุขใจ');
+          const recSig = currentUser?.signatureUrl || currentUser?.signature || '/signatures/receiver-default.png';
+
           if (context?.updatePO) {
-            context.updatePO(selectedPO.id, { status: 'completed', fullyReceivedAt: new Date().toISOString() });
+            context.updatePO(selectedPO.id, { 
+              status: 'COMPLETED', 
+              fullyReceivedAt: recAt,
+              receivingInfo: {
+                receiverName: recName,
+                receiverSignature: recSig,
+                receivedAt: recAt
+              },
+              receivedBy: recName,
+              receiverName: recName,
+              receiverSignature: recSig,
+              receivedAt: recAt
+            });
           }
           const prTarget = selectedPO.prNumber || selectedPO.prNo || selectedPO.prId;
           if (prTarget && context?.updatePR) {
@@ -559,7 +586,27 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
   const isSpecial = specialStatuses.includes(selectedPO.status);
   const currentStepIndex = isSpecial ? -1 : lifecycleSteps.findIndex(s => s.key === selectedPO.status);
 
-  return createPortal(
+  // Seamless Modal Swapping: Eliminate Stacking Modals Anti-pattern
+  // When user clicks "ตรวจรับพัสดุ", swap view completely to ReceivingModal without double backdrops
+  if (showReceivingModal) {
+    return (
+      <ReceivingModal
+        po={selectedPO}
+        isOpen={true}
+        onBack={() => setShowReceivingModal(false)}
+        onBackToPO={() => setShowReceivingModal(false)}
+        onClose={() => setShowReceivingModal(false)}
+        onSuccess={(result) => {
+          setShowReceivingModal(false);
+          if (onRefresh) onRefresh(result?.po);
+          onClose();
+        }}
+        currentRole={currentUser || currentRole}
+      />
+    );
+  }
+
+  const modalContent = (
     <>
       <div className="hidden print:block font-sarabun">
         <PrintablePO po={selectedPO} />
@@ -917,9 +964,9 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {selectedPO.items.map((item, idx) => {
-                        const pQty = item.purchaseQty ?? item.qty;
+                        const pQty = item.actualQty ?? item.purchaseQty ?? item.qty;
                         const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
-                        const price = item.unitPrice || item.estimatedPrice || item.price || 0;
+                        const price = item.actualPrice ?? item.unitPrice ?? item.estimatedPrice ?? item.price ?? 0;
                         const isFullyReceived = Number(item.receivedQty || 0) >= Number(pQty);
                         return (
                           <tr key={idx} className={`hover:bg-slate-50/60 transition-colors ${idx % 2 === 1 ? 'bg-slate-50/20' : ''}`}>
@@ -929,9 +976,9 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                             <td className="px-3 py-3">
                               <div className="font-semibold text-slate-800 leading-snug break-words max-w-xs">{item.name}</div>
                               {(isOnlinePO || item.actualStoreName || item.storeName) && (
-                                <span className="text-[11px] text-slate-500 font-sans italic block mt-0.5">
-                                  [ร้านค้า: {item.actualStoreName || item.storeName || (onlineStores.length === 1 ? onlineStores[0] : (selectedPO.vendorName || '-'))}]
-                                </span>
+                                <div className="text-[11px] text-slate-500 font-sans italic mt-0.5">
+                                  [ช่องทาง: {item.storePlatform || 'ออนไลน์'} • ร้านค้า: {item.actualStoreName || item.storeName || '-'}]
+                                </div>
                               )}
                               {(() => {
                                 const rawUrl = getProductUrl(item);
@@ -1378,7 +1425,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                       </button>
                     )}
                     {isOperational && canReceiveGoods && isReceivable && (
-                      <button onClick={() => setActiveAction('RECEIVE')}
+                      <button onClick={() => setShowReceivingModal(true)}
                         className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-all shadow-sm shadow-emerald-200">
                         <Download className="w-3.5 h-3.5" />📦 บันทึกตรวจรับสินค้า (+IN)
                       </button>
@@ -1406,7 +1453,12 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
           onClose={() => setViewingAttachment(null)}
         />
       )}
-    </>,
-    document.body
+    </>
   );
+
+  if (typeof document === 'undefined') {
+    return modalContent;
+  }
+
+  return createPortal(modalContent, document.body);
 }

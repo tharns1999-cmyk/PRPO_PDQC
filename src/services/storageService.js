@@ -68,6 +68,7 @@ const _migrateLocalStorageCache = () => {
 
       // Master Data (Vendors, Products, Users, Locations, Usage Units, Signatures, Departments) is 100% PRESERVED!
 
+      localStorage.setItem('app_data_cleared', 'true');
       localStorage.setItem('prpo_data_version', DATA_VERSION);
     }
   } catch (e) {
@@ -99,6 +100,8 @@ const _setItem = (key, value, syncWithBackend = false) => {
     _syncApi();
   }
 };
+
+const isDataCleared = () => typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true';
 
 export const storageService = {
   // Initialize storage from Local Node.js Backend with fallback to LocalStorage
@@ -189,14 +192,46 @@ export const storageService = {
     _setItem(STORAGE_KEYS.CURRENT_ROLE, role);
   },
 
-  // Products (with Lazy Migration)
+  // Products (with Lazy Migration & Cache Sanitization)
   getProducts() {
-    const data = _getItem(STORAGE_KEYS.PRODUCTS);
-    const products = data || initialProducts;
+    let data = _getItem(STORAGE_KEYS.PRODUCTS);
+
+    // Directive 3: Flatten nested arrays and sanitize cache
+    if (Array.isArray(data)) {
+      data = data.flatMap(p => Array.isArray(p) ? p : [p]).filter(p => p && typeof p === 'object');
+      const validNamed = data.filter(p => {
+        const actual = p.product || p.item || p;
+        const name = actual.name || actual.itemName || actual.nameTh || actual.title;
+        return Boolean(name && name !== 'สินค้าไม่มีชื่อ');
+      });
+      data = validNamed.length > 0 ? validNamed : null;
+    } else {
+      data = null;
+    }
+
+    // Clean legacy inventory or products keys in localStorage if corrupted
+    if (typeof localStorage !== 'undefined') {
+      try {
+        ['inventory', 'products'].forEach(key => {
+          const item = localStorage.getItem(key);
+          if (item) {
+            try {
+              const parsed = JSON.parse(item);
+              if (Array.isArray(parsed) && parsed.some(x => Array.isArray(x) || !x?.name)) {
+                localStorage.removeItem(key);
+              }
+            } catch (err) {}
+          }
+        });
+      } catch (e) {}
+    }
+
+    const products = data && data.length > 0 ? data : initialProducts;
     
     let needsSave = false;
     const migrated = products.map(p => {
-      let item = { ...p };
+      const actual = p.product || p.item || p;
+      let item = { ...actual };
       const cat = item.category || item.department || 'PD';
       if (!item.category || !item.department || item.category !== cat || item.department !== cat) {
         needsSave = true;
@@ -229,13 +264,16 @@ export const storageService = {
       return item;
     });
 
-    if (needsSave) {
+    if (needsSave || !data) {
       _setItem(STORAGE_KEYS.PRODUCTS, migrated);
     }
     return migrated;
   },
   saveProducts(products) {
-    _setItem(STORAGE_KEYS.PRODUCTS, products);
+    const sanitized = (Array.isArray(products) ? products : [])
+      .flatMap(p => Array.isArray(p) ? p : [p])
+      .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title));
+    _setItem(STORAGE_KEYS.PRODUCTS, sanitized, true);
   },
 
   // Storage Locations (Simple Name & Department)
@@ -482,7 +520,7 @@ export const storageService = {
   // PRs (with Lazy Migration)
   getPRs() {
     const data = _getItem(STORAGE_KEYS.PRS);
-    const prs = Array.isArray(data) ? data : (initialPRs || []);
+    const prs = Array.isArray(data) ? data : (isDataCleared() ? [] : (initialPRs || []));
     const filtered = prs;
     
     let needsSave = false;
@@ -571,7 +609,7 @@ export const storageService = {
   // POs (with Lazy Migration & Deduplication)
   getPOs() {
     const data = _getItem(STORAGE_KEYS.POS);
-    const pos = Array.isArray(data) ? data : (initialPOs || []);
+    const pos = Array.isArray(data) ? data : (isDataCleared() ? [] : (initialPOs || []));
     const filtered = pos.filter(po => po.department === 'PD' || po.department === 'QC');
 
     // Deduplicate POs by unique identifier
@@ -600,18 +638,21 @@ export const storageService = {
 
       items = items.map(item => {
         const needsUnitMigration = !item.purchaseUnit || !item.stockUnit || item.purchaseQty === undefined || item.stockQty === undefined;
-        const needsQtyMigration = item.orderedQty === undefined || item.remainingQty === undefined;
+        const needsQtyMigration = item.orderedQty === undefined || item.receivedQty === undefined || item.damagedQty === undefined || item.shortageQty === undefined || item.remainingQty === undefined;
+
+        const pQty = Number(item.purchaseQty ?? item.qty) || 1;
+        const rate = Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1;
+        const sQty = Number(item.stockQty) || (pQty * rate);
+        const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
+        const sUnit = item.stockUnit || item.unit || 'ชิ้น';
+        const orderedQty = Number(item.orderedQty ?? pQty);
+        const receivedQty = Number(item.receivedQty) || 0;
+        const damagedQty = Number(item.damagedQty ?? item.claimedQty ?? item.ngQty) || 0;
+        const shortageQty = Number(item.shortageQty ?? Math.max(0, orderedQty - receivedQty));
 
         if (needsUnitMigration || needsQtyMigration) {
           poUpdated = true;
           needsSave = true;
-          const pQty = Number(item.purchaseQty ?? item.qty) || 1;
-          const rate = Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1;
-          const sQty = Number(item.stockQty) || (pQty * rate);
-          const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
-          const sUnit = item.stockUnit || item.unit || 'ชิ้น';
-          const orderedQty = item.orderedQty ?? pQty;
-          const receivedQty = Number(item.receivedQty) || 0;
           return {
             ...item,
             purchaseQty: pQty,
@@ -623,11 +664,20 @@ export const storageService = {
             conversionRate: rate,
             orderedQty,
             receivedQty,
-            remainingQty: item.remainingQty ?? (orderedQty - receivedQty),
+            damagedQty,
+            shortageQty,
+            remainingQty: item.remainingQty ?? shortageQty,
             receivedStockQty: item.receivedStockQty ?? (receivedQty * rate)
           };
         }
-        return item;
+        return {
+          ...item,
+          orderedQty,
+          receivedQty,
+          damagedQty,
+          shortageQty,
+          remainingQty: item.remainingQty ?? shortageQty
+        };
       });
 
       // Sanitize PO-PD-2026-001: Ensure it points to PD001/2026 (Hydraulic Oil)
@@ -642,6 +692,87 @@ export const storageService = {
         needsSave = true;
       }
 
+      // Sanitize & Recover PO-QC-2026-001: Restore Item 1 (2 @ 750 = 1500) and Item 2 (8 @ 70 = 560), Total 2060
+      if (po.poNo === 'PO-QC-2026-001' || po.id === 'PO-1789172239513-1') {
+        const item1 = items[0] || {};
+        const item2 = items[1] || {};
+        const isCorrupted = 
+          Number(item2.actualPrice ?? item2.price) === 750 || 
+          Number(item2.actualQty ?? item2.qty) === 2 || 
+          Number(item2.unitPrice) === 750 ||
+          Number(po.grandTotal ?? po.totalAmount) === 3000;
+
+        if (isCorrupted || items.length < 2) {
+          poUpdated = true;
+          needsSave = true;
+          
+          const healedItem1 = {
+            ...item1,
+            productId: item1.productId || 'PROD-QC-001',
+            code: 'QC-BUF-PH7',
+            name: item1.name || 'สารละลายบัฟเฟอร์มาตรฐานสอบเทียบ pH 7.00 Buffer Solution (500ml)',
+            purchaseUnit: 'ขวด',
+            stockUnit: 'ขวด',
+            unit: 'ขวด',
+            conversionRate: 1,
+            purchaseQty: 2,
+            stockQty: 2,
+            qty: 2,
+            orderedQty: 2,
+            remainingQty: 2,
+            originalEstimatedPrice: 750,
+            estimatedPrice: 750,
+            unitPrice: 750,
+            actualPrice: 750,
+            price: 750,
+            lineTotal: 1500,
+            total: 1500,
+            actualStoreName: (item1.actualStoreName && !item1.actualStoreName.includes('เไพ') ? item1.actualStoreName : 'ร้านเคมีภัณฑ์ QC').trim(),
+            storePlatform: item1.storePlatform || 'Shopee'
+          };
+
+          const healedItem2 = {
+            ...item2,
+            productId: item2.productId || 'PROD-QC-001',
+            code: 'QC-BUF-PH7',
+            name: item2.name || 'สารละลายบัฟเฟอร์มาตรฐานสอบเทียบ pH 7.00 Buffer Solution (500ml)',
+            purchaseUnit: 'ขวด',
+            stockUnit: 'ขวด',
+            unit: 'ขวด',
+            conversionRate: 1,
+            purchaseQty: 8,
+            stockQty: 8,
+            qty: 8,
+            orderedQty: 8,
+            remainingQty: 8,
+            originalEstimatedPrice: 70,
+            estimatedPrice: 70,
+            unitPrice: 70,
+            actualPrice: 70,
+            price: 70,
+            lineTotal: 560,
+            total: 560,
+            actualStoreName: (item2.actualStoreName && !item2.actualStoreName.includes('เไพ') ? item2.actualStoreName : 'ร้านอุปกรณ์แล็บ').trim(),
+            storePlatform: item2.storePlatform || 'Lazada'
+          };
+
+          items = [healedItem1, healedItem2];
+          grandTotal = 2060;
+          po.subtotal = 2060;
+          po.totalAmount = 2060;
+          po.grandTotal = 2060;
+          if (po.financials) {
+            po.financials.subtotal = 2060;
+            po.financials.grandTotal = 2060;
+          }
+          if (po.vendorName && po.vendorName.includes('เไพ')) {
+            po.vendorName = 'ผู้จำหน่าย: ตลาดออนไลน์ Shopee / Lazada (สั่งซื้อออนไลน์หลายร้านค้า)';
+            po.vendor = 'ผู้จำหน่าย: ตลาดออนไลน์ Shopee / Lazada (สั่งซื้อออนไลน์หลายร้านค้า)';
+            po.shopName = 'ผู้จำหน่าย: ตลาดออนไลน์ Shopee / Lazada (สั่งซื้อออนไลน์หลายร้านค้า)';
+          }
+        }
+      }
+
       return poUpdated ? { ...po, prNo, prNumber, prId, vat, grandTotal, items } : po;
     });
 
@@ -649,6 +780,78 @@ export const storageService = {
       _setItem(STORAGE_KEYS.POS, migrated);
     }
     return migrated;
+  },
+
+  // Direct Recovery & Reset Method for PO-QC-2026-001
+  resetPOQC2026001() {
+    const pos = this.getPOs();
+    const targetIdx = pos.findIndex(p => p.poNo === 'PO-QC-2026-001' || p.id === 'PO-1789172239513-1');
+    if (targetIdx !== -1) {
+      const p = pos[targetIdx];
+      p.items = [
+        {
+          ...(p.items?.[0] || {}),
+          productId: 'PROD-QC-001',
+          code: 'QC-BUF-PH7',
+          name: 'สารละลายบัฟเฟอร์มาตรฐานสอบเทียบ pH 7.00 Buffer Solution (500ml)',
+          purchaseUnit: 'ขวด',
+          stockUnit: 'ขวด',
+          unit: 'ขวด',
+          conversionRate: 1,
+          purchaseQty: 2,
+          stockQty: 2,
+          qty: 2,
+          orderedQty: 2,
+          remainingQty: 2,
+          originalEstimatedPrice: 750,
+          estimatedPrice: 750,
+          unitPrice: 750,
+          actualPrice: 750,
+          price: 750,
+          lineTotal: 1500,
+          total: 1500,
+          actualStoreName: 'ร้านเคมีภัณฑ์ QC',
+          storePlatform: 'Shopee'
+        },
+        {
+          ...(p.items?.[1] || {}),
+          productId: 'PROD-QC-001',
+          code: 'QC-BUF-PH7',
+          name: 'สารละลายบัฟเฟอร์มาตรฐานสอบเทียบ pH 7.00 Buffer Solution (500ml)',
+          purchaseUnit: 'ขวด',
+          stockUnit: 'ขวด',
+          unit: 'ขวด',
+          conversionRate: 1,
+          purchaseQty: 8,
+          stockQty: 8,
+          qty: 8,
+          orderedQty: 8,
+          remainingQty: 8,
+          originalEstimatedPrice: 70,
+          estimatedPrice: 70,
+          unitPrice: 70,
+          actualPrice: 70,
+          price: 70,
+          lineTotal: 560,
+          total: 560,
+          actualStoreName: 'ร้านอุปกรณ์แล็บ',
+          storePlatform: 'Lazada'
+        }
+      ];
+      p.subtotal = 2060;
+      p.grandTotal = 2060;
+      p.totalAmount = 2060;
+      if (p.financials) {
+        p.financials.subtotal = 2060;
+        p.financials.grandTotal = 2060;
+      }
+      p.vendorName = 'ผู้จำหน่าย: ตลาดออนไลน์ Shopee / Lazada (สั่งซื้อออนไลน์หลายร้านค้า)';
+      p.vendor = 'ผู้จำหน่าย: ตลาดออนไลน์ Shopee / Lazada (สั่งซื้อออนไลน์หลายร้านค้า)';
+      p.shopName = 'ผู้จำหน่าย: ตลาดออนไลน์ Shopee / Lazada (สั่งซื้อออนไลน์หลายร้านค้า)';
+      this.savePOs(pos);
+      return p;
+    }
+    return null;
   },
   savePOs(pos) {
     const seen = new Set();
@@ -664,7 +867,7 @@ export const storageService = {
   // Stock Logs
   getStockLogs() {
     const data = _getItem(STORAGE_KEYS.STOCK_LOGS);
-    return data || initialStockLogs;
+    return Array.isArray(data) ? data : (isDataCleared() ? [] : (initialStockLogs || []));
   },
   saveStockLogs(logs) {
     _setItem(STORAGE_KEYS.STOCK_LOGS, logs);
@@ -810,5 +1013,39 @@ export const storageService = {
     if (roleId === 'REVIEWER') delete sigs['ASST_MANAGER'];
     if (roleId === 'APPROVER') delete sigs['PLANT_MANAGER'];
     this.saveSignatures(sigs);
+  },
+  clearMockTransactions() {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('app_data_cleared', 'true');
+    }
+    _setItem(STORAGE_KEYS.PRS, []);
+    _setItem(STORAGE_KEYS.POS, []);
+    _setItem(STORAGE_KEYS.STOCK_LOGS, []);
+    _setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, []);
+    _setItem(STORAGE_KEYS.AUDIT_LOGS, []);
+    _setItem('prpo_in_app_notifications', []);
+    _setItem('prpo_notifications', []);
+    _setItem('app_prs', []);
+    _setItem('app_pos', []);
+    _setItem('mock_prs', []);
+    _setItem('mock_pos', []);
+    _setItem('purchase_orders', []);
+    _setItem('purchase_requisitions', []);
+    _setItem('online_tasks', []);
+    _setItem('stock_movements', []);
+    _setItem('app_audit_logs', []);
+    
+    const budgets = this.getBudgets();
+    const resetB = {};
+    for (const [dept, b] of Object.entries(budgets)) {
+      resetB[dept] = {
+        ...b,
+        spent: 0,
+        pending: 0,
+        variance: b.monthlyBudget || 0,
+        historicalSpent: {}
+      };
+    }
+    this.saveBudgets(resetB);
   }
 };

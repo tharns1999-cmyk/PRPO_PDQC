@@ -530,6 +530,155 @@ export function AppProvider({ children }) {
     return result;
   }, [currentRole, loadAllData]);
 
+  const handleRecordGoodsReceipt = useCallback(async (poId, grnPayload) => {
+    const currentPOs = storageService.getPOs() || [];
+    const targetIdx = currentPOs.findIndex(p => p.id === poId || p.poNo === poId || p.poNumber === poId);
+    if (targetIdx === -1) {
+      throw new Error(`ไม่พบเอกสาร PO รหัส ${poId} ในระบบ`);
+    }
+
+    const currentPO = { ...currentPOs[targetIdx] };
+    const currentItems = Array.isArray(currentPO.items) ? [...currentPO.items] : [];
+    const incomingItems = grnPayload.receivingItems || grnPayload.items || [];
+
+    const receiptMap = new Map();
+    incomingItems.forEach((inc, idx) => {
+      const key = inc.productId || inc.id || inc.code || String(idx);
+      receiptMap.set(key, inc);
+    });
+
+    let hasAnyShortage = false;
+    let hasAnyClaim = false;
+    let allReceived = true;
+    const roundSummary = [];
+
+    const updatedItems = currentItems.map((item, idx) => {
+      const matchKey = item.productId || item.id || item.code || String(idx);
+      const inc = receiptMap.get(matchKey) || receiptMap.get(item.productId) || {};
+
+      const orderedQty = Number(item.orderedQty ?? item.purchaseQty ?? item.qty) || 0;
+      const prevReceived = Number(item.receivedQty) || 0;
+      const prevDamaged = Number(item.damagedQty ?? item.claimedQty ?? item.ngQty) || 0;
+
+      const thisReceived = Number(inc.receivedThisTime ?? inc.receivedQty ?? inc.qty) || 0;
+      const thisDamaged = Number(inc.damagedQty ?? inc.claimedQty ?? inc.ngQty) || 0;
+
+      const newReceived = prevReceived + thisReceived;
+      const newDamaged = prevDamaged + thisDamaged;
+      const shortageQty = Math.max(0, orderedQty - newReceived);
+
+      if (thisDamaged > 0 || newDamaged > 0) hasAnyClaim = true;
+      if (shortageQty > 0) {
+        hasAnyShortage = true;
+        allReceived = false;
+      }
+
+      roundSummary.push({
+        productId: item.productId,
+        name: item.name,
+        code: item.code,
+        orderedQty,
+        receivedThisRound: thisReceived,
+        damagedThisRound: thisDamaged,
+        accumulatedReceived: newReceived,
+        accumulatedDamaged: newDamaged,
+        shortageQty,
+        condition: inc.condition || (thisDamaged > 0 ? 'DAMAGED' : shortageQty > 0 ? 'SHORTAGE' : 'GOOD'),
+        defectReason: inc.defectReason || inc.note || ''
+      });
+
+      return {
+        ...item,
+        orderedQty,
+        receivedQty: newReceived,
+        damagedQty: newDamaged,
+        shortageQty,
+        remainingQty: shortageQty,
+        conversionRate: Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1
+      };
+    });
+
+    let nextStatus = currentPO.status;
+    if (grnPayload.statusOverride) {
+      nextStatus = grnPayload.statusOverride;
+    } else if (hasAnyClaim) {
+      nextStatus = 'PARTIALLY_RECEIVED_IN_CLAIM';
+    } else if (hasAnyShortage) {
+      nextStatus = grnPayload.waitingRound2 ? 'WAITING_DELIVERY_ROUND_2' : 'PARTIAL';
+    } else if (allReceived) {
+      nextStatus = 'COMPLETED';
+    }
+
+    const isCompletedReceipt = allReceived || nextStatus === 'CLOSED' || nextStatus === 'COMPLETED';
+    if (isCompletedReceipt) {
+      nextStatus = 'COMPLETED';
+    }
+
+    const grnNumber = grnPayload.grnNumber || grnPayload.grNumber || grnPayload.grId || `GRN-${currentPO.poNo || currentPO.id}-${String((currentPO.grnHistory?.length || 0) + 1).padStart(2, '0')}`;
+    const timestamp = grnPayload.receivedDate || grnPayload.date || new Date().toLocaleString('th-TH');
+    const receivedAtIso = grnPayload.receivingInfo?.receivedAt || new Date().toISOString();
+
+    const receiverName = grnPayload.receivingInfo?.receiverName || 
+      (typeof grnPayload.receivedBy === 'string' ? grnPayload.receivedBy.split(' (')[0] : (grnPayload.receivedBy?.name || currentRole?.name || 'คุณวิชัย สุขใจ'));
+    const receiverSig = grnPayload.receivingInfo?.receiverSignature || 
+      grnPayload.receiverSignature || 
+      storageService.getSignatureByRole?.(currentRole?.roleId || 'REQUESTER_PD')?.signatureUrl || 
+      storageService.getSignatures?.()?.[currentRole?.roleId || 'REQUESTER_PD']?.signatureUrl || 
+      '/signatures/receiver-default.png';
+
+    const grnEntry = {
+      grnNumber,
+      round: grnPayload.round || (currentPO.grnHistory?.length || 0) + 1,
+      date: timestamp,
+      receivedBy: grnPayload.receivedBy || currentRole?.name || 'Staff',
+      items: roundSummary,
+      note: grnPayload.note || '',
+      attachments: grnPayload.attachments || [],
+      statusAfterRound: nextStatus
+    };
+
+    const updatedPO = {
+      ...currentPO,
+      items: updatedItems,
+      status: nextStatus,
+      grnHistory: [...(currentPO.grnHistory || []), grnEntry],
+      ...(isCompletedReceipt ? {
+        receivingInfo: {
+          receiverName,
+          receiverSignature: receiverSig,
+          receivedAt: receivedAtIso
+        },
+        receivedBy: receiverName,
+        receiverName: receiverName,
+        receiverSignature: receiverSig,
+        receivedAt: receivedAtIso
+      } : {}),
+      activityLog: [
+        ...(currentPO.activityLog || []),
+        {
+          action: `ตรวจรับสินค้าแยกรอบ (GRN: ${grnNumber})`,
+          user: typeof grnPayload.receivedBy === 'string' ? grnPayload.receivedBy : (grnPayload.receivedBy?.name || currentRole?.name || 'Staff'),
+          timestamp,
+          note: grnPayload.note || `บันทึกการตรวจรับรอบที่ ${grnEntry.round} สถานะเอกสาร: ${nextStatus}`
+        }
+      ]
+    };
+
+    currentPOs[targetIdx] = updatedPO;
+    storageService.savePOs(currentPOs);
+    setPOs(currentPOs);
+
+    try {
+      await apiService.receiveGoods(poId, incomingItems, currentRole, grnPayload.note || '', {
+        grNumber: grnNumber,
+        grId: grnNumber
+      });
+    } catch {}
+
+    await loadAllData();
+    return { success: true, po: updatedPO, grn: grnEntry };
+  }, [currentRole, loadAllData]);
+
   const handleSaveProduct = useCallback(async (product) => {
     const targetId = String(product.id || '').trim().toLowerCase();
     const targetCode = String(product.code || '').trim().toLowerCase();
@@ -662,6 +811,194 @@ export function AppProvider({ children }) {
     return result;
   }, [currentUser, currentRole, loadAllData]);
 
+  const handleRefundBudget = useCallback(async (department, amount, reason = 'เงินคืนจากการเคลมสินค้า') => {
+    if (!department || !amount || Number(amount) <= 0) return;
+    const actor = currentUser?.name || currentRole?.name || 'Online Purchaser';
+    const deptBudgets = storageService.getBudgets();
+    const prev = Number(deptBudgets[department]?.monthlyBudget || 0);
+    const result = await apiService.adjustBudget({
+      dept: department,
+      action: 'TOP_UP',
+      delta: Number(amount),
+      previousAmount: prev,
+      reason,
+      actor
+    });
+    await loadAllData();
+    return result;
+  }, [currentUser, currentRole, loadAllData]);
+
+  const handleRollbackBudget = useCallback(async (department, refundAmount, reason = 'คืนงบประมาณจากการตรวจรับ/เคลมสินค้า', options = {}) => {
+    const dept = (department || 'PD').toUpperCase();
+    const amount = Number(refundAmount);
+    if (!amount || amount <= 0) {
+      throw new Error('ยอดเงินคืนงบประมาณต้องมากกว่า 0 บาท');
+    }
+
+    const budgets = storageService.getBudgets();
+    if (!budgets[dept]) {
+      budgets[dept] = { monthlyBudget: 0, spent: 0, actualExpense: 0, pending: 0, variance: 0, history: {}, historicalSpent: {}, refundCredits: {} };
+    }
+
+    const currentSpent = Number(budgets[dept].spent ?? budgets[dept].actualExpense ?? 0);
+    const newSpent = Math.max(0, currentSpent - amount);
+
+    budgets[dept].spent = newSpent;
+    budgets[dept].actualExpense = newSpent;
+
+    const monthly = Number(budgets[dept].monthlyBudget || 0);
+    const prevVariance = budgets[dept].variance !== undefined ? Number(budgets[dept].variance) : (monthly - currentSpent);
+    const newVariance = prevVariance + amount;
+
+    budgets[dept].variance = newVariance;
+    budgets[dept].remainingBudget = newVariance;
+
+    const today = new Date();
+    const targetMonth = options.targetMonth || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    if (!budgets[dept].refundCredits) budgets[dept].refundCredits = {};
+    budgets[dept].refundCredits[targetMonth] = (Number(budgets[dept].refundCredits[targetMonth]) || 0) + amount;
+
+    storageService.saveBudgets(budgets);
+
+    const tx = {
+      id: `BTX-ROLLBACK-${Date.now()}`,
+      date: today.toISOString().replace('T', ' ').slice(0, 19),
+      createdAt: today.toISOString(),
+      dept,
+      type: 'BUDGET_ROLLBACK',
+      typeLabel: 'คืนงบประมาณ (Budget Reversal)',
+      previousAmount: currentSpent,
+      newAmount: newSpent,
+      amount,
+      delta: amount,
+      actor: options.actor || currentRole?.name || currentUser?.name || 'Budget Specialist',
+      refDocNo: options.refDocNo || options.docNo || '',
+      note: reason || 'คืนงบประมาณจากการตรวจรับสินค้า / สินค้าชำรุดเสียหาย',
+      targetMonth
+    };
+
+    storageService.appendBudgetTransaction(tx);
+
+    try {
+      await apiService.adjustBudget({
+        dept,
+        action: 'BUDGET_ROLLBACK',
+        previousAmount: currentSpent,
+        newAmount: newSpent,
+        delta: amount,
+        reason,
+        actor: tx.actor,
+        targetMonth
+      });
+    } catch {}
+
+    await loadAllData();
+    return {
+      success: true,
+      department: dept,
+      refundAmount: amount,
+      actualExpense: newSpent,
+      remainingBudget: newVariance,
+      transaction: tx
+    };
+  }, [currentRole, currentUser, loadAllData]);
+
+  const handleReceiveToStock = useCallback(async (items, options = {}) => {
+    const incoming = Array.isArray(items) ? items : [items];
+    const prods = storageService.getProducts() || [];
+    const logs = storageService.getStockLogs() || [];
+    const timestamp = options.date || new Date().toLocaleString('th-TH');
+
+    const processedItems = [];
+
+    incoming.forEach((item, idx) => {
+      const orderedQty = Number(item.orderedQty ?? item.purchaseQty ?? item.qty) || 0;
+      const receivedQty = Number(item.receivedThisTime ?? item.receivedQty ?? item.qty) || 0;
+      const damagedQty = Number(item.damagedQty ?? item.claimedQty ?? item.ngQty) || 0;
+
+      const goodQty = Math.max(0, receivedQty - damagedQty);
+      if (goodQty <= 0) return;
+
+      const prodIdx = prods.findIndex(p => 
+        p.id === item.productId || 
+        p.code === item.productId || 
+        p.code === item.code || 
+        (item.name && p.name === item.name)
+      );
+
+      if (prodIdx !== -1) {
+        const prod = { ...prods[prodIdx] };
+        const rate = Number(item.conversionRate || prod.conversionRate) > 0 ? Number(item.conversionRate || prod.conversionRate) : 1;
+        const stockQtyToAdd = goodQty * rate;
+        const currentBal = Number(prod.stockBalance) || 0;
+        const newBal = currentBal + stockQtyToAdd;
+
+        prod.stockBalance = newBal;
+        prods[prodIdx] = prod;
+
+        const sUnit = prod.stockUnit || prod.unit || 'ชิ้น';
+        const pUnit = prod.purchaseUnit || prod.unit || sUnit;
+        const grNumber = options.grNumber || item.grNumber || options.grnNumber || '';
+        const docNo = options.docNo || item.docNo || item.poNo || 'GRN';
+
+        const logNote = rate > 1
+          ? `รับสินค้าเข้าคลังเฉพาะยอดสมบูรณ์ ${goodQty} ${pUnit} (= +${stockQtyToAdd} ${sUnit}) จากเอกสาร ${docNo}`
+          : `รับสินค้าเข้าคลังเฉพาะยอดสมบูรณ์ +${stockQtyToAdd} ${sUnit} จากเอกสาร ${docNo}`;
+
+        logs.unshift({
+          id: `LOG-IN-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+          grNumber,
+          date: timestamp,
+          productId: prod.id,
+          productCode: prod.code,
+          type: 'IN',
+          docNo,
+          qty: stockQtyToAdd,
+          unit: sUnit,
+          balance: newBal,
+          user: typeof options.user === 'object' ? `${options.user.name} (${options.user.title || ''})` : (options.user || currentRole?.name || 'Warehouse Staff'),
+          locationId: prod.locationId || '',
+          locationName: prod.locationName || '',
+          note: options.note || logNote
+        });
+
+        processedItems.push({
+          productId: prod.id,
+          code: prod.code,
+          name: prod.name,
+          goodQty,
+          stockQtyAdded: stockQtyToAdd,
+          previousBalance: currentBal,
+          newBalance: newBal
+        });
+      }
+    });
+
+    if (processedItems.length > 0) {
+      storageService.saveProducts(prods);
+      storageService.saveStockLogs(logs);
+      setProducts(prods);
+      setStockLogs(logs);
+
+      try {
+        await fetch('http://localhost:3001/api/products/batch', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(prods)
+        });
+      } catch {}
+    }
+
+    await loadAllData();
+    return {
+      success: true,
+      processedCount: processedItems.length,
+      processedItems,
+      products: prods
+    };
+  }, [currentRole, loadAllData]);
+
   const handleMarkNotificationAsRead = useCallback(async (id) => {
     setNotifications(prev => prev.map(n => (n.id === id || n._id === id) ? { ...n, isRead: true, read: true, status: 'read' } : n));
     if (notificationService?.markAsRead) {
@@ -721,6 +1058,9 @@ export function AppProvider({ children }) {
     approvePR: handleApprovePR,
     receivePOItems: handleReceiveGoods,
     receiveGoods: handleReceiveGoods,
+    recordGoodsReceipt: handleRecordGoodsReceipt,
+    rollbackBudget: handleRollbackBudget,
+    receiveToStock: handleReceiveToStock,
     saveProduct: handleSaveProduct,
     updateProduct: handleSaveProduct,
     deleteProduct: handleDeleteProduct,
@@ -739,6 +1079,7 @@ export function AppProvider({ children }) {
     updateBudget: handleUpdateBudget,
     budgetTransactions,
     adjustBudget: handleAdjustBudget,
+    refundBudget: handleRefundBudget,
     markNotificationAsRead: handleMarkNotificationAsRead,
     markAllNotificationsAsRead: handleMarkAllNotificationsAsRead,
     setNotifications,
@@ -806,6 +1147,10 @@ export function AppProvider({ children }) {
     handleUpdateBudget,
     budgetTransactions,
     handleAdjustBudget,
+    handleRefundBudget,
+    handleRecordGoodsReceipt,
+    handleRollbackBudget,
+    handleReceiveToStock,
     handleMarkNotificationAsRead,
     handleClearNotifications,
     preselectedProduct,

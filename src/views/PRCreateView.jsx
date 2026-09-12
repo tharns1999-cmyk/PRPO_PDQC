@@ -1,11 +1,11 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { apiService } from '../services/apiService';
 import { storageService } from '../services/storageService';
 import { useAppContext } from '../context/AppContext';
 import { 
   ArrowLeft, AlertTriangle, Plus, Minus, Trash2, Building2, 
   Globe, Sparkles, CheckCircle2, ShoppingCart, 
-  Factory, Building, Receipt, Loader2, Wallet, Link as LinkIcon
+  Factory, Building, Receipt, Loader2, Wallet, Link as LinkIcon, FileText
 } from 'lucide-react';
 import { MEMO_THRESHOLD, DEPARTMENTS } from '../config/constants';
 import FileUploader from '../components/common/FileUploader';
@@ -32,6 +32,8 @@ export default function PRCreateView({
 }) {
   // Submission Guard to prevent duplicate submissions
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const memoSectionRef = useRef(null);
+  const memoSubjectInputRef = useRef(null);
   const context = useAppContext() || {};
 
   // Existing PRs from Context or LocalStorage (Dynamic Max-ID Scanner)
@@ -88,13 +90,21 @@ export default function PRCreateView({
 
   // Determine effective department (locked for dept-specific users, selectable for ALL)
   const defaultCode = activeDepartments[0]?.code || 'PD';
+  const preselectedDept = Array.isArray(preselectedProduct) 
+    ? (preselectedProduct[0]?.category || preselectedProduct[0]?.department) 
+    : (preselectedProduct?.category || preselectedProduct?.department);
   const initialDept = editingPR 
     ? editingPR.department 
     : (currentRole?.department === 'ALL' 
-        ? (preselectedProduct?.category || defaultCode) 
+        ? (preselectedDept || defaultCode) 
         : (currentRole?.department || defaultCode));
 
   const [department, setDepartment] = useState(initialDept);
+
+  // Default usage location based on department (PD/QC -> FACTORY, OFFICE -> OFFICE)
+  const getDefaultUsageLocation = useCallback((dept) => {
+    return dept === 'OFFICE' ? 'OFFICE' : 'FACTORY';
+  }, []);
 
   // Initial PR Number state calculated from real documents (Directive 2: No hardcoding, no useState(1))
   const [nextPRNumber, setNextPRNumber] = useState(() => {
@@ -119,14 +129,16 @@ export default function PRCreateView({
     if (editingPR?.vendor?.id) return editingPR.vendor.id;
     if (editingPR?.supplierId) return editingPR.supplierId;
     if (editingPR?.items?.[0]?.vendorId) return editingPR.items[0].vendorId;
-    if (preselectedProduct) return getDefaultVendorId(preselectedProduct);
+    const primaryPreselected = Array.isArray(preselectedProduct) ? preselectedProduct[0] : preselectedProduct;
+    if (primaryPreselected) return getDefaultVendorId(primaryPreselected);
     return masterVendors[0]?.id || '';
   });
 
   // Ensure default vendor selection when masterVendors load
   useEffect(() => {
     if (!selectedVendorId && masterVendors.length > 0 && !editingPR) {
-      setSelectedVendorId(preselectedProduct ? getDefaultVendorId(preselectedProduct) : (masterVendors[0]?.id || ''));
+      const primaryPreselected = Array.isArray(preselectedProduct) ? preselectedProduct[0] : preselectedProduct;
+      setSelectedVendorId(primaryPreselected ? getDefaultVendorId(primaryPreselected) : (masterVendors[0]?.id || ''));
     }
   }, [masterVendors, selectedVendorId, editingPR, preselectedProduct, getDefaultVendorId]);
 
@@ -206,42 +218,58 @@ export default function PRCreateView({
   // Initial PR Items state
   const [prItems, setPrItems] = useState(() => {
     if (editingPR && editingPR.items && editingPR.items.length > 0) {
-      return editingPR.items.map(it => ({
-        productId: it.productId || it.code,
-        qty: Number(it.purchaseQty ?? it.qty) || 1,
-        price: parseFloat(it.price) || 0,
-        discountPercent: parseFloat(it.discountPercent) || 0,
-        discountAmount: parseFloat(it.discountAmount) || 0,
-        vendorId: it.vendorId || it.supplierId || '',
-        platform: it.platform || 'Shopee',
-        storeName: it.storeName || '',
-        onlineUrl: getProductUrl(it) || '',
-        productUrl: getProductUrl(it) || '',
-        source: it.source === 'OFFICE' ? 'OFFICE' : 'FACTORY',
-        isCustom: Boolean(it.isCustom),
-        customName: it.name,
-        customCode: it.code,
-        customUnit: it.purchaseUnit || it.unit || 'ชิ้น',
-        overrideUnit: Boolean(it.isUnitOverridden),
-        customPurchaseUnit: it.purchaseUnit,
-        customStockUnit: it.stockUnit,
-        customRate: it.conversionRate
-      }));
+      return editingPR.items.map(it => {
+        const location = it.usageLocation || (it.source === 'OFFICE' ? 'OFFICE' : getDefaultUsageLocation(initialDept));
+        return {
+          productId: it.productId || it.code,
+          qty: Number(it.purchaseQty ?? it.qty) || 1,
+          price: parseFloat(it.price) || 0,
+          discountPercent: parseFloat(it.discountPercent) || 0,
+          discountAmount: parseFloat(it.discountAmount) || 0,
+          vendorId: it.vendorId || it.supplierId || '',
+          platform: it.platform || 'Shopee',
+          storeName: it.storeName || '',
+          onlineUrl: getProductUrl(it) || '',
+          productUrl: getProductUrl(it) || '',
+          usageLocation: location,
+          source: location,
+          isCustom: Boolean(it.isCustom),
+          customName: it.name,
+          customCode: it.code,
+          customUnit: it.purchaseUnit || it.unit || 'ชิ้น',
+          overrideUnit: Boolean(it.isUnitOverridden),
+          customPurchaseUnit: it.purchaseUnit,
+          customStockUnit: it.stockUnit,
+          customRate: it.conversionRate,
+          images: it.images || it.attachments || []
+        };
+      });
     }
-    if (preselectedProduct && preselectedProduct.category === initialDept) {
-      return [{ 
-        productId: preselectedProduct.id, 
-        qty: Math.max(1, (preselectedProduct.reorderPoint || 5) * 2), 
-        price: parseFloat(preselectedProduct.price) || 0,
-        discountPercent: 0,
-        discountAmount: 0,
-        vendorId: getDefaultVendorId(preselectedProduct),
-        platform: 'Shopee',
-        storeName: '',
-        onlineUrl: '',
-        productUrl: '',
-        source: 'FACTORY'
-      }];
+    const defaultLocation = getDefaultUsageLocation(initialDept);
+    if (preselectedProduct) {
+      const prods = Array.isArray(preselectedProduct) ? preselectedProduct : [preselectedProduct];
+      const validProds = prods.filter(p => {
+        const itemDept = p.category || p.department;
+        return !itemDept || itemDept === initialDept;
+      });
+      const targetProds = validProds.length > 0 ? validProds : prods;
+      if (targetProds.length > 0) {
+        return targetProds.map(prod => ({
+          productId: prod.id || '',
+          qty: Math.max(1, (prod.reorderPoint || prod.rop || 5) * 2),
+          price: parseFloat(prod.price) || 0,
+          discountPercent: 0,
+          discountAmount: 0,
+          vendorId: getDefaultVendorId(prod),
+          platform: 'Shopee',
+          storeName: '',
+          onlineUrl: '',
+          productUrl: '',
+          usageLocation: defaultLocation,
+          source: defaultLocation,
+          images: []
+        }));
+      }
     }
     const initialList = products.filter(p => {
       const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
@@ -258,7 +286,9 @@ export default function PRCreateView({
       storeName: '',
       onlineUrl: '',
       productUrl: '',
-      source: 'FACTORY'
+      usageLocation: defaultLocation,
+      source: defaultLocation,
+      images: []
     }];
   });
 
@@ -268,6 +298,7 @@ export default function PRCreateView({
       setPrItems(prevItems => {
         const needsReset = prevItems.some(item => !item.isCustom && !availableProducts.some(p => p.id === item.productId));
         if (needsReset) {
+          const defaultLocation = getDefaultUsageLocation(department);
           return [{
             productId: availableProducts[0].id,
             qty: 1,
@@ -279,13 +310,15 @@ export default function PRCreateView({
             storeName: '',
             onlineUrl: '',
             productUrl: '',
-            source: 'FACTORY'
+            usageLocation: defaultLocation,
+            source: defaultLocation,
+            images: []
           }];
         }
         return prevItems;
       });
     }
-  }, [department, availableProducts, editingPR, getDefaultVendorId]);
+  }, [department, availableProducts, editingPR, getDefaultVendorId, getDefaultUsageLocation]);
 
   // Memo Fields
   const [memoData, setMemoData] = useState(() => {
@@ -396,9 +429,12 @@ export default function PRCreateView({
 
   const handleAddItemRow = () => {
     const defaultProd = availableProducts[0];
+    const defaultLocation = getDefaultUsageLocation(department);
+    const newId = `PRITEM-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     setPrItems(prev => [
       ...prev, 
       { 
+        id: newId,
         productId: defaultProd?.id || '', 
         qty: 1, 
         price: parseFloat(defaultProd?.price) || 0, 
@@ -409,8 +445,10 @@ export default function PRCreateView({
         storeName: '',
         onlineUrl: '',
         productUrl: '',
-        source: 'FACTORY',
-        isCustom: false 
+        usageLocation: defaultLocation,
+        source: defaultLocation,
+        isCustom: false,
+        images: []
       }
     ]);
   };
@@ -424,6 +462,7 @@ export default function PRCreateView({
     const updated = [...prItems];
     const current = updated[index];
     const isNowCustom = !current.isCustom;
+    const defaultLocation = current.usageLocation || current.source || getDefaultUsageLocation(department);
     
     if (isNowCustom) {
       const tempId = `TEMP-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
@@ -443,7 +482,8 @@ export default function PRCreateView({
         storeName: current.storeName || '',
         onlineUrl: current.onlineUrl || '',
         productUrl: current.productUrl || current.onlineUrl || '',
-        source: current.source || 'FACTORY'
+        usageLocation: defaultLocation,
+        source: defaultLocation
       };
     } else {
       const defaultProd = availableProducts[0];
@@ -463,7 +503,8 @@ export default function PRCreateView({
         storeName: current.storeName || '',
         onlineUrl: current.onlineUrl || '',
         productUrl: current.productUrl || current.onlineUrl || '',
-        source: current.source || 'FACTORY'
+        usageLocation: defaultLocation,
+        source: defaultLocation
       };
     }
     setPrItems(updated);
@@ -489,6 +530,15 @@ export default function PRCreateView({
   const handleItemChange = (index, field, value) => {
     const updated = [...prItems];
     updated[index][field] = value;
+
+    // Keep usageLocation and source synchronized
+    if (field === 'usageLocation') {
+      updated[index].usageLocation = value;
+      updated[index].source = value;
+    } else if (field === 'source') {
+      updated[index].source = value;
+      updated[index].usageLocation = value;
+    }
 
     // Keep productUrl and onlineUrl synchronized with platform auto-detection
     if (field === 'onlineUrl' || field === 'productUrl') {
@@ -549,6 +599,66 @@ export default function PRCreateView({
     handleItemChange(index, 'qty', currentQty + 1);
   };
 
+  // Item-Level Multi-Image Upload (Phase 1)
+  const fileInputRefs = useRef({});
+
+  const triggerUpload = (itemId) => {
+    if (fileInputRefs.current[itemId]) {
+      fileInputRefs.current[itemId].click();
+    }
+  };
+
+  const handleItemImageUpload = (index, event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+
+    const filePromises = files.map(file => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          resolve({
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            previewUrl: e.target.result,
+            url: e.target.result
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    Promise.all(filePromises).then(newImages => {
+      setPrItems(prev => {
+        const updated = [...prev];
+        const current = updated[index];
+        const existingImages = current?.images || current?.attachments || [];
+        updated[index] = {
+          ...current,
+          images: [...existingImages, ...newImages],
+          attachments: [...existingImages, ...newImages]
+        };
+        return updated;
+      });
+      event.target.value = '';
+    });
+  };
+
+  const handleRemoveItemImage = (itemIdx, imgIdx) => {
+    setPrItems(prev => {
+      const updated = [...prev];
+      const current = updated[itemIdx];
+      const existingImages = current?.images || current?.attachments || [];
+      const filtered = existingImages.filter((_, i) => i !== imgIdx);
+      updated[itemIdx] = {
+        ...current,
+        images: filtered,
+        attachments: filtered
+      };
+      return updated;
+    });
+  };
+
   const handleCreateSubmit = async (e, isDraft) => {
     if (e && e.preventDefault) e.preventDefault();
     if (isSubmitting) return;
@@ -576,12 +686,16 @@ export default function PRCreateView({
       }
       
       if (requiresMemo) {
+        if (!memoData.subject?.trim() || !memoData.purpose?.trim()) {
+          memoSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setTimeout(() => {
+            memoSubjectInputRef.current?.focus();
+          }, 350);
+          return modalService.warning('กรุณากรอกบันทึกข้อความแนบ (Memo) ให้ครบถ้วนก่อนส่งขออนุมัติ');
+        }
+
         if (quotationFiles.length === 0) return modalService.warning('กรุณาแนบไฟล์ Quotation เนื่องจากยอดรวมเกิน 20,000 บาท');
         if (imageFiles.length === 0) return modalService.warning('กรุณาแนบรูปภาพสินค้า เนื่องจากยอดรวมเกิน 20,000 บาท');
-        
-        if (!memoData.subject.trim() || !memoData.purpose.trim() || !memoData.background.trim()) {
-          return modalService.warning('กรุณากรอกข้อมูล MEMO ให้ครบถ้วน');
-        }
       }
     }
 
@@ -593,7 +707,7 @@ export default function PRCreateView({
 
       const itemsFormatted = prItems.map(item => {
         const prod = availableProducts.find(p => p.id === item.productId) || products.find(p => p.id === item.productId);
-        const itemSource = item.source === 'OFFICE' ? 'OFFICE' : 'FACTORY';
+        const itemLocation = item.usageLocation === 'OFFICE' || item.source === 'OFFICE' ? 'OFFICE' : 'FACTORY';
         const pQty = parseFloat(item.qty) || 1;
         const discP = parseFloat(item.discountPercent) || 0;
         const discA = parseFloat(item.discountAmount) || 0;
@@ -633,9 +747,12 @@ export default function PRCreateView({
           platform: item.platform || 'Shopee',
           storeName: item.storeName || '',
           total: rowTotal,
-          source: itemSource,
+          usageLocation: itemLocation,
+          source: itemLocation,
           isCustom: Boolean(item.isCustom),
-          isUnitOverridden: Boolean(item.overrideUnit && Number(item.customRate) > 0)
+          isUnitOverridden: Boolean(item.overrideUnit && Number(item.customRate) > 0),
+          images: (item.images || item.attachments || []).map(img => typeof img === 'string' ? { url: img, previewUrl: img } : img),
+          attachments: (item.images || item.attachments || []).map(img => typeof img === 'string' ? { url: img, previewUrl: img } : img)
         };
       });
 
@@ -654,7 +771,7 @@ export default function PRCreateView({
           approverBoD: '-',
           subject: memoData.subject,
           purpose: memoData.purpose,
-          background: memoData.background,
+          background: memoData.background || memoData.purpose,
           estimatedCost: grandTotal,
           paymentTerm: memoData.paymentTerm,
           classification: memoData.classification,
@@ -715,9 +832,12 @@ export default function PRCreateView({
         supplierName: vName,
         hasVat: purchaseChannel === 'SELF' ? hasVat : false,
         specUrl: quotationFiles[0] ? quotationFiles[0].name : '',
+        quotationFiles: quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl })),
+        generalAttachments: imageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'GENERAL' })),
+        images: imageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'IMAGE' })),
         attachments: [
           ...quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, category: 'QUOTATION' })),
-          ...imageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'IMAGE' }))
+          ...imageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'GENERAL' }))
         ],
         note,
         items: itemsFormatted,
@@ -875,34 +995,35 @@ export default function PRCreateView({
               </div>
 
               {/* Purchase Channel: Modern Segmented Pill Switcher (Directive 2) */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 block">
-                  ช่องทางจัดซื้อ (Purchase Channel) <span className="text-rose-500">*</span>
+              <div>
+                <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                  <span>ช่องทางจัดซื้อ (Purchase Channel)</span>
+                  <span className="text-rose-500">*</span>
                 </label>
-                <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200/70 w-full sm:w-auto">
+                <div className="inline-flex p-1 rounded-xl bg-slate-100 border border-slate-200/80 gap-1 w-full sm:w-auto">
                   <button
                     type="button"
                     onClick={() => setPurchaseChannel('SELF')}
-                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs transition-all cursor-pointer ${
                       purchaseChannel === 'SELF'
-                        ? 'bg-white text-slate-900 shadow-2xs'
-                        : 'text-slate-500 hover:text-slate-800'
+                        ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50 font-medium'
                     }`}
                   >
-                    <Building2 className={`w-3.5 h-3.5 ${purchaseChannel === 'SELF' ? 'text-indigo-600' : 'text-slate-400'}`} />
-                    <span>🏢 สั่งซื้อภายใน</span>
+                    <Building2 className={`w-4 h-4 ${purchaseChannel === 'SELF' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                    <span>สั่งซื้อภายใน</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setPurchaseChannel('ONLINE')}
-                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                    className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg text-xs transition-all cursor-pointer ${
                       purchaseChannel === 'ONLINE'
-                        ? 'bg-white text-slate-900 shadow-2xs'
-                        : 'text-slate-500 hover:text-slate-800'
+                        ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50 font-medium'
                     }`}
                   >
-                    <ShoppingCart className={`w-3.5 h-3.5 ${purchaseChannel === 'ONLINE' ? 'text-purple-600' : 'text-slate-400'}`} />
-                    <span>🛒 จัดซื้อออนไลน์</span>
+                    <ShoppingCart className={`w-4 h-4 ${purchaseChannel === 'ONLINE' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                    <span>จัดซื้อออนไลน์</span>
                   </button>
                 </div>
               </div>
@@ -957,14 +1078,9 @@ export default function PRCreateView({
           {/* Card 2: Minimalist Items Selection List (Directive 4) */}
           <div className="space-y-3">
             <div className="flex items-center justify-between pb-1 px-1">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-slate-900">
-                  รายการสินค้าที่ขอซื้อ
-                </h3>
-                <span className="text-xs font-semibold text-slate-500 font-mono">
-                  ({availableProducts.length} ในแผนก {department})
-                </span>
-              </div>
+              <h3 className="text-sm font-bold text-slate-800">
+                รายการสินค้าที่ขอซื้อ
+              </h3>
               <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 font-mono">
                 {prItems.length} รายการ
               </span>
@@ -982,180 +1098,175 @@ export default function PRCreateView({
                     key={idx}
                     className="bg-white border border-slate-200/80 hover:border-slate-300 rounded-2xl p-4 sm:p-5 shadow-sm transition-all space-y-3.5"
                   >
-                    {/* Primary Row: Index, Product / Custom, Unit Price, Stepper Qty, Total, Trash */}
-                    <div className="flex flex-col md:flex-row md:items-center gap-3">
+                    {/* Primary Row: Standardized h-11 (44px) Elements along exact Baseline */}
+                    <div className="flex items-center gap-2.5 w-full flex-wrap sm:flex-nowrap">
                       
-                      {/* Left: Index & Searchable Product / Custom Input */}
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <span className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 font-mono font-bold text-xs flex items-center justify-center shrink-0">
-                          {idx + 1}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          {item.isCustom ? (
-                            <div className="flex items-center gap-2">
-                              <span className="px-2 py-1 bg-purple-50 text-purple-700 text-xs font-mono font-bold rounded-lg border border-purple-200 shrink-0">
-                                {item.customCode || 'NON-CAT'}
-                              </span>
-                              <input
-                                type="text"
-                                value={item.customName || ''}
-                                onChange={e => handleItemChange(idx, 'customName', e.target.value)}
-                                placeholder="พิมพ์ชื่อสินค้า/สเปกที่ต้องการขอซื้อ (Non-Catalog)..."
-                                className="w-full h-9.5 bg-slate-50/50 hover:bg-white focus:bg-white border border-slate-300 rounded-xl px-3 text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                                required
-                              />
-                            </div>
-                          ) : (
-                            <SearchableSelect
-                              options={productOptions}
-                              value={item.productId}
-                              onChange={val => handleItemChange(idx, 'productId', val)}
-                              placeholder="-- ค้นหาหรือเลือกสินค้า --"
-                              searchPlaceholder={`ค้นหารหัส ชื่อสินค้า ในแผนก ${department}...`}
-                              emptyMessage={`ไม่พบสินค้าของแผนก ${department}`}
-                              required
-                            />
-                          )}
+                      {/* Index Badge [ 1 ] */}
+                      <span className="w-10 h-11 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-sm font-mono font-bold flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </span>
 
-                          {/* Clean Status Subtext under Product / SKU (Directive 3) */}
-                          {selProd ? (
-                            <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-400 font-mono flex-wrap">
-                              <span>รหัส: <strong className="font-semibold text-slate-600">{selProd.code}</strong></span>
-                              <span>•</span>
-                              <span>คงเหลือ: <span className="font-semibold text-slate-600">{selProd.stockBalance || 0} {selProd.stockUnit || selProd.unit}</span></span>
-                              <span>•</span>
-                              <span className={selProd.stockBalance <= selProd.reorderPoint ? 'text-amber-600 font-semibold' : ''}>
-                                ROP: {selProd.reorderPoint || 0} {selProd.stockUnit || selProd.unit}
-                              </span>
-                            </div>
-                          ) : item.isCustom ? (
-                            <div className="flex items-center gap-2 mt-1.5 text-[11px] text-slate-400 font-mono">
-                              <span className="text-purple-600 font-medium">สินค้านอกแคตตาล็อก (Non-Catalog)</span>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      {/* Right: Price, Stepper Qty, Unit, Line Total, Trash */}
-                      <div className="flex items-center justify-between md:justify-end gap-2.5 flex-wrap sm:flex-nowrap pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
-                        
-                        {/* Unit Price */}
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-slate-400 font-mono">฿</span>
+                      {/* Product Select Box */}
+                      {item.isCustom ? (
+                        <div className="flex-1 min-w-[200px] h-11 flex items-center gap-2">
+                          <span className="h-full px-3.5 bg-purple-50 text-purple-700 text-sm font-mono font-bold rounded-xl border border-purple-200 flex items-center shrink-0">
+                            {item.customCode || 'NON-CAT'}
+                          </span>
                           <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.price}
-                            onChange={e => handleItemChange(idx, 'price', e.target.value)}
-                            placeholder="0.00"
-                            className="w-20 sm:w-24 h-9 bg-slate-50/60 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl px-2.5 text-right font-mono font-semibold text-xs sm:text-sm text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 tabular-nums transition-all"
-                            title="ราคาต่อหน่วย"
-                          />
-                        </div>
-
-                        {/* Stepper Qty Control: [ - ] [ 1 ] [ + ] (Directive 4) */}
-                        <div className="inline-flex items-center rounded-xl border border-slate-200/90 bg-slate-50/60 p-0.5 shadow-2xs">
-                          <button
-                            type="button"
-                            onClick={() => handleDecrementQty(idx)}
-                            disabled={Number(item.qty) <= 1}
-                            className="w-7 h-8 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-white rounded-lg disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
-                            title="ลดจำนวน"
-                          >
-                            <Minus className="w-3.5 h-3.5" />
-                          </button>
-                          <input
-                            type="number"
-                            step="any"
-                            min="0.001"
-                            value={item.qty}
-                            onChange={e => handleItemChange(idx, 'qty', e.target.value)}
+                            type="text"
+                            value={item.customName || ''}
+                            onChange={e => handleItemChange(idx, 'customName', e.target.value)}
+                            placeholder="พิมพ์ชื่อสินค้า/สเปกที่ต้องการขอซื้อ (Non-Catalog)..."
+                            className="w-full h-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 text-sm font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                             required
-                            className="w-12 h-8 text-center font-mono font-bold text-xs sm:text-sm text-indigo-700 outline-none bg-transparent tabular-nums"
-                            title="ระบุจำนวน"
                           />
-                          <button
-                            type="button"
-                            onClick={() => handleIncrementQty(idx)}
-                            className="w-7 h-8 flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-white rounded-lg transition-all cursor-pointer"
-                            title="เพิ่มจำนวน"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
                         </div>
-
-                        {/* Unit Label */}
-                        <div 
-                          className="text-xs font-semibold text-slate-600 px-2.5 py-1 bg-slate-100 rounded-lg min-w-[44px] text-center shrink-0 truncate max-w-[85px]"
-                          title={item.isCustom ? (item.customUnit || 'ชิ้น') : (selProd?.purchaseUnit || selProd?.unit || 'ชิ้น')}
-                        >
-                          {item.isCustom ? (
-                            <input
-                              type="text"
-                              value={item.customUnit || 'ชิ้น'}
-                              onChange={e => handleItemChange(idx, 'customUnit', e.target.value)}
-                              className="w-10 bg-transparent text-center outline-none text-xs font-semibold text-slate-700"
-                              placeholder="หน่วย"
-                            />
-                          ) : (
-                            selProd?.purchaseUnit || selProd?.unit || 'ชิ้น'
-                          )}
+                      ) : (
+                        <div className="flex-1 min-w-[200px] h-11">
+                          <SearchableSelect
+                            options={productOptions}
+                            value={item.productId}
+                            onChange={val => handleItemChange(idx, 'productId', val)}
+                            placeholder="-- ค้นหาหรือเลือกสินค้า --"
+                            searchPlaceholder={`ค้นหารหัส ชื่อสินค้า ในแผนก ${department}...`}
+                            emptyMessage={`ไม่พบสินค้าของแผนก ${department}`}
+                            className="w-full h-11"
+                            buttonClassName="!h-11 !min-h-[44px] !rounded-xl !bg-slate-50/80 !border-slate-200 !text-sm !font-medium !px-3.5"
+                            required
+                          />
                         </div>
+                      )}
 
-                        {/* Line Total */}
-                        <div className="w-24 sm:w-28 text-right font-mono font-bold text-slate-900 text-xs sm:text-sm tabular-nums shrink-0">
-                          ฿{itemRowNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-
-                        {/* Remove Row Button */}
-                        {prItems.length > 1 ? (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveItemRow(idx)}
-                            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer shrink-0"
-                            title="ลบรายการนี้"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        ) : (
-                          <span className="w-8 shrink-0"></span>
-                        )}
-
+                      {/* Price Input Box */}
+                      <div className="h-11 w-32 relative shrink-0 flex items-center">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-mono font-semibold text-slate-400 select-none pointer-events-none">฿</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.price}
+                          onChange={e => handleItemChange(idx, 'price', e.target.value)}
+                          placeholder="0.00"
+                          className="w-full h-11 pl-8 pr-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono font-bold text-slate-800 text-right focus:bg-white focus:border-indigo-500 outline-none focus:ring-2 focus:ring-indigo-500/20 tabular-nums transition-all"
+                          title="ราคาต่อหน่วย"
+                        />
                       </div>
+
+                      {/* Quantity Stepper [ - 1 + ] */}
+                      <div className="h-11 rounded-xl border border-slate-200 bg-slate-50 flex items-center shrink-0 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={() => handleDecrementQty(idx)}
+                          disabled={Number(item.qty) <= 1}
+                          className="w-9 h-11 flex items-center justify-center text-slate-600 hover:bg-slate-200 text-base font-bold cursor-pointer transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                          title="ลดจำนวน"
+                        >
+                          <Minus className="w-4 h-4" />
+                        </button>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0.001"
+                          value={item.qty}
+                          onChange={e => handleItemChange(idx, 'qty', e.target.value)}
+                          required
+                          className="w-12 h-11 text-center text-sm font-mono font-bold text-slate-900 bg-transparent border-none focus:outline-none tabular-nums"
+                          title="ระบุจำนวน"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleIncrementQty(idx)}
+                          className="w-9 h-11 flex items-center justify-center text-slate-600 hover:bg-slate-200 text-base font-bold cursor-pointer transition-colors"
+                          title="เพิ่มจำนวน"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Unit Badge */}
+                      <div 
+                        className="h-11 px-3.5 rounded-xl bg-slate-100/90 border border-slate-200 text-slate-700 text-sm font-medium flex items-center justify-center shrink-0 whitespace-nowrap min-w-[48px] max-w-[140px] truncate"
+                        title={item.isCustom ? (item.customUnit || 'ชิ้น') : (selProd?.purchaseUnit || selProd?.unit || 'ชิ้น')}
+                      >
+                        {item.isCustom ? (
+                          <input
+                            type="text"
+                            value={item.customUnit || 'ชิ้น'}
+                            onChange={e => handleItemChange(idx, 'customUnit', e.target.value)}
+                            className="w-12 bg-transparent text-center outline-none text-sm font-medium text-slate-700"
+                            placeholder="หน่วย"
+                          />
+                        ) : (
+                          selProd?.purchaseUnit || selProd?.unit || 'ชิ้น'
+                        )}
+                      </div>
+
+                      {/* Total Price */}
+                      <div className="min-w-[110px] text-right font-mono font-bold text-slate-900 text-sm shrink-0 self-center tabular-nums">
+                        ฿{itemRowNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+
+                      {/* Remove Row Button */}
+                      {prItems.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItemRow(idx)}
+                          className="w-9 h-11 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer shrink-0"
+                          title="ลบรายการนี้"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <span className="w-9 shrink-0"></span>
+                      )}
+
                     </div>
 
-                    {/* Sub-row: Destination pill switcher & Ghost Action Text (Directive 3) */}
-                    <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-slate-100 text-xs">
-                      <div className="flex flex-wrap items-center gap-2">
-                        
-                        {/* Destination Pill Switcher */}
-                        <div className="inline-flex p-0.5 bg-slate-100 rounded-lg border border-slate-200/60">
-                          <button
-                            type="button"
-                            onClick={() => handleItemChange(idx, 'source', 'FACTORY')}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
-                              item.source === 'FACTORY' || !item.source
-                                ? 'bg-white text-slate-900 shadow-2xs'
-                                : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                          >
-                            <Factory className="w-3 h-3 text-indigo-600" />
-                            <span>โรงงาน</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleItemChange(idx, 'source', 'OFFICE')}
-                            className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
-                              item.source === 'OFFICE'
-                                ? 'bg-white text-slate-900 shadow-2xs'
-                                : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                          >
-                            <Building className="w-3 h-3 text-indigo-600" />
-                            <span>ออฟฟิศ</span>
-                          </button>
+                    {/* Sub-row: Location Switch, Stock Info & Ghost Action Links (Directives 2 & 3) */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2.5 border-t border-slate-100 text-xs">
+                      {/* Left: Location Segmented Switch + Stock Info + Conversion Rate */}
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Segmented Location Switch (Directive 2) */}
+                        <div className="inline-flex items-center gap-1.5 shrink-0">
+                          <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
+                            📍 ใช้งานที่:
+                          </span>
+                          <div className="inline-flex p-0.5 rounded-lg bg-slate-100 border border-slate-200 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => handleItemChange(idx, 'usageLocation', 'FACTORY')}
+                              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                                (item.usageLocation || item.source || 'FACTORY') === 'FACTORY'
+                                  ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                                  : 'text-slate-500 hover:text-slate-800'
+                              }`}
+                            >
+                              🏭 โรงงาน
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleItemChange(idx, 'usageLocation', 'OFFICE')}
+                              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+                                (item.usageLocation || item.source) === 'OFFICE'
+                                  ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                                  : 'text-slate-500 hover:text-slate-800'
+                              }`}
+                            >
+                              🏢 ออฟฟิศ
+                            </button>
+                          </div>
                         </div>
+
+                        {/* Stock Info (Directive 3) */}
+                        {selProd && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
+                            <span>•</span>
+                            <span>
+                              คงเหลือในระบบ: <strong className="font-semibold text-slate-700">{selProd.stockBalance ?? 0} {selProd.stockUnit || selProd.unit || 'ชิ้น'}</strong>
+                              {' '}(จุดสั่งซื้อ ROP: <span className={Number(selProd.stockBalance) <= Number(selProd.reorderPoint) ? 'text-amber-600 font-semibold' : 'text-slate-600 font-semibold'}>{selProd.reorderPoint ?? 0} {selProd.stockUnit || selProd.unit || 'ชิ้น'}</span>)
+                            </span>
+                          </div>
+                        )}
 
                         {/* Conversion Rate Badge (if applicable) */}
                         {selProd && (() => {
@@ -1178,8 +1289,30 @@ export default function PRCreateView({
                         })()}
                       </div>
 
-                      {/* Right: Ghost Action Text (Directive 3) */}
+                      {/* Right: Ghost Action Text (Directive 3) & Item-Level Image Upload (Phase 1) */}
                       <div className="flex items-center gap-3 ml-auto">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          ref={el => { fileInputRefs.current[item.id || idx] = el; }}
+                          onChange={(e) => handleItemImageUpload(idx, e)}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => triggerUpload(item.id || idx)}
+                          className="text-xs font-semibold text-slate-600 hover:text-indigo-600 flex items-center gap-1 cursor-pointer transition-colors"
+                          title="แนบรูปภาพสำหรับสินค้ารายการนี้"
+                        >
+                          <span>📷 แนบรูป</span>
+                          {item.images?.length > 0 && (
+                            <span className="px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-bold border border-indigo-200">
+                              ({item.images.length})
+                            </span>
+                          )}
+                        </button>
+
                         {selProd && (
                           <button
                             type="button"
@@ -1286,6 +1419,41 @@ export default function PRCreateView({
                       </div>
                     )}
 
+                    {/* Item Thumbnail Preview Strip (Phase 1: 24x24px with delete button) */}
+                    {item.images && item.images.length > 0 && (
+                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1">
+                          📷 รูปสินค้า ({item.images.length}):
+                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {item.images.map((img, imgIdx) => {
+                            const src = img.previewUrl || img.url || (typeof img === 'string' ? img : '');
+                            return (
+                              <div 
+                                key={imgIdx} 
+                                className="relative group/thumb w-6 h-6 rounded border border-slate-200 overflow-hidden bg-slate-100 shrink-0 shadow-2xs"
+                                title={img.name || `รูปที่ ${imgIdx + 1}`}
+                              >
+                                <img
+                                  src={src}
+                                  alt={img.name || `thumb-${imgIdx}`}
+                                  className="w-full h-full object-cover"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveItemImage(idx, imgIdx)}
+                                  className="absolute inset-0 bg-rose-900/80 text-white flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity text-[10px] font-bold cursor-pointer"
+                                  title="ลบรูปภาพนี้"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 );
               })}
@@ -1309,7 +1477,7 @@ export default function PRCreateView({
                 เอกสารประกอบและหมายเหตุ (Attachments & Note)
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                แนบใบเสนอราคาหรือรูปภาพสินค้าประกอบการจัดซื้อ
+                แนบใบเสนอราคาหรือเอกสารประกอบรวมของการขอซื้อ
               </p>
             </div>
 
@@ -1327,14 +1495,14 @@ export default function PRCreateView({
               />
 
               <FileUploader
-                label="รูปภาพสินค้า (Images)"
+                label="เอกสาร/รูปภาพประกอบรวม (General Attachments)"
                 required={requiresMemo}
-                accept="image/*"
+                accept="image/*,application/pdf"
                 multiple={true}
                 files={imageFiles}
                 setFiles={setImageFiles}
                 compact={true}
-                helperText="แนบรูปภาพตัวอย่างสินค้า"
+                helperText="แนบเอกสารหรือรูปภาพประกอบรวม"
               />
             </div>
 
@@ -1355,87 +1523,89 @@ export default function PRCreateView({
 
           {/* Card 4: Conditional Memo Section (Rule: grandTotal >= 20,000) (Directive 3) */}
           {requiresMemo && (
-            <div className="bg-amber-50/60 border border-amber-200/90 rounded-2xl p-5 sm:p-6 shadow-sm space-y-5 animate-fade-in">
-              
-              {/* Amber Tint Alert Header (Directive 3) */}
-              <div className="flex items-start gap-3 text-amber-900 pb-2 border-b border-amber-200/60">
-                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div className="space-y-0.5">
-                  <h4 className="font-bold text-sm text-amber-950">
-                    ⚠️ ยอดสั่งซื้อตั้งแต่ ฿20,000 ขึ้นไป ต้องระบุรายละเอียด Memo แนบเพื่อเสนอผู้จัดการโรงงาน
-                  </h4>
-                  <p className="text-xs text-amber-800 font-normal">
-                    ยอดคำนวณสุทธิของใบขอซื้อนี้คือ <strong className="font-mono font-bold">฿{grandTotal.toLocaleString()}</strong> ซึ่งเข้าเกณฑ์ต้องกรอกข้อมูลและแนบเอกสารเพื่อเสนอขออนุมัติ
-                  </p>
+            <div 
+              ref={memoSectionRef}
+              className="bg-white border border-amber-200/90 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4 animate-fade-in relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-amber-500 rounded-l-2xl"></div>
+
+              {/* Card Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200/80 flex items-center justify-center shrink-0">
+                    <FileText className="w-5 h-5 text-amber-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      บันทึกข้อความเสนอขออนุมัติ (Memo ถึง ผจก.โรงงาน)
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      กรอกรายละเอียดและเหตุผลความจำเป็นเพื่อส่งเสนอผู้จัดการโรงงานพิจารณาอนุมัติ
+                    </p>
+                  </div>
                 </div>
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shrink-0 self-start sm:self-auto">
+                  เกณฑ์ยอดจัดซื้อ ≥ ฿20,000
+                </span>
               </div>
 
-              {/* Memo Form Fields */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Grid Layout จัดระเบียบช่องกรอก (Directive 3) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                {/* แถวที่ 1: หัวข้อ/โครงการ (กว้าง 100% หรือ col-span-12) */}
                 <div className="md:col-span-2 space-y-1.5">
-                  <label className="text-xs font-bold text-slate-800 block">
+                  <label className="text-xs font-bold text-slate-700 block">
                     หัวข้อ / โครงการ (Subject) <span className="text-rose-500">*</span>
                   </label>
                   <input
+                    ref={memoSubjectInputRef}
                     type="text"
                     value={memoData.subject}
-                    onChange={e => setMemoData({...memoData, subject: e.target.value})}
+                    onChange={e => setMemoData({ ...memoData, subject: e.target.value })}
                     placeholder="เช่น ขออนุมัติติดตั้งระบบหล่อลื่นและเปลี่ยนถ่ายน้ำมันไฮดรอลิก..."
-                    className="w-full bg-white border border-amber-200/90 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                    className="w-full bg-slate-50/60 focus:bg-white border border-slate-200 focus:border-amber-500 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
                   />
                 </div>
 
-                <div className="md:col-span-2 space-y-1.5">
-                  <label className="text-xs font-bold text-slate-800 block">
-                    วัตถุประสงค์ (Purpose) <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    rows="2"
-                    value={memoData.purpose}
-                    onChange={e => setMemoData({...memoData, purpose: e.target.value})}
-                    placeholder="ระบุวัตถุประสงค์และความจำเป็นในการจัดซื้อครั้งนี้..."
-                    className="w-full bg-white border border-amber-200/90 focus:border-indigo-500 rounded-xl p-3 text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all resize-none"
-                  />
-                </div>
-
-                <div className="md:col-span-2 space-y-1.5">
-                  <label className="text-xs font-bold text-slate-800 block">
-                    รายละเอียด / พื้นเพความจำเป็น (Background & Scope) <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    rows="2"
-                    value={memoData.background}
-                    onChange={e => setMemoData({...memoData, background: e.target.value})}
-                    placeholder="ระบุที่มา ข้อมูลเครื่องจักร หรือผลการตรวจสอบคุณภาพ..."
-                    className="w-full bg-white border border-amber-200/90 focus:border-indigo-500 rounded-xl p-3 text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all resize-none"
-                  />
-                </div>
-
+                {/* แถวที่ 2: Grid 2 คอลัมน์ (ประเภทงบประมาณ & เงื่อนไขการชำระเงิน) */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-800 block">
-                    ประเภทงบประมาณ (Classification)
+                  <label className="text-xs font-bold text-slate-700 block">
+                    ประเภทงบประมาณ (Budget Type)
                   </label>
                   <select
                     value={memoData.classification}
-                    onChange={e => setMemoData({...memoData, classification: e.target.value})}
-                    className="w-full bg-white border border-amber-200/90 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs sm:text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer"
+                    onChange={e => setMemoData({ ...memoData, classification: e.target.value })}
+                    className="w-full bg-slate-50/60 focus:bg-white border border-slate-200 focus:border-amber-500 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all cursor-pointer"
                   >
                     <option value="EXPENSE">Expense (ค่าใช้จ่ายดำเนินงาน)</option>
-                    <option value="ASSET">Asset (ทรัพย์สินถาวร)</option>
+                    <option value="ASSET">Capex / Asset (ทรัพย์สินถาวร / ลงทุน)</option>
                     <option value="OTHER">Other (อื่นๆ)</option>
                   </select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-800 block">
-                    เงื่อนไขการชำระเงิน (Payment Term)
+                  <label className="text-xs font-bold text-slate-700 block">
+                    เงื่อนไขการชำระเงิน (Payment Terms)
                   </label>
                   <input
                     type="text"
                     value={memoData.paymentTerm}
-                    onChange={e => setMemoData({...memoData, paymentTerm: e.target.value})}
+                    onChange={e => setMemoData({ ...memoData, paymentTerm: e.target.value })}
                     placeholder="เช่น เครดิต 30 วัน, เงินสด"
-                    className="w-full bg-white border border-amber-200/90 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                    className="w-full bg-slate-50/60 focus:bg-white border border-slate-200 focus:border-amber-500 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
+                  />
+                </div>
+
+                {/* แถวที่ 3: วัตถุประสงค์และความจำเป็น (Textarea rows={3} text-xs) */}
+                <div className="md:col-span-2 space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 block">
+                    วัตถุประสงค์และความจำเป็น (Purpose & Necessity) <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={memoData.purpose}
+                    onChange={e => setMemoData({ ...memoData, purpose: e.target.value })}
+                    placeholder="ระบุวัตถุประสงค์ ความจำเป็น และผลประโยชน์ที่จะได้รับจากการจัดซื้อครั้งนี้..."
+                    className="w-full bg-slate-50/60 focus:bg-white border border-slate-200 focus:border-amber-500 rounded-xl p-3 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all resize-none"
                   />
                 </div>
               </div>
@@ -1658,6 +1828,31 @@ export default function PRCreateView({
                 </span>
               </div>
             </div>
+
+            {/* Directive 1: Sidebar Grand Total Callout when requiresMemo */}
+            {requiresMemo && (
+              <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200/90 animate-fade-in">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base">📋</span>
+                  <div className="flex-1">
+                    <div className="text-xs font-bold text-amber-900 leading-tight">
+                      ต้องแนบ Memo ผจก.โรงงาน
+                    </div>
+                    <p className="text-[11px] text-amber-700 mt-0.5 leading-snug">
+                      ยอดคำนวณสุทธิแตะเกณฑ์ ฿20,000 ขึ้นไป
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => memoSectionRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                      className="mt-2 text-xs font-bold text-amber-900 bg-amber-200/60 hover:bg-amber-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>กรอกข้อมูล Memo</span>
+                      <span>↓</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Box 2: Department Budget Usage Bar (Directive 1) */}

@@ -1,4 +1,4 @@
-import PODetailsModal from '../po/PODetailsModal';
+import ReceivingModal from '../../views/inventory/ReceivingModal';
 
-export default PODetailsModal;
-export { PODetailsModal as ReceiveGoodsModal };
+export default ReceivingModal;
+export { ReceivingModal, ReceivingModal as ReceiveGoodsModal };

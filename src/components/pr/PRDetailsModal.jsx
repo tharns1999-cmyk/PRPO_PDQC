@@ -20,6 +20,26 @@ import RejectPRModal from './RejectPRModal';
 import CollapsibleActivityTimeline from '../common/CollapsibleActivityTimeline';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
 
+const formatDateTime = (dateVal) => {
+  if (!dateVal) return '-';
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return String(dateVal);
+    const pad = (n) => String(n).padStart(2, '0');
+    const day = pad(d.getDate());
+    const month = pad(d.getMonth() + 1);
+    const year = d.getFullYear();
+    const hours = pad(d.getHours());
+    const minutes = pad(d.getMinutes());
+    if (typeof dateVal === 'string' && !dateVal.includes('T') && !dateVal.includes(':')) {
+      return `${day}/${month}/${year}`;
+    }
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
+  } catch {
+    return String(dateVal);
+  }
+};
+
 export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onClose, onRefresh, onSelectPO, onEditPR }) {
   const context = useAppContext();
   const allPRs = context?.prs || storageService.getPRs() || [];
@@ -406,15 +426,15 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                   </div>
                 )}
 
-                <div className="w-full overflow-hidden">
-                  <table className="w-full text-left text-xs table-fixed">
+                <div className="w-full overflow-x-auto">
+                  <table className="w-full text-left text-xs">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200/80 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                        <th className="py-2.5 px-2 w-[6%] text-center text-xs text-slate-400">#</th>
-                        <th className="py-2.5 px-2 w-[48%] text-left">รายการ & สเปก</th>
-                        <th className="py-2.5 px-2 w-[14%] text-right font-mono text-xs whitespace-nowrap">จำนวน</th>
-                        <th className="py-2.5 px-2 w-[16%] text-right font-mono text-xs whitespace-nowrap">ราคา/หน่วย</th>
-                        <th className="py-2.5 px-2 w-[16%] text-right font-mono text-xs font-bold text-slate-900 pr-3 whitespace-nowrap">รวม (฿)</th>
+                        <th className="py-2.5 px-2.5 w-10 text-center text-xs text-slate-400">#</th>
+                        <th className="py-2.5 px-2.5 min-w-[280px] text-left">รายการ & สเปก</th>
+                        <th className="py-2.5 px-2.5 text-right font-mono text-xs whitespace-nowrap w-24">จำนวน</th>
+                        <th className="py-2.5 px-2.5 text-right font-mono text-xs whitespace-nowrap w-28">ราคา/หน่วย</th>
+                        <th className="py-2.5 px-2.5 text-right font-mono text-xs font-bold text-slate-900 pr-3 whitespace-nowrap w-28">รวม (฿)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -424,55 +444,58 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                         const sUnit = item.stockUnit || item.unit || pUnit;
                         const rate = Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1;
                         const sQty = item.stockQty ?? (pQty * rate);
+                        const storeUrl = item.productUrl || item.onlineUrl || getProductUrl(item);
 
                         return (
                           <tr key={idx} className={`hover:bg-slate-50/70 transition-colors ${isEditingItems ? 'bg-amber-50/20 hover:bg-amber-50/50' : ''}`}>
-                            <td className="py-2.5 px-2 w-[6%] text-center font-mono font-bold text-slate-400">
+                            <td className="py-2.5 px-2.5 text-center font-mono font-bold text-slate-400">
                               {idx + 1}
                             </td>
-                            <td className="py-2.5 px-2 w-[48%] text-left">
-                              <div className="flex flex-col gap-1 items-start text-left w-full">
-                                {/* แถวบนสุด (Eyebrow Row): รหัสสินค้า + ลิงก์สินค้า */}
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  {(item.code || item.sku) && (
-                                    <span className="font-mono text-[11px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60 shrink-0">
-                                      {item.code || item.sku}
-                                    </span>
-                                  )}
-                                  {(() => {
-                                    const rawUrl = getProductUrl(item);
-                                    if (!rawUrl) return null;
-                                    return (
-                                      <a
-                                        href={sanitizeExternalUrl(rawUrl)}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 bg-indigo-50/80 hover:bg-indigo-100/80 border border-indigo-200/60 transition-all shadow-2xs group"
-                                      >
-                                        <span>ดูร้านค้าออนไลน์</span>
-                                        <ExternalLink className="w-3 h-3 text-indigo-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                                      </a>
-                                    );
-                                  })()}
-                                </div>
-
-                                {/* แถวกลาง (Main Title): แสดงชื่อสินค้าเต็มความกว้าง 100% */}
-                                <div className="font-semibold text-slate-900 text-xs sm:text-sm leading-snug break-words w-full" title={item.name}>
+                            <td className="py-2.5 px-2.5 min-w-[280px] text-left">
+                              <div className="flex flex-col items-start text-left w-full">
+                                {/* แถวหลัก: ชื่อสินค้าหลัก ขึ้นบรรทัดแรก */}
+                                <div className="font-bold text-slate-800 text-sm leading-snug break-words w-full" title={item.name}>
                                   {item.name}
                                 </div>
 
-                                {/* แถวล่าง (Unit Meta): ชิปอัตราแปลงหน่วย */}
-                                {rate > 1 && (
-                                  <div className="mt-0.5">
-                                    <span className="text-[11px] font-mono text-slate-500 bg-slate-100/90 px-2 py-0.5 rounded-md inline-block border border-slate-200/60">
-                                      1 {pUnit} = {rate} {sUnit}
+                                {/* แถวย่อย Badges: SKU, สถานที่ใช้งาน, ลิงก์ร้านค้าออนไลน์ (flex-nowrap overflow-hidden) */}
+                                <div className="flex items-center gap-2 mt-1 flex-nowrap overflow-hidden max-w-full">
+                                  {/* SKU Badge */}
+                                  {(item.sku || item.code) && (
+                                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-mono font-bold shrink-0">
+                                      {item.sku || item.code}
                                     </span>
-                                  </div>
+                                  )}
+
+                                  {/* Location Tag */}
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[11px] font-medium shrink-0">
+                                    {(item.usageLocation || item.source) === 'OFFICE' ? '🏢 ออฟฟิศ' : '🏭 โรงงาน'}
+                                  </span>
+
+                                  {/* Online Store Link (ถ้ามี) */}
+                                  {storeUrl && (
+                                    <a
+                                      href={sanitizeExternalUrl(storeUrl)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="inline-flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-700 hover:underline shrink-0"
+                                    >
+                                      <span>ดูร้านค้าออนไลน์</span>
+                                      <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  )}
+                                </div>
+
+                                {/* Conversion Spec Meta (italic gray text) */}
+                                {rate > 1 && (
+                                  <p className="text-[11px] text-slate-400 italic mt-0.5">
+                                    1 {pUnit} = {rate} {sUnit}
+                                  </p>
                                 )}
                               </div>
                             </td>
-                            <td className="py-2.5 px-2 w-[14%] text-right font-mono text-xs whitespace-nowrap">
+                            <td className="py-2.5 px-2.5 text-right font-mono text-xs whitespace-nowrap">
                               {isEditingItems ? (
                                 <div className="flex items-center justify-end gap-1">
                                   <input
@@ -497,7 +520,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                                 </div>
                               )}
                             </td>
-                            <td className="py-2.5 px-2 w-[16%] text-right font-mono text-xs whitespace-nowrap">
+                            <td className="py-2.5 px-2.5 text-right font-mono text-xs whitespace-nowrap">
                               {isEditingItems ? (
                                 <input
                                   type="number"
@@ -508,10 +531,12 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                                   className="w-20 border border-amber-300 rounded p-1 text-right font-bold text-xs bg-white focus:ring-2 focus:ring-amber-500 font-mono"
                                 />
                               ) : (
-                                <span className="font-mono font-semibold text-slate-700 text-xs sm:text-sm">฿{Number(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                <span className="font-mono font-semibold text-slate-700 text-xs sm:text-sm">
+                                  ฿{Number(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
                               )}
                             </td>
-                            <td className="py-2.5 px-2 w-[16%] text-right font-mono text-xs font-bold text-slate-900 pr-3 whitespace-nowrap tabular-nums">
+                            <td className="py-2.5 px-2.5 text-right font-mono text-xs font-bold text-slate-900 pr-3 whitespace-nowrap tabular-nums">
                               ฿{(Number(item.total) || ((Number(item.purchaseQty ?? item.qty) || 1) * (Number(item.price) || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
                           </tr>
@@ -571,10 +596,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
               </div>
 
               {/* MEMO Section (if exists) */}
-              <MEMODetailsSection 
-                memo={selectedPR.memo} 
-                onViewAttachment={(att) => setViewingAttachment(att)}
-              />
+              <MEMODetailsSection memo={selectedPR.memo} />
             </div>
 
             {/* ── คอลัมน์ขวา (Context & Activity Rail - col-span-5) ── */}
@@ -601,7 +623,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                   <div>
                     <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">วันที่ขอซื้อ</span>
                     <p className="text-xs font-semibold text-slate-800 font-mono mt-0.5 truncate">
-                      {selectedPR.requestedDate || selectedPR.createdAt || '-'}
+                      {formatDateTime(selectedPR.requestedDate || selectedPR.createdAt)}
                     </p>
                   </div>
 

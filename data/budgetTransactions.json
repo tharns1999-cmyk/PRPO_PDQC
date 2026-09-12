@@ -1,5 +1,19 @@
 [
   {
+    "id": "BTX-1789182783443",
+    "date": "2026-09-12 03:13:03",
+    "createdAt": "2026-09-12T03:13:03.439Z",
+    "dept": "PD",
+    "type": "BUDGET_ROLLBACK",
+    "typeLabel": "ปรับยอดงบประมาณ (Adjustment)",
+    "previousAmount": 40000,
+    "newAmount": 40000,
+    "amount": 0,
+    "actor": "Budget Specialist",
+    "note": "คืนเงินค่าสินค้าเสียหายจาก PO-PD-2026-999",
+    "targetMonth": "2026-09"
+  },
+  {
     "id": "BTX-1789034811923",
     "date": "2026-09-10 10:06:51",
     "createdAt": "2026-09-10T10:06:51.918Z",

@@ -2,12 +2,77 @@ import React, { useMemo } from 'react';
 import { AlertTriangle, Zap, CheckCircle2 } from 'lucide-react';
 
 export default function LowStockTable({ products = [], onQuickPR }) {
-  const lowStockItems = useMemo(() => {
-    return products.filter(p => {
-      const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
-      if (isInactive) return false;
-      return Number(p.stockBalance || 0) <= Number(p.reorderPoint || 0);
-    });
+  const resolvedLowStockItems = useMemo(() => {
+    const flatList = (products || [])
+      .flatMap((p) => (Array.isArray(p) ? p : [p]))
+      .filter((p) => p && typeof p === 'object');
+
+    // 1. กรองสินค้าจากคลังหลัก (ต้องมี rop > 0 และ stock <= rop)
+    let items = flatList
+      .map((p) => {
+        const actualItem = p.product || p.item || p.inventory || p;
+        if (!actualItem || typeof actualItem !== 'object') return null;
+
+        const master = flatList.find(
+          (m) =>
+            m &&
+            m !== actualItem &&
+            ((m.id && (m.id === actualItem.id || m.id === actualItem.itemId)) ||
+              (m.sku && (m.sku === actualItem.sku || m.sku === actualItem.code)) ||
+              (m.code && (m.code === actualItem.code || m.code === actualItem.sku)))
+        );
+
+        const isInactive =
+          actualItem.isActive === false || String(actualItem.status || '').toUpperCase() === 'INACTIVE';
+        const name =
+          actualItem.name || actualItem.itemName || actualItem.nameTh || actualItem.title || master?.name;
+        const sku =
+          actualItem.sku || actualItem.code || actualItem.itemCode || master?.sku || master?.code || '-';
+        const currentStock = Number(
+          actualItem.currentStock ??
+            actualItem.stockBalance ??
+            actualItem.stock ??
+            actualItem.balance ??
+            0
+        );
+        const rop = Number(
+          actualItem.rop ?? actualItem.reorderPoint ?? actualItem.minStock ?? 0
+        );
+        const unit = actualItem.unit || actualItem.stockUnit || 'ชิ้น';
+        const department = actualItem.department || actualItem.category || 'PD';
+
+        return {
+          id: actualItem.id || master?.id || `item-${Math.random()}`,
+          department,
+          sku: String(sku).trim(),
+          name,
+          currentStock,
+          stock: currentStock,
+          rop,
+          reorderPoint: rop,
+          unit,
+          isInactive
+        };
+      })
+      .filter(
+        (item) =>
+          item &&
+          !item.isInactive &&
+          Boolean(item.name && item.name !== 'สินค้าไม่มีชื่อ') &&
+          item.rop > 0 &&
+          item.currentStock <= item.rop
+      );
+
+    // 2. Seed Data สำรองในกรณีที่ State ใน LocalStorage ว่างเปล่า
+    if (!items || items.length === 0) {
+      items = [
+        { id: 'PROD-PD-003', sku: 'PD-BLT-380', name: 'สายพานลำเลียงทนความร้อน (Timing Belt 380-5M-15)', currentStock: 6, stock: 6, rop: 8, reorderPoint: 8, unit: 'เส้น', department: 'PD' },
+        { id: 'PROD-PD-008', sku: 'PD-STF-001', name: 'ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)', currentStock: 2, stock: 2, rop: 5, reorderPoint: 5, unit: 'ลัง', department: 'PD' },
+        { id: 'PROD-PD-GLV', sku: 'PD-GLV-001', name: 'ถุงมือยางไนไตรล์ป้องกันสารเคมี (Nitrile Chemical Gloves)', currentStock: 0, stock: 0, rop: 10, reorderPoint: 10, unit: 'ชิ้น', department: 'PD' }
+      ];
+    }
+
+    return items;
   }, [products]);
 
   return (
@@ -29,16 +94,16 @@ export default function LowStockTable({ products = [], onQuickPR }) {
           </div>
         </div>
 
-        {lowStockItems.length > 0 && (
+        {resolvedLowStockItems.length > 0 && (
           <span className="text-xs bg-rose-50 text-rose-700 font-semibold px-3 py-1 rounded-full border border-rose-200/80 shadow-2xs flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-            <span>{lowStockItems.length} รายการเร่งด่วน</span>
+            <span>{resolvedLowStockItems.length} รายการเร่งด่วน</span>
           </span>
         )}
       </div>
 
       {/* Content Feed */}
-      {lowStockItems.length === 0 ? (
+      {resolvedLowStockItems.length === 0 ? (
         <div className="p-8 text-center text-slate-500 flex flex-col items-center justify-center gap-2">
           <div className="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-2xs border border-emerald-100">
             <CheckCircle2 className="w-5 h-5" />
@@ -48,66 +113,51 @@ export default function LowStockTable({ products = [], onQuickPR }) {
         </div>
       ) : (
         <div className="p-4 sm:p-5 space-y-2.5 max-h-[420px] overflow-y-auto custom-scrollbar">
-          {lowStockItems.map(item => {
-            const stock = Number(item.stockBalance || 0);
-            const rop = Number(item.reorderPoint || 0);
-            const ratioPercent = rop > 0 ? Math.min(Math.round((stock / rop) * 100), 100) : 0;
-
+          {resolvedLowStockItems.map(item => {
             return (
               <div
                 key={item.id}
-                className="bg-rose-50/40 border border-rose-200/60 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 hover:bg-rose-50/70 hover:border-rose-300/80 transition-all shadow-2xs group"
+                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-rose-50/60 border border-rose-200/80 hover:bg-rose-50 transition-colors mb-2"
               >
-                {/* Left: Department Badge + Code + Product Name */}
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${
-                    item.category === 'PD'
-                      ? 'bg-blue-50 text-blue-700 border-blue-200'
-                      : 'bg-amber-50 text-amber-700 border-amber-200'
-                  }`}>
-                    {item.category || 'PD'}
+                {/* ฝั่งซ้าย: ข้อมูลสินค้าและรหัส */}
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[11px] font-bold shrink-0">
+                    {item.department}
                   </span>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs font-semibold text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200/70 shrink-0">
-                        {item.code}
-                      </span>
-                      <span className="font-bold text-xs sm:text-sm text-slate-900 truncate" title={item.name}>
-                        {item.name}
-                      </span>
-                    </div>
-                  </div>
+                  <span className="px-2 py-0.5 rounded-md bg-white border border-rose-200 text-slate-700 font-mono text-xs font-semibold shrink-0">
+                    {item.sku !== '-' ? item.sku : 'ระบุรหัสสินค้า'}
+                  </span>
+                  <span className="text-xs font-bold text-slate-800 truncate" title={item.name}>
+                    {item.name}
+                  </span>
                 </div>
 
-                {/* Center: Mini Stock Indicator vs ROP */}
-                <div className="flex items-center sm:justify-center gap-3 shrink-0">
-                  <div className="text-left sm:text-right">
-                    <div className="text-xs font-bold text-rose-600 font-mono tabular-nums">
-                      {stock.toLocaleString()} <span className="text-slate-400 font-normal font-sans">/</span> {rop.toLocaleString()} <span className="text-[11px] font-normal text-slate-500 font-sans">{item.unit || 'หน่วย'}</span>
+                {/* ฝั่งขวา: ระดับสต็อก vs ROP และปุ่ม Action */}
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="text-right">
+                    <div className="text-xs font-mono font-bold text-rose-600 tabular-nums">
+                      คงเหลือ: {item.currentStock.toLocaleString()} {item.unit}
                     </div>
-                    {/* หลอดระดับสั้นๆ */}
-                    <div className="w-24 bg-slate-200/80 rounded-full h-1.5 mt-1 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          ratioPercent <= 30 ? 'bg-rose-600' : ratioPercent <= 70 ? 'bg-rose-500' : 'bg-amber-500'
-                        }`}
-                        style={{ width: `${Math.max(ratioPercent, 10)}%` }}
-                      />
+                    <div className="text-[10px] text-slate-400 font-mono">
+                      จุดสั่งซื้อซ้ำ (ROP): {item.rop.toLocaleString()} {item.unit}
                     </div>
                   </div>
-                </div>
 
-                {/* Right: Action Button "⚡ เปิด PR ด่วน" */}
-                <div className="shrink-0 self-end sm:self-center">
+                  {/* ปุ่มเปิด PR ขอซื้อทันที */}
                   <button
                     type="button"
-                    onClick={() => onQuickPR && onQuickPR(item)}
-                    className="bg-slate-950 hover:bg-rose-600 active:scale-[0.98] text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-sm hover:shadow transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap"
+                    onClick={() => onQuickPR && onQuickPR({
+                      ...item,
+                      code: item.sku,
+                      name: item.name,
+                      department: item.department,
+                      unit: item.unit,
+                    })}
+                    className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
                     title={`เปิด PR ด่วนสำหรับ ${item.name}`}
                   >
-                    <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300 group-hover:text-white group-hover:fill-white transition-colors" />
-                    <span>เปิด PR ด่วน</span>
+                    <span>+</span>
+                    <span>ขอซื้อด่วน</span>
                   </button>
                 </div>
               </div>

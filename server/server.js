@@ -338,8 +338,11 @@ ensureBootstrapData();
 // ── 1. Products ──
 app.get('/api/products', async (req, res) => {
   try {
-    const products = await readFile('products.json', []);
-    res.json(products);
+    const rawProducts = await readFile('products.json', []);
+    const sanitized = (Array.isArray(rawProducts) ? rawProducts : [])
+      .flatMap(p => Array.isArray(p) ? p : [p])
+      .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title));
+    res.json(sanitized);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -349,10 +352,15 @@ app.post('/api/products', async (req, res) => {
   try {
     const data = req.body;
     if (Array.isArray(data)) {
-      await writeFile('products.json', data);
-      return res.json(data);
+      const sanitized = data
+        .flatMap(p => Array.isArray(p) ? p : [p])
+        .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title));
+      await writeFile('products.json', sanitized);
+      return res.json(sanitized);
     }
-    const products = await readFile('products.json', []);
+    const products = (await readFile('products.json', []))
+      .flatMap(p => Array.isArray(p) ? p : [p])
+      .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title));
     products.unshift(data);
     await writeFile('products.json', products);
     res.json(data);
@@ -1306,32 +1314,49 @@ app.post('/api/budgets/adjust', async (req, res) => {
 
     if (action === 'TOP_UP') {
       finalAmount = prev + Number(delta || 0);
+      budgets[dept].monthlyBudget = finalAmount;
+      const spent = Number(budgets[dept].spent) || 0;
+      budgets[dept].variance = finalAmount - spent;
+    } else if (action === 'BUDGET_ROLLBACK') {
+      const rollbackAmt = Number(delta || 0);
+      const curSpent = previousAmount !== undefined ? Number(previousAmount) : Number(budgets[dept].spent ?? budgets[dept].actualExpense ?? 0);
+      const newSpent = newAmount !== undefined ? Number(newAmount) : Math.max(0, curSpent - rollbackAmt);
+      budgets[dept].spent = newSpent;
+      budgets[dept].actualExpense = newSpent;
+      budgets[dept].variance = (Number(budgets[dept].variance) || (currentMonthly - curSpent)) + rollbackAmt;
+      budgets[dept].remainingBudget = budgets[dept].variance;
+      if (!budgets[dept].refundCredits) budgets[dept].refundCredits = {};
+      budgets[dept].refundCredits[monthKey] = (Number(budgets[dept].refundCredits[monthKey]) || 0) + rollbackAmt;
+      finalAmount = currentMonthly;
     } else if (action === 'SET_BUDGET' || action === 'ADJUST') {
       finalAmount = Number(newAmount !== undefined ? newAmount : prev);
+      budgets[dept].monthlyBudget = finalAmount;
+      const spent = Number(budgets[dept].spent) || 0;
+      budgets[dept].variance = finalAmount - spent;
     }
-
-    budgets[dept].monthlyBudget = finalAmount;
-    const spent = Number(budgets[dept].spent) || 0;
-    budgets[dept].variance = finalAmount - spent;
 
     const today = new Date();
     const monthKey = targetMonth || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     if (!budgets[dept].history) budgets[dept].history = {};
-    budgets[dept].history[monthKey] = finalAmount;
+    if (action !== 'BUDGET_ROLLBACK') {
+      budgets[dept].history[monthKey] = finalAmount;
+    }
 
     // 1. Write budgets.json
     await writeFile('budgets.json', budgets);
 
     // 2. Sync monthlyBudget to departments.json if present
-    const deptObj = departments.find(d => d.code === dept);
-    if (deptObj) {
-      deptObj.monthlyBudget = finalAmount;
-      await writeFile('departments.json', departments);
+    if (action !== 'BUDGET_ROLLBACK') {
+      const deptObj = departments.find(d => d.code === dept);
+      if (deptObj) {
+        deptObj.monthlyBudget = finalAmount;
+        await writeFile('departments.json', departments);
+      }
     }
 
     // 3. Create and append transaction log to budgetTransactions.json
     const nowStr = today.toISOString().replace('T', ' ').slice(0, 19);
-    const amountDiff = finalAmount - prev;
+    const amountDiff = action === 'BUDGET_ROLLBACK' ? Number(delta || 0) : finalAmount - prev;
     const newTx = {
       id: `BTX-${Date.now()}`,
       date: nowStr,
@@ -1342,7 +1367,9 @@ app.post('/api/budgets/adjust', async (req, res) => {
         ? 'กำหนดงบประมาณประจำเดือน (Monthly Allocation)' 
         : action === 'TOP_UP' 
           ? 'เติมงบประมาณพิเศษ (Budget Top-up)' 
-          : 'ปรับยอดงบประมาณ (Adjustment)',
+          : action === 'BUDGET_ROLLBACK'
+            ? 'คืนงบประมาณ (Budget Reversal)'
+            : 'ปรับยอดงบประมาณ (Adjustment)',
       previousAmount: prev,
       newAmount: finalAmount,
       amount: amountDiff,

@@ -372,6 +372,9 @@ export const PO_STATUS = {
   CLOSED:                   { id: 'CLOSED',                   label: 'เสร็จสิ้น (Closed)',            color: 'bg-teal-50 text-teal-700 border-teal-200' },
   CLAIM_REPORTED:           { id: 'CLAIM_REPORTED',           label: '🚨 แจ้งปัญหา / เคลมสินค้า',      color: 'bg-rose-100 text-rose-800 border-rose-300 font-bold' },
   CLAIM_IN_PROGRESS:        { id: 'CLAIM_IN_PROGRESS',        label: '⏳ กำลังดำเนินการเคลม/คืน',       color: 'bg-amber-100 text-amber-800 border-amber-300 font-bold' },
+  PARTIALLY_RECEIVED_IN_CLAIM: { id: 'PARTIALLY_RECEIVED_IN_CLAIM', label: 'รับบางส่วน (ติดเคลมสินค้า)', color: 'bg-amber-100 text-amber-900 border-amber-300 font-bold' },
+  COMPLETED_WITH_REFUND:    { id: 'COMPLETED_WITH_REFUND',    label: 'เสร็จสิ้น (คืนเงิน)',          color: 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold' },
+  WAITING_DELIVERY_ROUND_2: { id: 'WAITING_DELIVERY_ROUND_2', label: 'รอจัดส่งสินค้าทดแทน (รอบ 2)', color: 'bg-sky-50 text-sky-800 border-sky-300 font-bold' },
 };
 
 // ─── MEMO ─────────────────────────────────────────────────────────────────────

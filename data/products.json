@@ -1,12 +1,517 @@
 [
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
+  [
+    {
+      "id": "PROD-01",
+      "code": "P01",
+      "name": "Item 1",
+      "stockBalance": 16,
+      "unit": "ชิ้น",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "ชิ้น",
+      "stockUnit": "ชิ้น",
+      "conversionRate": 1
+    },
+    {
+      "id": "PROD-02",
+      "code": "P02",
+      "name": "Item 2",
+      "stockBalance": 5,
+      "unit": "กล่อง",
+      "category": "PD",
+      "department": "PD",
+      "purchaseUnit": "กล่อง",
+      "stockUnit": "กล่อง",
+      "conversionRate": 1
+    }
+  ],
   {
-    "code": "  itm-001  ",
+    "code": "ITM-001",
     "name": "ถุงมือยางใหม่",
     "category": "PD",
     "price": 15,
     "stockUnit": "ชิ้น",
     "department": "PD",
-    "id": "PROD-PD-1789102607194"
+    "id": "PROD-PD-1789102607194",
+    "stockBalance": 51,
+    "purchaseUnit": "กล่อง",
+    "conversionRate": 100,
+    "unit": "ชิ้น",
+    "reorderPoint": 10,
+    "leadTimeDays": 7,
+    "supplierId": null,
+    "locationId": null,
+    "locationName": null,
+    "isActive": true,
+    "status": "ACTIVE"
   },
   {
     "id": "PROD-PD-001",
@@ -134,12 +639,12 @@
     "code": "PD-STF-001",
     "name": "ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)",
     "category": "PD",
-    "purchaseUnit": "ลัง (6 ม้วน)",
+    "purchaseUnit": "ลัง",
     "stockUnit": "ม้วน",
     "conversionRate": 6,
     "unit": "ม้วน",
     "price": 1100,
-    "stockBalance": 18,
+    "stockBalance": 162,
     "reorderPoint": 25,
     "leadTimeDays": 2,
     "supplierId": null,

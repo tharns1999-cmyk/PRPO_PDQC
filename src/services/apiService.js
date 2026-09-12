@@ -2,6 +2,7 @@ import { storageService } from './storageService';
 import { workflowEngine } from './workflowEngine';
 import { auditService } from './auditService';
 import { PO_STATUS } from '../config/constants';
+import { clearMockTransactions, resetMockTransactions } from '../utils/dataResetHelper';
 
 // API Service Layer for Data & Operations
 export const apiService = {
@@ -109,6 +110,9 @@ export const apiService = {
     return storageService.getDepartments();
   },
   async getPRs() {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true') {
+      return storageService.getPRs();
+    }
     try {
       const res = await fetch('http://localhost:3001/api/prs');
       if (res.ok) {
@@ -138,6 +142,9 @@ export const apiService = {
     });
   },
   async getPOs() {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true') {
+      return storageService.getPOs();
+    }
     try {
       const res = await fetch('http://localhost:3001/api/pos');
       if (res.ok) {
@@ -248,24 +255,45 @@ export const apiService = {
     if (!budgets[dept]) budgets[dept] = { monthlyBudget: 0, spent: 0, pending: 0, variance: 0, history: {}, historicalSpent: {} };
     const prev = previousAmount !== undefined ? Number(previousAmount) : (Number(budgets[dept].monthlyBudget) || 0);
     const finalAmount = action === 'TOP_UP' ? prev + Number(delta || 0) : Number(newAmount ?? prev);
-    budgets[dept].monthlyBudget = finalAmount;
-    budgets[dept].variance = finalAmount - (Number(budgets[dept].spent) || 0);
     const today = new Date();
     const monthKey = targetMonth || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-    if (!budgets[dept].history) budgets[dept].history = {};
-    budgets[dept].history[monthKey] = finalAmount;
+
+    if (action === 'BUDGET_ROLLBACK') {
+      const rollbackAmt = Number(delta || 0);
+      const curSpent = previousAmount !== undefined ? Number(previousAmount) : Number(budgets[dept].spent ?? budgets[dept].actualExpense ?? 0);
+      const newSpent = newAmount !== undefined ? Number(newAmount) : Math.max(0, curSpent - rollbackAmt);
+      budgets[dept].spent = newSpent;
+      budgets[dept].actualExpense = newSpent;
+      const monthlyAlloc = Number(budgets[dept].monthlyBudget) || 0;
+      budgets[dept].variance = monthlyAlloc - newSpent;
+      budgets[dept].remainingBudget = budgets[dept].variance;
+      if (!budgets[dept].refundCredits) budgets[dept].refundCredits = {};
+      budgets[dept].refundCredits[monthKey] = (Number(budgets[dept].refundCredits[monthKey]) || 0) + rollbackAmt;
+    } else {
+      budgets[dept].monthlyBudget = finalAmount;
+      budgets[dept].variance = finalAmount - (Number(budgets[dept].spent) || 0);
+      if (!budgets[dept].history) budgets[dept].history = {};
+      budgets[dept].history[monthKey] = finalAmount;
+    }
     storageService.saveBudgets(budgets);
 
+    const amountDiff = action === 'BUDGET_ROLLBACK' ? Number(delta || 0) : finalAmount - prev;
     const newTx = {
       id: `BTX-${Date.now()}`,
       date: today.toISOString().replace('T', ' ').slice(0, 19),
       createdAt: today.toISOString(),
       dept,
       type: action || 'ADJUST',
-      typeLabel: action === 'SET_BUDGET' ? 'กำหนดงบประมาณประจำเดือน' : action === 'TOP_UP' ? 'เติมงบประมาณพิเศษ (Top-up)' : 'ปรับปรุงงบประมาณ',
+      typeLabel: action === 'SET_BUDGET' 
+        ? 'กำหนดงบประมาณประจำเดือน' 
+        : action === 'TOP_UP' 
+          ? 'เติมงบประมาณพิเศษ (Top-up)' 
+          : action === 'BUDGET_ROLLBACK' 
+            ? 'คืนงบประมาณ (Budget Reversal)' 
+            : 'ปรับปรุงงบประมาณ',
       previousAmount: prev,
       newAmount: finalAmount,
-      amount: finalAmount - prev,
+      amount: amountDiff,
       actor: actor || 'Staff',
       note: reason || 'ปรับปรุงงบประมาณ',
       targetMonth: monthKey
@@ -430,6 +458,30 @@ export const apiService = {
       console.warn('[apiService] Backend PUT /api/pos/:id fallback:', e.message);
     }
     return updated;
+  },
+
+  async resetPOQC2026001() {
+    const res = storageService.resetPOQC2026001();
+    if (res) {
+      try {
+        await fetch(`http://localhost:3001/api/pos/${res.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(res)
+        });
+      } catch (e) {
+        console.warn('[apiService] Backend PUT fallback:', e.message);
+      }
+    }
+    return res;
+  },
+
+  async resetMockTransactions(options) {
+    return resetMockTransactions(options);
+  },
+
+  async clearMockTransactions(options) {
+    return resetMockTransactions(options);
   },
 
   // --- PO & Receive Goods Operations ---

@@ -451,7 +451,8 @@ export async function generatePoPdf(po) {
   const vendorObj = po?.vendorDetails || (typeof po?.vendor === 'object' ? po?.vendor : null) || masterVendor || {};
 
   const vendorCode = masterVendor?.code || vendorObj.code || po?.vendorCode || po?.vendorId || '-';
-  const vendorName = masterVendor?.name || vendorObj.name || vendorObj.companyName || targetVendorName || 'สั่งซื้อออนไลน์ (Shopee / Lazada)';
+  const rawVendorName = masterVendor?.name || vendorObj.name || vendorObj.companyName || targetVendorName || 'สั่งซื้อออนไลน์ (Shopee / Lazada)';
+  const vendorName = String(rawVendorName).startsWith('ผู้จำหน่าย:') ? rawVendorName.replace(/^ผู้จำหน่าย:\s*/, '') : rawVendorName;
   const vendorTaxId = masterVendor?.taxId || vendorObj.taxId || '-';
   const vendorContactPerson = masterVendor?.contactPerson || vendorObj.contactPerson || '-';
   const vendorPhone = masterVendor?.phone || vendorObj.phone || '-';
@@ -517,6 +518,12 @@ export async function generatePoPdf(po) {
     { code: 'PD-OIL-068', name: 'น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)', qty: 1, unit: 'ถัง (200L)', price: 14500, total: 14500 }
   ];
 
+  const isOnlinePO = Boolean(
+    po?.purchaseChannel === 'ONLINE' || 
+    po?.orderType === 'ONLINE' ||
+    po?.channel === 'online'
+  );
+
   items.forEach((item, index) => {
     // Row index
     page.drawText(String(index + 1), { x: 58, y: rowY, size: 9, font: customFont });
@@ -524,6 +531,10 @@ export async function generatePoPdf(po) {
     // Product Name (Wrap text to max 230pt to prevent collision with column at x: 330)
     const rawItemTitle = `[${item.code || '-'}] ${item.name || '-'}`;
     const lines = splitTextToLines(rawItemTitle, customFont, 9, 230);
+    if (isOnlinePO && (item.actualStoreName || item.storePlatform)) {
+      const storeLine = `[ช่องทาง: ${item.storePlatform || 'ออนไลน์'} • ร้านค้า: ${item.actualStoreName || '-'}]`;
+      lines.push(...splitTextToLines(storeLine, customFont, 8, 230));
+    }
     
     lines.forEach((line, i) => {
       page.drawText(line, { x: 80, y: rowY - (i * 12), size: 9, font: customFont });
@@ -576,20 +587,20 @@ export async function generatePoPdf(po) {
             ? Number(po.totalAmount)
             : parseFloat((subtotal + vatAmount).toFixed(2))));
 
-  // 3 Lines Financial Breakdown
-  page.drawText(normalizeThaiText('รวมมูลค่าสินค้า (Subtotal):'), { x: 330, y: rowY - 20, size: 10, font: boldFont });
+  // 3 Lines Financial Breakdown (Compact Official Document Typography with Comfortable Spacing)
+  page.drawText(normalizeThaiText('รวมมูลค่าสินค้า (Subtotal):'), { x: 330, y: rowY - 28, size: 9, font: boldFont });
   page.drawText(`฿${subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, { 
-    x: 480, y: rowY - 20, size: 10, font: boldFont
+    x: 480, y: rowY - 28, size: 9, font: boldFont
   });
 
-  page.drawText(normalizeThaiText('ภาษีมูลค่าเพิ่ม 7% (VAT 7%):'), { x: 330, y: rowY - 35, size: 10, font: boldFont });
+  page.drawText(normalizeThaiText('ภาษีมูลค่าเพิ่ม 7% (VAT 7%):'), { x: 330, y: rowY - 41, size: 9, font: boldFont });
   page.drawText(hasVat && vatAmount > 0 ? `฿${vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : normalizeThaiText('ไม่มี VAT (0%)'), { 
-    x: 480, y: rowY - 35, size: 10, font: boldFont
+    x: 480, y: rowY - 41, size: 9, font: boldFont
   });
 
-  page.drawText(normalizeThaiText('ยอดเงินรวมสุทธิ (Grand Total):'), { x: 330, y: rowY - 50, size: 10, font: boldFont });
+  page.drawText(normalizeThaiText('ยอดเงินรวมสุทธิ (Grand Total):'), { x: 330, y: rowY - 55, size: 10, font: boldFont });
   page.drawText(`฿${grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, { 
-    x: 480, y: rowY - 50, size: 11, font: boldFont, color: rgb(0.1, 0.5, 0.3) 
+    x: 480, y: rowY - 55, size: 10, font: boldFont, color: rgb(0.1, 0.5, 0.3) 
   });
 
   // 7. กล่อง Digital Approval Stamp 4 ช่อง (Continuous Table Layout)
@@ -653,6 +664,8 @@ export async function generatePoPdf(po) {
   ) || users.find(u => u.roleId === 'PLANT_MANAGER') || users[4] || users[0];
 
   const receiverUser = users.find(u => 
+    (po?.receivingInfo?.receiverId && u.id === po.receivingInfo.receiverId) ||
+    (po?.receivingInfo?.receiverName && (u.name === po.receivingInfo.receiverName || u.employeeName === po.receivingInfo.receiverName)) ||
     u.name === po?.receivedBy || 
     u.displayName === po?.receivedBy || 
     u.employeeName === po?.receivedBy ||
@@ -661,23 +674,36 @@ export async function generatePoPdf(po) {
 
   // Helper to embed Base64 signature
   const embedSignature = async (user) => {
-    if (!user?.signature) return null;
+    const sigStr = user?.signature || (typeof user === 'string' ? user : null);
+    if (!sigStr) return null;
     try {
-      if (user.signature.includes('image/jpeg') || user.signature.includes('image/jpg')) {
-        return await pdfDoc.embedJpg(user.signature);
+      if (sigStr.includes('image/jpeg') || sigStr.includes('image/jpg')) {
+        return await pdfDoc.embedJpg(sigStr);
       }
-      return await pdfDoc.embedPng(user.signature);
+      if (sigStr.includes('image/png') || sigStr.startsWith('data:image/png')) {
+        return await pdfDoc.embedPng(sigStr);
+      }
+      return null;
     } catch (err) {
-      console.warn('[generatePoPdf] Failed to embed signature for', user?.name, err.message);
+      console.warn('[generatePoPdf] Failed to embed signature for', user?.name || 'user', err.message);
       return null;
     }
   };
+
+  const isReceivedDoc = Boolean(
+    po?.receivingInfo ||
+    po?.receivedAt ||
+    po?.receiverSignature ||
+    isCompleted
+  );
+
+  const receiverSigData = po?.receivingInfo?.receiverSignature || po?.receiverSignature || receiverUser?.signature || '/signatures/receiver-default.png';
 
   const [reqSigImg, revSigImg, appSigImg, recSigImg] = await Promise.all([
     embedSignature(requesterUser),
     embedSignature(reviewerUser),
     embedSignature(approverUser),
-    isCompleted ? embedSignature(receiverUser) : null,
+    isReceivedDoc ? embedSignature(receiverSigData || receiverUser) : null,
   ]);
 
   // ดึงเวลาเปิด PR จาก Log แรก หรือ submittedAt / createdAt ของ PR
@@ -729,7 +755,7 @@ export async function generatePoPdf(po) {
     '';
 
   // 4. ข้อมูลผู้ตรวจรับ (Receiver)
-  const receiverDate = (isCompleted && po?.receivedAt) ? po.receivedAt : '';
+  const receiverDate = isReceivedDoc ? (po?.receivingInfo?.receivedAt || po?.receivedAt || (po?.grnHistory?.length > 0 ? po.grnHistory[po.grnHistory.length - 1].date : '') || po?.updatedAt || po?.date || new Date().toISOString()) : '';
 
   let rawRevName = po?.reviewerName || (typeof po?.reviewedBy === 'string' && po.reviewedBy !== 'Admin System' ? po.reviewedBy : null) || (isReviewed ? (reviewerUser?.employeeName || 'คุณสมชาย มุ่งมั่น') : '');
   if (!rawRevName || rawRevName === 'Admin System') {
@@ -737,11 +763,11 @@ export async function generatePoPdf(po) {
   }
   const revName = isReviewed ? (rawRevName || 'คุณสมชาย มุ่งมั่น') : '( ............................................................ )';
 
-  let rawRecName = (isCompleted && po?.receivedAt) ? (po?.receiverName || po?.receivedBy || receiverUser?.employeeName || '') : '';
+  let rawRecName = isReceivedDoc ? (po?.receivingInfo?.receiverName || po?.receiverName || po?.receivedBy || receiverUser?.employeeName || '') : '';
   if (rawRecName === 'Admin System') {
     rawRecName = '';
   }
-  const recName = (isCompleted && po?.receivedAt)
+  const recName = isReceivedDoc
     ? (rawRecName || 'คุณวิชัย สุขใจ')
     : '( ............................................................ )';
 
@@ -771,8 +797,8 @@ export async function generatePoPdf(po) {
       role: 'ผู้ตรวจรับ / บันทึกสต็อก', 
       name: recName, 
       time: formatDocDateTime(receiverDate), 
-      sigImg: (isCompleted && po?.receivedAt) ? recSigImg : null,
-      isSigned: Boolean(isCompleted && po?.receivedAt)
+      sigImg: isReceivedDoc ? recSigImg : null,
+      isSigned: isReceivedDoc
     }
   ];
 
