@@ -11,6 +11,84 @@ import { useAppContext } from '../../context/AppContext';
 import { modalService } from '../../services/modalService';
 import { apiService } from '../../services/apiService';
 import { storageService } from '../../services/storageService';
+import { warehouseService, generateGRNNumber } from '../../services/warehouseService';
+
+/**
+ * Helper to resiliently resolve refund quantity and amount
+ * Supports Dual-Layer Refund Recognition:
+ * Layer 1: Item-level fields (item.refundedQty, item.claimResolution === 'REFUND')
+ * Layer 2: Store-level claim records (po.storeClaims) as fallback for disputed items
+ */
+export const resolveRefundedQtyAndAmount = (item, po) => {
+  const ordered = Number(item?.orderedQty ?? item?.quantity ?? item?.actualQty ?? item?.purchaseQty ?? item?.qty) || 0;
+  const accumulated = Number(item?.accumulatedReceived ?? item?.goodQty ?? item?.receivedQty ?? 0);
+
+  const itemStoreName = (item?.actualStoreName || item?.storeName || '').trim();
+  const itemPlatform = (item?.storePlatform || item?.platform || 'Shopee').trim();
+  const derivedStoreKey = item?.storeKey || (itemStoreName ? `${itemPlatform}_${itemStoreName.toLowerCase()}` : '');
+
+  const storeClaim = 
+    (item?.storeKey && po?.storeClaims?.[item.storeKey]) ||
+    (derivedStoreKey && po?.storeClaims?.[derivedStoreKey]) ||
+    (itemStoreName && (po?.storeClaims?.[itemStoreName] || po?.storeClaims?.[itemStoreName.toLowerCase()])) ||
+    (po?.storeClaims && Object.entries(po.storeClaims).find(([k]) => {
+      if (!k || !itemStoreName) return false;
+      const normK = String(k).toLowerCase().replace(/['"`]/g, '');
+      const normS = itemStoreName.toLowerCase().replace(/['"`]/g, '');
+      return normK === normS || normK.includes(normS) || normS.includes(normK);
+    })?.[1]);
+
+  const isStoreRefunded = Boolean(
+    storeClaim && (storeClaim.isResolved || storeClaim.status === 'RESOLVED' || storeClaim.status === 'COMPLETED') &&
+    (storeClaim.type === 'REFUND' || storeClaim.actionType === 'REFUND' || storeClaim.resolutionType === 'REFUND' || storeClaim.type === 'CANCEL' || String(storeClaim.note || '').includes('คืนเงิน'))
+  );
+
+  let refunded = Number(item?.refundedQty || 0);
+  if (refunded === 0 && (item?.claimResolution === 'REFUND' || isStoreRefunded)) {
+    refunded = Number(item?.damagedQty || item?.shortageQty || Math.max(0, ordered - accumulated));
+  }
+
+  const remainingToReceive = Math.max(0, ordered - accumulated - refunded);
+
+  const itemUnitPrice = Number(item?.actualPrice ?? item?.actUnitPrice ?? item?.unitPrice ?? item?.price ?? 0);
+  let refundAmt = Number(item?.refundAmount || 0);
+  if (refundAmt === 0 && refunded > 0) {
+    refundAmt = Number(storeClaim?.refundAmount || (refunded * itemUnitPrice) || 0);
+  }
+
+  const isReplacement = Boolean(
+    !isStoreRefunded && (
+      item?.claimResolution === 'REPLACEMENT' || 
+      Number(item?.replacementPendingQty) > 0 || 
+      storeClaim?.type === 'REPLACEMENT' || 
+      storeClaim?.actionType === 'REPLACEMENT' ||
+      po?.claimStatus === 'REPLACEMENT_PENDING' ||
+      po?.claimResolution?.type === 'REPLACEMENT'
+    )
+  );
+
+  const isSplitShipment = Boolean(
+    !isReplacement && !isStoreRefunded && (
+      item?.shortageAction === 'WAIT_NEXT_ROUND' || 
+      item?.disputeAction === 'WAIT_NEXT_ROUND' || 
+      item?.shortageReason === 'SPLIT_SHIPMENT' || 
+      item?.action === 'WAIT_NEXT_ROUND' ||
+      po?.status === 'WAITING_DELIVERY_ROUND_2'
+    )
+  );
+
+  return {
+    ordered,
+    accumulated,
+    refunded,
+    refundAmount: refundAmt,
+    remainingToReceive,
+    isStoreRefunded,
+    isReplacement,
+    isSplitShipment,
+    storeClaim
+  };
+};
 
 /**
  * ReceivingModal (GoodsReceiptModal)
@@ -46,14 +124,13 @@ export default function ReceivingModal({
   const [itemsState, setItemsState] = useState(() => {
     const initial = {};
     (targetPO.items || []).forEach((item, idx) => {
-      const ordered = Number(item.orderedQty ?? item.purchaseQty ?? item.qty) || 0;
-      const already = Number(item.receivedQty) || 0;
-      const remaining = Math.max(0, ordered - already);
+      const { remainingToReceive } = resolveRefundedQtyAndAmount(item, targetPO);
 
       initial[item.productId || idx] = {
-        acceptedQty: remaining,
+        acceptedQty: remainingToReceive === 0 ? 0 : (item.initialAcceptedQty !== undefined ? item.initialAcceptedQty : (item.inspectQty !== undefined ? item.inspectQty : remainingToReceive)),
         damagedQty: 0,
-        shortageReason: 'SPLIT_SHIPMENT', // Default: รอส่งรอบถัดไป (Split Shipment)
+        shortageAction: item.shortageAction || 'CLAIM_SHORTAGE', // Default: CLAIM_SHORTAGE เพื่อป้องกันการเสียสิทธิ์เคลม
+        shortageReason: item.shortageReason || (item.shortageAction === 'WAIT_NEXT_ROUND' ? 'SPLIT_SHIPMENT' : 'VENDOR_SHORTAGE'),
         defectNote: '',
         isDamagedExpanded: false
       };
@@ -66,7 +143,7 @@ export default function ReceivingModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Computed line items with auto-calculated shortage
+  // Computed line items with auto-calculated shortage and remaining quantity
   const computedItems = useMemo(() => {
     return (targetPO.items || []).map((item, idx) => {
       const key = item.productId || idx;
@@ -78,50 +155,76 @@ export default function ReceivingModal({
         isDamagedExpanded: false
       };
 
-      const orderedQty = Number(item.orderedQty ?? item.purchaseQty ?? item.qty) || 0;
-      const alreadyReceived = Number(item.receivedQty) || 0;
-      const remainingReceivable = Math.max(0, orderedQty - alreadyReceived);
+      const {
+        ordered,
+        accumulated,
+        refunded,
+        refundAmount,
+        remainingToReceive,
+        isStoreRefunded,
+        isReplacement,
+        isSplitShipment,
+        storeClaim
+      } = resolveRefundedQtyAndAmount(item, targetPO);
+
+      const isRowLocked = remainingToReceive === 0;
 
       const rawAccepted = state.acceptedQty === '' ? '' : state.acceptedQty;
       const parsedAccepted = rawAccepted === '' ? 0 : Number(rawAccepted);
       const safeAccepted = isNaN(parsedAccepted) ? 0 : Math.max(0, parsedAccepted);
-      const acceptedQty = Math.min(remainingReceivable, safeAccepted);
+      const acceptedQty = isRowLocked ? 0 : Math.min(remainingToReceive, safeAccepted);
 
       const rawDamaged = state.damagedQty === '' ? '' : state.damagedQty;
       const parsedDamaged = rawDamaged === '' ? 0 : Number(rawDamaged);
       const safeDamaged = isNaN(parsedDamaged) ? 0 : Math.max(0, parsedDamaged);
-      const damagedQty = Math.min(Math.max(0, remainingReceivable - acceptedQty), safeDamaged);
+      const damagedQty = isRowLocked ? 0 : Math.min(Math.max(0, remainingToReceive - acceptedQty), safeDamaged);
 
-      // Directive 1: shortageQty = orderedQty - (Number(acceptedQty) + Number(damagedQty || 0))
-      // When alreadyReceived > 0, remainingReceivable = orderedQty - alreadyReceived
-      const shortageQty = Math.max(0, remainingReceivable - (acceptedQty + damagedQty));
-      const hasShortage = shortageQty > 0 || (acceptedQty < remainingReceivable && (acceptedQty + damagedQty < remainingReceivable));
-      const hasDamage = safeDamaged > 0 || Number(state.damagedQty) > 0;
+      // Remaining quantity and shortage calculations
+      const shortageQty = isRowLocked ? 0 : Math.max(0, remainingToReceive - (acceptedQty + damagedQty));
+      const hasShortage = !isRowLocked && (shortageQty > 0 || (acceptedQty < remainingToReceive && (acceptedQty + damagedQty < remainingToReceive)));
+      const hasDamage = !isRowLocked && (safeDamaged > 0 || Number(state.damagedQty) > 0);
 
       const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
       const sUnit = item.stockUnit || item.unit || pUnit;
 
+      const shortageAction = state.shortageAction || (state.shortageReason === 'SPLIT_SHIPMENT' ? 'WAIT_NEXT_ROUND' : 'CLAIM_SHORTAGE');
+      const shortageReason = state.shortageReason || (shortageAction === 'WAIT_NEXT_ROUND' ? 'SPLIT_SHIPMENT' : 'VENDOR_SHORTAGE');
+
+      const refundAmountFormatted = refundAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
       return {
         ...item,
         key,
-        orderedQty,
-        alreadyReceived,
-        remainingReceivable,
+        ordered,
+        orderedQty: ordered,
+        accumulated,
+        alreadyReceived: accumulated,
+        refunded,
+        refundAmount,
+        refundAmountFormatted,
+        remainingToReceive,
+        remainingReceivable: remainingToReceive,
+        isRowLocked,
+        isStoreRefunded,
+        isReplacement,
+        isSplitShipment,
+        storeClaim,
         acceptedQty,
         damagedQty,
         shortageQty,
         hasShortage,
         hasDamage,
-        rawAcceptedInput: rawAccepted !== undefined ? rawAccepted : remainingReceivable,
-        rawDamagedInput: rawDamaged !== undefined ? rawDamaged : 0,
-        shortageReason: state.shortageReason || 'VENDOR_SHORTAGE',
-        defectNote: state.defectNote || '',
-        isDamagedExpanded: Boolean(state.isDamagedExpanded || hasDamage),
+        rawAcceptedInput: isRowLocked ? 0 : (rawAccepted !== undefined ? rawAccepted : remainingToReceive),
+        rawDamagedInput: isRowLocked ? 0 : (rawDamaged !== undefined ? rawDamaged : 0),
+        shortageAction,
+        shortageReason,
+        defectNote: isRowLocked ? '' : (state.defectNote || ''),
+        isDamagedExpanded: !isRowLocked && Boolean(state.isDamagedExpanded || hasDamage),
         pUnit,
         sUnit
       };
     });
-  }, [targetPO.items, itemsState]);
+  }, [targetPO.items, targetPO.storeClaims, itemsState]);
 
   // Overall delivery summary
   const summary = useMemo(() => {
@@ -136,8 +239,8 @@ export default function ReceivingModal({
       totalDamaged += item.damagedQty;
       totalShortage += item.shortageQty;
       if (item.hasShortage) {
-        if (item.shortageReason === 'VENDOR_SHORTAGE') hasVendorShortage = true;
-        if (item.shortageReason === 'SPLIT_SHIPMENT') hasSplitShipment = true;
+        if (item.shortageAction === 'CLAIM_SHORTAGE' || item.shortageReason === 'VENDOR_SHORTAGE') hasVendorShortage = true;
+        if (item.shortageAction === 'WAIT_NEXT_ROUND' || item.shortageReason === 'SPLIT_SHIPMENT') hasSplitShipment = true;
       }
     });
 
@@ -159,6 +262,8 @@ export default function ReceivingModal({
 
   // Handler: Update item accepted quantity
   const handleAcceptedQtyChange = (key, value) => {
+    const item = computedItems.find(it => it.key === key);
+    if (item && item.isRowLocked) return; // Row locked: 100% read-only
     setItemsState(prev => {
       const current = prev[key] || {};
       return {
@@ -173,6 +278,8 @@ export default function ReceivingModal({
 
   // Handler: Update item damaged quantity
   const handleDamagedQtyChange = (key, value) => {
+    const item = computedItems.find(it => it.key === key);
+    if (item && item.isRowLocked) return; // Row locked: 100% read-only
     setItemsState(prev => {
       const current = prev[key] || {};
       return {
@@ -185,22 +292,34 @@ export default function ReceivingModal({
     });
   };
 
-  // Handler: Update shortage reason
-  const handleShortageReasonChange = (key, reason) => {
+  // Handler: Update shortage action (Directive 1)
+  const handleShortageActionChange = (key, action) => {
+    const item = computedItems.find(it => it.key === key);
+    if (item && item.isRowLocked) return;
     setItemsState(prev => {
       const current = prev[key] || {};
+      const reason = action === 'WAIT_NEXT_ROUND' ? 'SPLIT_SHIPMENT' : 'VENDOR_SHORTAGE';
       return {
         ...prev,
         [key]: {
           ...current,
+          shortageAction: action,
           shortageReason: reason
         }
       };
     });
   };
 
+  // Handler: Update shortage reason
+  const handleShortageReasonChange = (key, reason) => {
+    const action = (reason === 'SPLIT_SHIPMENT' || reason === 'WAIT_NEXT_ROUND') ? 'WAIT_NEXT_ROUND' : 'CLAIM_SHORTAGE';
+    handleShortageActionChange(key, action);
+  };
+
   // Handler: Update defect note
   const handleDefectNoteChange = (key, note) => {
+    const item = computedItems.find(it => it.key === key);
+    if (item && item.isRowLocked) return;
     setItemsState(prev => {
       const current = prev[key] || {};
       return {
@@ -220,7 +339,7 @@ export default function ReceivingModal({
       computedItems.forEach(item => {
         next[item.key] = {
           ...next[item.key],
-          acceptedQty: item.remainingReceivable,
+          acceptedQty: item.isRowLocked ? 0 : item.remainingToReceive,
           damagedQty: 0
         };
       });
@@ -288,13 +407,26 @@ export default function ReceivingModal({
   const handleConfirmReceiving = async () => {
     if (isSubmitting) return;
 
-    // Validate boundaries
-    const invalidItems = computedItems.filter(it => it.acceptedQty + it.damagedQty > it.remainingReceivable);
-    if (invalidItems.length > 0) {
-      return modalService.warning(
-        'จำนวนตรวจรับเกินกำหนด',
-        `รายการ "${invalidItems[0].name}" มียอดรับสมบูรณ์ + ยอดชำรุด เกินจำนวนที่รอตรวจรับ (${invalidItems[0].remainingReceivable} ${invalidItems[0].pUnit})`
-      );
+    // Validate boundaries & enforce allowedReceiveQty
+    for (const it of computedItems) {
+      const allowed = Math.max(0, it.ordered - it.accumulated - it.refunded);
+      if (allowed === 0) {
+        it.acceptedQty = 0;
+        it.damagedQty = 0;
+      } else {
+        if (it.acceptedQty > allowed) {
+          return modalService.warning(
+            'จำนวนตรวจรับเกินกำหนด',
+            `รายการ "${it.name}" มียอดตรวจรับเกินจำนวนที่รอตรวจรับ (${allowed} ${it.pUnit})`
+          );
+        }
+        if (it.acceptedQty + it.damagedQty > allowed) {
+          return modalService.warning(
+            'จำนวนตรวจรับเกินกำหนด',
+            `รายการ "${it.name}" มียอดรับสมบูรณ์ + ยอดชำรุด เกินจำนวนที่รอตรวจรับ (${allowed} ${it.pUnit})`
+          );
+        }
+      }
     }
 
     if (summary.totalAccepted === 0 && summary.totalDamaged === 0 && summary.totalShortage === 0) {
@@ -330,7 +462,7 @@ export default function ReceivingModal({
 
     try {
       const nextRound = (targetPO.grnHistory?.length || 0) + 1;
-      const grnNumber = `GRN-${targetPO.poNo || targetPO.id}-${String(nextRound).padStart(2, '0')}`;
+      const grnNumber = generateGRNNumber(targetPO.poNo || targetPO.id, nextRound);
       const timestamp = new Date().toLocaleString('th-TH');
 
       // Status determination
@@ -368,9 +500,9 @@ export default function ReceivingModal({
 
       // 2. Prepare Dispute Items for Online Hub
       const disputeItems = computedItems
-        .filter(it => (it.shortageQty > 0 && it.shortageReason === 'VENDOR_SHORTAGE') || it.damagedQty > 0)
+        .filter(it => (it.shortageQty > 0 && (it.shortageAction === 'CLAIM_SHORTAGE' || it.shortageReason === 'VENDOR_SHORTAGE')) || it.damagedQty > 0)
         .map(it => {
-          const isShortage = it.shortageQty > 0 && it.shortageReason === 'VENDOR_SHORTAGE';
+          const isShortage = it.shortageQty > 0 && (it.shortageAction === 'CLAIM_SHORTAGE' || it.shortageReason === 'VENDOR_SHORTAGE');
           return {
             productId: it.productId,
             code: it.code,
@@ -379,6 +511,7 @@ export default function ReceivingModal({
             acceptedQty: it.acceptedQty,
             damagedQty: it.damagedQty,
             shortageQty: it.shortageQty,
+            shortageAction: it.shortageAction || 'CLAIM_SHORTAGE',
             reason: isShortage ? 'SHORT_SHIPMENT' : 'DAMAGED',
             reasonLabel: isShortage ? 'ร้านส่งของไม่ครบตามกล่อง (ขาดส่ง)' : 'สินค้าชำรุด / แตกหักเสียหาย',
             description: isShortage ? `ยอดขาดส่ง ${it.shortageQty} ${it.pUnit}` : it.defectNote || 'สินค้ามีปัญหาจากการตรวจรับ',
@@ -398,18 +531,24 @@ export default function ReceivingModal({
         attachments,
         statusOverride,
         waitingRound2: summary.hasSplitShipment,
-        receivingItems: computedItems.map(it => ({
-          productId: it.productId,
-          code: it.code,
-          name: it.name,
-          receivedThisTime: it.acceptedQty + it.damagedQty,
-          goodQty: it.acceptedQty,
-          damagedQty: it.damagedQty,
-          shortageQty: it.shortageQty,
-          shortageReason: it.shortageReason,
-          defectReason: it.defectNote,
-          condition: it.damagedQty > 0 ? 'DAMAGED' : it.shortageQty > 0 ? 'SHORTAGE' : 'GOOD'
-        }))
+        receivingItems: computedItems.map(it => {
+          const sAction = it.shortageAction || (it.shortageReason === 'SPLIT_SHIPMENT' ? 'WAIT_NEXT_ROUND' : 'CLAIM_SHORTAGE');
+          const isWait = sAction === 'WAIT_NEXT_ROUND';
+          return {
+            productId: it.productId,
+            code: it.code,
+            name: it.name,
+            receivedThisTime: it.acceptedQty,
+            goodQty: it.acceptedQty,
+            damagedQty: it.damagedQty,
+            shortageQty: it.shortageQty,
+            shortageAction: sAction,
+            shortageReason: isWait ? 'SPLIT_SHIPMENT' : 'VENDOR_SHORTAGE',
+            disputeAction: isWait ? 'WAIT_NEXT_ROUND' : ((it.damagedQty > 0 || (it.shortageQty > 0 && sAction === 'CLAIM_SHORTAGE')) ? 'CLAIM' : 'NONE'),
+            defectReason: it.defectNote,
+            condition: it.damagedQty > 0 ? 'DAMAGED' : it.shortageQty > 0 ? 'SHORTAGE' : 'GOOD'
+          };
+        })
       };
 
       // 4. Call recordGoodsReceipt from Procurement Context
@@ -419,9 +558,9 @@ export default function ReceivingModal({
           ? await appContext.recordGoodsReceipt(targetPO.id, grnPayload)
           : await recordGoodsReceiptFn(targetPO.id, grnPayload);
 
-      // 5. Call receiveToStock from Inventory Context (STRICTLY complete good items only)
+      // 5. Call receiveToStock from Inventory Context or warehouseService (STRICTLY complete good items only)
       const stockItemsToReceive = computedItems
-        .filter(it => it.acceptedQty > 0)
+        .filter(it => it.acceptedQty > 0 && !it.isRowLocked)
         .map(it => ({
           productId: it.productId,
           code: it.code,
@@ -433,25 +572,108 @@ export default function ReceivingModal({
           purchaseUnit: it.purchaseUnit || it.pUnit,
           stockUnit: it.stockUnit || it.sUnit,
           docNo: targetPO.poNo || targetPO.id,
-          grNumber: grnNumber
+          poNo: targetPO.poNo || targetPO.id,
+          poNumber: targetPO.poNo || targetPO.id,
+          unitPrice: Number(it.actUnitPrice ?? it.actualPrice ?? it.price) || 0,
+          actualPrice: Number(it.actUnitPrice ?? it.actualPrice ?? it.price) || 0,
+          grNumber: grnNumber,
+          grnNumber
         }));
 
-      if (stockItemsToReceive.length > 0 && inventory?.receiveToStock) {
-        await inventory.receiveToStock(stockItemsToReceive, {
+      if (stockItemsToReceive.length > 0) {
+        const receiveOptions = {
           docNo: targetPO.poNo || targetPO.id,
+          poNo: targetPO.poNo || targetPO.id,
+          poNumber: targetPO.poNo || targetPO.id,
           grNumber: grnNumber,
+          grnNumber,
           user: currentUser,
           note: `รับเข้าคลังรอบ ${nextRound} (GRN: ${grnNumber}) เฉพาะยอดสมบูรณ์`
-        });
+        };
+
+        if (inventory?.receiveToStock) {
+          await inventory.receiveToStock(stockItemsToReceive, receiveOptions);
+        } else if (appContext?.receiveToStock) {
+          await appContext.receiveToStock(stockItemsToReceive, receiveOptions);
+        } else {
+          await warehouseService.submitGRN(targetPO.id, {
+            grnNumber,
+            round: nextRound,
+            receivedDate: timestamp,
+            receivedBy: currentUser,
+            receivingItems: stockItemsToReceive,
+            note: grnNote.trim()
+          }, { user: currentUser });
+        }
       }
 
-      // 6. Directive 1: Ensure receiver metadata (receivingInfo) is attached to PO Object on complete receiving
-      let finalCompletedPO = grResult?.po || targetPO;
-      const isCompleteReceipt = summary.isFullyAccepted || statusOverride === 'CLOSED' || statusOverride === 'COMPLETED' || finalCompletedPO.status === 'COMPLETED';
+      // 6. Calculate updatedPoItems reflecting this inspection round with dynamic remaining quantity & refund settlement
+      const updatedPoItems = (targetPO.items || []).map((poItem, poIdx) => {
+        const inspected = computedItems.find(row => 
+          (row.id && (row.id === poItem.id || row.productId === poItem.id)) || 
+          (row.productId && (row.productId === poItem.productId || row.productId === poItem.id)) ||
+          (row.code && String(row.code).trim().toUpperCase() === String(poItem.code || poItem.sku).trim().toUpperCase()) ||
+          (row.key !== undefined && (row.key === poItem.productId || row.key === poIdx))
+        );
+        
+        if (!inspected) return poItem;
+
+        const ordered = Number(poItem.orderedQty ?? poItem.actualQty ?? poItem.quantity ?? poItem.purchaseQty ?? poItem.qty ?? 0);
+        const prevReceived = Number(poItem.accumulatedReceived ?? poItem.receivedQty ?? 0);
+        const prevDamaged = Number(poItem.damagedQty ?? 0);
+        
+        const refundInfo = resolveRefundedQtyAndAmount(poItem, targetPO);
+        const refunded = Number(inspected.refunded ?? refundInfo.refundedQty ?? poItem.refundedQty ?? 0);
+        const refundAmount = Number(inspected.refundAmount ?? refundInfo.refundAmount ?? poItem.refundAmount ?? 0);
+        const isItemRefunded = refunded > 0 || poItem.claimResolution === 'REFUND' || refundInfo.isRefunded;
+
+        const allowedReceiveQty = Math.max(0, ordered - prevReceived - refunded);
+
+        const receivedThisRound = allowedReceiveQty === 0 ? 0 : Math.max(0, Math.min(Number(inspected.acceptedQty || 0), allowedReceiveQty));
+        const damagedThisRound = allowedReceiveQty === 0 ? 0 : Math.max(0, Math.min(Number(inspected.damagedQty || 0), allowedReceiveQty - receivedThisRound));
+
+        const totalReceived = prevReceived + receivedThisRound;
+        const totalDamaged = prevDamaged + damagedThisRound;
+        const shortage = Math.max(0, ordered - totalReceived - refunded - totalDamaged);
+
+        const sAction = inspected.shortageAction || (inspected.shortageReason === 'SPLIT_SHIPMENT' ? 'WAIT_NEXT_ROUND' : (shortage > 0 ? 'CLAIM_SHORTAGE' : ''));
+        const isWait = sAction === 'WAIT_NEXT_ROUND';
+        const hasItemDispute = (damagedThisRound > 0) || (shortage > 0 && sAction === 'CLAIM_SHORTAGE');
+        const disputeAction = isWait ? 'WAIT_NEXT_ROUND' : (hasItemDispute ? 'CLAIM' : 'NONE');
+
+        return {
+          ...poItem,
+          orderedQty: ordered,
+          receivedQty: totalReceived,
+          goodQty: totalReceived,
+          acceptedQty: totalReceived,
+          accumulatedReceived: totalReceived,
+          damagedQty: totalDamaged,
+          shortageQty: shortage,
+          refundedQty: refunded,
+          refundAmount: refundAmount || poItem.refundAmount,
+          isSettled: isItemRefunded ? true : poItem.isSettled,
+          claimResolution: isItemRefunded ? 'REFUND' : poItem.claimResolution,
+          replacementPendingQty: poItem.replacementPendingQty,
+          shortageAction: sAction,
+          shortageReason: isWait ? 'SPLIT_SHIPMENT' : (sAction === 'CLAIM_SHORTAGE' ? 'VENDOR_SHORTAGE' : (poItem.shortageReason || '')),
+          isDamaged: totalDamaged > 0,
+          defectReason: inspected.defectNote || poItem.defectReason || '',
+          disputeAction: disputeAction,
+          hasDispute: hasItemDispute
+        };
+      });
+
+      let finalTargetPO = {
+        ...(grResult?.po || targetPO),
+        items: updatedPoItems
+      };
+
+      const isCompleteReceipt = summary.isFullyAccepted || statusOverride === 'CLOSED' || statusOverride === 'COMPLETED' || finalTargetPO.status === 'COMPLETED';
 
       if (isCompleteReceipt) {
-        finalCompletedPO = {
-          ...finalCompletedPO,
+        finalTargetPO = {
+          ...finalTargetPO,
           status: 'COMPLETED',
           receivingInfo: receivingMetadata,
           receivedBy: receivingMetadata.receiverName,
@@ -459,22 +681,9 @@ export default function ReceivingModal({
           receiverSignature: receivingMetadata.receiverSignature,
           receivedAt: receivingMetadata.receivedAt
         };
-
-        if (procurement?.updatePO) {
-          procurement.updatePO(targetPO.id, finalCompletedPO);
-        } else if (appContext?.updatePO) {
-          appContext.updatePO(targetPO.id, finalCompletedPO);
-        }
-
-        const allPos = storageService.getPOs() || [];
-        const pIdx = allPos.findIndex(p => p.id === targetPO.id || p.poNo === targetPO.id);
-        if (pIdx !== -1) {
-          allPos[pIdx] = { ...allPos[pIdx], ...finalCompletedPO };
-          storageService.savePOs(allPos);
-        }
       }
 
-      // 5. If Dispute exists, register claim onto PO so it appears in Online Hub Claim Tab
+      // 7. If Dispute exists, register claim onto PO so it appears in Online Hub Claim Tab
       if (disputeItems.length > 0) {
         const claimDesc = disputeItems.map(d => `${d.name}: ${d.description}`).join('; ');
         const claimData = {
@@ -487,8 +696,8 @@ export default function ReceivingModal({
           items: disputeItems
         };
 
-        const updatedWithClaim = {
-          ...(grResult?.po || targetPO),
+        finalTargetPO = {
+          ...finalTargetPO,
           status: 'PARTIALLY_RECEIVED_IN_CLAIM',
           claimStatus: 'PENDING_CLAIM',
           claimReason: disputeItems[0].reasonLabel,
@@ -497,17 +706,37 @@ export default function ReceivingModal({
           claimDetails: claimData
         };
 
-        if (procurement?.updatePO) {
-          procurement.updatePO(targetPO.id, updatedWithClaim);
-        } else if (appContext?.updatePO) {
-          appContext.updatePO(targetPO.id, updatedWithClaim);
-        }
-
         try {
           await apiService.fileClaim(targetPO.id, claimData, currentUser);
         } catch {
           // Backend offline fallback
         }
+      } else if (summary.hasSplitShipment && !isCompleteReceipt) {
+        finalTargetPO = {
+          ...finalTargetPO,
+          status: 'WAITING_DELIVERY_ROUND_2'
+        };
+      }
+
+      // 8. Atomic Persistence to StorageService, Contexts & API
+      const allPos = storageService.getPOs() || [];
+      const pIdx = allPos.findIndex(p => p.id === targetPO.id || p.poNo === targetPO.id || p.poNumber === targetPO.id);
+      if (pIdx !== -1) {
+        allPos[pIdx] = { ...allPos[pIdx], ...finalTargetPO };
+        storageService.savePOs(allPos);
+      }
+
+      if (procurement?.updatePO) {
+        procurement.updatePO(targetPO.id, finalTargetPO);
+      }
+      if (appContext?.updatePO) {
+        appContext.updatePO(targetPO.id, finalTargetPO);
+      }
+
+      try {
+        await apiService.updatePO(targetPO.id, finalTargetPO);
+      } catch {
+        // Backend offline fallback
       }
 
       // Refresh app data
@@ -522,7 +751,7 @@ export default function ReceivingModal({
           : `บันทึกรับสินค้าเข้าคลังเรียบร้อย (เลขที่ GRN: ${grnNumber})`
       );
 
-      if (onSuccess) onSuccess({ po: finalCompletedPO, grn: grResult?.grn });
+      if (onSuccess) onSuccess({ po: finalTargetPO, grn: grResult?.grn });
       if (onClose) onClose();
 
     } catch (err) {
@@ -616,7 +845,14 @@ export default function ReceivingModal({
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {computedItems.map((item, idx) => (
-                    <tr key={item.key} className="hover:bg-slate-50/80 transition-colors">
+                    <tr 
+                      key={item.key} 
+                      className={`transition-colors border-b border-slate-100 ${
+                        item.isRowLocked && item.refunded > 0 
+                          ? 'opacity-80 bg-slate-50/50' 
+                          : (item.isRowLocked ? 'bg-slate-50/40' : 'hover:bg-slate-50/80')
+                      }`}
+                    >
                       {/* 1. สินค้า */}
                       <td className="py-3.5 px-4 align-top">
                         <div className="space-y-1">
@@ -674,11 +910,27 @@ export default function ReceivingModal({
                           type="number"
                           min="0"
                           max={item.remainingReceivable}
-                          value={item.rawAcceptedInput}
+                          value={item.isRowLocked ? 0 : item.rawAcceptedInput}
+                          disabled={item.isRowLocked}
                           onChange={(e) => handleAcceptedQtyChange(item.key, e.target.value)}
-                          className="w-16 h-8 text-sm font-mono font-bold text-slate-900 text-center bg-white border border-emerald-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400/30 rounded-lg outline-none shadow-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all"
-                          title="จำนวนสินค้าสมบูรณ์ที่รับรอบนี้"
+                          className={`w-16 h-8 text-sm font-mono font-bold text-center rounded-lg outline-none shadow-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all ${
+                            item.isRowLocked
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 select-none'
+                              : 'bg-white border border-emerald-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400/30 text-slate-900'
+                          }`}
+                          title={item.isRowLocked ? 'ปิดรับแล้ว' : 'จำนวนสินค้าสมบูรณ์ที่รับรอบนี้'}
                         />
+                        {item.remainingToReceive > 0 && (
+                          <div className="mt-1 whitespace-nowrap">
+                            {item.isReplacement ? (
+                              <span className="text-xs text-amber-600 font-medium">📦 รอรับของทดแทน {item.remainingToReceive} {item.pUnit}</span>
+                            ) : item.isSplitShipment ? (
+                              <span className="text-xs text-amber-600 font-medium">⏳ รอรับรอบถัดไป {item.remainingToReceive} {item.pUnit}</span>
+                            ) : (
+                              <span className="text-xs text-amber-600 font-medium">⏳ รอรับรอบถัดไป {item.remainingToReceive} {item.pUnit}</span>
+                            )}
+                          </div>
+                        )}
                       </td>
 
                       {/* 5. ชำรุด/NG */}
@@ -687,31 +939,45 @@ export default function ReceivingModal({
                           type="number"
                           min="0"
                           max={item.remainingReceivable}
-                          value={item.rawDamagedInput}
+                          value={item.isRowLocked ? 0 : item.rawDamagedInput}
+                          disabled={item.isRowLocked}
                           onChange={(e) => handleDamagedQtyChange(item.key, e.target.value)}
-                          className={`w-16 h-8 text-sm font-mono font-bold text-center bg-white rounded-lg outline-none shadow-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all ${
-                            item.hasDamage
-                              ? 'border-2 border-rose-400 text-rose-700 ring-2 ring-rose-200'
-                              : 'border border-slate-300 text-slate-700 focus:border-slate-400'
+                          className={`w-16 h-8 text-sm font-mono font-bold text-center rounded-lg outline-none shadow-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all ${
+                            item.isRowLocked
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 select-none'
+                              : item.hasDamage
+                                ? 'border-2 border-rose-400 text-rose-700 ring-2 ring-rose-200 bg-white'
+                                : 'border border-slate-300 text-slate-700 focus:border-slate-400 bg-white'
                           }`}
-                          title="จำนวนสินค้าชำรุดเสียหาย"
+                          title={item.isRowLocked ? 'ปิดรับแล้ว' : 'จำนวนสินค้าชำรุดเสียหาย'}
                         />
                       </td>
 
                       {/* 6. สถานะ / การจัดการ */}
                       <td className="py-3.5 px-4 align-middle">
-                        {item.hasShortage ? (
+                        {item.isRowLocked ? (
+                          item.refunded > 0 ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
+                              💰 ได้รับเงินคืนแล้ว ฿{item.refundAmountFormatted} (ปิดรับ)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+                              <Check className="w-4 h-4 text-emerald-600 shrink-0 mr-1" />
+                              ✓ ตรวจรับครบแล้วในรอบก่อน
+                            </span>
+                          )
+                        ) : item.hasShortage ? (
                           <div className="space-y-1.5">
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold font-mono bg-amber-100 text-amber-900 border border-amber-300">
                               ขาด {item.shortageQty} {item.pUnit}
                             </span>
                             <select
-                              value={item.shortageReason}
-                              onChange={(e) => handleShortageReasonChange(item.key, e.target.value)}
+                              value={item.shortageAction || (item.shortageReason === 'SPLIT_SHIPMENT' ? 'WAIT_NEXT_ROUND' : 'CLAIM_SHORTAGE')}
+                              onChange={(e) => handleShortageActionChange(item.key, e.target.value)}
                               className="w-full h-8 px-2 text-xs font-medium rounded-lg border border-slate-300 bg-white text-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-400/20 focus:outline-none cursor-pointer shadow-xs"
                             >
-                              <option value="SPLIT_SHIPMENT">📦 รอส่งรอบถัดไป</option>
-                              <option value="VENDOR_SHORTAGE">🚨 ร้านส่งไม่ครบ / แจ้งเคลม</option>
+                              <option value="CLAIM_SHORTAGE">🚨 ของขาด - ส่งเรื่องจัดซื้อเคลม/ขอเงินคืน</option>
+                              <option value="WAIT_NEXT_ROUND">📦 ร้านแจ้งแยกส่ง - รอส่งมอบรอบถัดไป</option>
                             </select>
                           </div>
                         ) : item.hasDamage ? (

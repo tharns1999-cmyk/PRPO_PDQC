@@ -489,7 +489,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     currentRole?.roleId === 'ADMIN' ||
     (Number(currentRole?.level) === 1 && (currentRole?.department === 'ALL' || currentRole?.department === selectedPO.department))
   );
-  const isReceivable = ['ISSUED', 'ORDERED_PENDING_DELIVERY', 'PARTIAL', 'IN_DELIVERY'].includes(selectedPO.status);
+  const isReceivable = ['ISSUED', 'ORDERED', 'ORDERED_PENDING_DELIVERY', 'PARTIAL', 'IN_DELIVERY'].includes(selectedPO.status);
 
   // ─── Claim Permission Guard ───
   // Whether the current user can file a claim (report problem) on this PO

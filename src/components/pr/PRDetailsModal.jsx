@@ -16,6 +16,7 @@ import {
 import MEMODetailsSection from './MEMODetailsSection';
 import POSplitModal from '../po/POSplitModal';
 import AttachmentViewerModal from '../common/AttachmentViewerModal';
+import ImageLightboxModal from '../common/ImageLightboxModal';
 import RejectPRModal from './RejectPRModal';
 import CollapsibleActivityTimeline from '../common/CollapsibleActivityTimeline';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
@@ -48,6 +49,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [viewingAttachment, setViewingAttachment] = useState(null);
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState(null);
 
   // Reject / Revision Modal State (Decoupled from footer)
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -239,7 +241,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   const statusInfo = PR_STATUS[selectedPR.status] || { label: selectedPR.status, color: 'bg-slate-100 text-slate-700 border-slate-200' };
   const isOverBudget = apiService.isOverBudget(selectedPR.department, calculatedTotal);
 
-  return createPortal(
+  const modalContent = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden">
       <div className="w-full max-w-5xl xl:max-w-6xl max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in">
         
@@ -445,6 +447,8 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                         const rate = Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1;
                         const sQty = item.stockQty ?? (pQty * rate);
                         const storeUrl = item.productUrl || item.onlineUrl || getProductUrl(item);
+                        const rawPhotos = item.images || item.attachments || item.image || [];
+                        const photos = Array.isArray(rawPhotos) ? rawPhotos : (rawPhotos ? [rawPhotos] : []);
 
                         return (
                           <tr key={idx} className={`hover:bg-slate-50/70 transition-colors ${isEditingItems ? 'bg-amber-50/20 hover:bg-amber-50/50' : ''}`}>
@@ -486,6 +490,48 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                                     </a>
                                   )}
                                 </div>
+
+                                {/* Visual Media Strip (รูปสเปกจริงที่ผู้ขอแนบมา) */}
+                                {photos.length > 0 && (
+                                  <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                                    <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 mr-1">
+                                      <span>📷 รูปสเปกจริง ({photos.length}):</span>
+                                    </div>
+
+                                    {/* แกลเลอรีรูปภาพขนาดย่อม 40x40px */}
+                                    <div className="flex items-center gap-1.5">
+                                      {photos.map((img, imgIdx) => {
+                                        const src = typeof img === 'string' ? img : (img.url || img.previewUrl || img.dataUrl);
+                                        if (!src) return null;
+                                        return (
+                                          <div
+                                            key={imgIdx}
+                                            onClick={() => setSelectedPreviewImage({
+                                              url: src,
+                                              images: photos.map((p, pIdx) => ({
+                                                url: typeof p === 'string' ? p : (p.url || p.previewUrl || p.dataUrl || ''),
+                                                name: (typeof p === 'object' && p.name) ? p.name : `${item.name} (${pIdx + 1})`
+                                              })),
+                                              initialIndex: imgIdx,
+                                              title: item.name
+                                            })}
+                                            className="relative group w-10 h-10 rounded-lg overflow-hidden border border-slate-200 bg-slate-50 hover:border-indigo-400 cursor-pointer shadow-2xs transition-all hover:scale-105 shrink-0"
+                                            title="คลิกเพื่อดูรูปขนาดใหญ่"
+                                          >
+                                            <img
+                                              src={src}
+                                              alt={`Item attachment ${imgIdx + 1}`}
+                                              className="w-full h-full object-cover"
+                                            />
+                                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px]">
+                                              🔍
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
 
                                 {/* Conversion Spec Meta (italic gray text) */}
                                 {rate > 1 && (
@@ -934,7 +980,25 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
           onClose={() => setViewingAttachment(null)}
         />
       )}
-    </div>,
-    document.body
+
+      {/* ImageLightboxModal for inspecting product spec images */}
+      {selectedPreviewImage && (
+        <ImageLightboxModal
+          isOpen={Boolean(selectedPreviewImage)}
+          images={
+            typeof selectedPreviewImage === 'string'
+              ? [{ url: selectedPreviewImage, name: 'รูปสเปกสินค้า' }]
+              : (selectedPreviewImage.images || (selectedPreviewImage.url ? [selectedPreviewImage] : []))
+          }
+          initialIndex={typeof selectedPreviewImage === 'object' ? (selectedPreviewImage.initialIndex || 0) : 0}
+          title={typeof selectedPreviewImage === 'object' ? (selectedPreviewImage.title || 'รูปสเปกสินค้า') : 'รูปสเปกสินค้า'}
+          onClose={() => setSelectedPreviewImage(null)}
+        />
+      )}
+    </div>
   );
+
+  return typeof document !== 'undefined' && document.body
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 }

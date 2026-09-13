@@ -118,11 +118,31 @@ export default function StockCardView({
         }
 
         const q = searchQuery.trim().toLowerCase();
+        let matchesDoc = false;
+        if (q && Array.isArray(stockLogs)) {
+          let qPoStem = q;
+          if (q.startsWith('grn-')) {
+            const match = q.match(/grn-(po-[a-z0-9-]+?)(?:-\d{2})?$/i);
+            if (match) qPoStem = match[1].toLowerCase();
+          }
+          matchesDoc = stockLogs.some(l => {
+            const pId = String(l.productId || '').trim().toLowerCase();
+            const pCode = String(l.productCode || '').trim().toLowerCase();
+            const thisPId = String(p.id || '').trim().toLowerCase();
+            const thisPCode = String(p.code || '').trim().toLowerCase();
+            if (pId !== thisPId && pCode !== thisPCode) return false;
+
+            const docNo = String(l.documentNo || l.docNo || l.grnNo || l.grNumber || '').toLowerCase();
+            const poNo = String(l.poNo || l.poNumber || l.refPo || '').toLowerCase();
+            return docNo.includes(q) || poNo.includes(q) || docNo.includes(qPoStem) || poNo.includes(qPoStem);
+          });
+        }
         const matchesSearch = !q || 
           (p.name && p.name.toLowerCase().includes(q)) || 
           (p.code && p.code.toLowerCase().includes(q)) ||
           (p.locationName && p.locationName.toLowerCase().includes(q)) ||
-          (p.remark && p.remark.toLowerCase().includes(q));
+          (p.remark && p.remark.toLowerCase().includes(q)) ||
+          matchesDoc;
         return matchesCat && matchesLocation && matchesSearch;
       })
       .sort((a, b) => {
@@ -766,7 +786,7 @@ export default function StockCardView({
       {selectedProduct && (
         <StockMovementTable
           product={selectedProduct}
-          stockLogs={stockLogs.filter(l => l.productId === selectedProduct.id || l.productCode === selectedProduct.code)}
+          stockLogs={stockLogs}
           pos={pos}
           onClose={() => setSelectedProduct(null)}
         />

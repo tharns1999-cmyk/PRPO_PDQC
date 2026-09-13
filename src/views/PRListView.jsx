@@ -481,153 +481,151 @@ export default function PRListView({
       </div>
 
       {/* ── 4. Comfortable PR Table Card ── */}
-      <div className="w-full overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-xs">
-        <table className="w-full min-w-[880px] table-fixed divide-y divide-slate-100 text-left">
-          <colgroup>
-            <col className="w-[14%]" />
-            <col className="w-[18%]" />
-            <col className="w-[28%]" />
-            <col className="w-[11%]" />
-            <col className="w-[13%]" />
-            <col className="w-[10%]" />
-            <col className="w-[6%] min-w-[70px]" />
-          </colgroup>
-          <thead>
-            <tr className="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">
-              <th className="w-[14%] px-4 py-3">เลขที่เอกสาร</th>
-              <th className="w-[18%] px-4 py-3">ผู้ขอ / หน่วยงาน</th>
-              <th className="w-[28%] px-4 py-3">รายการสินค้า</th>
-              <th className="w-[11%] px-2 py-3 text-center">ช่องทาง</th>
-              <th className="w-[13%] px-3 py-3 text-right">ยอดรวมสุทธิ</th>
-              <th className="w-[10%] px-2 py-3 text-center">สถานะ</th>
-              <th className="w-[6%] min-w-[70px] px-3 py-3 text-center">จัดการ</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-sm">
-            {filteredPRs.length === 0 ? (
-              <tr>
-                <td colSpan="7" className="p-0">
-                  <EmptyState 
-                    title="ไม่พบข้อมูลใบ PR" 
-                    description="ลองเปลี่ยนตัวกรอง ค้นหาด้วยคำอื่น หรือกดล้างการค้นหา"
-                  />
-                </td>
+      <div className="w-full bg-white rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between min-h-[480px] overflow-hidden">
+        {/* 1. ส่วนเนื้อหาตาราง (ขยายเต็มพื้นที่ด้านบน) */}
+        <div className="flex-1 overflow-x-auto">
+          <table className="w-full min-w-[880px] text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">
+                <th className="w-36 px-4 py-3">เลขที่เอกสาร</th>
+                <th className="w-44 px-4 py-3">ผู้ขอ / หน่วยงาน</th>
+                <th className="min-w-[220px] px-4 py-3">รายการสินค้า</th>
+                <th className="w-28 px-2 py-3 text-center">ช่องทาง</th>
+                <th className="w-36 px-3 py-3 text-right">ยอดรวมสุทธิ</th>
+                <th className="w-32 px-2 py-3 text-center">สถานะ</th>
+                <th className="w-32 min-w-[120px] px-4 py-3.5 text-center">จัดการ</th>
               </tr>
-            ) : (
-              paginatedPRs.map(pr => {
-                const canAction = workflowEngine.canAction(currentRole, pr);
-                const statusConf = getShortPRStatus(pr.status);
-                const itemsList = pr.items || [];
-                const isEditable = (pr.status === 'DRAFT' || pr.status === 'REJECTED_TO_DRAFT') && 
-                  (currentRole?.id === 'ADMIN' || currentRole?.canCreatePR || workflowEngine.canAction(currentRole, pr));
-                const firstItemName = itemsList[0]?.name || itemsList[0]?.itemName || '-';
-                
-                return (
-                  <tr key={pr.id} className="group hover:bg-slate-50/80 transition-colors">
-                    {/* เลขที่เอกสาร (w-[14%]) */}
-                    <td className="w-[14%] px-4 py-3.5 align-middle overflow-hidden">
-                      <div className="flex flex-col items-start gap-0.5">
-                        <span className="text-sm font-bold font-mono text-slate-900 tracking-tight">{pr.prNo}</span>
-                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                          <span className="text-xs text-slate-400 font-mono">{pr.requestedDate}</span>
-                          {pr.memo && (
-                            <span className="inline-flex items-center gap-0.5 bg-amber-50 text-amber-700 border border-amber-200/80 text-[10px] font-bold px-1.5 py-0.2 rounded-full whitespace-nowrap" title="มี MEMO แนบ">
-                              <Tag size={10} /> MEMO
-                            </span>
-                          )}
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-sm">
+              {filteredPRs.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="p-0">
+                    <EmptyState 
+                      title="ไม่พบข้อมูลใบ PR" 
+                      description="ลองเปลี่ยนตัวกรอง ค้นหาด้วยคำอื่น หรือกดล้างการค้นหา"
+                    />
+                  </td>
+                </tr>
+              ) : (
+                paginatedPRs.map(pr => {
+                  const canAction = workflowEngine.canAction(currentRole, pr);
+                  const statusConf = getShortPRStatus(pr.status);
+                  const itemsList = pr.items || [];
+                  const isEditable = (pr.status === 'DRAFT' || pr.status === 'REJECTED_TO_DRAFT') && 
+                    (currentRole?.id === 'ADMIN' || currentRole?.canCreatePR || workflowEngine.canAction(currentRole, pr));
+                  const firstItemName = itemsList[0]?.name || itemsList[0]?.itemName || '-';
+                  
+                  return (
+                    <tr key={pr.id} className="group hover:bg-slate-50/70 transition-colors">
+                      {/* เลขที่เอกสาร: w-36 font-mono font-bold text-slate-900 */}
+                      <td className="w-36 px-4 py-3.5 align-middle">
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span className="text-sm font-bold font-mono text-slate-900 tracking-tight">{pr.prNo}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className="text-xs text-slate-400 font-mono">{pr.requestedDate}</span>
+                            {pr.memo && (
+                              <span className="inline-flex items-center gap-0.5 bg-amber-50 text-amber-700 border border-amber-200/80 text-[10px] font-bold px-1.5 py-0.2 rounded-full whitespace-nowrap" title="มี MEMO แนบ">
+                                <Tag size={10} /> MEMO
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* ผู้ขอ / หน่วยงาน (w-[18%]) */}
-                    <td className="w-[18%] px-4 py-3.5 align-middle overflow-hidden min-w-0">
-                      <div className="text-sm font-semibold text-slate-800 truncate" title={pr.requestedBy}>
-                        {pr.requestedBy}
-                      </div>
-                      <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5 truncate">
-                        <Building2 size={12} className="text-slate-400 shrink-0" />
-                        <span className="truncate">ฝ่าย {pr.department}</span>
-                      </div>
-                    </td>
-
-                    {/* รายการสินค้า (w-[28%]) */}
-                    <td className="w-[28%] px-4 py-3.5 align-middle overflow-hidden min-w-0">
-                      <div className="min-w-0 max-w-full">
-                        <div className="text-sm text-slate-700 font-medium truncate block max-w-full" title={itemsList.map(i => i?.name || '').filter(Boolean).join(', ')}>
-                          {firstItemName}
+                      {/* ผู้ขอ / หน่วยงาน: w-44 */}
+                      <td className="w-44 px-4 py-3.5 align-middle">
+                        <div className="text-sm font-semibold text-slate-800 truncate" title={pr.requestedBy}>
+                          {pr.requestedBy}
                         </div>
-                        <div className="text-xs text-slate-400 font-mono mt-0.5">
-                          ({itemsList.length} รายการ)
+                        <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5 truncate">
+                          <Building2 size={12} className="text-slate-400 shrink-0" />
+                          <span className="truncate">ฝ่าย {pr.department}</span>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* ช่องทาง (w-[11%]) */}
-                    <td className="w-[11%] px-2 py-3.5 text-center align-middle overflow-hidden whitespace-nowrap">
-                      {pr.purchaseChannel === 'ONLINE' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200/60 whitespace-nowrap">
-                          🛒 ออนไลน์
+                      {/* รายการสินค้า: flex-1 / min-w-[220px] */}
+                      <td className="min-w-[220px] px-4 py-3.5 align-middle">
+                        <div className="min-w-0 max-w-full">
+                          <div className="text-sm text-slate-700 font-medium truncate block max-w-full" title={itemsList.map(i => i?.name || '').filter(Boolean).join(', ')}>
+                            {firstItemName}
+                          </div>
+                          <div className="text-xs text-slate-400 font-mono mt-0.5">
+                            ({itemsList.length} รายการ)
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* ช่องทาง: w-28 text-center */}
+                      <td className="w-28 px-2 py-3.5 text-center align-middle whitespace-nowrap">
+                        {pr.purchaseChannel === 'ONLINE' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200/60 whitespace-nowrap">
+                            🛒 ออนไลน์
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200/60 whitespace-nowrap">
+                            🏢 ภายใน
+                          </span>
+                        )}
+                      </td>
+
+                      {/* ยอดรวมสุทธิ: w-36 text-right font-mono font-bold text-slate-900 */}
+                      <td className="w-36 px-3 py-3.5 text-right align-middle whitespace-nowrap font-mono font-bold text-slate-900 text-sm sm:text-base tabular-nums">
+                        ฿{(pr.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+
+                      {/* สถานะ: w-32 text-center */}
+                      <td className="w-32 px-2 py-3.5 text-center align-middle whitespace-nowrap">
+                        <span className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border shadow-2xs ${statusConf.color}`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80 shrink-0"></span>
+                          <span className="truncate">{statusConf.label}</span>
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200/60 whitespace-nowrap">
-                          🏢 ภายใน
-                        </span>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* ยอดรวมสุทธิ (w-[13%]) */}
-                    <td className="w-[13%] px-3 py-3.5 text-right align-middle overflow-hidden whitespace-nowrap font-mono font-bold text-slate-900 text-base tabular-nums">
-                      ฿{(pr.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
+                      {/* จัดการ: w-32 min-w-[120px] text-center px-4 py-3.5 */}
+                      <td className="w-32 min-w-[120px] px-4 py-3.5 text-center align-middle whitespace-nowrap">
+                        {isEditable && onEditPR ? (
+                          <button
+                            type="button"
+                            onClick={() => onEditPR(pr)}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 text-xs font-semibold shadow-2xs transition-all whitespace-nowrap cursor-pointer"
+                            title="แก้ไขใบ PR"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span>แก้ไข</span>
+                          </button>
+                        ) : (
+                          <button 
+                            type="button"
+                            onClick={() => setSelectedPR(pr)}
+                            className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-700 text-xs font-semibold shadow-2xs transition-all whitespace-nowrap cursor-pointer"
+                            title={canAction ? 'ดำเนินการอนุมัติ / ตรวจสอบ' : 'ดูรายละเอียดใบ PR'}
+                          >
+                            <Eye className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span>ดูข้อมูล</span>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                    {/* สถานะ (w-[10%]) */}
-                    <td className="w-[10%] px-2 py-3.5 text-center align-middle overflow-hidden whitespace-nowrap">
-                      <span className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border shadow-2xs ${statusConf.color}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80 shrink-0"></span>
-                        <span className="truncate">{statusConf.label}</span>
-                      </span>
-                    </td>
-
-                    {/* จัดการ (w-[6%] min-w-[70px]) */}
-                    <td className="w-[6%] min-w-[70px] px-3 py-3.5 text-center align-middle overflow-hidden whitespace-nowrap">
-                      {isEditable && onEditPR ? (
-                        <button
-                          type="button"
-                          onClick={() => onEditPR(pr)}
-                          className="inline-flex items-center justify-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition-colors whitespace-nowrap cursor-pointer"
-                          title="แก้ไขใบ PR"
-                        >
-                          <Pencil size={13} className="text-slate-500 shrink-0" />
-                          <span>แก้ไข</span>
-                        </button>
-                      ) : (
-                        <button 
-                          type="button"
-                          onClick={() => setSelectedPR(pr)}
-                          className="inline-flex items-center justify-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition-colors whitespace-nowrap cursor-pointer"
-                          title={canAction ? 'ดำเนินการอนุมัติ / ตรวจสอบ' : 'ดูรายละเอียดใบ PR'}
-                        >
-                          <Eye size={13} className="text-slate-500 shrink-0" />
-                          <span>ดูข้อมูล</span>
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-
-        {/* Pagination Controls */}
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalItems={filteredPRs.length}
-          pageSize={pageSize}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={setPageSize}
-        />
+        {/* 2. แถบ Pagination ตรึงไว้ด้านล่างสุดเสมอ */}
+        <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-3.5 flex items-center justify-between mt-auto">
+          <div className="w-full">
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredPRs.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
+          </div>
+        </div>
       </div>
 
       {/* PR DETAIL MODAL */}

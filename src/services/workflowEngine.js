@@ -2,8 +2,10 @@ import { storageService } from './storageService.js';
 import { PR_STATUS, PO_STATUS, DEPARTMENTS } from '../config/constants.js';
 import { notificationService } from './notificationService.js';
 import { auditService } from './auditService.js';
+import { budgetService } from './budgetService.js';
 import { hasDepartmentAccess } from '../utils/permissions.js';
 import { generateNextPRId, generateNextPOId } from '../utils/idGenerator.js';
+import { generateGRNNumber } from './warehouseService.js';
 
 // ─── Fallback Mock Attachment Assets (Phase 2) ───
 const GLOVE_PACKAGE_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="100%" height="100%"><rect width="400" height="400" fill="%23f8fafc"/><rect x="50" y="80" width="300" height="240" rx="16" fill="%230284c7" stroke="%230369a1" stroke-width="4"/><rect x="70" y="100" width="260" height="120" rx="10" fill="%2338bdf8" fill-opacity="0.3"/><path d="M120 160 Q150 130 180 160 T240 160 T280 150" fill="none" stroke="%23ffffff" stroke-width="5" stroke-linecap="round"/><circle cx="150" cy="150" r="12" fill="%23ffffff"/><circle cx="180" cy="140" r="14" fill="%23ffffff"/><circle cx="210" cy="145" r="13" fill="%23ffffff"/><circle cx="240" cy="160" r="11" fill="%23ffffff"/><rect x="80" y="235" width="240" height="65" rx="8" fill="%23075985"/><text x="200" y="260" font-family="sans-serif" font-size="16" font-weight="bold" fill="%23ffffff" text-anchor="middle">NITRILE EXAMINATION GLOVES</text><text x="200" y="285" font-family="sans-serif" font-size="13" fill="%23bae6fd" text-anchor="middle">กล่องบรรจุ 100 ชิ้น (Package)</text></svg>`;
@@ -87,10 +89,10 @@ export const workflowEngine = {
         return isOnlinePurchaser || isAdmin;
       }
 
-      // 2. PO Goods Receiving (ORDERED_PENDING_DELIVERY, ISSUED, PARTIAL, IN_DELIVERY):
+      // 2. PO Goods Receiving (ORDERED, ORDERED_PENDING_DELIVERY, ISSUED, PARTIAL, IN_DELIVERY):
       // ─── PRIMARY RULE: ONLY Requester / Supervisor (Level 1) of that department can receive goods!
       // Asst. Mgr (Level 2) and Plant Mgr (Level 3) and Online Purchaser CANNOT receive goods.
-      if (['ORDERED_PENDING_DELIVERY', 'ISSUED', 'PARTIAL', 'IN_DELIVERY'].includes(po.status)) {
+      if (['ORDERED', 'ORDERED_PENDING_DELIVERY', 'ISSUED', 'PARTIAL', 'IN_DELIVERY'].includes(po.status)) {
         if (isAdmin) return true;
         if (isOnlinePurchaser) return false;
         
@@ -193,7 +195,7 @@ export const workflowEngine = {
       plantMgr: [],
       asstMgr: ['REVIEWED'],
       requester: ['SUBMITTED', 'REJECTED_TO_L2', 'REVIEWED', 'waiting_review', 'pending_review', 'รอตรวจทาน', 'รอตรวจสอบ'],
-      onlinePurchaser: ['ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'],
+      onlinePurchaser: ['ORDERED', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'],
     };
 
     let prActionCount = 0;
@@ -309,7 +311,7 @@ export const workflowEngine = {
 
       const poSubtitle = (() => {
         if (po.status === 'ISSUED') return '📦 รอดำเนินการ: ตรวจรับสินค้าเข้าคลัง';
-        if (po.status === 'ORDERED_PENDING_DELIVERY') return '🚚 สินค้ากำลังจัดส่ง: รอตรวจรับของ';
+        if (po.status === 'ORDERED' || po.status === 'ORDERED_PENDING_DELIVERY') return '🚚 สินค้ากำลังจัดส่ง: รอตรวจรับของ';
         if (po.status === 'PARTIAL') return '⚠️ รับของบางส่วนแล้ว: ยังมียอดค้างส่ง';
         if (po.status === 'IN_PROGRESS_ONLINE') return '🛒 รอจัดซื้อออนไลน์ดำเนินการ';
         if (po.status === 'CLAIM_REPORTED') return '🚨 แจ้งปัญหาแล้ว: รอดำเนินการแก้ไข';
@@ -497,6 +499,11 @@ export const workflowEngine = {
     return pr;
   },
 
+  // Online Purchaser Confirms Order (Directive 3 alias to acknowledgeOnlineTask)
+  async confirmOnlineOrder(poId, vendorName, user, updatedItems = null, varianceNote = '') {
+    return this.acknowledgeOnlineTask(poId, vendorName, user, updatedItems, varianceNote);
+  },
+
   // Online Purchaser Acknowledges Task & marks as ordered
   async acknowledgeOnlineTask(poId, vendorName, user, updatedItems = null, varianceNote = '') {
     if (!vendorName || !vendorName.trim()) {
@@ -507,7 +514,8 @@ export const workflowEngine = {
     const po = pos.find(p => p.id === poId);
     if (!po) throw new Error('ไม่พบเอกสาร PO ในระบบ');
 
-    po.status = 'ORDERED_PENDING_DELIVERY';
+    po.status = 'ORDERED';
+    po.subStatus = 'ORDERED_PENDING_DELIVERY';
     po.vendorName = vendorName.trim();
     po.vendor = vendorName.trim();
     po.shopName = vendorName.trim();
@@ -577,11 +585,15 @@ export const workflowEngine = {
         po.vendorName = stores[0];
         po.vendor = stores[0];
         po.shopName = stores[0];
-      } else {
+      } else if (stores.length > 1 || platforms.length > 1) {
         const multiVendorStr = 'ผู้จำหน่าย: ตลาดออนไลน์ Shopee / Lazada (สั่งซื้อออนไลน์หลายร้านค้า)';
         po.vendorName = multiVendorStr;
         po.vendor = multiVendorStr;
         po.shopName = multiVendorStr;
+      } else {
+        po.vendorName = vendorName.trim();
+        po.vendor = vendorName.trim();
+        po.shopName = vendorName.trim();
       }
 
       // Recalculate PO total accurately: sum of (actualQty * actualPrice)
@@ -1786,7 +1798,7 @@ export const workflowEngine = {
       let vName = vendor?.name || (pr.purchaseChannel === 'SELF' ? (pr.vendorName || vendor?.name || 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)') : 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)');
       if (pr.purchaseChannel === 'ONLINE') {
         vId = null;
-        const onlineStores = Array.from(new Set((items || []).map(i => (i.storeName || i.actualStoreName || '').trim()).filter(Boolean)));
+        const onlineStores = Array.from(new Set((items || []).map(i => (i.actualStoreName || i.storeName || '').trim()).filter(s => s && !s.includes('ระบุร้านภายหลัง'))));
         if (onlineStores.length === 1) {
           vName = onlineStores[0];
         } else if (onlineStores.length > 1) {
@@ -1979,7 +1991,8 @@ export const workflowEngine = {
       throw new Error(`ไม่สามารถตรวจรับได้เนื่องจาก PO ${po.poNo || po.id} อยู่ในสถานะ "${po.status}" เรียบร้อยแล้ว`);
     }
 
-    const grNumber = options?.grNumber || options?.grId || `GR-${po.poNo || po.id}-${Date.now()}`;
+    const roundNumber = options?.round || options?.roundNumber || (po.grnHistory?.length || 0) + 1;
+    const grNumber = options?.grNumber || options?.grId || generateGRNNumber(po.poNo || po.id, roundNumber);
 
     // Idempotency check on grNumber
     const existingLogForGr = stockLogs.find(l => l.grNumber && l.grNumber === grNumber);
@@ -2042,18 +2055,37 @@ export const workflowEngine = {
       const defectNote = (probInfo?.description || probInfo?.defectReason || '').trim();
 
       const rate = Number(poItem.conversionRate) > 0 ? Number(poItem.conversionRate) : 1;
-      const prodIndex = products.findIndex(p => p.id === poItem.productId);
+      const tId = String(poItem.productId || poItem.id || '').trim().toLowerCase();
+      const tCode = String(poItem.code || poItem.productCode || '').trim().toLowerCase();
+      const tName = String(poItem.name || '').trim().toLowerCase();
+
+      const prodIndex = products.findIndex(p => {
+        if (!p) return false;
+        const pId = String(p.id || '').trim().toLowerCase();
+        const pCode = String(p.code || '').trim().toLowerCase();
+        const pName = String(p.name || '').trim().toLowerCase();
+        return (
+          (tId && (pId === tId || pCode === tId)) ||
+          (tCode && (pCode === tCode || pId === tCode)) ||
+          (tName && pName === tName)
+        );
+      });
       const prod = prodIndex !== -1 ? products[prodIndex] : null;
       const sUnit = prod?.stockUnit || prod?.unit || poItem.stockUnit || poItem.unit || 'ชิ้น';
       const pUnit = prod?.purchaseUnit || prod?.unit || poItem.purchaseUnit || sUnit;
+      const itemUnitPrice = Number(poItem.actUnitPrice ?? poItem.actualPrice ?? poItem.price ?? prod?.price) || 0;
+      const stockUnitPrice = itemUnitPrice > 0 && rate > 0 ? (itemUnitPrice / rate) : (Number(prod?.price) || 0);
 
       // 1. Process Normal (Good) Receipt if quantity > 0
+      const currentReceived = alreadyReceived + thisReceive;
+      poItem.receivedQty = currentReceived;
+      poItem.orderedQty = pQty;
+      poItem.remainingQty = Math.max(0, pQty - currentReceived);
+      poItem.shortageQty = Math.max(0, pQty - currentReceived);
+
       if (thisReceive > 0) {
         const stockReceive = thisReceive * rate;
-        poItem.receivedQty = alreadyReceived + thisReceive;
         poItem.receivedStockQty = (Number(poItem.receivedStockQty) || 0) + stockReceive;
-        poItem.orderedQty = pQty;
-        poItem.remainingQty = Math.max(0, pQty - poItem.receivedQty);
 
         if (prod) {
           const currentBal = Number(prod.stockBalance) || 0;
@@ -2068,14 +2100,27 @@ export const workflowEngine = {
             stockLogs.unshift({
               id: `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
               grNumber,
+              documentNo: grNumber,
+              docNo: grNumber,
+              grnNo: grNumber,
+              grnNumber: grNumber,
               date: timestamp,
-              productId: poItem.productId,
-              productCode: poItem.code,
+              isoDate: new Date().toISOString(),
+              productId: prod.id,
+              productCode: prod.code,
+              name: prod.name,
               type: 'IN',
-              docNo: po.poNo,
+              poNo: po.poNo,
+              poNumber: po.poNo,
+              refPo: po.poNo,
+              roundNumber,
               qty: stockReceive,
+              receivedQty: thisReceive,
               unit: sUnit,
               balance: newBal,
+              unitPrice: stockUnitPrice,
+              totalPrice: stockUnitPrice * stockReceive,
+              actualPrice: itemUnitPrice,
               user: `${user.name} (${user.title})`,
               locationId: prod?.locationId || '',
               locationName: prod?.locationName || '',
@@ -2085,11 +2130,18 @@ export const workflowEngine = {
             stockLogs.unshift({
               id: `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
               grNumber,
+              documentNo: grNumber,
+              docNo: grNumber,
+              grnNo: grNumber,
+              grnNumber: grNumber,
               date: timestamp,
               productId: poItem.productId,
               productCode: poItem.code,
               type: 'IN_NG',
-              docNo: po.poNo,
+              poNo: po.poNo,
+              poNumber: po.poNo,
+              refPo: po.poNo,
+              roundNumber,
               qty: stockReceive,
               unit: sUnit,
               balance: currentBal,
@@ -2112,6 +2164,7 @@ export const workflowEngine = {
         const claimedStockQty = claimedQty * rate;
         poItem.hasDefect = true;
         poItem.claimedQty = (Number(poItem.claimedQty) || 0) + claimedQty;
+        poItem.damagedQty = (Number(poItem.damagedQty) || 0) + claimedQty;
         poItem.receivedNgQty = (Number(poItem.receivedNgQty) || 0) + claimedStockQty;
         poItem.defectReason = defectNote || reasonLabel;
         poItem.defectNote = defectNote || reasonLabel;
@@ -2362,6 +2415,21 @@ export const workflowEngine = {
     storageService.savePOs(pos);
     storageService.saveProducts(products);
     storageService.saveStockLogs(stockLogs);
+
+    try {
+      await Promise.all([
+        fetch('http://localhost:3001/api/products/batch', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(products)
+        }),
+        fetch('http://localhost:3001/api/stock-logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(stockLogs)
+        })
+      ]);
+    } catch {}
 
     return po;
   },
@@ -2654,75 +2722,163 @@ export const workflowEngine = {
       }
 
     } else if (['CLOSE_WITH_REFUND', 'REFUND', 'CANCEL'].includes(resolution.type)) {
-      po.status = 'COMPLETED';
-      po.claimStatus = resolution.type === 'CANCEL' ? 'CANCELLED' : 'REFUNDED';
+      if (!resolution.storeKey || resolution.allStoresResolved) {
+        po.status = 'COMPLETED';
+        po.claimStatus = resolution.type === 'CANCEL' ? 'CANCELLED' : 'REFUNDED';
+      } else {
+        po.status = (po.status && po.status !== 'COMPLETED' && po.status !== 'CLOSED') ? po.status : 'PARTIALLY_RECEIVED_IN_CLAIM';
+        po.claimStatus = 'IN_CLAIM';
+      }
 
-      // ── Budget Restore: คืนงบประมาณกลับฝ่ายต้นทาง ──
+      // ── Budget Restore: คืนงบประมาณกลับฝ่ายต้นทาง (Idempotent via budgetService) ──
       const refundAmt = Math.round((Number(resolution.refundAmount) || 0) * 100) / 100;
       po.refundAmount = refundAmt;
       if (refundAmt > 0) {
-        const budgets = storageService.getBudgets();
-        const dept = po.department;
+        const storeClaim = resolution.storeKey && po.storeClaims ? po.storeClaims[resolution.storeKey] : null;
+        const isStoreAlreadyResolved = storeClaim && (storeClaim.isResolved || storeClaim.status === 'RESOLVED') && (storeClaim.type === 'REFUND' || storeClaim.type === 'CLOSE_WITH_REFUND');
+        if (!isStoreAlreadyResolved) {
+          po.totalRefunded = Math.round(((Number(po.totalRefunded) || 0) + refundAmt) * 100) / 100;
+        }
 
-        // Determine which budget month the PO belongs to
-        const poDate = po.issueDate || po.createdAt || new Date().toISOString();
-        const poMonth = typeof poDate === 'string' && poDate.length >= 7 ? poDate.substring(0, 7) : `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+        const targetDepartment = po.department || po.departmentId || po.prDepartment || po.dept || 'PD';
+        const storeLabel = resolution.storeName || resolution.storeKey || po.storeName || '';
+        const reason = `จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${refundAmt.toLocaleString()} เข้าแผนก (คืนงบประมาณจากการเคลมเงินคืนร้านค้า: ${storeLabel ? `ร้าน ${storeLabel}, ` : ''}PO: ${po.poNo || po.poNumber || po.id}) — ${resolution.note || '-'}`;
 
-        // Initialise dept budget if missing
-        if (!budgets[dept]) budgets[dept] = { monthlyBudget: 0, history: {}, transactions: [] };
-
-        // Lower actualSpent by refundAmt (clamped to 0 to avoid negative)
-        // We track this via a negative-spend transaction so calculateBudgetSummary picks it up automatically
-        // by storing a special "refund PO" with negative grandTotal keyed to the same month.
-        // Since calculateBudgetSummary sums grandTotal for CLOSED POs, we instead persist the refund
-        // as a dedicated credit adjustment on the budget record so the summary reflects it.
-        if (!budgets[dept].refundCredits) budgets[dept].refundCredits = {};
-        budgets[dept].refundCredits[poMonth] = Math.round(
-          ((budgets[dept].refundCredits[poMonth] || 0) + refundAmt) * 100
-        ) / 100;
-
-        storageService.saveBudgets(budgets);
-
-        // ── Persist Budget Transaction Log ──
-        storageService.appendBudgetTransaction({
-          type: 'RESTORE',
-          transactionType: 'BUDGET_RESTORED_CLAIM_REFUND',
-          dept,
-          budgetMonth: poMonth,
+        await budgetService.creditDepartmentBudget({
+          departmentId: targetDepartment,
+          department: targetDepartment,
           amount: refundAmt,
-          refId: po.poNo,
-          poId: po.id,
-          note: `จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${refundAmt.toLocaleString()} เข้าแผนก (PO: ${po.poNo}) — ${resolution.note || '-'}`,
-          date: new Date().toISOString(),
-          resolvedBy: user.name
+          referencePo: po.poNo || po.poNumber || po.id,
+          storeKey: resolution.storeKey || '',
+          storeName: storeLabel,
+          reason,
+          actor: user.name
         });
       }
 
       noteMsg = `[${channel} CLAIM RESOLVED] จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${refundAmt.toLocaleString()} เข้าแผนก | ${resolution.note || ''} โดย ${user.name}`;
     } else if (resolution.type === 'CLOSE_NO_ACTION') {
-      po.status = 'COMPLETED';
+      if (!resolution.storeKey || resolution.allStoresResolved) {
+        po.status = 'COMPLETED';
+      } else {
+        po.status = (po.status && po.status !== 'COMPLETED' && po.status !== 'CLOSED') ? po.status : 'PARTIALLY_RECEIVED_IN_CLAIM';
+        po.claimStatus = 'IN_CLAIM';
+      }
       noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: CLOSE_NO_ACTION — ปิดเคสโดยไม่ดำเนินการต่อ | ${resolution.note || ''} โดย ${user.name}`;
+    }
+
+    // ── Update PO item settlement / claim metadata (Directives D & E) ──
+    const isRefundType = ['CLOSE_WITH_REFUND', 'REFUND', 'CANCEL'].includes(resolution.type);
+    const isReplacementType = ['REPLACEMENT', 'RESEND'].includes(resolution.type);
+    if (Array.isArray(po.items) && (isRefundType || isReplacementType)) {
+      po.items = po.items.map((item, idx) => {
+        let isTarget = true;
+        if (resolution.storeKey || resolution.storeName) {
+          const itemStore = (item.actualStoreName || item.storeName || '').trim().toLowerCase();
+          const targetStoreKey = String(resolution.storeKey || '').toLowerCase();
+          const targetStoreName = String(resolution.storeName || '').toLowerCase();
+          const itemStoreKey = String(item.storeKey || '').toLowerCase();
+          const platformKey = item.storePlatform ? `${item.storePlatform.toLowerCase()}_${itemStore}` : '';
+          
+          isTarget = Boolean(
+            (resolution.itemIndices && resolution.itemIndices.includes(idx)) ||
+            (itemStoreKey && (itemStoreKey === targetStoreKey || targetStoreKey.includes(itemStoreKey))) ||
+            (targetStoreName && itemStore === targetStoreName) ||
+            (targetStoreKey && itemStore && targetStoreKey.includes(itemStore)) ||
+            (targetStoreName && itemStore && targetStoreName.includes(itemStore)) ||
+            (itemStore && targetStoreKey && itemStore.includes(targetStoreKey)) ||
+            (platformKey && (platformKey === targetStoreKey || targetStoreKey.includes(platformKey)))
+          );
+        }
+
+        if (!isTarget) return item;
+
+        const ordered = Number(item.orderedQty ?? item.actualQty ?? item.quantity ?? item.purchaseQty ?? 0);
+        const received = Number(item.accumulatedReceived ?? item.goodQty ?? item.receivedQty ?? 0);
+        const disputeQty = Number(
+          item.damagedQty || 
+          item.shortageQty || 
+          (item.disputedQty) || 
+          Math.max(0, ordered - received)
+        );
+
+        if (isRefundType) {
+          const unitPrice = Number(item.actualPrice ?? item.unitPrice ?? item.price ?? 0);
+          const itemRefundValue = Number(resolution.refundAmount || (disputeQty * unitPrice)) || Math.round(disputeQty * unitPrice * 100) / 100;
+          return {
+            ...item,
+            claimResolution: 'REFUND',
+            refundedQty: disputeQty,
+            refundAmount: itemRefundValue,
+            isSettled: true,
+            hasDispute: false,
+            damagedQty: 0,
+            shortageQty: 0
+          };
+        } else if (isReplacementType) {
+          return {
+            ...item,
+            claimResolution: 'REPLACEMENT',
+            replacementPendingQty: disputeQty,
+            refundedQty: 0,
+            isSettled: false, // Remains receivable in GRN
+            hasDispute: false
+          };
+        }
+        return item;
+      });
     }
 
     // Support store-level claims for multi-store online procurement
     if (resolution.storeKey) {
       po.storeClaims = po.storeClaims || {};
-      po.storeClaims[resolution.storeKey] = {
+      const storeClaimObj = {
         status: 'RESOLVED',
+        isResolved: true,
         type: resolution.type,
+        actionType: resolution.type,
+        resolutionType: resolution.type,
         refundAmount: Number(resolution.refundAmount || 0),
         note: resolution.note || '',
         newTrackingNo: resolution.newTrackingNo || '',
+        replacementTrackingNo: resolution.newTrackingNo || '',
         expectedDate: resolution.expectedDate || '',
         resolvedAt: new Date().toISOString(),
-        resolvedBy: user.name
+        resolvedBy: user.name,
+        storeName: resolution.storeName || ''
       };
+      po.storeClaims[resolution.storeKey] = storeClaimObj;
+      if (resolution.storeName && resolution.storeName !== resolution.storeKey) {
+        po.storeClaims[resolution.storeName] = storeClaimObj;
+      }
 
       if (resolution.allStoresResolved) {
-        po.status = 'COMPLETED';
-        po.claimStatus = 'RESOLVED';
+        // Directive 2: ตรวจสอบว่ายังมีสินค้าที่ต้องรอส่งมอบหรือไม่
+        const hasPendingDeliveries = Boolean(
+          resolution.hasPendingDeliveries ||
+          ['RESEND', 'REPLACEMENT'].includes(resolution.type) ||
+          Object.values(po.storeClaims || {}).some(c => 
+            c && (c.type === 'REPLACEMENT' || c.type === 'RESEND' || c.actionType === 'REPLACEMENT' || c.actionType === 'RESEND')
+          ) ||
+          (Array.isArray(po.items) && po.items.some(it => 
+            it.shortageAction === 'WAIT_NEXT_ROUND' || it.disputeAction === 'WAIT_NEXT_ROUND' || it.shortageReason === 'SPLIT_SHIPMENT' ||
+            (Number(it.replacementPendingQty) > 0)
+          ))
+        );
+
+        if (hasPendingDeliveries) {
+          po.status = 'ORDERED_PENDING_DELIVERY';
+          po.claimStatus = 'REPLACEMENT_PENDING';
+        } else {
+          po.status = 'COMPLETED';
+          po.claimStatus = 'RESOLVED';
+        }
+        // ปลดสถานะ po.claimStatus = 'RESOLVED' และ po.hasDispute = false ทันที เพื่อให้การ์ดหลุดออกจากแท็บ "รอเคลม" 100%
+        po.hasDispute = false;
+        po.isInClaim = false;
       } else {
-        po.status = 'IN_CLAIM';
+        po.status = (po.status && po.status !== 'COMPLETED' && po.status !== 'CLOSED') ? po.status : 'PARTIALLY_RECEIVED_IN_CLAIM';
+        po.claimStatus = 'IN_CLAIM';
       }
     }
 
@@ -2739,7 +2895,7 @@ export const workflowEngine = {
     });
 
     // Handle closing PR if PO is now closed
-    if (['CLOSE_WITH_REFUND', 'REFUND', 'CLOSE_NO_ACTION'].includes(resolution.type) && po.prId) {
+    if (['CLOSE_WITH_REFUND', 'REFUND', 'CLOSE_NO_ACTION'].includes(resolution.type) && po.prId && (!resolution.storeKey || resolution.allStoresResolved)) {
       const prs = storageService.getPRs();
       const pr = prs.find(p => p.id === po.prId);
       if (pr) {
@@ -2772,14 +2928,16 @@ export const workflowEngine = {
       });
     }
 
-    po.claimData = null; // Clear active claim data
-    po.claimResolution = {
-      type: resolution.type,
-      refundAmount: Number(resolution.refundAmount || 0),
-      note: resolution.note || '',
-      resolvedAt: new Date().toISOString(),
-      resolvedBy: user.name
-    };
+    if (!resolution.storeKey || resolution.allStoresResolved) {
+      po.claimData = null; // Clear active claim data
+      po.claimResolution = {
+        type: resolution.type,
+        refundAmount: Number(resolution.refundAmount || 0),
+        note: resolution.note || '',
+        resolvedAt: new Date().toISOString(),
+        resolvedBy: user.name
+      };
+    }
     storageService.savePOs(pos);
     return po;
   },

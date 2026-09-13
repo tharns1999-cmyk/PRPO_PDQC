@@ -3,12 +3,13 @@ import {
   Package, ExternalLink, AlertCircle, Copy, Check, RotateCcw, 
   Store, Sparkles, AlertTriangle, ArrowRight, FileText, CheckCircle2,
   Clock, ShieldAlert, ChevronDown, ChevronUp, Paperclip, Eye, Download,
-  Image as ImageIcon, X
+  Image as ImageIcon, X, Truck, Calendar
 } from 'lucide-react';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
 import { apiService } from '../../services/apiService';
 import { modalService } from '../../services/modalService';
 import { useAppContext } from '../../context/AppContext';
+import { budgetService } from '../../services/budgetService';
 import { rollbackBudget as standaloneRollbackBudget, deductBudget as standaloneDeductBudget } from '../../context/BudgetContext';
 import CollapsibleActivityTimeline from '../../components/common/CollapsibleActivityTimeline';
 import { isOrderPending, isOrderInClaim, isOrderClosed } from '../../context/OnlineOrderContext';
@@ -16,14 +17,322 @@ import ImageLightboxModal from '../../components/common/ImageLightboxModal';
 import { getFallbackAttachmentsForCode } from '../../services/workflowEngine';
 import AttachmentViewerModal from '../../components/common/AttachmentViewerModal';
 
+// ✅ สูตรการสร้าง Unique Store Group Key (Precise Multi-Store Grouping)
+export const getStoreGroupKey = (item, index) => {
+  if (!item) return `Shopee_item_${index ?? 0}`;
+  const platform = (item.storePlatform || item.platform || 'Shopee').trim();
+  const storeName = (item.actualStoreName || item.storeName || '').trim();
+  const productUrl = (item.productUrl || item.onlineUrl || item.url || '').trim();
+  
+  // ถ้ามีชื่อร้าน ให้จัดกลุ่มตาม Platform + StoreName
+  if (storeName && !storeName.includes('ระบุร้านภายหลัง')) {
+    return `${platform}_${storeName.toLowerCase()}`;
+  }
+  
+  // ถ้าไม่มีชื่อร้านแต่มี URL ให้แยกตาม Host/Path หรือแยกเป็นรายรายการไม่ให้ชนกัน
+  if (productUrl) {
+    try {
+      const parsed = new URL(productUrl);
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      let shopIdentifier = '';
+      if (segments.length > 0) {
+        if (segments[0].toLowerCase() === 'product' && segments.length > 1) {
+          shopIdentifier = segments[1];
+        } else {
+          shopIdentifier = segments[0];
+        }
+      }
+      if (shopIdentifier && !shopIdentifier.toLowerCase().includes('item')) {
+        return `${platform}_${shopIdentifier.toLowerCase()}`;
+      }
+      return `${platform}_item_${item.id || index}`;
+    } catch (e) {
+      return `${platform}_item_${item.id || index}`;
+    }
+  }
+
+  // กรณีไม่มีข้อมูลใดๆ ให้แยกอิสระ ไม่นำมารวมกันมั่ว
+  return `${platform}_item_${item.id || index}`;
+};
+
+// ✅ ฟังก์ชันตรวจสอบการบันทึกผลเจรจาของร้านค้า (รองรับ Special Characters, single quotes, storeKey, storeName)
+export const isStoreClaimResolved = (group, storeClaims = {}) => {
+  if (!group) return true;
+  if (group.isResolved || group.status === 'RESOLVED') return true;
+  if (!storeClaims || typeof storeClaims !== 'object') return false;
+
+  const normalize = (str) => String(str || '').trim().toLowerCase().replace(/['"`]/g, '');
+
+  const storeKey = group.storeKey || '';
+  const storeName = group.storeName || '';
+  const normKey = normalize(storeKey);
+  const normName = normalize(storeName);
+
+  // 1. Direct key match: storeKey, storeName, lowercase, normalized
+  const directClaim = storeClaims[storeKey] || 
+                      storeClaims[storeName] || 
+                      storeClaims[storeKey.toLowerCase()] || 
+                      storeClaims[storeName.toLowerCase()] ||
+                      storeClaims[normKey] ||
+                      storeClaims[normName];
+
+  if (directClaim && (directClaim.isResolved || directClaim.status === 'RESOLVED' || directClaim.status === 'COMPLETED')) {
+    return true;
+  }
+
+  // 2. Iterate through storeClaims supporting normalized comparison and quotes removal
+  for (const [key, claim] of Object.entries(storeClaims)) {
+    if (!claim) continue;
+    const isResolvedStatus = claim.isResolved || claim.status === 'RESOLVED' || claim.status === 'COMPLETED';
+    if (!isResolvedStatus) continue;
+
+    const kNorm = normalize(key);
+    const claimStoreNameNorm = normalize(claim.storeName);
+    const claimStoreKeyNorm = normalize(claim.storeKey);
+
+    if (
+      kNorm === normKey ||
+      kNorm === normName ||
+      claimStoreNameNorm === normName ||
+      claimStoreKeyNorm === normKey ||
+      (normName && kNorm.endsWith(normName)) ||
+      (normName && claimStoreNameNorm === normName)
+    ) {
+      return true;
+    }
+  }
+
+  // 3. Check group.claimData
+  if (group.claimData && (group.claimData.isResolved || group.claimData.status === 'RESOLVED' || group.claimData.status === 'COMPLETED')) {
+    return true;
+  }
+
+  return false;
+};
+
+// ✅ ฟังก์ชันตรวจสอบว่าร้านค้านี้มีปัญหาเคลมจริงและยังไม่ได้รับการเจรจาหรือไม่ (Directive 1)
+export const isStorePendingClaim = (group, storeClaims = {}) => {
+  if (!group || !Array.isArray(group.items) || group.items.length === 0) return false;
+
+  // 1) มีปัญหาเคลมจริง: มี damagedQty > 0 หรือ shortageQty > 0 โดยที่ shortageAction === 'CLAIM_SHORTAGE' (หรือไม่ได้ระบุ WAIT_NEXT_ROUND)
+  // ต้องไม่นับ WAIT_NEXT_ROUND หรือร้านที่รับครบสมบูรณ์
+  const hasRealClaim = group.items.some(i => {
+    const damaged = Number(i.damagedQty ?? i.defectQty ?? i.claimedQty ?? 0);
+    const shortage = Number(i.shortageQty ?? 0);
+    const isWaitNext = i.shortageAction === 'WAIT_NEXT_ROUND' || 
+                       i.disputeAction === 'WAIT_NEXT_ROUND' || 
+                       i.shortageReason === 'SPLIT_SHIPMENT';
+
+    if (damaged > 0) return true;
+    if (shortage > 0 && !isWaitNext) {
+      return true;
+    }
+    return false;
+  });
+
+  if (!hasRealClaim) return false;
+
+  // 2) ยังไม่ได้รับการเจรจา
+  return !isStoreClaimResolved(group, storeClaims);
+};
+
+// ✅ สูตรคำนวณจำนวนที่ต้องเคลมที่ถูกต้อง (Item Disputed Quantity & Claim Amount Logic with Lifecycle Guard)
+export const calculateDisputeMetrics = (item, poStatus = null, poHasGRN = null) => {
+  if (!item) {
+    return {
+      orderedQty: 0,
+      receivedQty: 0,
+      shortageQty: 0,
+      damagedQty: 0,
+      disputedQty: 0,
+      unitPrice: 0,
+      claimableAmount: 0,
+      hasDispute: false
+    };
+  }
+
+  const ordered = Number(item.actualQty ?? item.quantity ?? item.qty ?? item.purchaseQty ?? item.orderedQty ?? 0);
+  const unitPrice = Number(item.actualPrice ?? item.unitPrice ?? item.price ?? 0);
+
+  // ตรวจสอบและระบุสถานะของ PO และข้อมูลการตรวจรับ GRN
+  const statusUpper = String(poStatus || item.poStatus || item.status || '').toUpperCase();
+
+  // ตรวจสอบว่า item มีข้อมูลการตรวจรับหรือตัวเลขที่บ่งชี้ว่าผ่านการตรวจรับจริงแล้วหรือไม่
+  const hasItemInspection = Boolean(
+    (item.receivedQty !== undefined && item.receivedQty !== null && item.receivedQty !== '' && Number(item.receivedQty) > 0) ||
+    (item.grnReceivedQty !== undefined && item.grnReceivedQty !== null && item.grnReceivedQty !== '' && Number(item.grnReceivedQty) > 0) ||
+    (item.accumulatedReceived !== undefined && item.accumulatedReceived !== null && item.accumulatedReceived !== '' && Number(item.accumulatedReceived) > 0) ||
+    (item.goodQty !== undefined && item.goodQty !== null && item.goodQty !== '' && Number(item.goodQty) > 0) ||
+    (item.acceptedQty !== undefined && item.acceptedQty !== null && item.acceptedQty !== '' && Number(item.acceptedQty) > 0) ||
+    (Number(item.damagedQty) > 0) ||
+    (Number(item.defectQty) > 0) ||
+    (item.shortageQty !== undefined && item.shortageQty !== null && item.shortageQty !== '') ||
+    Boolean(item.hasGRN) ||
+    Boolean(item.grNumber) ||
+    Boolean(item.grId) ||
+    Boolean(item.grnNumber) ||
+    (Array.isArray(item.grnHistory) && item.grnHistory.length > 0) ||
+    Boolean(item.isInspectionDone) ||
+    Boolean(item.claimStatus)
+  );
+
+  const effectiveHasGRN = Boolean(
+    poHasGRN ||
+    hasItemInspection ||
+    item.hasGRN ||
+    item.grNumber ||
+    item.grId ||
+    item.grnNumber ||
+    (Array.isArray(item.grnHistory) && item.grnHistory.length > 0) ||
+    item.isInspectionDone
+  );
+
+  // 🛡️ LIFECYCLE GUARD:
+  // ถ้าสินค้าอยู่ในสถานะ PENDING, ORDERED, IN_TRANSIT และคลังยังไม่ได้ตรวจรับจริง (ไม่มี GRN)
+  // ห้ามมองว่า receivedQty = 0 เป็นการขาดของเด็ดขาด!
+  const isPreInspection = !effectiveHasGRN && !hasItemInspection && (
+    statusUpper === 'PENDING' || 
+    statusUpper === 'PENDING_ORDER' || 
+    statusUpper === 'WAITING_ORDER' ||
+    statusUpper === 'IN_PROGRESS_ONLINE' ||
+    statusUpper === 'ORDERED' || 
+    statusUpper === 'ORDERED_PENDING_DELIVERY' ||
+    statusUpper === 'IN_TRANSIT' ||
+    statusUpper === 'IN_DELIVERY' ||
+    statusUpper === 'WAITING_DELIVERY' ||
+    statusUpper === 'WAITING_DELIVERY_ROUND_2' ||
+    statusUpper === 'ISSUED' ||
+    statusUpper === ''
+  );
+
+  if (isPreInspection) {
+    return {
+      orderedQty: ordered,
+      receivedQty: 0,
+      shortageQty: 0,
+      damagedQty: 0,
+      disputedQty: 0,
+      unitPrice,
+      claimableAmount: 0,
+      hasDispute: false
+    };
+  }
+
+  // Directive 1: ตรวจสอบการอ่านค่ายอดรับจริงจากคลัง โดยต้องครอบคลุม Key ที่อาจแตกต่างกัน
+  const received = Number(
+    item.receivedQty ?? 
+    item.grnReceivedQty ?? 
+    item.accumulatedReceived ?? 
+    item.goodQty ?? 
+    item.acceptedQty ?? 
+    item.receivedThisRound ?? 
+    (item.isFullyReceived ? ordered : 0)
+  );
+  const damaged = Number(item.damagedQty ?? item.defectQty ?? item.accumulatedDamaged ?? item.damagedThisRound ?? item.claimedQty ?? 0);
+
+  // Directive 1 & 3: สูตรของขาด: const shortage = item.shortageQty ?? Math.max(0, ordered - received - damaged);
+  const shortage = (item.shortageQty !== undefined && item.shortageQty !== null && item.shortageQty !== '')
+    ? Number(item.shortageQty)
+    : Math.max(0, ordered - received - damaged);
+
+  const shortageAction = item.shortageAction || (
+    item.disputeAction === 'WAIT_NEXT_ROUND' || item.shortageReason === 'SPLIT_SHIPMENT' || item.action === 'WAIT_NEXT_ROUND'
+      ? 'WAIT_NEXT_ROUND'
+      : (item.disputeAction === 'CLAIM' || item.shortageReason === 'VENDOR_SHORTAGE' || item.hasDispute
+          ? 'CLAIM_SHORTAGE'
+          : (shortage > 0 ? 'CLAIM_SHORTAGE' : ''))
+  );
+
+  const isWaitingNextRound = shortage > 0 && (
+    shortageAction === 'WAIT_NEXT_ROUND' ||
+    item.disputeAction === 'WAIT_NEXT_ROUND' ||
+    item.shortageReason === 'SPLIT_SHIPMENT' ||
+    item.action === 'WAIT_NEXT_ROUND' ||
+    (item.hasDispute === false && damaged === 0)
+  );
+
+  // Directive 1: หากยอดรับจริง + ยอดชำรุด เท่ากับยอดสั่งซื้อ (shortage === 0 && damaged === 0)
+  // หรือรับของครบสมบูรณ์ ต้องบังคับให้ hasDispute = false เด็ดขาด เพื่อให้ร้านค้านั้นถูกยุบเป็น Slim Muted Row อัตโนมัติ
+  if ((ordered > 0 && received + damaged >= ordered && damaged === 0) || (shortage <= 0 && damaged <= 0)) {
+    return {
+      orderedQty: ordered,
+      receivedQty: received > 0 ? received : ordered,
+      shortageQty: 0,
+      damagedQty: 0,
+      disputedQty: 0,
+      unitPrice,
+      claimableAmount: 0,
+      hasDispute: false,
+      isWaitingNextRound: false,
+      waitingNextRoundQty: 0,
+      pUnit: item.purchaseUnit || item.unit || 'ชิ้น'
+    };
+  }
+
+  // หากเป็นกรณีรอส่งรอบถัดไป (WAIT_NEXT_ROUND): ของขาดไม่ถือเป็นยอดเคลม!
+  if (isWaitingNextRound) {
+    const disputedQty = Number(damaged || 0);
+    return {
+      orderedQty: ordered,
+      receivedQty: received,
+      shortageQty: Math.max(0, shortage),
+      damagedQty: Math.max(0, damaged),
+      disputedQty,
+      unitPrice,
+      claimableAmount: Math.round(disputedQty * unitPrice * 100) / 100,
+      hasDispute: disputedQty > 0,
+      isWaitingNextRound: true,
+      waitingNextRoundQty: Math.max(0, shortage),
+      pUnit: item.purchaseUnit || item.unit || 'ชิ้น'
+    };
+  }
+
+  // Directive 3: คำนวณ disputedQty จาก Number(item.damagedQty || 0) + (item.shortageAction === 'CLAIM_SHORTAGE' ? Number(item.shortageQty || 0) : 0)
+  const isShortageClaim = shortageAction === 'CLAIM_SHORTAGE' || !isWaitingNextRound;
+  const disputedQty = Number(damaged || 0) + (isShortageClaim ? Number(shortage || 0) : 0);
+  const claimableAmount = Math.round(disputedQty * unitPrice * 100) / 100;
+
+  return {
+    orderedQty: ordered,
+    receivedQty: received,
+    shortageQty: Math.max(0, shortage),
+    damagedQty: Math.max(0, damaged),
+    disputedQty,
+    unitPrice,
+    claimableAmount,
+    hasDispute: disputedQty > 0,
+    isWaitingNextRound: false,
+    waitingNextRoundQty: 0,
+    pUnit: item.purchaseUnit || item.unit || 'ชิ้น'
+  };
+};
+
 export default function OnlineOrderCard({ 
   po, 
   activeTab,
+  setActiveTab,
   currentRole, 
   onUpdate, 
   onViewAttachment, 
-  onShowDetails 
+  onShowDetails,
+  defaultExpanded
 }) {
+  const [isCardExpanded, setIsCardExpanded] = useState(() => {
+    if (typeof defaultExpanded === 'boolean') return defaultExpanded;
+    if (activeTab === 'COMPLETED' || activeTab === 'CLOSED' || po?.status === 'COMPLETED' || po?.status === 'CLOSED') return false;
+    return true;
+  });
+
+  useEffect(() => {
+    if (typeof defaultExpanded === 'boolean') {
+      setIsCardExpanded(defaultExpanded);
+    } else if (activeTab === 'COMPLETED' || activeTab === 'CLOSED' || po?.status === 'COMPLETED' || po?.status === 'CLOSED') {
+      setIsCardExpanded(false);
+    } else {
+      setIsCardExpanded(true);
+    }
+  }, [activeTab, po?.status, defaultExpanded]);
+
   const getVendorStr = (p) => {
     if (!p) return '';
     if (typeof p.vendor === 'object' && p.vendor) return p.vendor.name || p.vendor.companyName || '';
@@ -130,14 +439,34 @@ export default function OnlineOrderCard({
   // Mode 2: Claim Mode (Strictly only when GRN reported issues and not pending or closed)
   const isClaimOrder = !isPending && (
     activeTab === 'CLAIM' || (
+      activeTab !== 'CLOSED' && activeTab !== 'ORDERED' &&
       (po?.status === 'IN_CLAIM' || po?.status === 'PARTIALLY_RECEIVED_IN_CLAIM' || isOrderInClaim(po?.status)) &&
       !isOrderClosed(po?.status)
     )
   );
 
-  const isClosed = !isPending && (activeTab === 'CLOSED' || isOrderClosed(po?.status));
+  const isClosed = !isPending && (activeTab === 'CLOSED' || (activeTab !== 'CLAIM' && isOrderClosed(po?.status)));
   const isPartialReceived = !isPending && ['partial', 'partially_received', 'partial_received', 'รับของแล้วบางส่วน'].includes(statusStr);
   const isOrdered = !isPending && (activeTab === 'ORDERED' || ['ordered', 'ordered_pending_delivery', 'in_delivery', 'waiting_delivery', 'waiting_delivery_round_2'].includes(statusStr) || statusStr.startsWith('waiting_delivery'));
+
+  // 🛡️ Pre-inspection / Goods Receipt Note (GRN) detection
+  const poHasGRN = useMemo(() => {
+    if (!po) return false;
+    return Boolean(
+      po.hasGRN ||
+      po.grNumber ||
+      po.grId ||
+      po.grnNumber ||
+      (Array.isArray(po.grnHistory) && po.grnHistory.length > 0) ||
+      (Array.isArray(po.grAttachments) && po.grAttachments.length > 0) ||
+      po.receivedAt ||
+      po.receivingInfo ||
+      po.isInspectionDone ||
+      (Array.isArray(po.items) && po.items.some(it => 
+        it.hasGRN || it.grNumber || (it.shortageQty !== undefined && it.shortageQty !== null && it.shortageQty !== '' && (it.receivedQty !== undefined || it.goodQty !== undefined)) || (Number(it.damagedQty) > 0)
+      ))
+    );
+  }, [po]);
 
   // Format date-time helper (DD/MM/YYYY HH:mm format)
   const formatDateTime = (val) => {
@@ -249,16 +578,15 @@ export default function OnlineOrderCard({
   const [storeInfo, setStoreInfo] = useState(() => {
     const initial = {};
     (po?.items || []).forEach((item, idx) => {
-      const plat = item.storePlatform || item.platform || 'Shopee';
       const initialStore = (item.actualStoreName && !item.actualStoreName.includes('ระบุร้านภายหลัง'))
         ? item.actualStoreName
         : (item.storeName && !item.storeName.includes('ระบุร้านภายหลัง'))
         ? item.storeName
         : '';
-      const key = `${plat}_${initialStore || 'group_' + plat}`;
+      const key = getStoreGroupKey(item, idx);
       if (!initial[key]) {
         initial[key] = {
-          storeName: initialStore,
+          storeName: initialStore.trim(),
           orderId: item.orderRefNo || ''
         };
       }
@@ -270,16 +598,15 @@ export default function OnlineOrderCard({
   useEffect(() => {
     const initial = {};
     (po?.items || []).forEach((item, idx) => {
-      const plat = item.storePlatform || item.platform || 'Shopee';
       const initialStore = (item.actualStoreName && !item.actualStoreName.includes('ระบุร้านภายหลัง'))
         ? item.actualStoreName
         : (item.storeName && !item.storeName.includes('ระบุร้านภายหลัง'))
         ? item.storeName
         : '';
-      const key = `${plat}_${initialStore || 'group_' + plat}`;
+      const key = getStoreGroupKey(item, idx);
       if (!initial[key]) {
         initial[key] = {
-          storeName: initialStore,
+          storeName: initialStore.trim(),
           orderId: item.orderRefNo || ''
         };
       }
@@ -391,6 +718,19 @@ export default function OnlineOrderCard({
     return items.reduce((sum, it) => sum + ((Number(it.originalPurchaseQty) || 0) * (Number(it.originalEstimatedPrice) || 0)), 0);
   }, [items]);
 
+  const totalRefundAmount = useMemo(() => {
+    let sum = 0;
+    if (po?.storeClaims) {
+      Object.values(po.storeClaims).forEach(c => {
+        sum += Number(c?.refundAmount || 0);
+      });
+    }
+    if (sum === 0 && Number(po?.refundAmount) > 0) {
+      sum = Number(po.refundAmount);
+    }
+    return sum;
+  }, [po?.storeClaims, po?.refundAmount]);
+
   const priceDiff = totalEstimatedAmount - originalTotalAmount;
 
   const handleCopyText = (text, type = 'item') => {
@@ -417,23 +757,25 @@ export default function OnlineOrderCard({
       let hasRealStore;
 
       if (isPending) {
-        // In pending mode, use a stable key based on platform + initial PR store to prevent focus jumping
-        const initialStore = (po?.items?.[itemIdx]?.actualStoreName && !po?.items?.[itemIdx]?.actualStoreName.includes('ระบุร้านภายหลัง'))
-          ? po.items[itemIdx].actualStoreName
-          : (po?.items?.[itemIdx]?.storeName && !po?.items?.[itemIdx]?.storeName.includes('ระบุร้านภายหลัง'))
-          ? po.items[itemIdx].storeName
+        // In pending mode, use a stable key based on initial PO item to prevent focus jumping
+        const initialItem = po?.items?.[itemIdx] || item;
+        key = getStoreGroupKey(initialItem, itemIdx);
+        
+        const initialStore = (initialItem.actualStoreName && !initialItem.actualStoreName.includes('ระบุร้านภายหลัง'))
+          ? initialItem.actualStoreName
+          : (initialItem.storeName && !initialItem.storeName.includes('ระบุร้านภายหลัง'))
+          ? initialItem.storeName
           : '';
-        key = `${plat}_${initialStore || 'group_' + plat}`;
         const currentStoreName = storeInfo[key]?.storeName !== undefined
           ? storeInfo[key].storeName
           : (item.actualStoreName || initialStore || '');
         hasRealStore = Boolean(currentStoreName && !currentStoreName.includes('ระบุร้านภายหลัง'));
-        sName = hasRealStore ? currentStoreName : '[ระบุร้านค้าตอนกดสั่งซื้อ]';
+        sName = hasRealStore ? currentStoreName : '';
       } else {
-        const rawStoreName = (item.actualStoreName || item.storeName || po?.vendorName || '').trim();
+        key = getStoreGroupKey(item, itemIdx);
+        const rawStoreName = (item.actualStoreName || item.storeName || '').trim();
         hasRealStore = Boolean(rawStoreName && !rawStoreName.includes('ระบุร้านภายหลัง'));
         sName = hasRealStore ? rawStoreName : 'ตลาดออนไลน์ (Shopee/Lazada)';
-        key = `${plat}_${sName}`;
       }
       
       if (!groups[key]) {
@@ -458,41 +800,223 @@ export default function OnlineOrderCard({
       const qty = Number(item.purchaseQty ?? item.actualQty ?? item.qty ?? 0);
       groups[key].totalAmount += (qty * price);
       
-      // Directive 2: Fix False Dispute Bug
-      // ห้าม Flag เป็น Dispute ถ้าออเดอร์ยังไม่ได้สั่งซื้อหรือยังไม่ผ่านการตรวจรับ
+      // Directive 1 & 3: Dispute Detection Logic (Item-level with Lifecycle Guard)
+      const metrics = calculateDisputeMetrics(item, po?.status, poHasGRN);
       const isDisputed = Boolean(
         isClaimOrder &&
-        (po?.status === 'IN_CLAIM' || po?.status === 'PARTIALLY_RECEIVED_IN_CLAIM' || activeTab === 'CLAIM') &&
-        (Number(item.shortageQty) > 0 || Number(item.damagedQty) > 0 || item.claimStatus === 'PENDING')
+        (po?.status === 'IN_CLAIM' || po?.status === 'PARTIALLY_RECEIVED_IN_CLAIM' || activeTab === 'CLAIM' || isOrderInClaim(po?.status)) &&
+        (metrics.hasDispute || item.status === 'DISPUTED' || item.claimStatus === 'PENDING' || item.hasIssue || item.isDisputed)
       );
       
-      if (isDisputed) {
-        const short = Number(item.shortageQty || 0);
-        const dmg = Number(item.damagedQty || 0);
+      if (isDisputed && metrics.hasDispute) {
         groups[key].hasDispute = true;
-        groups[key].status = 'IN_CLAIM';
-        groups[key].issueItems.push(item);
-        groups[key].defaultRefund += (short + dmg) * price;
+        groups[key].status = 'DISPUTED';
+        groups[key].defaultRefund += metrics.claimableAmount;
+        groups[key].issueItems.push({
+          ...item,
+          ...metrics,
+          issueQty: metrics.disputedQty,
+          linePrice: metrics.unitPrice,
+          refundAmt: metrics.claimableAmount
+        });
       }
     });
-    
-    // Merge existing store claim states only if PO is genuinely in claim mode
-    if (isClaimOrder) {
-      const storeClaims = po?.storeClaims || {};
-      Object.keys(groups).forEach(key => {
-        if (storeClaims[key]) {
-          groups[key].status = storeClaims[key].status || 'RESOLVED';
-          groups[key].claimData = storeClaims[key];
+
+    // Directive 1 (เงื่อนไข 2): ตรวจสอบข้อมูลเคลมใน po.claims หรือ po.storeClaims ที่ตรงกับ group.storeKey หรือ group.platform
+    // รวมถึงข้อมูลเคลมระดับ PO เช่น po.claimInfo, po.disputeDetails
+    const storeClaims = po?.storeClaims || {};
+    const poClaims = po?.claims || [];
+    const claimInfo = po?.claimInfo || po?.disputeDetails || null;
+
+    Object.values(groups).forEach(g => {
+      // 1. ค้นหาใน storeClaims
+      let matchedClaim = storeClaims[g.storeKey] || 
+        Object.entries(storeClaims).find(([k]) => k.toLowerCase() === g.storeKey.toLowerCase())?.[1];
+
+      // 2. ค้นหาใน po.claims (ถ้าเป็น Array หรือ Object)
+      if (!matchedClaim && Array.isArray(poClaims)) {
+        matchedClaim = poClaims.find(c => 
+          c && (
+            c.storeKey === g.storeKey || 
+            c.storeName === g.storeName || 
+            (Object.keys(groups).length === 1 && c.platform && c.platform.toLowerCase() === g.platform.toLowerCase())
+          )
+        );
+      } else if (!matchedClaim && poClaims && typeof poClaims === 'object') {
+        matchedClaim = poClaims[g.storeKey] || 
+          Object.entries(poClaims).find(([k, c]) => 
+            k.toLowerCase() === g.storeKey.toLowerCase() || 
+            (c && (c.storeName === g.storeName || (Object.keys(groups).length === 1 && c.platform && c.platform.toLowerCase() === g.platform.toLowerCase())))
+          )?.[1];
+      }
+
+      // 3. ค้นหาใน claimInfo / disputeDetails
+      if (!matchedClaim && claimInfo) {
+        if (
+          claimInfo.storeKey === g.storeKey || 
+          claimInfo.storeName === g.storeName || 
+          Object.keys(groups).length === 1
+        ) {
+          matchedClaim = claimInfo;
         }
-      });
+      }
+
+      if (matchedClaim) {
+        g.claimData = matchedClaim;
+        if (matchedClaim.isResolved || matchedClaim.status === 'RESOLVED' || matchedClaim.status === 'COMPLETED') {
+          g.status = 'RESOLVED';
+          g.isResolved = true;
+        } else if (isClaimOrder) {
+          g.hasDispute = true;
+          g.status = 'DISPUTED';
+          if (!g.defaultRefund && Number(matchedClaim.refundAmount) > 0) {
+            g.defaultRefund = Number(matchedClaim.refundAmount);
+          }
+        }
+      }
+    });
+
+    // Directive 3: จัดการ Multi-Store Grouping ให้สะท้อน Dispute จริง
+    Object.values(groups).forEach(g => {
+      const storeDisputeMetrics = g.items.map(it => calculateDisputeMetrics(it, po?.status, poHasGRN));
+      const hasAnyItemDispute = storeDisputeMetrics.some(m => m.hasDispute);
+      const waitingItems = storeDisputeMetrics.filter(m => m.isWaitingNextRound && m.waitingNextRoundQty > 0);
+
+      g.waitingNextRoundQty = waitingItems.reduce((sum, m) => sum + m.waitingNextRoundQty, 0);
+      g.isWaitingNextRound = g.waitingNextRoundQty > 0 && !hasAnyItemDispute;
+      if (waitingItems.length > 0) {
+        g.waitingUnit = waitingItems[0].pUnit || waitingItems[0].unit || 'ชิ้น';
+      }
+
+      if (hasAnyItemDispute) {
+        g.hasDispute = true;
+        if (g.status !== 'RESOLVED') {
+          g.status = 'DISPUTED';
+        }
+        g.defaultRefund = storeDisputeMetrics
+          .filter(m => m.hasDispute)
+          .reduce((sum, m) => sum + m.claimableAmount, 0);
+
+        g.issueItems = g.items
+          .map((it, idx) => {
+            const m = storeDisputeMetrics[idx];
+            if (!m.hasDispute) return null;
+            return {
+              ...it,
+              ...m,
+              issueQty: m.disputedQty,
+              linePrice: m.unitPrice,
+              refundAmt: m.claimableAmount
+            };
+          })
+          .filter(Boolean);
+      } else {
+        // Directive 1: หากยอดรับจริง + ยอดชำรุด เท่ากับยอดสั่งซื้อ (shortage === 0 && damaged === 0)
+        // หรือสินค้าในร้านนี้ไม่มี dispute ใดๆ ต้องบังคับให้ hasDispute = false เด็ดขาด เพื่อให้ร้านค้านั้นถูกยุบเป็น Slim Muted Row อัตโนมัติ
+        g.hasDispute = false;
+        g.defaultRefund = 0;
+        g.issueItems = [];
+        if (g.status !== 'RESOLVED') {
+          g.status = g.isWaitingNextRound ? 'WAITING_NEXT_ROUND' : 'COMPLETED';
+        }
+      }
+    });
+
+    // Directive 1 (เงื่อนไข 3): Safety Fallback
+    // หาก activeTab === 'CLAIM' หรือ isClaimOrder เป็นจริง แต่ "ไม่มีร้านใดเลยที่ถูก flag ว่า hasDispute"
+    // ให้บังคับแสดงผลทุกร้านเพื่อให้ผู้ใช้ตรวจสอบได้ แต่ไม่บังคับ issueQty = orderedQty
+    // เพราะถ้าของขาดจริง calculateDisputeMetrics จะคำนวณออกมาถูกต้องอยู่แล้ว
+    if ((activeTab === 'CLAIM' || isClaimOrder) && Object.values(groups).length > 0) {
+      const anyDisputed = Object.values(groups).some(g => g.hasDispute && g.status !== 'RESOLVED');
+      if (!anyDisputed) {
+        // ✅ Bug Fix: ไม่มีร้านใดมี dispute จริง → แสดงทุกร้านในโหมด CLAIM
+        // แต่ไม่ทำ issueQty = orderedQty อีกต่อไป ให้ใช้ค่าที่ calculateDisputeMetrics ให้มาจริงๆ
+        Object.values(groups).forEach(g => {
+          if (g.status !== 'RESOLVED') {
+            // คำนวณ dispute metrics จากสินค้าจริงใน group
+            const storeMetrics = g.items.map(it => calculateDisputeMetrics(it, po?.status, poHasGRN));
+            const anyItemHasRealDispute = storeMetrics.some(m => m.hasDispute);
+
+            if (anyItemHasRealDispute) {
+              // มี dispute จริงจาก GRN → แสดงเป็น DISPUTED
+              g.hasDispute = true;
+              g.status = 'DISPUTED';
+              g.issueItems = g.items
+                .map((it, mIdx) => {
+                  const m = storeMetrics[mIdx];
+                  if (!m.hasDispute) return null;
+                  return {
+                    ...it, ...m,
+                    issueQty: m.disputedQty,
+                    linePrice: m.unitPrice,
+                    refundAmt: m.claimableAmount
+                  };
+                })
+                .filter(Boolean);
+              g.defaultRefund = g.issueItems.reduce((sum, it) => sum + it.refundAmt, 0);
+            } else {
+              // ✅ Bug Fix Directive 1 (เงื่อนไข 2):
+              // ไม่มี dispute จริง (เช่น รับของครบหมด) → แสดงเป็น COMPLETED (Slim Muted Row)
+              // ไม่บังคับ hasDispute = true เพื่อให้แถวถูกยุบเป็น Slim Row โดยอัตโนมัติ
+              g.hasDispute = false;
+              g.status = g.isWaitingNextRound ? 'WAITING_NEXT_ROUND' : 'COMPLETED';
+              g.defaultRefund = 0;
+              g.issueItems = [];
+            }
+          }
+        });
+      }
     }
 
     return Object.values(groups);
-  }, [isPending, itemData, po?.items, po?.storeClaims, po?.vendorName, isClaimOrder, po?.status, activeTab, storeInfo]);
+  }, [isPending, itemData, po?.items, storeInfo, isClaimOrder, po?.status, activeTab, po?.storeClaims, po?.claims, po?.claimInfo, po?.disputeDetails, poHasGRN]);
 
-  // Disputed stores count (strictly 0 if not in claim mode)
-  const disputedStoresCount = isClaimOrder ? storesGroup.filter(g => g.hasDispute && g.status !== 'RESOLVED').length : 0;
-  const isAllResolved = isClaimOrder && storesGroup.length > 0 && storesGroup.every(g => !g.hasDispute || g.status === 'RESOLVED');
+  // Directive 1 & 2: คำนวณหาร้านค้าที่มีปัญหาเคลมจริงและ "ยังไม่ได้รับการเจรจา" (Fix Unresolved Claim Counter)
+  const unresolvedStores = useMemo(() => {
+    return storesGroup.filter(group => isStorePendingClaim(group, po?.storeClaims));
+  }, [storesGroup, po?.storeClaims]);
+
+  // Disputed stores count (strictly 0 if not in claim mode or if all stores are resolved)
+  const disputedStoresCount = (isClaimOrder || activeTab === 'CLAIM') ? unresolvedStores.length : 0;
+  const isAllResolved = (isClaimOrder || activeTab === 'CLAIM') && storesGroup.length > 0 && unresolvedStores.length === 0;
+
+  // ── Store Accordion State (Directive 2: Interactive Accordion for CLAIM view) ──
+  const [expandedStores, setExpandedStores] = useState({});
+
+  const toggleStoreExpand = (storeKey) => {
+    setExpandedStores(prev => {
+      const targetGroup = storesGroup.find(g => g.storeKey === storeKey);
+      const isStoreResolved = targetGroup ? Boolean(
+        targetGroup.status === 'RESOLVED' ||
+        targetGroup.isResolved ||
+        po?.storeClaims?.[targetGroup.storeKey]?.isResolved ||
+        po?.storeClaims?.[targetGroup.storeKey]?.status === 'RESOLVED'
+      ) : false;
+      const isDisputedPending = targetGroup ? Boolean(targetGroup.hasDispute && !isStoreResolved) : false;
+      const currentVal = prev[storeKey] !== undefined ? prev[storeKey] : isDisputedPending;
+      return {
+        ...prev,
+        [storeKey]: !currentVal
+      };
+    });
+  };
+
+  useEffect(() => {
+    // ปรับ State เริ่มต้นของ expandedStores:
+    // ร้านที่ hasDispute === false หรือเคลมแล้ว ต้องตั้งค่าเริ่มต้นเป็น false
+    // ร้านที่มี dispute จริงและยังไม่ได้รับการเจรจา ให้เปิดกางออก
+    const nextState = {};
+    storesGroup.forEach(g => {
+      const isStoreResolved = Boolean(
+        g.status === 'RESOLVED' ||
+        g.isResolved ||
+        po?.storeClaims?.[g.storeKey]?.isResolved ||
+        po?.storeClaims?.[g.storeKey]?.status === 'RESOLVED'
+      );
+      nextState[g.storeKey] = Boolean(g.hasDispute && !isStoreResolved);
+    });
+    setExpandedStores(nextState);
+  }, [po?.id, activeTab, storesGroup, po?.storeClaims]);
 
   // Multi-Store Claim State Map
   const [storeClaimStates, setStoreClaimStates] = useState({});
@@ -504,9 +1028,15 @@ export default function OnlineOrderCard({
     }
     const initialStates = {};
     storesGroup.forEach(g => {
+      const isStoreResolved = Boolean(
+        g.status === 'RESOLVED' ||
+        g.isResolved ||
+        po?.storeClaims?.[g.storeKey]?.isResolved ||
+        po?.storeClaims?.[g.storeKey]?.status === 'RESOLVED'
+      );
       if (g.hasDispute) {
         initialStates[g.storeKey] = {
-          showResolutionForm: g.status !== 'RESOLVED',
+          showResolutionForm: !isStoreResolved,
           claimResolutionType: g.claimData?.type || 'REFUND',
           claimExpectedDate: g.claimData?.expectedDate || '',
           claimNote: g.claimData?.note || '',
@@ -521,9 +1051,11 @@ export default function OnlineOrderCard({
   // Unique stores calculation
   const uniqueStores = useMemo(() => {
     if (isPending) {
-      return storesGroup
-        .map(g => (storeInfo[g.storeKey]?.storeName || '').trim())
-        .filter(s => s && !s.includes('ระบุร้านภายหลัง'));
+      return Array.from(new Set(
+        storesGroup
+          .map(g => (storeInfo[g.storeKey]?.storeName || '').trim())
+          .filter(s => s && !s.includes('ระบุร้านภายหลัง'))
+      ));
     }
     return Array.from(new Set(items.map(it => (it.actualStoreName || it.storeName || '').trim()).filter(s => s && !s.includes('ระบุร้านภายหลัง'))));
   }, [isPending, storesGroup, storeInfo, items]);
@@ -737,7 +1269,7 @@ export default function OnlineOrderCard({
       
       const payload = {
         ...(updatedPO || po),
-        status: 'ORDERED_PENDING_DELIVERY',
+        status: 'ORDERED',
         vendor: finalVendorName,
         vendorName: finalVendorName,
         shopName: finalVendorName,
@@ -750,6 +1282,9 @@ export default function OnlineOrderCard({
       };
 
       if (onUpdate) onUpdate(payload);
+      if (typeof setActiveTab === 'function') {
+        setActiveTab('ORDERED');
+      }
       await modalService.success(
         'บันทึกการสั่งซื้อเรียบร้อย', 
         `บันทึกการสั่งซื้อสำหรับ PO ${po.poNo || po.id} เรียบร้อยแล้ว! ระบบย้ายเอกสารไปที่แท็บ "สั่งซื้อแล้ว" และแจ้งเตือนฝ่ายตรวจรับสินค้า`
@@ -771,27 +1306,22 @@ export default function OnlineOrderCard({
 
     if (!claimResolutionType) return;
 
-    if (claimResolutionType === 'RESEND' || claimResolutionType === 'REPLACEMENT') {
-      if (!newTrackingNo?.trim()) {
-        return modalService.warning('กรุณาระบุเลขพัสดุจัดส่งรอบใหม่ (New Tracking No.)');
-      }
-    } else if (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL') {
+    // Directive 1: ปลดล็อก Validation ให้เป็น Optional 100% (Image 1 Fix)
+    // ลบการบังคับกรอก newTrackingNo และ claimNote ออก สามารถกดบันทึกผลเจรจาได้ทันที
+    if (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL') {
       if (refundAmount === '' || isNaN(Number(refundAmount)) || Number(refundAmount) < 0) {
         return modalService.warning('กรุณาระบุยอดเงินที่ได้รับคืนจริงให้ถูกต้อง');
       }
-    }
-
-    if (!claimNote?.trim()) {
-      return modalService.warning('กรุณาระบุหมายเหตุ/ความคืบหน้าการติดต่อร้านค้า');
     }
 
     const resolvedRefundNum = (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL') ? Number(refundAmount) : 0;
     const storeObj = storesGroup.find(g => g.storeKey === storeKey);
     const storeName = storeObj ? storeObj.storeName : '';
     
+    const trackingSuffix = (newTrackingNo || '').trim() ? ` (เลขพัสดุ: ${(newTrackingNo || '').trim()})` : '';
     const confirmMsg = (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL')
       ? `ยืนยันบันทึกผลการเคลมเป็นคืนเงิน ฿${resolvedRefundNum.toLocaleString()} จากร้าน "${storeName}" คืนงบประมาณให้ฝ่าย ${po?.department || ''} และปิดงานของร้านนี้ ใช่หรือไม่?`
-      : `ยืนยันบันทึกผลการเคลมเป็นส่งของใหม่จากร้าน "${storeName}" (เลขพัสดุ: ${newTrackingNo.trim()}) ใช่หรือไม่?`;
+      : `ยืนยันบันทึกผลการเคลมเป็นส่งของใหม่จากร้าน "${storeName}"${trackingSuffix} ใช่หรือไม่?`;
 
     const confirmed = await modalService.confirm({
       title: 'ยืนยันผลการดำเนินการเคลม',
@@ -806,9 +1336,11 @@ export default function OnlineOrderCard({
     try {
       const claimUpdateData = {
         status: 'RESOLVED',
+        isResolved: true,
         type: claimResolutionType,
         refundAmount: resolvedRefundNum,
         replacementTrackingNo: (newTrackingNo || '').trim(),
+        newTrackingNo: (newTrackingNo || '').trim(),
         note: (claimNote || '').trim(),
         expectedDate: claimExpectedDate || '',
         resolvedAt: new Date().toISOString(),
@@ -820,52 +1352,153 @@ export default function OnlineOrderCard({
         ...currentStoreClaims,
         [storeKey]: claimUpdateData
       };
-
-      const allOtherDisputesResolved = storesGroup.every(g => 
-        !g.hasDispute || g.storeKey === storeKey || g.status === 'RESOLVED' || currentStoreClaims[g.storeKey]?.status === 'RESOLVED'
-      );
-      
-      // Directive 4: เมื่อผู้ใช้กดยืนยันบันทึกผลเจรจาครบทุกร้านใน PO: ปรับสถานะ PO ให้เป็น RESOLVED ➔ COMPLETED
-      let nextOrderStatus = po.status;
-      if (allOtherDisputesResolved) {
-        nextOrderStatus = 'COMPLETED';
+      if (storeName && storeName !== storeKey) {
+        nextStoreClaims[storeName] = claimUpdateData;
       }
 
-      // Automated Budget Rollback (Directive 4)
-      if ((claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL') && resolvedRefundNum > 0) {
-        const rollbackReason = `จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${resolvedRefundNum.toLocaleString()} เข้าแผนก (ร้าน: ${storeName}, PO: ${po?.poNo || po?.id})`;
-        const doRollback = rollbackBudget || standaloneRollbackBudget;
-        if (typeof doRollback === 'function') {
-          await doRollback(
-            po.department, 
-            resolvedRefundNum, 
-            rollbackReason, 
-            { docNo: po?.poNo || po?.id, refDocNo: po?.poNo || po?.id, user: currentUser, actor: currentUser?.name || 'Online Purchaser' }
-          );
-        } else if (typeof refundBudget === 'function') {
-          await refundBudget(po.department, resolvedRefundNum);
+      // Directive 2: คำนวณหาร้านค้าที่มีปัญหาและ "ยังไม่ได้รับการเจรจา"
+      // ตรวจสอบว่ายังมีร้านค้าอื่นที่ติดปัญหาเคลมจริงและยังไม่เจรจาหรือไม่
+      const remainingUnresolvedStores = storesGroup.filter(group => {
+        if (group.storeKey === storeKey || group.storeName === storeName) return false;
+        return isStorePendingClaim(group, nextStoreClaims);
+      });
+      const allOtherDisputesResolved = remainingUnresolvedStores.length === 0;
+      
+      // ตรวจสอบว่ายังมีสินค้าที่ต้องรอส่งมอบหรือไม่ (Directive 2):
+      const hasPendingDeliveries = 
+        storesGroup.some(g => g.items.some(i => i.shortageAction === 'WAIT_NEXT_ROUND' || i.disputeAction === 'WAIT_NEXT_ROUND' || i.isWaitingNextRound)) ||
+        Object.values(nextStoreClaims || {}).some(c => c.actionType === 'REPLACEMENT' || c.actionType === 'RESEND' || c.type === 'REPLACEMENT' || c.type === 'RESEND') ||
+        (claimResolutionType === 'REPLACEMENT' || claimResolutionType === 'RESEND');
+
+      let nextOrderStatus = po.status;
+      let nextClaimStatus = po.claimStatus;
+      let nextHasDispute = po.hasDispute;
+      let nextIsInClaim = po.isInClaim;
+
+      if (allOtherDisputesResolved) {
+        if (hasPendingDeliveries) {
+          nextOrderStatus = 'ORDERED_PENDING_DELIVERY';
+          nextClaimStatus = 'REPLACEMENT_PENDING';
+        } else {
+          nextOrderStatus = 'COMPLETED';
+          nextClaimStatus = 'RESOLVED';
         }
+        // ปลดสถานะ po.claimStatus = 'RESOLVED' และ po.hasDispute = false ทันที เพื่อให้การ์ดหลุดออกจากแท็บ "รอเคลม" 100%
+        nextHasDispute = false;
+        nextIsInClaim = false;
+      } else {
+        nextOrderStatus = (po.status && po.status !== 'COMPLETED' && po.status !== 'CLOSED') 
+          ? po.status 
+          : 'PARTIALLY_RECEIVED_IN_CLAIM';
+        nextClaimStatus = 'IN_CLAIM';
+      }
+
+      // Automated Budget Rollback (Directive 4 - Idempotent via budgetService)
+      if ((claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL') && resolvedRefundNum > 0) {
+        const targetDepartment = po?.department || po?.departmentId || po?.prDepartment || po?.dept || 'PD';
+        const creditAmount = Number(resolvedRefundNum ?? 0);
+        const rollbackReason = `จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${creditAmount.toLocaleString()} เข้าแผนก (ร้าน: ${storeName}, PO: ${po?.poNo || po?.id})`;
+        await budgetService.creditDepartmentBudget({
+          departmentId: targetDepartment,
+          department: targetDepartment,
+          amount: creditAmount,
+          referencePo: po?.poNo || po?.id,
+          storeKey: storeKey,
+          storeName: storeName,
+          reason: rollbackReason,
+          actor: currentUser?.name || 'Online Purchaser'
+        });
       }
 
       const res = await apiService.resolveOnlineClaim(po?.id, {
         type: claimResolutionType || 'REFUND',
+        actionType: claimResolutionType || 'REFUND',
         refundAmount: resolvedRefundNum,
         note: `[ร้าน ${storeName}]: ${(claimNote || '').trim()}`,
         expectedDate: claimExpectedDate || '',
         newTrackingNo: (newTrackingNo || '').trim(),
         storeKey: storeKey,
-        allStoresResolved: allOtherDisputesResolved
+        storeName: storeName,
+        allStoresResolved: allOtherDisputesResolved,
+        hasPendingDeliveries: hasPendingDeliveries
       }, currentRole || currentUser);
 
-      // Directive 4: บันทึก Activity Timeline: "จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿{amount} เข้าแผนก"
+      // บันทึก Activity Timeline
       const timelineTitle = (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL')
         ? `จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${resolvedRefundNum.toLocaleString()} เข้าแผนก`
-        : `จัดซื้อเจรจาเคลมสำเร็จ ร้าน "${storeName}" ส่งสินค้าใหม่ทดแทน (เลขพัสดุ: ${(newTrackingNo || '').trim() || '-'})`;
+        : `จัดซื้อเจรจาเคลมสำเร็จ ร้าน "${storeName}" ส่งสินค้าใหม่ทดแทน ${(newTrackingNo || '').trim() ? `(เลขพัสดุ: ${(newTrackingNo || '').trim()})` : ''}`;
+
+      // Update items metadata for settled store (Directives D & E)
+      const updatedItems = (res?.items || po?.items || []).map((item, idx) => {
+        const itemStore = (item.actualStoreName || item.storeName || '').trim().toLowerCase();
+        const normStoreName = String(storeName || '').trim().toLowerCase();
+        const normStoreKey = String(storeKey || '').trim().toLowerCase();
+        const itemStoreKey = String(item.storeKey || '').trim().toLowerCase();
+        const platformKey = item.storePlatform ? `${item.storePlatform.toLowerCase()}_${itemStore}` : '';
+
+        const isTarget = Boolean(
+          (storeObj?.itemIndices && storeObj.itemIndices.includes(idx)) ||
+          (itemStoreKey && (itemStoreKey === normStoreKey || normStoreKey.includes(itemStoreKey))) ||
+          (normStoreName && itemStore === normStoreName) ||
+          (normStoreKey && normStoreKey.includes(itemStore)) ||
+          (normStoreName && normStoreName.includes(itemStore)) ||
+          (itemStore && normStoreKey && itemStore.includes(normStoreKey)) ||
+          (platformKey && (platformKey === normStoreKey || normStoreKey.includes(platformKey)))
+        );
+
+        if (!isTarget) return item;
+
+        const ordered = Number(item.orderedQty ?? item.actualQty ?? item.quantity ?? item.purchaseQty ?? 0);
+        const received = Number(item.accumulatedReceived ?? item.goodQty ?? item.receivedQty ?? 0);
+        const disputeQty = Number(
+          item.damagedQty ||
+          item.shortageQty ||
+          (item.orderedQty ? (item.orderedQty - (item.receivedQty || 0)) : 0) ||
+          Math.max(0, ordered - received)
+        );
+
+        if (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL') {
+          const unitPrice = Number(item.actualPrice ?? item.unitPrice ?? item.price ?? 0);
+          const itemRefundValue = (resolvedRefundNum > 0 && storeObj?.items?.length === 1)
+            ? resolvedRefundNum
+            : (Number(resolvedRefundNum) || Math.round(disputeQty * unitPrice * 100) / 100 || (disputeQty * unitPrice));
+          return {
+            ...item,
+            claimResolution: 'REFUND',
+            refundedQty: disputeQty,
+            refundAmount: itemRefundValue,
+            isSettled: true,
+            hasDispute: false,
+            damagedQty: 0,
+            shortageQty: 0
+          };
+        } else if (claimResolutionType === 'REPLACEMENT' || claimResolutionType === 'RESEND') {
+          return {
+            ...item,
+            claimResolution: 'REPLACEMENT',
+            replacementPendingQty: disputeQty,
+            refundedQty: 0,
+            isSettled: false, // Remains receivable in GRN
+            hasDispute: false
+          };
+        }
+        return item;
+      });
+
+      setItemData(updatedItems);
+
+      const nextTotalRefunded = (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL')
+        ? Math.round(((Number(po?.totalRefunded) || 0) + resolvedRefundNum) * 100) / 100
+        : po?.totalRefunded;
 
       const updatedOrder = {
         ...(res || po),
+        items: updatedItems,
+        totalRefunded: nextTotalRefunded,
         status: nextOrderStatus,
-        claimStatus: allOtherDisputesResolved ? 'RESOLVED' : (po.claimStatus || 'IN_CLAIM'),
+        claimStatus: nextClaimStatus,
+        hasDispute: nextHasDispute,
+        isInClaim: nextIsInClaim,
         storeClaims: nextStoreClaims,
         timeline: [
           ...(po.timeline || po.activityLog || []),
@@ -891,16 +1524,30 @@ export default function OnlineOrderCard({
 
       if (onUpdate) await onUpdate(updatedOrder);
 
+      // Persist directly to storageService to guarantee atomic synchronization
+      const allPos = storageService.getPOs() || [];
+      const pIdx = allPos.findIndex(p => p.id === po.id || p.poNo === po.poNo || p.poNumber === po.poNumber);
+      if (pIdx !== -1) {
+        allPos[pIdx] = { ...allPos[pIdx], ...updatedOrder };
+        storageService.savePOs(allPos);
+      }
+
       setStoreClaimStates(prev => ({
         ...prev,
         [storeKey]: { ...prev[storeKey], showResolutionForm: false }
+      }));
+
+      // ยุบเก็บร้านที่บันทึกผลสำเร็จลงเป็นแถว Slim Muted Row
+      setExpandedStores(prev => ({
+        ...prev,
+        [storeKey]: false
       }));
 
       await modalService.success(
         'บันทึกผลเจรจาสำเร็จ',
         allOtherDisputesResolved
           ? `เจรจาเคลมครบทุกร้านแล้ว! PO ${po.poNo || po.id} ปิดงานสำเร็จและย้ายไปแท็บ "ปิดงานสำเร็จ"`
-          : `บันทึกผลการเจรจาสำหรับร้าน "${storeName}" เรียบร้อยแล้ว`
+          : `บันทึกผลการเจรจาสำหรับร้าน "${storeName}" เรียบร้อยแล้ว (ยังเหลือร้านค้ารอเคลมอีก ${remainingUnresolvedStores.length} ร้านค้า)`
       );
     } catch (err) {
       modalService.error('เกิดข้อผิดพลาดในการบันทึก', err?.message || 'ไม่สามารถบันทึกข้อมูลได้');
@@ -911,50 +1558,46 @@ export default function OnlineOrderCard({
 
   const hasOnlineUrl = po.onlineUrl && po.onlineUrl.trim().length > 0;
 
-  // ── Render Status Badge (Directive 1: Strict Separation & Directive 4: Clock Icon) ──
+  // ── Render Status Badge (Directive 3: Adaptive Card Rendering & Explicit Color Codes) ──
   const renderStatusBadge = (status = po?.status) => {
-    // Mode 1: Pending Order (รอดำเนินการสั่งซื้อ)
-    if (isPending) {
+    const rawStatus = String(status || po?.status || '').toUpperCase();
+
+    // 1. PENDING_ORDER: สีเหลืองอำพัน (bg-amber-50 text-amber-700 border-amber-200)
+    if (activeTab === 'PENDING' || isPending || rawStatus === 'PENDING_ORDER' || rawStatus === 'PENDING') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/80 shadow-2xs whitespace-nowrap">
-          <Clock className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs whitespace-nowrap">
+          <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
           <span>รอดำเนินการสั่งซื้อ</span>
         </span>
       );
     }
 
-    // Mode 2: Claim Mode (รอเคลมสินค้า) - Directive 1: Strict Red Badge in Claim Tab
-    if (activeTab === 'CLAIM' || (isClaimOrder && disputedStoresCount > 0)) {
+    // 2. CLAIM / DISPUTE: สีแดงสด (bg-rose-50 text-rose-700 border-rose-200)
+    // Directive 1: แสดงตัวเลขเฉพาะเมื่อมีร้านค้าที่รอเคลมจริง (disputedStoresCount > 0) หากเป็น 0 ต้องไม่แสดงเด็ดขาด
+    if (disputedStoresCount > 0) {
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs whitespace-nowrap">
           <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-          <span>🔴 รอเคลม ({disputedStoresCount || 1} ร้านค้า)</span>
+          <span>🔴 รอเคลม ({disputedStoresCount} ร้านค้า)</span>
         </span>
       );
     }
 
-    if (isPartialReceived) {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs whitespace-nowrap">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-          รับของแล้วบางส่วน
-        </span>
-      );
-    }
-
-    if (isClosed) {
+    // 3. COMPLETED: สีเขียวมรกต (bg-emerald-50 text-emerald-700 border-emerald-200)
+    if (activeTab === 'CLOSED' || isClosed || rawStatus === 'COMPLETED' || rawStatus === 'CLOSED' || isAllResolved) {
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs whitespace-nowrap">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-          ปิดงานสำเร็จ
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+          <span>✓ ปิดงานสำเร็จ 100%</span>
         </span>
       );
     }
 
+    // 4. ORDERED / IN_TRANSIT: สีน้ำเงิน/คราม (bg-indigo-50 text-indigo-700 border-indigo-200)
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs whitespace-nowrap">
-        <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-        สั่งซื้อแล้ว (ระหว่างส่ง)
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs whitespace-nowrap">
+        <Truck className="w-3.5 h-3.5 text-indigo-600" />
+        <span>{isPartialReceived ? 'รับของแล้วบางส่วน' : 'สั่งซื้อแล้ว (ระหว่างจัดส่ง)'}</span>
       </span>
     );
   };
@@ -979,10 +1622,185 @@ export default function OnlineOrderCard({
     return getVendorStr(po);
   }, [uniqueStores, po]);
 
+  const completionDateTag = useMemo(() => {
+    const rawDate = po.completedAt || po.updatedAt || po.orderDate || po.createdAt || '';
+    if (!rawDate) return '13/09/2026';
+    try {
+      const d = new Date(rawDate);
+      if (isNaN(d.getTime())) {
+        const parts = String(rawDate).split('T')[0].split('-');
+        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        return String(rawDate);
+      }
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
+    } catch {
+      return '13/09/2026';
+    }
+  }, [po.completedAt, po.updatedAt, po.orderDate, po.createdAt]);
+
+  const storeChipsSummary = useMemo(() => {
+    const items = Array.isArray(po.items) ? po.items : [];
+    const platforms = {};
+    const storeSet = new Set();
+    items.forEach(it => {
+      const p = (it.storePlatform || it.platform || 'Shopee').trim();
+      const sName = (it.actualStoreName || it.storeName || '').trim();
+      if (sName) storeSet.add(`${p}_${sName}`);
+      platforms[p] = (platforms[p] || 0) + 1;
+    });
+
+    const storeCount = storeSet.size || uniqueStores.length || Object.keys(platforms).length || 1;
+    const platParts = Object.entries(platforms).map(([plat, cnt]) => `${plat} ${cnt}`).join(', ');
+    return {
+      count: storeCount,
+      text: platParts ? `${storeCount} ร้านค้า (${platParts})` : `${storeCount} ร้านค้า`
+    };
+  }, [po.items, uniqueStores]);
+
+  const itemsSnippet = useMemo(() => {
+    const items = Array.isArray(po.items) ? po.items : [];
+    if (items.length === 0) return 'ไม่มีรายการสินค้า';
+    const firstItemName = items[0]?.name || items[0]?.productName || 'สินค้า';
+    if (items.length === 1) return firstItemName;
+    return `${firstItemName} และอีก ${items.length - 1} รายการ`;
+  }, [po.items]);
+
+  const actualTotalValue = Number(po.actualTotal ?? (totalEstimatedAmount - totalRefundAmount) ?? po.totalAmount ?? po.grandTotal ?? 0);
+  const totalRefundedValue = Number(po.totalRefunded ?? totalRefundAmount ?? 0);
+
+  // ── Structured 2-Tier Micro Card (~58px) (When collapsed in Closed/Completed or Passive mode) ──
+  if (!isCardExpanded) {
+    const formattedActualSpent = actualTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedOriginalBudget = originalTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedRefund = totalRefundedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedPriceDiff = Math.abs(priceDiff).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    return (
+      <div 
+        onClick={() => setIsCardExpanded(true)}
+        className="w-full bg-white hover:bg-slate-50/80 border border-slate-200/90 hover:border-slate-300 rounded-xl p-3 sm:px-4 sm:py-2.5 transition-all mb-2.5 shadow-sm duration-150 font-sans cursor-pointer select-none group text-xs"
+      >
+        {/* Tier 1: Primary Identifiers & High-Level Actions */}
+        <div className="flex items-center justify-between gap-3 mb-1.5 flex-wrap sm:flex-nowrap">
+          {/* Left: Document Identity & Meta Chips */}
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            <div className="font-mono font-bold text-sm text-slate-800 tracking-tight flex items-center gap-1">
+              <span>{po.poNo || po.poNumber || po.id}</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCopyText(po.poNo || po.poNumber || po.id, 'po');
+                }}
+                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors cursor-pointer"
+                title="คัดลอกรหัส PO"
+              >
+                {copiedPO ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            <span className="px-2 py-0.5 text-[11px] font-semibold bg-slate-100 text-slate-700 rounded-md border border-slate-200">
+              {po.department || 'PD'}
+            </span>
+
+            <span 
+              onClick={(e) => {
+                if (po.prNo && onShowDetails) {
+                  e.stopPropagation();
+                  onShowDetails(po);
+                }
+              }}
+              className={`text-xs text-slate-400 font-mono ${po.prNo ? 'hover:text-indigo-600 cursor-pointer' : ''}`}
+              title={po.prNo ? "คลิกเพื่อดูรายละเอียด PR" : undefined}
+            >
+              PR: {po.prNo || po.prNumber || '-'}
+            </span>
+
+            <span className="text-slate-300">•</span>
+
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md">
+              <Store className="w-3 h-3 text-slate-400"/>
+              <span>{storeChipsSummary.text}</span>
+            </span>
+          </div>
+
+          {/* Right: Key Financial Total & Primary Status */}
+          <div className="flex items-center gap-2.5 flex-shrink-0">
+            <span className="text-xs text-slate-400">จ่ายจริง:</span>
+            <span className="font-mono font-bold text-sm text-slate-900">
+              <span className="sr-only">จ่ายจริง: ฿{formattedActualSpent}</span>
+              ฿{formattedActualSpent}
+            </span>
+            {renderStatusBadge(po.status)}
+          </div>
+        </div>
+
+        {/* Tier 2: Secondary Details, Item Snippet & Financial Breakdown */}
+        <div className="flex items-center justify-between gap-3 text-xs pt-1.5 border-t border-slate-100 text-slate-500 flex-wrap sm:flex-nowrap">
+          {/* Left: Goods Preview & Date */}
+          <div className="flex items-center gap-2 truncate min-w-0">
+            <Calendar className="w-3 h-3 text-slate-400 flex-shrink-0"/>
+            <span className="text-[11px] font-mono text-slate-500">{completionDateTag}</span>
+            <span className="text-slate-300">•</span>
+            <span className="truncate text-slate-600 font-medium" title={itemsSnippet}>
+              {itemsSnippet}
+            </span>
+          </div>
+
+          {/* Right: Detailed Financial Diff & Interactive Controls */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="flex items-center gap-2 text-[11px] font-mono">
+              <span className="text-slate-400">งบ: ฿{formattedOriginalBudget}</span>
+              {totalRefundedValue > 0 ? (
+                <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-semibold border border-emerald-100">
+                  +คืน ฿{formattedRefund}
+                </span>
+              ) : priceDiff < 0 ? (
+                <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded font-semibold border border-emerald-100">
+                  +ประหยัด ฿{formattedPriceDiff}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsCardExpanded(true);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-700 hover:text-indigo-600 bg-slate-100 hover:bg-slate-200/70 rounded-md transition-colors cursor-pointer"
+                title="ดูรายการสินค้า (ดูรายละเอียด)"
+              >
+                <span>👁️ ดูรายการสินค้า</span>
+                <span className="sr-only">ดูรายละเอียด</span>
+                <ChevronDown className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-y-0.5"/>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onShowDetails) onShowDetails(po);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 rounded-md transition-colors cursor-pointer"
+                title="เปิดดู PO ฉบับเต็ม"
+              >
+                <span>PO ฉบับเต็ม</span>
+                <ExternalLink className="w-3 h-3 text-slate-400"/>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-2xl p-5 shadow-xs transition-all mb-4 font-sans">
+    <div className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-2xl p-3.5 shadow-xs transition-all mb-2.5 font-sans">
       {/* ── 1. Order Header Bar ── */}
-      <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-100 flex-wrap sm:flex-nowrap">
+      <div className="flex items-center justify-between gap-3 pb-2.5 border-b border-slate-100 flex-wrap sm:flex-nowrap">
         {/* Left: Meta Info */}
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <div className="font-mono font-bold text-slate-800 text-sm flex items-center gap-1.5">
@@ -1045,69 +1863,221 @@ export default function OnlineOrderCard({
           )}
         </div>
 
-        {/* Right: Status & Amount */}
-        <div className="flex items-center gap-3 shrink-0 self-start sm:self-auto">
+        {/* Right: Status, Amount & Collapse Button */}
+        <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto">
           {renderStatusBadge(po.status)}
-          <span className="text-base font-mono font-black text-slate-900 ml-2 min-w-[70px] text-right">
-            ฿{totalEstimatedAmount.toLocaleString()}
+          <span className="text-sm sm:text-base font-mono font-black text-slate-900 ml-1 min-w-[70px] text-right">
+            ฿{totalEstimatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
+          <button
+            type="button"
+            onClick={() => setIsCardExpanded(false)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg border border-slate-200/80 transition-colors cursor-pointer ml-1"
+            title="ย่อการ์ดสรุป"
+          >
+            <ChevronUp className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline text-[11px]">ย่อ</span>
+          </button>
         </div>
       </div>
 
-      {/* ── 2. Item Rows & Marketplace Tags Grouped by Store (Directive 1, 3 & 4) ── */}
-      <div className="space-y-4 my-3">
+      {/* ── 2. Item Rows & Marketplace Tags: High-Density Grouped Manifest (Unified Container) ── */}
+      <div className="rounded-xl border border-slate-200/90 bg-white overflow-hidden divide-y divide-slate-100 my-3">
         {storesGroup.map((group) => {
           const storeClaimState = storeClaimStates[group.storeKey] || {};
-          const isStoreClaimActive = isClaimOrder && group.hasDispute && (storeClaimState.showResolutionForm ?? true) && group.status !== 'RESOLVED' && !isClosed;
-          
-          return (
-            <div key={group.storeKey} className="bg-slate-50/50 rounded-2xl border border-slate-200/60 overflow-hidden shadow-2xs">
-              {/* Store Header Bar (Inline High-Density Compact Header) */}
-              <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50 border-b border-slate-200/80 rounded-t-xl gap-2">
-                {/* ฝั่งซ้าย: Badge แพลตฟอร์ม + ช่องพิมพ์ชื่อร้านค้าแบบ Inline หรือ Read-only Status */}
-                <div className="flex items-center gap-2 flex-1 max-w-md min-w-0">
-                  {getPlatformBadge(group.platform)}
+          const isStoreResolved = Boolean(
+            group.status === 'RESOLVED' ||
+            group.isResolved ||
+            po?.storeClaims?.[group.storeKey]?.isResolved ||
+            po?.storeClaims?.[group.storeKey]?.status === 'RESOLVED' ||
+            group.claimData?.isResolved ||
+            group.claimData?.status === 'RESOLVED'
+          );
+          const isStoreClaimActive = isClaimOrder && (group.hasDispute || storeClaimState.showResolutionForm || storeClaimState.isManualDispute) && (storeClaimState.showResolutionForm ?? true) && !isStoreResolved && !isClosed;
+          const claimHistory = po?.storeClaims?.[group.storeKey] || group.claimData || Object.entries(po?.storeClaims || {}).find(([k]) => k.toLowerCase() === group.storeKey.toLowerCase())?.[1];
+          const storeTotalFormatted = group.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-                  {isPending ? (
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                      <span className="text-[11px] font-semibold text-slate-500 shrink-0">ร้าน:</span>
-                      <input
-                        type="text"
-                        placeholder="ระบุชื่อร้านค้าจริง..."
-                        value={storeInfo[group.storeKey]?.storeName || ''}
-                        onChange={(e) => handleUpdateStoreHeader(group.storeKey, 'storeName', e.target.value)}
-                        className="h-7 px-2 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 w-full placeholder:text-slate-400"
-                      />
-                    </div>
-                  ) : group.hasRealStore ? (
-                    <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5 truncate">
-                      <Store className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                      {group.storeName}
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
-                      [ระบุร้านค้าตอนกดสั่งซื้อ]
-                    </span>
-                  )}
+          // Directive 2: ควบคุมการกาง/ยุบร้านค้า (Interactive Accordion) ในแท็บ "รอเคลม"
+          const isDisputedPending = Boolean(group.hasDispute && !isStoreResolved);
+          const isExpanded = expandedStores[group.storeKey] !== undefined 
+            ? Boolean(expandedStores[group.storeKey]) 
+            : isDisputedPending;
 
-                  {/* Claim Status Pill - STRICTLY ONLY IN CLAIM MODE */}
-                  {isClaimOrder && group.status === 'RESOLVED' && (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 shrink-0">
-                      <CheckCircle2 className="w-3 h-3 inline mr-0.5" /> เคลมเสร็จสิ้น
+          // หากอยู่ในแท็บ "รอเคลม" หรือสถานะเคลม และร้านถูกย่อเก็บ (Collapsed)
+          if ((activeTab === 'CLAIM' || isClaimOrder) && !isExpanded) {
+            // ✅ Bug Fix: Collapsed row แสดงยอดเคลมจริง ไม่ใช่ยอดรวมทั้งร้าน
+            // - ถ้าร้านมี dispute → แสดง claimableAmount (rose-colored)
+            // - ถ้าร้านรับครบ หรือรอส่งรอบถัดไป หรือเคลมเสร็จสิ้นแล้ว → แสดงเป็น Slim Row
+            const rowClaimAmt = group.hasDispute && !isStoreResolved
+              ? group.issueItems.reduce((sum, it) => sum + (Number(it.refundAmt) || 0), 0)
+              : 0;
+            const rowClaimFmt = rowClaimAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            if (!group.hasDispute || isStoreResolved) {
+              const isWaiting = Boolean(group.isWaitingNextRound || group.waitingNextRoundQty > 0 || group.status === 'WAITING_NEXT_ROUND');
+              const waitingQty = group.waitingNextRoundQty || 1;
+              const waitingUnit = group.waitingNextRoundUnit || group.items?.[0]?.unit || 'ชิ้น';
+              const effRefund = Number(group.claimData?.refundAmount ?? po?.storeClaims?.[group.storeKey]?.refundAmount ?? 0);
+              const statusText = isStoreResolved 
+                ? (isClosed || activeTab === 'CLOSED'
+                    ? '✓ เคลมเสร็จสิ้น'
+                    : (effRefund > 0 
+                        ? `✓ บันทึกผลเจรจาเรียบร้อย: ได้รับเงินคืน ฿${effRefund.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} เข้าแผนกแล้ว` 
+                        : '✓ บันทึกผลเจรจาเรียบร้อย'))
+                : (isWaiting ? `(รอส่งมอบเพิ่ม ${waitingQty} ${waitingUnit})` : '(รับของครบสมบูรณ์)');
+
+              return (
+                <div
+                  key={group.storeKey}
+                  className={`px-3.5 py-1.5 ${isStoreResolved ? 'bg-emerald-50/50 border-emerald-100' : isWaiting ? 'bg-amber-50/40 border-amber-100/60' : 'bg-emerald-50/40 border-emerald-100/60'} border-b text-xs flex items-center justify-between select-none`}
+                >
+                  <div className={`flex items-center gap-2 ${isStoreResolved ? 'text-emerald-800' : isWaiting ? 'text-amber-800' : 'text-emerald-700'}`}>
+                    {getPlatformBadge(group.platform)}
+                    <span className={`font-medium ${isStoreResolved ? 'text-emerald-900' : isWaiting ? 'text-amber-900' : 'text-emerald-800'}`}>ร้าน: {group.storeName || 'ทั่วไป'}</span>
+                    <span className={`text-[11px] ${isStoreResolved ? 'text-emerald-700 bg-emerald-100 border-emerald-200' : isWaiting ? 'text-amber-700 bg-amber-100/80 border-amber-200' : 'text-emerald-600 bg-emerald-100 border-emerald-200'} px-1.5 py-0.5 rounded border font-semibold flex items-center gap-1`}>
+                      {isStoreResolved && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                      {statusText}
                     </span>
-                  )}
-                  {isClaimOrder && group.hasDispute && group.status !== 'RESOLVED' && (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 shrink-0 animate-pulse">
-                      มีปัญหารอเคลม
-                    </span>
-                  )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleStoreExpand(group.storeKey)}
+                    className="text-slate-400 hover:text-slate-600 font-semibold text-[11px] flex items-center gap-1 cursor-pointer"
+                  >
+                    เปิดดู / จัดการเคลม ▾
+                  </button>
                 </div>
+              );
+            }
 
-                {/* ฝั่งขวา: ยอดรวมร้านค้า */}
-                <div className="text-xs font-semibold text-slate-600 font-mono shrink-0">
-                  ยอดร้านนี้: <span className="font-bold text-slate-900">฿{group.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            return (
+              <div 
+                key={group.storeKey}
+                onClick={() => toggleStoreExpand(group.storeKey)}
+                className="px-3.5 py-2 bg-rose-50/30 hover:bg-rose-50/60 cursor-pointer text-xs flex items-center justify-between transition-colors border-b border-rose-100/70 select-none"
+              >
+                <div className="flex items-center gap-2 text-slate-600">
+                  {getPlatformBadge(group.platform)}
+                  <span className="font-medium">ร้าน: {group.storeName || 'ทั่วไป'}</span>
+                  <span className="text-[11px] text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 font-semibold">
+                    ⚠️ มีรายการติดปัญหา ({group.issueItems.length} รายการ)
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {rowClaimAmt > 0 && (
+                    <span className="font-mono font-bold text-rose-600">
+                      เคลม ฿{rowClaimFmt}
+                    </span>
+                  )}
+                  <span className="text-indigo-600 hover:text-indigo-700 font-semibold text-[11px] flex items-center gap-1">
+                    เปิดจัดการเคลม ▾
+                  </span>
                 </div>
               </div>
+            );
+          }
+          
+          return (
+            <div key={group.storeKey} className={`divide-y divide-slate-100 ${(activeTab === 'CLAIM' || isClaimOrder) && group.hasDispute && !isStoreResolved ? 'bg-amber-50/15' : ''}`}>
+              {/* Store Header Bar (Interactive Accordion Header in CLAIM view, Standard Header otherwise) */}
+              {(activeTab === 'CLAIM' || isClaimOrder) ? (
+                <div 
+                  onClick={() => toggleStoreExpand(group.storeKey)}
+                  className="px-3.5 py-2 bg-slate-50/90 hover:bg-slate-100/80 cursor-pointer text-xs flex items-center justify-between transition-colors border-b border-slate-100 select-none"
+                >
+                  <div className="flex items-center gap-2 text-slate-600">
+                    {getPlatformBadge(group.platform)}
+                    <span className="font-bold text-slate-800">ร้าน: {group.storeName || 'ทั่วไป'}</span>
+                    <span className="text-[11px] text-slate-500">
+                      {isStoreResolved
+                        ? '✓ บันทึกผลเจรจาเรียบร้อย'
+                        : group.hasDispute 
+                        ? '⚠️ ร้านนี้มีรายการติดปัญหา' 
+                        : (group.isWaitingNextRound ? `(รอส่งมอบเพิ่ม ${group.waitingNextRoundQty || 1} ${group.waitingUnit || 'ชิ้น'})` : '(รับของครบสมบูรณ์)')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-slate-600 font-semibold">ยอดร้านนี้: ฿{storeTotalFormatted}</span>
+                    <span className="text-indigo-600 hover:text-indigo-700 font-semibold text-[11px] flex items-center gap-1">
+                      ย่อเก็บ ▴
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between px-3.5 py-1.5 bg-slate-50 border-b border-slate-100 text-xs gap-2">
+                  {/* ฝั่งซ้าย: Badge แพลตฟอร์ม (Shopee/Lazada) + ช่องกรอกหรือชื่อร้านค้า ร้าน: ... */}
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {getPlatformBadge(group.platform)}
+
+                    {isPending ? (
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <span className="text-[11px] font-semibold text-slate-500 shrink-0">ร้าน:</span>
+                        <input
+                          type="text"
+                          placeholder="ระบุชื่อร้านค้าจริง..."
+                          value={storeInfo[group.storeKey]?.storeName || ''}
+                          onChange={(e) => handleUpdateStoreHeader(group.storeKey, 'storeName', e.target.value)}
+                          className="h-7 px-2 text-xs bg-white border border-slate-200 rounded-lg w-48 sm:w-64 font-medium text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400 shadow-2xs transition-all"
+                        />
+                      </div>
+                    ) : group.hasRealStore ? (
+                      <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5 truncate">
+                        <Store className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span>ร้าน: {group.storeName}</span>
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
+                        [ระบุร้านค้าตอนกดสั่งซื้อ]
+                      </span>
+                    )}
+
+                    {/* Claim Status Pill - STRICTLY ONLY IN CLAIM MODE */}
+                    {isClaimOrder && isStoreResolved && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700 shrink-0">
+                        <CheckCircle2 className="w-3 h-3 inline mr-0.5" /> {(isClosed || activeTab === 'CLOSED') ? 'เคลมเสร็จสิ้น' : 'บันทึกผลเจรจาเรียบร้อย'}
+                      </span>
+                    )}
+                    {isClaimOrder && group.hasDispute && !isStoreResolved && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 shrink-0 animate-pulse">
+                        มีปัญหารอเคลม
+                      </span>
+                    )}
+                  </div>
+
+                  {/* ฝั่งขวา: ยอดรวมของร้านค้านั้น */}
+                  <div className="text-xs font-semibold text-slate-600 font-mono shrink-0">
+                    ยอดร้านนี้: <span className="font-bold text-slate-900">฿{storeTotalFormatted}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* แสดงแท็กผลการเจรจาในร้านค้านั้นเมื่อมีประวัติหรือบันทึกผลเจรจาสำเร็จ (po.storeClaims) */}
+              {(isStoreResolved || isClosed || activeTab === 'CLOSED') && (po?.storeClaims?.[group.storeKey] || group.claimData || claimHistory || (storesGroup.length === 1 && Number(po?.refundAmount) > 0)) && (() => {
+                const effClaim = po?.storeClaims?.[group.storeKey] || group.claimData || claimHistory || { type: 'REFUND', refundAmount: Number(po.refundAmount) };
+                if (!effClaim || (!effClaim.isResolved && effClaim.status !== 'RESOLVED' && !isClosed && activeTab !== 'CLOSED')) return null;
+                const refundAmountFormatted = Number(effClaim.refundAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                return (
+                  <div className="px-3 py-1 bg-emerald-50/50 border-b border-emerald-100 flex items-center justify-between text-[11px] text-emerald-800">
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                      <span>
+                        {(isClosed || activeTab === 'CLOSED')
+                          ? (effClaim.type === 'REPLACEMENT'
+                              ? `✓ เคลมสำเร็จ: ร้านส่งสินค้าใหม่ทดแทน (พัสดุ: ${effClaim.replacementTrackingNo || effClaim.newTrackingNo || '-'})`
+                              : `✓ เคลมสำเร็จ: ได้รับเงินคืน ฿${refundAmountFormatted} เข้าแผนกแล้ว`)
+                          : (effClaim.type === 'REPLACEMENT'
+                              ? `✓ บันทึกผลเจรจาเรียบร้อย: ร้านส่งสินค้าใหม่ทดแทน ${(effClaim.replacementTrackingNo || effClaim.newTrackingNo) ? `(พัสดุ: ${effClaim.replacementTrackingNo || effClaim.newTrackingNo})` : ''}`
+                              : `✓ บันทึกผลเจรจาเรียบร้อย: ได้รับเงินคืน ฿${refundAmountFormatted} เข้าแผนกแล้ว`)}
+                      </span>
+                    </div>
+                    {effClaim.resolvedAt && (
+                      <span className="text-[10px] text-emerald-600/80 font-mono">
+                        {new Date(effClaim.resolvedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* ── Store Items List: High-Density Compact Data Rows (Mode 1) or Read-Only Rows (Mode 2/3) ── */}
               {isPending ? (
@@ -1139,12 +2109,12 @@ export default function OnlineOrderCard({
                     return (
                       <div
                         key={currentItem.id || resolvedIdx}
-                        className="flex items-center justify-between px-3 py-2.5 bg-white hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0 gap-2 sm:gap-3 flex-wrap sm:flex-nowrap"
+                        className="flex items-center justify-between px-3.5 py-1.5 sm:py-2 bg-white hover:bg-slate-50/70 transition-colors gap-3 min-h-[44px] flex-wrap sm:flex-nowrap"
                       >
-                        {/* 1. ข้อมูลสินค้า [ รูปตัวอย่างย่อ + รหัส SKU + ชื่อสินค้า ] */}
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                          {/* Item Thumbnail Stack (Phase 3 Directive 1: w-7 h-7, stacked -space-x-1, max 2 + badge, hover scale) */}
-                          {itemImages.length > 0 && (
+                        {/* ฝั่งซ้าย: [รูปภาพสินค้า] [รหัส SKU] [ชื่อสินค้า ↗] [Subtext อ้างอิง PR เดิม] */}
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          {/* Item Thumbnail */}
+                          {itemImages.length > 0 ? (
                             <div 
                               className="flex items-center -space-x-1 shrink-0 group/stack"
                               title={`คลิกเพื่อดูรูปภาพขยาย (${itemImages.length} รูป)`}
@@ -1154,7 +2124,7 @@ export default function OnlineOrderCard({
                                   key={imgIdx}
                                   type="button"
                                   onClick={() => openLightbox(itemImages, imgIdx, currentItem.name)}
-                                  className="relative w-7 h-7 rounded-md border border-white shadow-2xs overflow-hidden bg-slate-100 transition-transform duration-150 hover:scale-110 hover:z-10 cursor-pointer shrink-0 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                  className="relative w-8 h-8 rounded-lg border border-slate-200 shadow-2xs overflow-hidden bg-slate-100 transition-transform duration-150 hover:scale-110 hover:z-10 cursor-pointer shrink-0 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                 >
                                   <img
                                     src={img.url}
@@ -1167,133 +2137,149 @@ export default function OnlineOrderCard({
                                 <button
                                   type="button"
                                   onClick={() => openLightbox(itemImages, 2, currentItem.name)}
-                                  className="w-7 h-7 rounded-md bg-slate-800/90 hover:bg-indigo-600 text-white text-[10px] font-mono font-bold flex items-center justify-center border border-white shadow-2xs shrink-0 cursor-pointer transition-transform duration-150 hover:scale-110 hover:z-10 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                  className="w-8 h-8 rounded-lg bg-slate-800/90 hover:bg-indigo-600 text-white text-[10px] font-mono font-bold flex items-center justify-center border border-white shadow-2xs shrink-0 cursor-pointer transition-transform duration-150 hover:scale-110 hover:z-10 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                 >
                                   +{itemImages.length - 2}
                                 </button>
                               )}
+                            </div>
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                              <Package className="w-4 h-4" />
                             </div>
                           )}
 
                           <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[11px] font-semibold shrink-0">
                             {currentItem.code || currentItem.sku || 'ITEM'}
                           </span>
-                          <span className="text-xs font-bold text-slate-800 truncate" title={currentItem.name}>
-                            {currentItem.name}
-                          </span>
-                          {rawUrl && (
-                            <a
-                              href={sanitizeExternalUrl(rawUrl)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-indigo-600 hover:text-indigo-700 text-xs shrink-0 inline-flex items-center"
-                              title="เปิดลิงก์สินค้าจริง"
-                            >
-                              ↗
-                            </a>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleCopyText(currentItem.name, 'item')}
-                            className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors cursor-pointer shrink-0"
-                            title="คัดลอกชื่อสินค้า"
-                          >
-                            {copiedCode === currentItem.name ? (
-                              <Check className="w-3 h-3 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3 h-3" />
-                            )}
-                          </button>
-                          {(currentItem.specDetails || currentItem.note) && (
-                            <span className="text-[11px] text-slate-400 italic truncate hidden 2xl:inline max-w-xs">
-                              • {currentItem.specDetails || currentItem.note}
+
+                          <div className="flex items-center gap-1.5 min-w-0 flex-wrap sm:flex-nowrap">
+                            <span className="text-xs font-semibold text-slate-800 truncate max-w-[220px] sm:max-w-md" title={currentItem.name}>
+                              {currentItem.name}
                             </span>
-                          )}
+                            {rawUrl && (
+                              <a
+                                href={sanitizeExternalUrl(rawUrl)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-indigo-600 hover:text-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 p-1 rounded text-xs font-medium shrink-0 inline-flex items-center gap-0.5 transition-colors"
+                                title="เปิดลิงก์สินค้าจริง"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleCopyText(currentItem.name, 'item')}
+                              className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors cursor-pointer shrink-0"
+                              title="คัดลอกชื่อสินค้า"
+                            >
+                              {copiedCode === currentItem.name ? (
+                                <Check className="w-3 h-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                            <span className="text-[11px] text-slate-400 font-mono shrink-0">
+                              (PR: {origQty} {pUnit} @ ฿{origPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                            </span>
+                          </div>
                         </div>
 
-                        {/* 2. Natural Math Flow: [ เดิม: X ➔ ช่องกรอก Qty ] × [ เดิม: ฿Y ➔ ช่องกรอก Price ] = [ ยอดรวมสุทธิ ] */}
-                        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-                          {/* Qty Zone: [ เดิม: X ➔ ช่องกรอก Qty ] */}
-                          <div className="flex items-center gap-1">
-                            <div className="text-right">
-                              <span className="text-[10px] text-slate-400 block leading-tight">PR เดิม</span>
-                              <span className="text-xs font-mono text-slate-400 line-through">
-                                {origQty}
-                              </span>
-                            </div>
-
-                            <span className="text-slate-300 select-none text-xs">➔</span>
-
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={currentItem.purchaseQty === '' ? '' : currentItem.purchaseQty}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (val === '') {
-                                    handleItemChange(resolvedIdx, 'actualQty', '');
-                                  } else {
-                                    const n = parseInt(val, 10);
-                                    handleItemChange(resolvedIdx, 'actualQty', isNaN(n) ? '' : n);
-                                  }
-                                }}
-                                placeholder="1"
-                                className="w-14 h-7 px-1.5 bg-slate-50 border border-slate-300 rounded-md text-xs font-mono font-bold text-slate-800 text-center focus:bg-white focus:border-indigo-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                title={`จำนวนสั่งซื้อจริง (${pUnit})`}
-                              />
-                              <span className="text-[11px] text-slate-500 font-medium shrink-0">{pUnit}</span>
-                            </div>
+                        {/* ฝั่งขวา (ชุดกรอกข้อมูลจริงแบบ Compact): [สเต็ปเปอร์จำนวน] [หน่วยนับ] [ช่องราคาต่อหน่วย] [ราคารวมบรรทัด] */}
+                        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 ml-auto">
+                          {/* จำนวนจริง: สเต็ปเปอร์ขนาดกะทัดรัด h-8 w-22 p-0.5 border border-slate-200 rounded-lg bg-slate-50 */}
+                          <div className="h-8 w-22 p-0.5 border border-slate-200 rounded-lg bg-slate-50 flex items-center justify-between shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentQty = Number(pQty) || 1;
+                                if (currentQty > 1) {
+                                  handleItemChange(resolvedIdx, 'actualQty', currentQty - 1);
+                                }
+                              }}
+                              disabled={Number(pQty) <= 1}
+                              className="w-6 h-6 rounded bg-white border border-slate-200/80 shadow-2xs flex items-center justify-center text-slate-600 hover:bg-slate-100 active:scale-95 text-xs font-bold transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                              title="ลดจำนวน"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={currentItem.purchaseQty === '' ? '' : currentItem.purchaseQty}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === '') {
+                                  handleItemChange(resolvedIdx, 'actualQty', '');
+                                } else {
+                                  const n = parseInt(val, 10);
+                                  handleItemChange(resolvedIdx, 'actualQty', isNaN(n) ? '' : n);
+                                }
+                              }}
+                              placeholder="1"
+                              className="w-8 h-6 bg-transparent text-center font-mono text-xs font-bold text-slate-800 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              title={`จำนวนสั่งซื้อจริง (${pUnit})`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const currentQty = Number(pQty) || 0;
+                                handleItemChange(resolvedIdx, 'actualQty', currentQty + 1);
+                              }}
+                              className="w-6 h-6 rounded bg-white border border-slate-200/80 shadow-2xs flex items-center justify-center text-slate-600 hover:bg-slate-100 active:scale-95 text-xs font-bold transition-all cursor-pointer"
+                              title="เพิ่มจำนวน"
+                            >
+                              +
+                            </button>
                           </div>
 
-                          {/* Math operator: × */}
-                          <span className="text-slate-400 font-bold text-xs select-none">×</span>
+                          {/* หน่วยนับ: text-xs text-slate-500 w-8 text-center */}
+                          <span className="text-xs text-slate-500 w-8 text-center shrink-0 truncate" title={pUnit}>
+                            {pUnit}
+                          </span>
 
-                          {/* Price Zone: [ เดิม: ฿Y ➔ ช่องกรอก Price ] */}
-                          <div className="flex items-center gap-1">
-                            <div className="text-right">
-                              <span className="text-[10px] text-slate-400 block leading-tight">ราคา PR</span>
-                              <span className="text-xs font-mono text-slate-400 line-through">
-                                ฿{origPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                            </div>
-
-                            <span className="text-slate-300 select-none text-xs">➔</span>
-
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs font-bold text-slate-500">฿</span>
-                              <input
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={currentItem.unitPrice === '' ? '' : currentItem.unitPrice}
-                                onChange={(e) => handlePriceChange(resolvedIdx, e.target.value)}
-                                placeholder="0.00"
-                                className="w-20 h-7 px-2 bg-slate-50 border border-slate-300 rounded-md text-xs font-mono font-bold text-slate-800 text-right focus:bg-white focus:border-indigo-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                title="ราคาซื้อจริงต่อหน่วยจากหน้าเว็บ"
-                              />
-                            </div>
+                          {/* ราคาต่อหน่วยจริง: ช่อง Input w-24 h-8 pl-4 pr-2 text-right font-mono text-xs bg-white border border-slate-200 rounded-lg focus:border-indigo-500 พร้อมเครื่องหมาย ฿ จิ๋ว */}
+                          <div className="relative w-24 h-8 shrink-0">
+                            <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-mono select-none pointer-events-none">฿</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={currentItem.unitPrice === '' ? '' : currentItem.unitPrice}
+                              onChange={(e) => handlePriceChange(resolvedIdx, e.target.value)}
+                              placeholder="0.00"
+                              className="w-24 h-8 pl-4 pr-2 text-right font-mono text-xs bg-white border border-slate-200 rounded-lg focus:border-indigo-500 focus:outline-none transition-all tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              title="ราคาซื้อจริงต่อหน่วยจากหน้าเว็บ"
+                            />
                           </div>
 
-                          {/* Math operator: = */}
-                          <span className="text-slate-400 font-bold text-xs select-none">=</span>
-
-                          {/* 3. Line Total */}
-                          <div className="w-20 sm:w-24 text-right">
-                            <span className="text-[10px] text-slate-400 block leading-tight">รวมเงิน</span>
-                            <span className="text-xs font-mono font-bold text-slate-900">
-                              ฿{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                          </div>
+                          {/* ราคารวมจริงรายบรรทัด: font-mono text-xs font-bold text-slate-900 min-w-[75px] text-right */}
+                          <span className="font-mono text-xs font-bold text-slate-900 min-w-[75px] text-right shrink-0">
+                            ฿{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
                         </div>
                       </div>
                     );
                   })}
                 </div>
               ) : (
-                <div className="p-3 space-y-2.5">
-                  {group.items.map((item, localIdx) => {
+                <div className="divide-y divide-slate-100">
+                  {group.items
+                    .filter(item => {
+                      if (activeTab === 'CLAIM') {
+                        const itMetrics = calculateDisputeMetrics(item, po?.status, poHasGRN);
+                        const itAction = item.shortageAction || (item.shortageReason === 'SPLIT_SHIPMENT' ? 'WAIT_NEXT_ROUND' : (item.disputeAction === 'WAIT_NEXT_ROUND' ? 'WAIT_NEXT_ROUND' : ''));
+                        const hasDamage = Number(item.damagedQty || item.defectQty || 0) > 0;
+                        // Directive 3: หากคลังเลือก WAIT_NEXT_ROUND ในแท็บ "รอเคลม" ให้กรองออก (Hidden 100%)
+                        if ((itAction === 'WAIT_NEXT_ROUND' || itMetrics.isWaitingNextRound) && !hasDamage) {
+                          return false;
+                        }
+                      }
+                      return true;
+                    })
+                    .map((item, localIdx) => {
                     const actualIdx = isPending ? group.itemIndices[localIdx] : items.findIndex(it => it.id === item.id);
                     const resolvedIdx = actualIdx >= 0 ? actualIdx : localIdx;
                     const currentItem = isPending ? (itemData[resolvedIdx] || item) : item;
@@ -1316,77 +2302,177 @@ export default function OnlineOrderCard({
                     const rawUrl = getProductUrl(currentItem);
                     
                     return (
-                      <div key={currentItem.id || resolvedIdx} className="py-2.5 px-3.5 rounded-xl bg-white hover:bg-slate-50/80 transition-colors flex items-center justify-between gap-4 border border-slate-100 shadow-xs">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {/* Item Thumbnail Stack (Phase 3 Directive 1: w-7 h-7, stacked -space-x-1, max 2 + badge, hover scale) */}
-                            {itemImages.length > 0 && (
-                              <div 
-                                className="flex items-center -space-x-1 shrink-0 group/stack"
-                                title={`คลิกเพื่อดูรูปภาพขยาย (${itemImages.length} รูป)`}
-                              >
-                                {itemImages.slice(0, 2).map((img, imgIdx) => (
-                                  <button
-                                    key={imgIdx}
-                                    type="button"
-                                    onClick={() => openLightbox(itemImages, imgIdx, currentItem.name)}
-                                    className="relative w-7 h-7 rounded-md border border-white shadow-2xs overflow-hidden bg-slate-100 transition-transform duration-150 hover:scale-110 hover:z-10 cursor-pointer shrink-0 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                  >
-                                    <img
-                                      src={img.url}
-                                      alt={img.name || `thumb-${imgIdx}`}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </button>
-                                ))}
-                                {itemImages.length > 2 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => openLightbox(itemImages, 2, currentItem.name)}
-                                    className="w-7 h-7 rounded-md bg-slate-800/90 hover:bg-indigo-600 text-white text-[10px] font-mono font-bold flex items-center justify-center border border-white shadow-2xs shrink-0 cursor-pointer transition-transform duration-150 hover:scale-110 hover:z-10 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                  >
-                                    +{itemImages.length - 2}
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                            <span className="font-semibold text-slate-800 text-sm truncate" title={currentItem.name}>{currentItem.name}</span>
-                            {rawUrl && (
-                              <a href={sanitizeExternalUrl(rawUrl)} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 hover:text-indigo-800 hover:underline inline-flex items-center gap-0.5 shrink-0">
-                                <ExternalLink className="w-3 h-3" /> ลิงก์สินค้า
-                              </a>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-slate-400 mt-1 font-mono flex-wrap">
-                            <span className="font-bold text-slate-600">{currentItem.sku || currentItem.code || 'ITEM'}</span>
-                            {(currentItem.specDetails || currentItem.note) && <span className="italic font-sans text-slate-500">• {currentItem.specDetails || currentItem.note}</span>}
-                            {currentItem.actualStoreName && <span className="text-slate-600 font-sans">• ร้าน: {currentItem.actualStoreName}</span>}
-                            {currentItem.orderRefNo && <span className="text-[11px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">(Ref: {currentItem.orderRefNo})</span>}
-                            {/* If in claim mode, show dispute quantities */}
-                            {isClaimOrder && (Number(currentItem.shortageQty) > 0 || Number(currentItem.damagedQty) > 0) && (
-                              <div className="flex items-center gap-1 shrink-0 font-sans">
-                                {Number(currentItem.shortageQty) > 0 && <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold">ขาด: {currentItem.shortageQty}</span>}
-                                {Number(currentItem.damagedQty) > 0 && <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[10px] font-bold">ชำรุด: {currentItem.damagedQty}</span>}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4 shrink-0">
-                          <div className="text-right">
-                            <div className="text-xs text-slate-500 font-mono">{pQty.toLocaleString()} {pUnit} × ฿{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                            <div className="text-sm font-bold font-mono text-slate-900">฿{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                          </div>
-                          <button onClick={() => handleCopyText(currentItem.name, 'item')} className="p-1.5 text-slate-400 hover:text-slate-600 bg-slate-100 rounded-lg cursor-pointer" title="คัดลอกชื่อสินค้า">
-                            {copiedCode === currentItem.name ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5"/>}
+                      <div key={currentItem.id || resolvedIdx} className="py-1.5 px-3 bg-white hover:bg-slate-50/70 transition-colors flex items-center justify-between gap-2.5 min-h-[36px] text-xs">
+                        {/* ฝั่งซ้าย: [Img] [รหัส] ชื่อสินค้า ↗ */}
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {/* Item Thumbnail (28x28) */}
+                          {itemImages.length > 0 ? (
+                            <div 
+                              className="flex items-center -space-x-1 shrink-0 group/stack"
+                              title={`คลิกเพื่อดูรูปภาพขยาย (${itemImages.length} รูป)`}
+                            >
+                              {itemImages.slice(0, 2).map((img, imgIdx) => (
+                                <button
+                                  key={imgIdx}
+                                  type="button"
+                                  onClick={() => openLightbox(itemImages, imgIdx, currentItem.name)}
+                                  className="relative w-7 h-7 rounded-md border border-slate-200 shadow-2xs overflow-hidden bg-slate-100 transition-transform duration-150 hover:scale-110 hover:z-10 cursor-pointer shrink-0 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                  <img
+                                    src={img.url}
+                                    alt={img.name || `thumb-${imgIdx}`}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </button>
+                              ))}
+                              {itemImages.length > 2 && (
+                                <button
+                                  type="button"
+                                  onClick={() => openLightbox(itemImages, 2, currentItem.name)}
+                                  className="w-7 h-7 rounded-md bg-slate-800/90 hover:bg-indigo-600 text-white text-[9px] font-mono font-bold flex items-center justify-center border border-white shadow-2xs shrink-0 cursor-pointer transition-transform duration-150 hover:scale-110 hover:z-10 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                  +{itemImages.length - 2}
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="w-7 h-7 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                              <Package className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[11px] font-semibold shrink-0">
+                            {currentItem.sku || currentItem.code || 'ITEM'}
+                          </span>
+
+                          <span className="text-xs font-semibold text-slate-800 truncate max-w-[180px] sm:max-w-xs md:max-w-md" title={currentItem.name}>
+                            {currentItem.name}
+                          </span>
+
+                          {rawUrl && (
+                            <a
+                              href={sanitizeExternalUrl(rawUrl)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-0.5 shrink-0"
+                              title="เปิดลิงก์สินค้าจริง"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+
+                          <button
+                            onClick={() => handleCopyText(currentItem.name, 'item')}
+                            className="p-0.5 text-slate-400 hover:text-slate-600 rounded transition-colors cursor-pointer shrink-0"
+                            title="คัดลอกชื่อสินค้า"
+                          >
+                            {copiedCode === currentItem.name ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
                           </button>
+
+                          {currentItem.orderRefNo && (
+                            <span className="text-[10px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 shrink-0">
+                              Ref: {currentItem.orderRefNo}
+                            </span>
+                          )}
+
+                          {/* Col 2 (Dispute / Settlement Tag) */}
+                          {(() => {
+                            const storeClaim = po?.storeClaims?.[group.storeKey] || group.claimData || Object.entries(po?.storeClaims || {}).find(([k]) => k.toLowerCase() === group.storeKey.toLowerCase())?.[1];
+                            const isStoreSettled = Boolean(storeClaim?.isResolved || storeClaim?.status === 'RESOLVED' || isClosed || activeTab === 'CLOSED');
+                            const effRefund = Number(currentItem.refundAmt || (storeClaim?.type === 'REFUND' ? storeClaim?.refundAmount : 0));
+
+                            if (isStoreSettled && effRefund > 0 && (currentItem.refundAmt > 0 || currentItem.shortageQty > 0 || currentItem.damagedQty > 0 || currentItem.hasDispute || group.hasDispute || group.items.length === 1)) {
+                              const timeStr = storeClaim?.resolvedAt ? new Date(storeClaim.resolvedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '';
+                              return (
+                                <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-medium shrink-0">
+                                  ✓ ได้รับเงินคืน ฿{effRefund.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} เข้าแผนกแล้ว {timeStr ? `(${timeStr})` : ''}
+                                </span>
+                              );
+                            }
+
+                            const itemMetrics = calculateDisputeMetrics(currentItem, po?.status, poHasGRN);
+                            const itemShortage = itemMetrics.shortageQty > 0 ? itemMetrics.shortageQty : (Number(currentItem.shortageQty) > 0 ? Number(currentItem.shortageQty) : 0);
+                            const itemDamaged = itemMetrics.damagedQty > 0 ? itemMetrics.damagedQty : (Number(currentItem.damagedQty) > 0 ? Number(currentItem.damagedQty) : 0);
+                            const itAction = currentItem.shortageAction || (currentItem.shortageReason === 'SPLIT_SHIPMENT' ? 'WAIT_NEXT_ROUND' : (currentItem.disputeAction === 'WAIT_NEXT_ROUND' ? 'WAIT_NEXT_ROUND' : ''));
+                            const isWait = itAction === 'WAIT_NEXT_ROUND' || itemMetrics.isWaitingNextRound;
+
+                            if (isClaimOrder) {
+                              const isItemDisputed = itemMetrics.hasDispute;
+                              if (!isItemDisputed) return null;
+                              return (
+                                <div className="flex items-center gap-1.5 shrink-0 font-sans">
+                                  {itemShortage > 0 && !isWait && (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 shrink-0">
+                                      🚨 ขาด {itemShortage} {pUnit}
+                                    </span>
+                                  )}
+                                  {itemDamaged > 0 && (
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
+                                      ⚠️ ชำรุด {itemDamaged} {pUnit}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            // Directive 3: ในแท็บ "สั่งซื้อแล้ว" (ORDERED) หรือแท็บอื่นๆ
+                            if (isWait && itemShortage > 0) {
+                              return (
+                                <div className="flex items-center gap-1.5 shrink-0 font-sans">
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
+                                    ⏳ รอส่งมอบเพิ่ม {itemShortage} {pUnit}
+                                  </span>
+                                </div>
+                              );
+                            }
+
+                            return null;
+                          })()}
                         </div>
+
+                        {/* Col 3: ฝั่งขวา Monospace Equation */}
+                        {isClaimOrder && (() => {
+                          const itemMetrics = calculateDisputeMetrics(currentItem, po?.status, poHasGRN);
+                          const isItemDisputed = itemMetrics.hasDispute;
+
+                          if (isItemDisputed) {
+                            return (
+                              <div className="text-right shrink-0">
+                                <div className="text-[10px] text-slate-400 font-medium">มูลค่าที่ต้องเคลม</div>
+                                <div className="text-xs sm:text-sm font-mono font-bold text-rose-600">
+                                  ฿{itemMetrics.claimableAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                </div>
+                              </div>
+                            );
+                          }
+                          return (
+                            <div className="flex items-center gap-2 shrink-0 font-mono text-xs text-slate-600">
+                              <span>
+                                {pQty.toLocaleString()} {pUnit} × ฿{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} =
+                              </span>
+                              <strong className="text-slate-800 font-bold min-w-[75px] text-right">
+                                ฿{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </strong>
+                            </div>
+                          );
+                        })()}
+                        {!isClaimOrder && (
+                          <div className="flex items-center gap-2 shrink-0 font-mono text-xs text-slate-600">
+                            <span>
+                              {pQty.toLocaleString()} {pUnit} × ฿{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} =
+                            </span>
+                            <strong className="text-slate-800 font-bold min-w-[75px] text-right">
+                              ฿{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </strong>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
               )}
 
-              {isClaimOrder && group.hasDispute && !isStoreClaimActive && group.status !== 'RESOLVED' && !isClosed && (
+              {isClaimOrder && group.hasDispute && !isStoreClaimActive && !isStoreResolved && !isClosed && (
                 <div className="p-3 bg-white border-t border-slate-100 flex justify-end">
                   <button 
                     type="button"
@@ -1397,12 +2483,40 @@ export default function OnlineOrderCard({
                   </button>
                 </div>
               )}
+
+              {/* If in CLAIM tab and group has no dispute, but user opened it to claim */}
+              {activeTab === 'CLAIM' && !group.hasDispute && !isStoreResolved && group.status !== 'RESOLVED' && !isStoreClaimActive && !isClosed && (
+                <div className="p-3 bg-white border-t border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs text-slate-500">
+                  <span>ร้านนี้ตรวจรับครบสมบูรณ์แล้ว หากต้องการแจ้งปัญหาหรือเคลม สามารถกดเปิดดำเนินการเคลมได้</span>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setStoreClaimStates(prev => ({ 
+                        ...prev, 
+                        [group.storeKey]: { 
+                          ...prev[group.storeKey], 
+                          showResolutionForm: true, 
+                          isManualDispute: true 
+                        } 
+                      }));
+                    }} 
+                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-200 cursor-pointer transition-colors shrink-0"
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5" /> เปิดดำเนินการเคลมสำหรับร้านนี้
+                  </button>
+                </div>
+              )}
               
-              {isStoreClaimActive && (() => {
+              {isStoreClaimActive && !isStoreResolved && (() => {
                 const currentResolutionType = storeClaimState.claimResolutionType || group.claimData?.type || 'REFUND';
+                const effectiveDefaultRefund = group.defaultRefund !== undefined ? group.defaultRefund : 0;
                 const currentRefundAmount = storeClaimState.refundAmount !== undefined 
                   ? storeClaimState.refundAmount 
-                  : (group.claimData?.refundAmount !== undefined ? group.claimData.refundAmount : (Math.round(group.defaultRefund * 100) / 100));
+                  : (currentResolutionType === 'CANCEL' 
+                      ? group.totalAmount 
+                      : (effectiveDefaultRefund > 0 
+                          ? (Math.round(effectiveDefaultRefund * 100) / 100) 
+                          : (group.claimData?.refundAmount !== undefined ? group.claimData.refundAmount : 0)));
                 const currentTrackingNo = storeClaimState.newTrackingNo !== undefined 
                   ? storeClaimState.newTrackingNo 
                   : (group.claimData?.replacementTrackingNo || group.claimData?.newTrackingNo || '');
@@ -1411,55 +2525,13 @@ export default function OnlineOrderCard({
                   : (group.claimData?.note || '');
 
                 return (
-                  <div className="p-3 sm:p-4 bg-white border-t border-slate-200/90 space-y-2.5">
-                    {/* Clean Bordered Settlement Card: Compact Issue Alert Banner */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-900 text-xs shadow-2xs">
-                      <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                        <span className="font-bold text-amber-900 flex items-center gap-1 shrink-0">
-                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                          <span>⚠️ คลังแจ้งปัญหา:</span>
-                        </span>
-                        {group.issueItems.map((item, idx) => {
-                          const short = Number(item.shortageQty || 0);
-                          const dmg = Number(item.damagedQty || 0);
-                          const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
-                          const price = Number(item.unitPrice ?? item.actualPrice ?? item.price ?? 0);
-                          const itemLossAmount = (short + dmg) * price;
-                          return (
-                            <span key={idx} className="inline-flex items-center gap-1 font-medium">
-                              <span className="font-bold text-slate-800">{item.name}</span>
-                              {short > 0 && <span className="text-rose-700 font-semibold">ขาด {short} {pUnit}</span>}
-                              {dmg > 0 && <span className="text-amber-800 font-semibold">{short > 0 ? ',' : ''} ชำรุด {dmg} {pUnit}</span>}
-                              <span className="text-slate-500 font-mono">(มูลค่า ฿{itemLossAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
-                              {idx < group.issueItems.length - 1 && <span className="text-amber-400 font-bold">•</span>}
-                            </span>
-                          );
-                        })}
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="font-mono text-xs font-bold text-amber-950 bg-amber-200/60 px-2 py-0.5 rounded-md">
-                          มูลค่าเคลม: ฿{group.defaultRefund.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setStoreClaimStates(prev => ({
-                            ...prev,
-                            [group.storeKey]: { ...prev[group.storeKey], showResolutionForm: false }
-                          }))}
-                          className="text-xs text-slate-400 hover:text-slate-700 px-1 py-0.5 cursor-pointer"
-                          title="ย่อฟอร์ม"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Eye-Level Single Row / Grid Settlement Bar */}
-                    <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2 bg-slate-50/90 p-2 sm:p-2.5 rounded-xl border border-slate-200">
-                      {/* Column 1: Dropdown แนวทางแก้ไข */}
-                      <div className="w-full lg:w-56 shrink-0">
-                        <select
-                          value={currentResolutionType}
+                  <div className="p-3 bg-white border-t border-slate-100">
+                    {/* Unified Quick Settlement Action Bar (Modern Linear SaaS Style) */}
+                    <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/70">
+                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 text-xs">
+                        {/* Dropdown แนวทางแก้ไข */}
+                        <select 
+                          value={currentResolutionType} 
                           onChange={e => {
                             const val = e.target.value;
                             setStoreClaimStates(prev => ({
@@ -1468,101 +2540,87 @@ export default function OnlineOrderCard({
                                 ...prev[group.storeKey],
                                 claimResolutionType: val,
                                 refundAmount: val === 'REFUND'
-                                  ? (prev[group.storeKey]?.refundAmount !== undefined ? prev[group.storeKey]?.refundAmount : group.defaultRefund)
+                                  ? (prev[group.storeKey]?.refundAmount !== undefined ? prev[group.storeKey]?.refundAmount : effectiveDefaultRefund)
                                   : (val === 'CANCEL' ? group.totalAmount : 0)
                               }
                             }));
                           }}
-                          className="w-full h-9 px-2.5 text-xs font-medium rounded-lg border border-slate-300 bg-white hover:border-slate-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer text-slate-800 shadow-2xs"
+                          className="h-8 px-2.5 rounded-lg border border-slate-200 bg-white font-medium text-slate-700 focus:border-indigo-500 shadow-2xs shrink-0 cursor-pointer"
                         >
                           <option value="REFUND">💰 คืนเงิน (Refund)</option>
-                          <option value="REPLACEMENT">📦 ร้านส่งของใหม่มาเปลี่ยน (Replacement)</option>
+                          <option value="REPLACEMENT">📦 ส่งของใหม่ชดเชย (Replacement)</option>
                           <option value="CANCEL">❌ ยกเลิกรายการ</option>
                         </select>
-                      </div>
 
-                      {/* Column 2: ช่องกรอกยอดเงินคืนจริง (w-32) พร้อมปุ่มเล็ก คืนเต็มจำนวน */}
-                      {currentResolutionType === 'REPLACEMENT' ? (
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        {/* ฟิลด์ตามเงื่อนไข (Conditional Input) */}
+                        {currentResolutionType !== 'REPLACEMENT' && (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <div className="relative w-28 shrink-0">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">฿</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={currentRefundAmount ?? ''}
+                                onChange={e => setStoreClaimStates(prev => ({
+                                  ...prev,
+                                  [group.storeKey]: { ...prev[group.storeKey], refundAmount: e.target.value }
+                                }))}
+                                placeholder="0.00"
+                                className="h-8 w-full pl-5 pr-2 text-right font-mono font-bold text-slate-800 bg-white border border-slate-200 rounded-lg focus:border-indigo-500 shadow-2xs"
+                                title="ยอดเงินคืนจริง"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setStoreClaimStates(prev => ({
+                                ...prev,
+                                [group.storeKey]: {
+                                  ...prev[group.storeKey],
+                                  refundAmount: currentResolutionType === 'CANCEL' ? group.totalAmount : effectiveDefaultRefund
+                                }
+                              }))}
+                              className="h-8 px-2 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors whitespace-nowrap cursor-pointer shadow-2xs"
+                              title="คลิกเพื่อกรอกยอดคืนเต็มจำนวน"
+                            >
+                              คืนเต็มจำนวน
+                            </button>
+                          </div>
+                        )}
+
+                        {currentResolutionType === 'REPLACEMENT' && (
                           <input
                             type="text"
+                            placeholder="ระบุเลขพัสดุชดเชย (ถ้ามี)..."
                             value={currentTrackingNo}
                             onChange={e => setStoreClaimStates(prev => ({
                               ...prev,
                               [group.storeKey]: { ...prev[group.storeKey], newTrackingNo: e.target.value }
                             }))}
-                            placeholder="เลขพัสดุใหม่ (Tracking No.)"
-                            className="w-full sm:w-44 h-9 px-2.5 text-xs font-mono font-bold rounded-lg border border-sky-300 bg-white text-slate-900 focus:border-sky-500 uppercase shadow-2xs"
+                            className="h-8 px-2.5 flex-1 min-w-[150px] bg-white border border-slate-200 rounded-lg text-slate-700 placeholder:text-slate-400 focus:border-indigo-500 shadow-2xs font-mono"
                           />
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <div className="relative">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-mono">฿</span>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={currentRefundAmount ?? ''}
-                              onChange={e => setStoreClaimStates(prev => ({
-                                ...prev,
-                                [group.storeKey]: { ...prev[group.storeKey], refundAmount: e.target.value }
-                              }))}
-                              placeholder="0.00"
-                              className="w-28 sm:w-32 h-9 pl-6 pr-2 text-xs font-mono font-bold rounded-lg border border-slate-300 bg-white text-slate-900 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-right shadow-2xs"
-                              title="ยอดเงินคืนจริง"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setStoreClaimStates(prev => ({
-                              ...prev,
-                              [group.storeKey]: {
-                                ...prev[group.storeKey],
-                                refundAmount: currentResolutionType === 'CANCEL' ? group.totalAmount : group.defaultRefund
-                              }
-                            }))}
-                            className="h-9 px-2 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors whitespace-nowrap cursor-pointer shadow-2xs"
-                            title="คลิกเพื่อกรอกยอดคืนเต็มจำนวน"
-                          >
-                            คืนเต็มจำนวน
-                          </button>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Column 3: ช่องข้อความบันทึกความคืบหน้าสั้น ๆ */}
-                      <div className="flex-1 min-w-[140px]">
+                        {/* ช่องบันทึกความคืบหน้า */}
                         <input
                           type="text"
+                          placeholder="บันทึกช่วยจำ (เช่น ทักแชทร้านค้าแล้ว)..."
                           value={currentClaimNote}
                           onChange={e => setStoreClaimStates(prev => ({
                             ...prev,
                             [group.storeKey]: { ...prev[group.storeKey], claimNote: e.target.value }
                           }))}
-                          placeholder="บันทึกความคืบหน้าสั้น ๆ เช่น แชทร้านค้าโอนเงินคืนแล้ว..."
-                          className="w-full h-9 px-3 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400 shadow-2xs"
+                          className="h-8 px-2.5 flex-1 min-w-[180px] bg-white border border-slate-200 rounded-lg text-slate-700 placeholder:text-slate-400 focus:border-indigo-500 shadow-2xs"
                         />
-                      </div>
 
-                      {/* Column 4: ปุ่มบันทึก [ ✓ บันทึกผลเจรจา ] สไตล์ Indigo/Emerald (เลิกใช้ปุ่มสีแดง) */}
-                      <div className="flex items-center gap-1.5 shrink-0 justify-end">
-                        <button
-                          type="button"
-                          onClick={() => setStoreClaimStates(prev => ({
-                            ...prev,
-                            [group.storeKey]: { ...prev[group.storeKey], showResolutionForm: false }
-                          }))}
-                          className="h-9 px-2.5 text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
-                        >
-                          ยกเลิก
-                        </button>
+                        {/* ปุ่มบันทึก */}
                         <button
                           type="button"
                           onClick={() => handleResolveStoreClaim(group.storeKey)}
                           disabled={isSubmitting}
-                          className="h-9 px-3.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                          className="h-8 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center gap-1.5 shadow-xs transition-colors shrink-0 whitespace-nowrap cursor-pointer disabled:opacity-50"
                         >
-                          <Check className="w-3.5 h-3.5" />
+                          <Check className="w-3.5 h-3.5"/>
                           <span>✓ บันทึกผลเจรจา</span>
                         </button>
                       </div>
@@ -1659,8 +2717,29 @@ export default function OnlineOrderCard({
         </div>
       )}
 
+      {/* ── 3.2 Reconciliation Footer for Closed Orders (Directive 2) ── */}
+      {(activeTab === 'CLOSED' || isClosed) && !isPending && (
+        <div className="mt-2.5 px-3 py-1.5 bg-slate-50/90 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 font-mono">
+            <span className="text-slate-500">งบเดิม ฿{originalTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="text-slate-300">→</span>
+            <span className="font-bold text-slate-800">จ่ายจริง ฿{(totalEstimatedAmount - totalRefundAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            {totalRefundAmount > 0 ? (
+              <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                +คืนงบ ฿{totalRefundAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-1.5 text-emerald-700 shrink-0 font-semibold text-xs">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>ปิดงานสำเร็จ 100%</span>
+          </div>
+        </div>
+      )}
+
       {/* ── 4. Compact Micro-Footer ── */}
-      <div className={`pt-2.5 mt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
+      <div className={`pt-2 mt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs ${
         isPending ? '' : 'border-t border-slate-100'
       }`}>
         <div className="flex items-center gap-2 text-slate-400 min-w-0">
@@ -1679,7 +2758,7 @@ export default function OnlineOrderCard({
           )}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+        <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto">
           {hasOnlineUrl && (
             <a
               href={sanitizeExternalUrl(po.onlineUrl)}
@@ -1713,6 +2792,16 @@ export default function OnlineOrderCard({
               <span className="font-sans">↗</span>
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setIsCardExpanded(false)}
+            className="text-slate-400 hover:text-slate-600 text-xs inline-flex items-center gap-0.5 cursor-pointer border-l border-slate-200 pl-2 ml-1"
+            title="ย่อการ์ดนี้"
+          >
+            <span>ย่อการ์ด</span>
+            <ChevronUp className="w-3 h-3" />
+          </button>
         </div>
       </div>
 

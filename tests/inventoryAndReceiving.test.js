@@ -53,7 +53,8 @@ describe('Scenario 4: Inventory Receiving & Stock Movement (+IN)', () => {
     expect(lastLog.type).toBe('IN');
     expect(lastLog.qty).toBe(20);
     expect(lastLog.balance).toBe(30);
-    expect(lastLog.docNo).toBe(po.poNo);
+    expect(lastLog.docNo).toBe('GRN-PO-PD-2026-001-01');
+    expect(lastLog.refPo || lastLog.poNo).toBe(po.poNo);
 
     // 5. Verify Associated PR is also CLOSED
     const prs = storageService.getPRs();

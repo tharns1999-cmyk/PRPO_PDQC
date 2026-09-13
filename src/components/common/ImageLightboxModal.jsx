@@ -60,7 +60,7 @@ export default function ImageLightboxModal({
 
   if (!isOpen || !currentImage) return null;
 
-  return createPortal(
+  const modalElement = (
     <div
       className="fixed inset-0 z-[200] flex flex-col items-center justify-between p-4 sm:p-6 bg-slate-950/90 backdrop-blur-md animate-fade-in select-none"
       onClick={onClose}
@@ -182,9 +182,12 @@ export default function ImageLightboxModal({
           ))}
         </div>
       )}
-    </div>,
-    document.body
+    </div>
   );
+
+  return typeof document !== 'undefined' && document.body
+    ? createPortal(modalElement, document.body)
+    : modalElement;
 }
 
 function useMemoImages(rawImages, defaultTitle) {

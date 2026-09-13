@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { DEPARTMENTS } from '../config/constants';
 import { apiService } from '../services/apiService';
 import { storageService } from '../services/storageService';
+import { budgetService } from '../services/budgetService';
 import { modalService } from '../services/modalService';
 import { 
   Wallet, ShieldAlert, TrendingUp,
@@ -27,9 +28,21 @@ const RANGE_OPTIONS = [
 ];
 
 export default function BudgetView({ budgetSummary, currentRole, currentUser, prs = [], pos = [], departments = [], onRefresh }) {
-  const context = useAppContext();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState('overview');
+  let context = null;
+  try {
+    context = useAppContext();
+  } catch {
+    context = null;
+  }
+
+  let searchParams, setSearchParams;
+  try {
+    [searchParams, setSearchParams] = useSearchParams();
+  } catch {
+    searchParams = new URLSearchParams();
+    setSearchParams = () => {};
+  }
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'overview');
   const [timeRange, setTimeRange] = useState(6);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
 
@@ -43,6 +56,11 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
       return acc;
     }, {});
   }, [deptList]);
+
+  // Self-Healing Retroactive Sync Engine: backfill settled refund credits on load
+  useEffect(() => {
+    budgetService.syncSettledRefundsToBudget(pos, deptList);
+  }, [pos, deptList]);
 
   // 1. User Permission Scoping: Check if current user is Super Admin or Approver (Universal Access)
   const isSuperAdminOrApprover = useMemo(() => {
@@ -292,8 +310,11 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   // Load budget transaction log (refund entries) scoped to permitted departments
   const budgetTransactions = useMemo(() => {
     const allTxs = storageService.getBudgetTransactions() || [];
-    return allTxs.filter(tx => deptsToShow.includes(tx.dept));
-  }, [pos, prs, deptsToShow]);
+    return allTxs.filter(tx => {
+      const txDept = String(tx.dept || tx.department || '').replace(/^ฝ่าย\s*/i, '').trim().toUpperCase();
+      return deptsToShow.includes(txDept);
+    });
+  }, [pos, prs, deptsToShow, context?.budgetTransactions]);
 
   const handleEditSave = async (dept) => {
     if (!editBaseValue || isNaN(editBaseValue) || Number(editBaseValue) < 0) return;
@@ -394,9 +415,10 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     // Category Spending (Donut Chart)
     const itemMap = {};
     pos.forEach(po => {
-      if ((deptMap[po.department] || DEPARTMENTS[po.department]) && po.status !== 'CANCELLED' && deptsToShow.includes(po.department)) {
+      if (po && (deptMap[po.department] || DEPARTMENTS[po.department]) && po.status !== 'CANCELLED' && deptsToShow.includes(po.department) && Array.isArray(po.items)) {
         po.items.forEach(item => {
-          const total = item.actUnitPrice ? item.actUnitPrice * item.qty : item.price * item.qty;
+          if (!item) return;
+          const total = item.actUnitPrice ? item.actUnitPrice * item.qty : (item.price || 0) * (item.qty || 0);
           if (!itemMap[item.name]) itemMap[item.name] = 0;
           itemMap[item.name] += total;
         });
@@ -412,7 +434,9 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     return { trendData, tableData, categoryData };
   }, [pos, selectedDept, dynamicSummary, selectedMonthKey, timeRange, deptsToShow]);
 
-  if (!currentRole?.canViewBudget) {
+  const effectiveRole = currentRole || currentUser;
+  const hasBudgetAccess = isSuperAdminOrApprover || effectiveRole?.canViewBudget || (effectiveRole && (effectiveRole.roleId === 'ADMIN' || effectiveRole.level >= 99));
+  if (!hasBudgetAccess && currentRole) {
     return (
       <div className="w-full my-12 text-center p-8 bg-white rounded-3xl border border-slate-200/80 shadow-sm space-y-4 animate-fade-in">
         <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl w-16 h-16 mx-auto flex items-center justify-center border border-rose-100">
@@ -420,7 +444,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
         </div>
         <h3 className="text-lg font-bold text-slate-900">สิทธิ์การเข้าถึงถูกจำกัด (Access Restricted)</h3>
         <p className="text-sm text-slate-500 max-w-md mx-auto">
-          บทบาท <b>{currentRole?.title}</b> ไม่ได้รับอนุญาตให้ดูข้อมูลการเงินและงบประมาณประจำเดือน
+          บทบาท <b>{effectiveRole?.title || effectiveRole?.role}</b> ไม่ได้รับอนุญาตให้ดูข้อมูลการเงินและงบประมาณประจำเดือน
         </p>
       </div>
     );
@@ -1279,22 +1303,45 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                     </td>
                   </tr>
                 ) : (
-                  budgetTransactions.map(tx => (
-                    <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 pl-6 whitespace-nowrap text-slate-500 font-mono text-xs">{tx.date}</td>
-                      <td className="py-3.5 px-4">
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {tx.type === 'REFUND_CREDIT' ? 'คืนงบประมาณ (Refund)' : tx.type}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-800">ฝ่าย {tx.dept}</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-700 tabular-nums">
-                        +฿{tx.amount?.toLocaleString()}
-                      </td>
-                      <td className="py-3.5 px-4 font-mono text-xs text-indigo-600">{tx.refId || '-'}</td>
-                      <td className="py-3.5 pr-6 text-xs text-slate-600">{tx.note || '-'}</td>
-                    </tr>
-                  ))
+                  budgetTransactions.map(tx => {
+                    const amountNum = Number(tx.amount ?? tx.refundAmount ?? tx.creditAmount ?? 0);
+                    const docRef = tx.referenceDoc || tx.docNo || tx.poNumber || tx.poNo || tx.refDocNo || tx.refId || tx.referencePo || (tx.note?.match(/PO-[A-Z0-9-]+/i)?.[0]) || '-';
+                    const deptDisplay = tx.departmentName || (tx.department ? (tx.department.startsWith('ฝ่าย') ? tx.department : `ฝ่าย ${tx.department}`) : (tx.dept ? `ฝ่าย ${tx.dept}` : 'ฝ่าย PD'));
+                    const typeDisplay = tx.type === 'BUDGET_ROLLBACK' || tx.type === 'REFUND_CREDIT' || tx.transactionType === 'BUDGET_RESTORED_CLAIM_REFUND' ? 'BUDGET_ROLLBACK' : (tx.typeLabel || tx.type || 'BUDGET_ROLLBACK');
+
+                    return (
+                      <tr key={tx.id || tx.transactionId || Math.random()} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3.5 pl-6 whitespace-nowrap text-slate-500 font-mono text-xs">
+                          {tx.date || tx.createdAt?.slice(0, 19).replace('T', ' ') || '-'}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {typeDisplay}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 font-semibold text-slate-800">
+                          {deptDisplay}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono tabular-nums">
+                          <span className="font-semibold text-emerald-600 font-mono">
+                            +฿{amountNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-xs text-indigo-600 font-medium">
+                          {docRef !== '-' ? (
+                            <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono text-xs font-semibold">
+                              {docRef}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 pr-6 text-xs text-slate-600">
+                          {tx.remark || tx.note || '-'}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

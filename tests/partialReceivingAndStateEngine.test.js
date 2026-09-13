@@ -188,8 +188,9 @@ describe('State Engine: Partial Receiving, GRN Tracking, & Budget Reversal', () 
 
     // Verify stock logs
     const logs = storageService.getStockLogs();
-    const prodALog = logs.find(l => l.productId === 'PROD-A' && l.docNo === 'PO-PD-001');
+    const prodALog = logs.find(l => l.productId === 'PROD-A' && (l.docNo === 'GRN-PO-PD-001-01' || l.refPo === 'PO-PD-001' || l.poNo === 'PO-PD-001'));
     expect(prodALog).toBeDefined();
+    expect(prodALog.docNo).toBe('GRN-PO-PD-001-01');
     expect(prodALog.type).toBe('IN');
     expect(prodALog.qty).toBe(7);
     expect(prodALog.balance).toBe(27);

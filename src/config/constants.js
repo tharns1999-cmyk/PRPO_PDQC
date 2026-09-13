@@ -365,6 +365,7 @@ export const PO_STATUS = {
   ISSUED:                   { id: 'ISSUED',                   label: 'ออก PO แล้ว (รอรับของ)',        color: 'bg-blue-50 text-blue-700 border-blue-200' },
   IN_DELIVERY:              { id: 'IN_DELIVERY',              label: 'กำลังจัดส่ง',                   color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
   IN_PROGRESS_ONLINE:       { id: 'IN_PROGRESS_ONLINE',       label: 'สั่งซื้อ Online อยู่ระหว่างดำเนิน',  color: 'bg-violet-50 text-violet-700 border-violet-200' },
+  ORDERED:                  { id: 'ORDERED',                  label: 'สั่งซื้อแล้ว (รอจัดส่ง/รับของ)', color: 'bg-purple-50 text-purple-700 border-purple-200' },
   ORDERED_PENDING_DELIVERY: { id: 'ORDERED_PENDING_DELIVERY', label: 'สั่งซื้อแล้ว (รอจัดส่ง/รับของ)', color: 'bg-purple-50 text-purple-700 border-purple-200' },
   PARTIAL:                  { id: 'PARTIAL',                  label: 'รับของแล้วบางส่วน',             color: 'bg-amber-50 text-amber-700 border-amber-200' },
   RECEIVED:                 { id: 'RECEIVED',                 label: 'รับสินค้าเข้าคลังแล้ว',         color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },

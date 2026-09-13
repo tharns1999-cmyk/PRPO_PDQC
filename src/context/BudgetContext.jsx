@@ -3,6 +3,7 @@ import { useAppContext } from './AppContext';
 import { storageService } from '../services/storageService';
 import { apiService } from '../services/apiService';
 import { workflowEngine } from '../services/workflowEngine';
+import { budgetService } from '../services/budgetService';
 
 const BudgetContext = createContext(null);
 
@@ -172,6 +173,10 @@ export function BudgetProvider({ children }) {
   } catch {
     app = null;
   }
+
+  React.useEffect(() => {
+    budgetService.syncSettledRefundsToBudget();
+  }, []);
 
   const handleRollbackBudget = useCallback(async (department, refundAmount, reason, options) => {
     if (app?.rollbackBudget) {

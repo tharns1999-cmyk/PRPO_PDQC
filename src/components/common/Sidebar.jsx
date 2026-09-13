@@ -14,6 +14,7 @@ import { notificationService } from '../../services/notificationService';
 import UserProfileModal from './UserProfileModal';
 import { useAppContext } from '../../context/AppContext';
 import { getUserDepartments } from '../../utils/permissions';
+import { calculateActiveClaimCount, calculatePendingActionCount, calculateUrgentTaskCount } from '../../context/ProcurementContext';
 
 export default function Sidebar({ 
   activeView, 
@@ -22,6 +23,7 @@ export default function Sidebar({
   currentUser,
   prs = [], 
   pos = [],
+  urgentTaskCount: propUrgentTaskCount,
   isMobileOpen = false,
   onCloseMobile = () => {},
   onNavigate,
@@ -34,7 +36,12 @@ export default function Sidebar({
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   // App context for dynamic notifications
-  const context = useAppContext();
+  let context = null;
+  try {
+    context = useAppContext();
+  } catch {
+    context = null;
+  }
 
   // Single-Click Instant Reactive Notification State (Role-scoped)
   const [notifications, setNotifications] = useState(() => {
@@ -144,6 +151,37 @@ export default function Sidebar({
                   currentRole?.id === 'ADMIN' || 
                   (currentRole?.level && currentRole.level >= 99);
 
+  // Helper: ตรวจสอบสถานะ Order ที่ปิดงานแล้ว
+  const isOrderClosed = (status) => {
+    if (!status) return false;
+    const s = String(status).toUpperCase();
+    return ['COMPLETED', 'CLOSED', 'COMPLETED_DELIVERY', 'CLOSED_ORDER', 'FINISHED', 'RESOLVED', 'CANCELLED'].includes(s) || s.startsWith('COMPLETED') || s.startsWith('CLOSED');
+  };
+
+  // Execution Directive 1: คำนวณจำนวน PO ที่อยู่ในแท็บรอเคลมจริง (activeClaimCount)
+  const activeClaimCount = React.useMemo(() => {
+    const orders = (pos && pos.length > 0) ? pos : (context?.pos || []);
+    return calculateActiveClaimCount(orders);
+  }, [pos, context?.pos]);
+
+  // คำนวณจำนวนงานในแท็บ "รอดำเนินการ" (pendingActionCount)
+  const pendingActionCount = React.useMemo(() => {
+    const orders = (pos && pos.length > 0) ? pos : (context?.pos || []);
+    const prList = (prs && prs.length > 0) ? prs : (context?.prs || []);
+    return calculatePendingActionCount(orders, prList);
+  }, [pos, prs, context?.pos, context?.prs]);
+
+  // ผลรวมของ 2 แท็บที่เป็น Actionable Tasks สำคัญ: urgentTaskCount = pendingActionCount + activeClaimCount
+  const urgentTaskCount = React.useMemo(() => {
+    if (propUrgentTaskCount !== undefined && propUrgentTaskCount !== null) {
+      return Number(propUrgentTaskCount);
+    }
+    if (context?.urgentTaskCount !== undefined && context?.urgentTaskCount !== null) {
+      return Number(context.urgentTaskCount);
+    }
+    return Number(pendingActionCount || 0) + Number(activeClaimCount || 0);
+  }, [propUrgentTaskCount, context?.urgentTaskCount, pendingActionCount, activeClaimCount]);
+
   // Calculate Task Counts for Badges (using unified workflowEngine task aggregator)
   const taskCounts = React.useMemo(() => {
     const userTasks = workflowEngine.getUserTasks(currentRole, prs, pos);
@@ -178,7 +216,7 @@ export default function Sidebar({
           ariaLabel: 'งานจัดซื้อ',
           icon: ShoppingBag, 
           visible: currentRole?.canOnlinePurchase, 
-          badge: taskCounts.onlineCount > 0 ? taskCounts.onlineCount : null 
+          badge: urgentTaskCount > 0 ? urgentTaskCount : null 
         },
       ]
     },
@@ -341,7 +379,7 @@ export default function Sidebar({
                     }}
                     className={({ isActive: navActive }) => {
                       const isActive = navActive || activeView === item.id;
-                      return `group flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
+                      return `group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm transition-all duration-150 cursor-pointer ${
                         isActive
                           ? 'bg-slate-900 text-white font-semibold shadow-xs'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium'
@@ -352,36 +390,46 @@ export default function Sidebar({
                       const isActive = navActive || activeView === item.id;
                       return (
                         <>
-                          <Icon 
-                            size={20} 
-                            strokeWidth={1.8} 
-                            className={`w-5 h-5 shrink-0 transition-colors ${
-                              isActive 
-                                ? 'text-white' 
-                                : 'text-slate-400 group-hover:text-slate-700'
-                            }`} 
-                          />
-                          <span className="truncate">{item.label}</span>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <Icon 
+                              size={20} 
+                              strokeWidth={1.8} 
+                              className={`w-5 h-5 shrink-0 transition-colors ${
+                                isActive 
+                                  ? 'text-white' 
+                                  : 'text-slate-400 group-hover:text-slate-700'
+                              }`} 
+                            />
+                            <span className="truncate">{item.label}</span>
+                          </div>
 
-                          {item.badge && Number(item.badge) > 0 && (
-                            isActive ? (
-                              <span className="ml-auto px-1.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-white/20 text-white leading-none shrink-0">
-                                {item.badge}
+                          {item.id === 'online-tasks' ? (
+                            urgentTaskCount > 0 && (
+                              <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold text-white bg-rose-600 rounded-full animate-pulse shadow-sm border border-rose-400">
+                                {urgentTaskCount}
                               </span>
-                            ) : (item.id === 'my-tasks' || item.id === 'my-workspace' || item.id === 'online-tasks') ? (
-                              <span className="ml-auto flex items-center gap-1.5 shrink-0">
-                                <span className="relative flex h-2 w-2">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
-                                </span>
-                                <span className="px-1.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200 leading-none">
+                            )
+                          ) : (
+                            item.badge && Number(item.badge) > 0 && (
+                              isActive ? (
+                                <span className="ml-auto px-1.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-white/20 text-white leading-none shrink-0">
                                   {item.badge}
                                 </span>
-                              </span>
-                            ) : (
-                              <span className="ml-auto px-1.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-slate-100 text-slate-600 group-hover:bg-slate-200 transition-colors leading-none shrink-0">
-                                {item.badge}
-                              </span>
+                              ) : (item.id === 'my-tasks' || item.id === 'my-workspace') ? (
+                                <span className="ml-auto flex items-center gap-1.5 shrink-0">
+                                  <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                                  </span>
+                                  <span className="px-1.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200 leading-none">
+                                    {item.badge}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="ml-auto px-1.5 py-0.5 rounded-full font-mono text-[10px] font-bold bg-slate-100 text-slate-600 group-hover:bg-slate-200 transition-colors leading-none shrink-0">
+                                  {item.badge}
+                                </span>
+                              )
                             )
                           )}
                         </>

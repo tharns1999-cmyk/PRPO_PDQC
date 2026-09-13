@@ -460,6 +460,10 @@ export const apiService = {
     return updated;
   },
 
+  async confirmOnlineOrder(poId, vendorName, user, updatedItems = null, varianceNote = '') {
+    return this.acknowledgeOnlineTask(poId, vendorName, user, updatedItems, varianceNote);
+  },
+
   async resetPOQC2026001() {
     const res = storageService.resetPOQC2026001();
     if (res) {

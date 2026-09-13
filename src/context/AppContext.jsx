@@ -7,7 +7,9 @@ import { workflowEngine } from '../services/workflowEngine';
 import { authService, DEFAULT_EMPLOYEE_ACCOUNTS } from '../services/authService';
 import { resolveUserPermissions } from '../config/constants';
 import { modalService } from '../services/modalService';
+import { generateGRNNumber } from '../services/warehouseService';
 import { getUserDepartments } from '../utils/permissions';
+import { getUnifiedProductList } from '../views/PRCreateView';
 
 const AppContext = createContext(null);
 
@@ -61,7 +63,9 @@ const getInitialUserSession = () => {
     rolePermissions: permissions
   };
   try {
-    localStorage.setItem('prpo_auth_session', JSON.stringify(sessionData));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('prpo_auth_session', JSON.stringify(sessionData));
+    }
   } catch (e) {
     console.warn('[AppContext] Could not persist default user session:', e);
   }
@@ -139,7 +143,7 @@ export function AppProvider({ children }) {
       ]);
 
       if (Array.isArray(prodsData)) {
-        setProducts(prodsData);
+        setProducts(getUnifiedProductList(prodsData));
       }
       if (Array.isArray(vendorsData)) {
         setVendors(vendorsData);
@@ -215,7 +219,17 @@ export function AppProvider({ children }) {
       setPOs(uniquePOs);
 
       if (Array.isArray(logsData)) {
-        setStockLogs(logsData);
+        const localLogs = storageService.getStockLogs() || [];
+        const seenLogIds = new Set();
+        const mergedLogs = [];
+        [...localLogs, ...logsData].forEach(l => {
+          if (l && l.id && !seenLogIds.has(l.id)) {
+            seenLogIds.add(l.id);
+            mergedLogs.push(l);
+          }
+        });
+        setStockLogs(mergedLogs);
+        storageService.saveStockLogs(mergedLogs);
       }
 
       if (Array.isArray(notisData) && notisData.length > 0) {
@@ -496,13 +510,19 @@ export function AppProvider({ children }) {
     return result;
   }, [currentRole, loadAllData]);
 
-  // Immutable PO updater in state
+  // Immutable PO updater in state with storage persistence
   const updatePO = useCallback((poId, updates) => {
     setPOs(prev => prev.map(item => 
       (item.id === poId || item.poNo === poId || item.poNumber === poId) 
         ? { ...item, ...updates } 
         : item
     ));
+    const allPos = storageService.getPOs() || [];
+    const idx = allPos.findIndex(p => p.id === poId || p.poNo === poId || p.poNumber === poId);
+    if (idx !== -1) {
+      allPos[idx] = { ...allPos[idx], ...updates };
+      storageService.savePOs(allPos);
+    }
   }, []);
 
   // Immutable PR updater in state with cascading support
@@ -556,18 +576,66 @@ export function AppProvider({ children }) {
       const matchKey = item.productId || item.id || item.code || String(idx);
       const inc = receiptMap.get(matchKey) || receiptMap.get(item.productId) || {};
 
+      const itemStore = (item.actualStoreName || item.storeName || '').trim();
+      const storeClaims = currentPO?.storeClaims || {};
+      let storeClaim = (item.storeKey && storeClaims[item.storeKey]) || 
+        (itemStore && storeClaims[itemStore]) || 
+        (item.storePlatform && itemStore && storeClaims[`${item.storePlatform}_${itemStore}`]);
+
+      if (!storeClaim && itemStore) {
+        const normStore = itemStore.toLowerCase();
+        for (const [k, c] of Object.entries(storeClaims)) {
+          if (k.toLowerCase() === normStore || k.toLowerCase().includes(normStore) || normStore.includes(k.toLowerCase())) {
+            storeClaim = c;
+            break;
+          }
+        }
+      }
+
+      const isStoreRefunded = Boolean(
+        storeClaim?.isResolved && 
+        (storeClaim?.type === 'REFUND' || storeClaim?.actionType === 'REFUND' || storeClaim?.resolutionType === 'REFUND' || storeClaim?.type === 'CLOSE_WITH_REFUND' || String(storeClaim?.note || '').includes('คืนเงิน'))
+      );
+
       const orderedQty = Number(item.orderedQty ?? item.purchaseQty ?? item.qty) || 0;
-      const prevReceived = Number(item.receivedQty) || 0;
+      const prevReceived = Number(item.accumulatedReceived ?? item.receivedQty) || 0;
       const prevDamaged = Number(item.damagedQty ?? item.claimedQty ?? item.ngQty) || 0;
 
-      const thisReceived = Number(inc.receivedThisTime ?? inc.receivedQty ?? inc.qty) || 0;
-      const thisDamaged = Number(inc.damagedQty ?? inc.claimedQty ?? inc.ngQty) || 0;
+      let refundedQty = Number(item.refundedQty || 0);
+      if (refundedQty === 0 && (item.claimResolution === 'REFUND' || isStoreRefunded)) {
+        refundedQty = Number(item.damagedQty || item.shortageQty || Math.max(0, orderedQty - prevReceived));
+      }
+
+      const unitPrice = Number(item.actualPrice ?? item.unitPrice ?? item.price ?? 0);
+      const refundAmount = Number(item.refundAmount || storeClaim?.refundAmount || (refundedQty * unitPrice));
+      const isItemRefunded = refundedQty > 0 || isStoreRefunded || item.claimResolution === 'REFUND';
+
+      const allowedReceiveQty = Math.max(0, orderedQty - prevReceived - refundedQty);
+
+      let thisReceived = inc.goodQty !== undefined 
+        ? Number(inc.goodQty) 
+        : (inc.acceptedQty !== undefined 
+            ? Number(inc.acceptedQty) 
+            : Number(inc.receivedThisTime ?? inc.receivedQty ?? inc.qty ?? 0));
+      let thisDamaged = Number(inc.damagedQty ?? inc.claimedQty ?? inc.ngQty) || 0;
+
+      if (allowedReceiveQty === 0) {
+        thisReceived = 0;
+        thisDamaged = 0;
+      } else {
+        thisReceived = Math.max(0, Math.min(thisReceived, allowedReceiveQty));
+        thisDamaged = Math.max(0, Math.min(thisDamaged, allowedReceiveQty - thisReceived));
+      }
 
       const newReceived = prevReceived + thisReceived;
       const newDamaged = prevDamaged + thisDamaged;
-      const shortageQty = Math.max(0, orderedQty - newReceived);
+      const shortageQty = Math.max(0, orderedQty - newReceived - refundedQty - newDamaged);
 
-      if (thisDamaged > 0 || newDamaged > 0) hasAnyClaim = true;
+      const isDamaged = newDamaged > 0;
+      const disputeAction = inc.shortageReason === 'SPLIT_SHIPMENT' ? 'WAIT_NEXT_ROUND' : (inc.disputeAction || ((isDamaged || (shortageQty > 0 && inc.shortageReason !== 'SPLIT_SHIPMENT')) ? 'CLAIM' : 'NONE'));
+      const hasDispute = isDamaged || (shortageQty > 0 && disputeAction !== 'WAIT_NEXT_ROUND');
+
+      if (hasDispute) hasAnyClaim = true;
       if (shortageQty > 0) {
         hasAnyShortage = true;
         allReceived = false;
@@ -591,9 +659,22 @@ export function AppProvider({ children }) {
         ...item,
         orderedQty,
         receivedQty: newReceived,
+        goodQty: newReceived,
+        acceptedQty: newReceived,
+        accumulatedReceived: newReceived,
         damagedQty: newDamaged,
         shortageQty,
         remainingQty: shortageQty,
+        refundedQty,
+        refundAmount: refundAmount || item.refundAmount,
+        isSettled: isItemRefunded ? true : item.isSettled,
+        claimResolution: isItemRefunded ? 'REFUND' : item.claimResolution,
+        replacementPendingQty: item.replacementPendingQty,
+        isDamaged,
+        hasDispute,
+        disputeAction,
+        shortageReason: inc.shortageReason || item.shortageReason || '',
+        defectReason: inc.defectReason || item.defectReason || '',
         conversionRate: Number(item.conversionRate) > 0 ? Number(item.conversionRate) : 1
       };
     });
@@ -614,7 +695,8 @@ export function AppProvider({ children }) {
       nextStatus = 'COMPLETED';
     }
 
-    const grnNumber = grnPayload.grnNumber || grnPayload.grNumber || grnPayload.grId || `GRN-${currentPO.poNo || currentPO.id}-${String((currentPO.grnHistory?.length || 0) + 1).padStart(2, '0')}`;
+    const receiptRound = grnPayload.round || (currentPO.grnHistory?.length || 0) + 1;
+    const grnNumber = grnPayload.grnNumber || grnPayload.grNumber || grnPayload.grId || generateGRNNumber(currentPO.poNo || currentPO.id, receiptRound);
     const timestamp = grnPayload.receivedDate || grnPayload.date || new Date().toLocaleString('th-TH');
     const receivedAtIso = grnPayload.receivingInfo?.receivedAt || new Date().toISOString();
 
@@ -909,6 +991,7 @@ export function AppProvider({ children }) {
     const prods = storageService.getProducts() || [];
     const logs = storageService.getStockLogs() || [];
     const timestamp = options.date || new Date().toLocaleString('th-TH');
+    const isoTimestamp = new Date().toISOString();
 
     const processedItems = [];
 
@@ -920,12 +1003,21 @@ export function AppProvider({ children }) {
       const goodQty = Math.max(0, receivedQty - damagedQty);
       if (goodQty <= 0) return;
 
-      const prodIdx = prods.findIndex(p => 
-        p.id === item.productId || 
-        p.code === item.productId || 
-        p.code === item.code || 
-        (item.name && p.name === item.name)
-      );
+      const tId = String(item.productId || item.id || '').trim().toLowerCase();
+      const tCode = String(item.code || item.productCode || '').trim().toLowerCase();
+      const tName = String(item.name || '').trim().toLowerCase();
+
+      const prodIdx = prods.findIndex(p => {
+        if (!p) return false;
+        const pId = String(p.id || '').trim().toLowerCase();
+        const pCode = String(p.code || '').trim().toLowerCase();
+        const pName = String(p.name || '').trim().toLowerCase();
+        return (
+          (tId && (pId === tId || pCode === tId)) ||
+          (tCode && (pCode === tCode || pId === tCode)) ||
+          (tName && pName === tName)
+        );
+      });
 
       if (prodIdx !== -1) {
         const prod = { ...prods[prodIdx] };
@@ -939,29 +1031,42 @@ export function AppProvider({ children }) {
 
         const sUnit = prod.stockUnit || prod.unit || 'ชิ้น';
         const pUnit = prod.purchaseUnit || prod.unit || sUnit;
-        const grNumber = options.grNumber || item.grNumber || options.grnNumber || '';
-        const docNo = options.docNo || item.docNo || item.poNo || 'GRN';
+        const grNumber = options.grNumber || item.grNumber || options.grnNumber || `GRN-${Date.now()}`;
+        const docNo = options.docNo || item.docNo || item.poNo || grNumber;
+        const poNumber = options.poNo || options.poNumber || item.poNo || item.poNumber || (String(docNo).startsWith('PO-') ? docNo : '');
+        const actualPrice = Number(item.actualPrice ?? item.unitPrice ?? item.price ?? prod.price) || 0;
+        const stockUnitPrice = actualPrice > 0 && rate > 0 ? (actualPrice / rate) : (Number(prod.price) || 0);
 
         const logNote = rate > 1
           ? `รับสินค้าเข้าคลังเฉพาะยอดสมบูรณ์ ${goodQty} ${pUnit} (= +${stockQtyToAdd} ${sUnit}) จากเอกสาร ${docNo}`
           : `รับสินค้าเข้าคลังเฉพาะยอดสมบูรณ์ +${stockQtyToAdd} ${sUnit} จากเอกสาร ${docNo}`;
 
-        logs.unshift({
+        const logEntry = {
           id: `LOG-IN-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
-          grNumber,
-          date: timestamp,
+          date: isoTimestamp,
+          displayDate: timestamp,
           productId: prod.id,
           productCode: prod.code,
+          name: prod.name,
           type: 'IN',
-          docNo,
+          documentNo: grNumber,
+          docNo: docNo,
+          poNo: poNumber,
+          poNumber: poNumber,
           qty: stockQtyToAdd,
+          receivedQty: goodQty,
           unit: sUnit,
           balance: newBal,
+          unitPrice: stockUnitPrice,
+          totalPrice: stockUnitPrice * stockQtyToAdd,
+          actualPrice: actualPrice,
           user: typeof options.user === 'object' ? `${options.user.name} (${options.user.title || ''})` : (options.user || currentRole?.name || 'Warehouse Staff'),
           locationId: prod.locationId || '',
           locationName: prod.locationName || '',
           note: options.note || logNote
-        });
+        };
+
+        logs.unshift(logEntry);
 
         processedItems.push({
           productId: prod.id,
@@ -970,7 +1075,8 @@ export function AppProvider({ children }) {
           goodQty,
           stockQtyAdded: stockQtyToAdd,
           previousBalance: currentBal,
-          newBalance: newBal
+          newBalance: newBal,
+          log: logEntry
         });
       }
     });
@@ -982,11 +1088,18 @@ export function AppProvider({ children }) {
       setStockLogs(logs);
 
       try {
-        await fetch('http://localhost:3001/api/products/batch', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(prods)
-        });
+        await Promise.all([
+          fetch('http://localhost:3001/api/products/batch', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(prods)
+          }),
+          fetch('http://localhost:3001/api/stock-logs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(logs)
+          })
+        ]);
       } catch {}
     }
 
@@ -995,7 +1108,8 @@ export function AppProvider({ children }) {
       success: true,
       processedCount: processedItems.length,
       processedItems,
-      products: prods
+      products: prods,
+      stockLogs: logs
     };
   }, [currentRole, loadAllData]);
 
@@ -1031,7 +1145,9 @@ export function AppProvider({ children }) {
     isDataLoading,
     isLoading,
     handleLogout,
-    products,
+    products: getUnifiedProductList(products),
+    inventory: products,
+    getUnifiedProductList,
     vendors,
     storageLocations,
     usageUnits,

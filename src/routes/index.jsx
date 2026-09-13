@@ -130,10 +130,11 @@ function PRListRoute() {
 }
 
 function PRCreateRoute() {
-  const { products, departments, currentRole, onNavigate, refreshData, preselectedProduct, clearPreselectedProduct, editingPR, clearEditingPR, createPR, handleSavePR, updatePR } = useAppContext();
+  const { products, inventory, departments, currentRole, onNavigate, refreshData, preselectedProduct, clearPreselectedProduct, editingPR, clearEditingPR, createPR, handleSavePR, updatePR } = useAppContext();
   return (
     <PRCreateView
       products={products}
+      inventory={inventory}
       departments={departments}
       currentRole={currentRole}
       onNavigate={onNavigate}

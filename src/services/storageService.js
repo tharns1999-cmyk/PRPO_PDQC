@@ -5,6 +5,82 @@ import { DEFAULT_EMPLOYEE_ACCOUNTS } from './authService.js';
 const DATA_VERSION = 'prpo_clean_v16_empty_state';
 const API_URL = 'http://localhost:3001/api/storage';
 
+// ── Permanent Blacklist Guard against Test / Mock Artifacts ──
+export const DUMMY_BLACKLIST = new Set(['P01', 'P02', 'PROD-01', 'PROD-02']);
+export const isBlacklistedProduct = (item) => {
+  if (!item || typeof item !== 'object') return false;
+  const actual = item.product || item.item || item;
+  const code = String(actual.code || actual.id || '').trim().toUpperCase();
+  const id = String(actual.id || '').trim().toUpperCase();
+  const name = String(actual.name || actual.itemName || actual.title || '').trim().toLowerCase();
+  return DUMMY_BLACKLIST.has(code) || DUMMY_BLACKLIST.has(id) || name === 'item 1' || name === 'item 2';
+};
+
+/**
+ * B. Runtime Migration & Self-Healing for Existing Records
+ * Normalizes legacy document numbers (bare PO numbers e.g. PO-PD-2026-001)
+ * into canonical GRN format: GRN-${poNumber}-${String(round).padStart(2, '0')}
+ */
+export const normalizeDocNumber = (record) => {
+  if (!record) return '';
+  if (typeof record === 'string') {
+    const trimmed = record.trim();
+    if (/^PO-[A-Z0-9]+-\d{4}-\d{3,}$/i.test(trimmed)) {
+      return `GRN-${trimmed}-01`;
+    }
+    return trimmed;
+  }
+  let docNo = record.grnNumber || record.grnNo || record.grNumber || record.documentNo || record.docNo || '';
+  docNo = String(docNo).trim();
+  // If the document number is a bare PO number (e.g. PO-PD-2026-001) without GRN prefix:
+  if (/^PO-[A-Z0-9]+-\d{4}-\d{3,}$/i.test(docNo)) {
+    const round = record.roundNumber || record.round || 1;
+    return `GRN-${docNo}-${String(round).padStart(2, '0')}`;
+  }
+  return docNo;
+};
+
+/**
+ * Resilient Temporal Date Normalizer
+ * Parses any date format (ISO YYYY-MM-DD, Thai/Standard DD/MM/YYYY, timestamps)
+ * and extracts canonical year, month, and ymKey (e.g. "2026-09").
+ */
+export const parseOrderYearMonth = (dateInput) => {
+  if (!dateInput) return { year: null, month: null, ymKey: null };
+  const str = String(dateInput).trim();
+  
+  // Case 1: DD/MM/YYYY or DD/MM/YYYY HH:mm:ss or DD/MM/YY
+  const dmyMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (dmyMatch) {
+    let year = parseInt(dmyMatch[3], 10);
+    if (year === 69 || year === 26) year = 2026;
+    else if (year < 100) year = 2000 + year;
+    else if (year > 2500) year -= 543; // Convert Thai Buddhist Era to CE
+    const month = String(parseInt(dmyMatch[2], 10)).padStart(2, '0');
+    return { year, month, ymKey: `${year}-${month}` };
+  }
+
+  // Case 2: ISO YYYY-MM-DD or YYYY-MM
+  const isoMatch = str.match(/^(\d{4})-(\d{1,2})/);
+  if (isoMatch) {
+    let year = parseInt(isoMatch[1], 10);
+    if (year > 2500) year -= 543;
+    const month = String(parseInt(isoMatch[2], 10)).padStart(2, '0');
+    return { year, month, ymKey: `${year}-${month}` };
+  }
+
+  // Fallback: Date object parse
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    let year = parsed.getFullYear();
+    if (year > 2500) year -= 543;
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    return { year, month, ymKey: `${year}-${month}` };
+  }
+
+  return { year: null, month: null, ymKey: null };
+};
+
 // In-Memory Storage Cache backed by Local File API Server
 let _cache = {};
 let _apiReady = false;
@@ -25,6 +101,38 @@ const _syncApi = async () => {
 const _migrateLocalStorageCache = () => {
   if (typeof localStorage === 'undefined') return;
   try {
+    // Always purge dummy blacklisted products & stock logs from local storage
+    const storedProds = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+    if (storedProds) {
+      try {
+        const parsedP = JSON.parse(storedProds);
+        if (Array.isArray(parsedP)) {
+          const cleanP = parsedP
+            .flatMap(p => Array.isArray(p) ? p : [p])
+            .filter(p => p && typeof p === 'object' && !isBlacklistedProduct(p));
+          if (cleanP.length !== parsedP.length) {
+            localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(cleanP));
+          }
+        }
+      } catch (e) {}
+    }
+    const storedLogs = localStorage.getItem(STORAGE_KEYS.STOCK_LOGS);
+    if (storedLogs) {
+      try {
+        const parsedL = JSON.parse(storedLogs);
+        if (Array.isArray(parsedL)) {
+          const cleanL = parsedL.filter(l => {
+            const pId = String(l.productId || '').trim().toUpperCase();
+            const pCode = String(l.productCode || '').trim().toUpperCase();
+            return !DUMMY_BLACKLIST.has(pId) && !DUMMY_BLACKLIST.has(pCode);
+          });
+          if (cleanL.length !== parsedL.length) {
+            localStorage.setItem(STORAGE_KEYS.STOCK_LOGS, JSON.stringify(cleanL));
+          }
+        }
+      } catch (e) {}
+    }
+
     const currentVersion = localStorage.getItem('prpo_data_version');
     if (currentVersion !== DATA_VERSION) {
       console.log(`[StorageService] Migrating LocalStorage cache to ${DATA_VERSION} (Clean Transactional State)...`);
@@ -198,7 +306,9 @@ export const storageService = {
 
     // Directive 3: Flatten nested arrays and sanitize cache
     if (Array.isArray(data)) {
-      data = data.flatMap(p => Array.isArray(p) ? p : [p]).filter(p => p && typeof p === 'object');
+      data = data
+        .flatMap(p => Array.isArray(p) ? p : [p])
+        .filter(p => p && typeof p === 'object' && !isBlacklistedProduct(p));
       const validNamed = data.filter(p => {
         const actual = p.product || p.item || p;
         const name = actual.name || actual.itemName || actual.nameTh || actual.title;
@@ -217,7 +327,7 @@ export const storageService = {
           if (item) {
             try {
               const parsed = JSON.parse(item);
-              if (Array.isArray(parsed) && parsed.some(x => Array.isArray(x) || !x?.name)) {
+              if (Array.isArray(parsed) && parsed.some(x => Array.isArray(x) || !x?.name || isBlacklistedProduct(x))) {
                 localStorage.removeItem(key);
               }
             } catch (err) {}
@@ -264,16 +374,56 @@ export const storageService = {
       return item;
     });
 
-    if (needsSave || !data) {
-      _setItem(STORAGE_KEYS.PRODUCTS, migrated);
+    // Deduplicate by unique code or id and discard blacklisted items
+    const map = new Map();
+    migrated.forEach(item => {
+      if (isBlacklistedProduct(item)) return;
+      const key = String(item.code || item.id || '').trim().toUpperCase();
+      if (key && !map.has(key)) {
+        map.set(key, item);
+      }
+    });
+    const deduped = Array.from(map.values());
+
+    if (needsSave || !data || deduped.length !== products.length) {
+      _setItem(STORAGE_KEYS.PRODUCTS, deduped);
     }
-    return migrated;
+    return deduped;
   },
   saveProducts(products) {
     const sanitized = (Array.isArray(products) ? products : [])
       .flatMap(p => Array.isArray(p) ? p : [p])
-      .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title));
-    _setItem(STORAGE_KEYS.PRODUCTS, sanitized, true);
+      .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title) && !isBlacklistedProduct(p));
+    const map = new Map();
+    sanitized.forEach(item => {
+      const actual = item.product || item.item || item;
+      const key = String(actual.code || actual.id || '').trim().toUpperCase();
+      if (key && !map.has(key)) {
+        map.set(key, actual);
+      }
+    });
+    _setItem(STORAGE_KEYS.PRODUCTS, Array.from(map.values()), true);
+  },
+  deleteProduct(productId) {
+    const targetStr = String(productId || '').trim().toLowerCase();
+    const current = this.getProducts();
+    const filtered = current.filter(p => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || '').trim().toLowerCase();
+      return pId !== targetStr && pCode !== targetStr && !isBlacklistedProduct(p);
+    });
+    this.saveProducts(filtered);
+    // Also clean up any stock logs tied to this product
+    const stockLogs = this.getStockLogs();
+    const cleanLogs = stockLogs.filter(l => {
+      const pId = String(l.productId || '').trim().toLowerCase();
+      const pCode = String(l.productCode || '').trim().toLowerCase();
+      return pId !== targetStr && pCode !== targetStr;
+    });
+    if (cleanLogs.length !== stockLogs.length) {
+      this.saveStockLogs(cleanLogs);
+    }
+    return true;
   },
 
   // Storage Locations (Simple Name & Department)
@@ -864,13 +1014,106 @@ export const storageService = {
     _setItem(STORAGE_KEYS.POS, unique);
   },
 
-  // Stock Logs
+  // Partitioned Completed PO query helper
+  getCompletedPOsByMonth(month, options = {}) {
+    const pos = this.getPOs() || [];
+    return pos.filter(po => {
+      const isClosed = !po.isInClaim && (
+        po.status === 'COMPLETED' ||
+        po.status === 'CLOSED' ||
+        po.isClosed ||
+        String(po.status || '').toUpperCase().startsWith('COMPLETED') ||
+        String(po.status || '').toUpperCase().startsWith('CLOSED')
+      );
+      if (!isClosed) return false;
+      if (!month || month === 'ALL') return true;
+      const orderDateStr = po.completedAt || po.updatedAt || po.orderDate || po.createdAt || '';
+      const { year, ymKey } = parseOrderYearMonth(orderDateStr);
+      if (month === 'ALL_YEAR') {
+        const targetYear = options.year ? parseInt(options.year, 10) : 2026;
+        return year === targetYear;
+      }
+      return ymKey === month;
+    });
+  },
+
+  // Stock Logs (Self-Healing Runtime Migration for Document Numbers)
   getStockLogs() {
     const data = _getItem(STORAGE_KEYS.STOCK_LOGS);
-    return Array.isArray(data) ? data : (isDataCleared() ? [] : (initialStockLogs || []));
+    const raw = Array.isArray(data) ? data : (isDataCleared() ? [] : (initialStockLogs || []));
+    return raw
+      .filter(l => {
+        const pId = String(l.productId || '').trim().toUpperCase();
+        const pCode = String(l.productCode || '').trim().toUpperCase();
+        return !DUMMY_BLACKLIST.has(pId) && !DUMMY_BLACKLIST.has(pCode);
+      })
+      .map(l => {
+        const normDoc = normalizeDocNumber(l);
+        const parentPo = l.poNumber || l.poNo || l.refPo || (String(l.docNo || '').startsWith('PO-') ? l.docNo : (String(l.documentNo || '').startsWith('PO-') ? l.documentNo : ''));
+        return {
+          ...l,
+          documentNo: normDoc || l.documentNo || l.docNo,
+          docNo: normDoc || l.docNo || l.documentNo,
+          grnNumber: normDoc || l.grnNumber || l.grNumber,
+          grnNo: normDoc || l.grnNo || l.grnNumber,
+          grNumber: normDoc || l.grNumber,
+          poNumber: parentPo || l.poNumber || l.poNo,
+          poNo: parentPo || l.poNo || l.poNumber,
+          refPo: parentPo || l.refPo
+        };
+      });
   },
   saveStockLogs(logs) {
-    _setItem(STORAGE_KEYS.STOCK_LOGS, logs);
+    const cleanLogs = (Array.isArray(logs) ? logs : [])
+      .filter(l => {
+        const pId = String(l.productId || '').trim().toUpperCase();
+        const pCode = String(l.productCode || '').trim().toUpperCase();
+        return !DUMMY_BLACKLIST.has(pId) && !DUMMY_BLACKLIST.has(pCode);
+      })
+      .map(l => {
+        const normDoc = normalizeDocNumber(l);
+        const parentPo = l.poNumber || l.poNo || l.refPo || (String(l.docNo || '').startsWith('PO-') ? l.docNo : (String(l.documentNo || '').startsWith('PO-') ? l.documentNo : ''));
+        return {
+          ...l,
+          documentNo: normDoc || l.documentNo || l.docNo,
+          docNo: normDoc || l.docNo || l.documentNo,
+          grnNumber: normDoc || l.grnNumber || l.grNumber,
+          grnNo: normDoc || l.grnNo || l.grnNumber,
+          grNumber: normDoc || l.grNumber,
+          poNumber: parentPo || l.poNumber || l.poNo,
+          poNo: parentPo || l.poNo || l.poNumber,
+          refPo: parentPo || l.refPo
+        };
+      });
+    _setItem(STORAGE_KEYS.STOCK_LOGS, cleanLogs);
+  },
+  normalizeDocNumber(record) {
+    return normalizeDocNumber(record);
+  },
+  getGRNs() {
+    const pos = this.getPOs() || [];
+    const grnList = [];
+    pos.forEach(po => {
+      const poNum = po.poNo || po.poNumber || po.id;
+      if (Array.isArray(po.grnHistory)) {
+        po.grnHistory.forEach((grn, idx) => {
+          const round = grn.round || grn.roundNumber || (idx + 1);
+          const grnNo = normalizeDocNumber({ ...grn, docNo: grn.grnNumber || grn.grnNo || poNum, round });
+          grnList.push({
+            ...grn,
+            grnNumber: grnNo,
+            grnNo: grnNo,
+            round,
+            roundNumber: round,
+            poNumber: poNum,
+            poNo: poNum,
+            refPo: poNum,
+            department: po.department || po.prDepartment || 'PD'
+          });
+        });
+      }
+    });
+    return grnList;
   },
 
   // Budgets
@@ -889,14 +1132,42 @@ export const storageService = {
   // Budget Transaction Log (Refund / Restore entries)
   getBudgetTransactions() {
     const data = _getItem(STORAGE_KEYS.BUDGET_TRANSACTIONS);
-    return data || [];
+    if (!Array.isArray(data)) return [];
+    return data.map(tx => {
+      const doc = tx.referenceDoc || tx.docNo || tx.poNumber || tx.poNo || tx.refDocNo || tx.refId || tx.referencePo || (tx.note?.match(/PO-[A-Z0-9-]+/i)?.[0]) || '';
+      const dept = String(tx.dept || tx.department || 'PD').replace(/^ฝ่าย\s*/i, '').trim().toUpperCase() || 'PD';
+      const amt = Number(tx.amount ?? tx.refundAmount ?? tx.creditAmount ?? 0);
+      return {
+        ...tx,
+        dept,
+        department: tx.department || dept,
+        departmentName: tx.departmentName || `ฝ่าย ${dept}`,
+        docNo: tx.docNo || doc,
+        referenceDoc: tx.referenceDoc || doc,
+        poNumber: tx.poNumber || doc,
+        refId: tx.refId || doc,
+        amount: amt,
+        refundAmount: Number(tx.refundAmount ?? amt)
+      };
+    });
   },
   saveBudgetTransactions(transactions) {
     _setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, transactions);
   },
   appendBudgetTransaction(tx) {
     const existing = this.getBudgetTransactions();
-    existing.unshift({ ...tx, id: `BTX-${Date.now()}` }); // prepend newest first
+    const cleanId = tx.id || `BTX-${Date.now()}`;
+    const normalizedTx = {
+      ...tx,
+      id: cleanId,
+      amount: Number(tx.amount ?? tx.refundAmount ?? tx.creditAmount ?? 0),
+      refundAmount: Number(tx.refundAmount ?? tx.amount ?? 0),
+      docNo: tx.docNo || tx.referenceDoc || tx.poNumber || tx.refId || tx.refDocNo || '',
+      referenceDoc: tx.referenceDoc || tx.docNo || tx.poNumber || tx.refId || tx.refDocNo || '',
+      poNumber: tx.poNumber || tx.docNo || tx.referenceDoc || tx.refId || '',
+      departmentName: tx.departmentName || (tx.dept ? `ฝ่าย ${tx.dept}` : (tx.department ? `ฝ่าย ${tx.department}` : 'ฝ่าย PD'))
+    };
+    existing.unshift(normalizedTx); // prepend newest first
     _setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, existing);
   },
 

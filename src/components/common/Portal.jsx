@@ -9,6 +9,10 @@ export default function Portal({ children }) {
     return () => setMounted(false);
   }, []);
 
+  if (typeof document === 'undefined') {
+    return children;
+  }
+
   if (!mounted) return null;
 
   return createPortal(children, document.body);

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, ChevronDown, Check, X, Plus, Edit3, Trash2 } from 'lucide-react';
 
@@ -16,9 +16,16 @@ export default function SearchableSelect({
   onAddOption = null,
   addOptionLabel = '+ เพิ่มรายการใหม่',
   onEditOption = null,
-  onDeleteOption = null
+  onDeleteOption = null,
+  showCodeBadgeInTrigger = false,
+  defaultOpen = false,
+  isOpen: controlledIsOpen
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(defaultOpen);
+  const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+  const setIsOpen = useCallback((val) => {
+    setInternalIsOpen(val);
+  }, []);
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [dropdownCoords, setDropdownCoords] = useState({ top: 0, left: 0, width: 0, openUpward: false });
@@ -193,15 +200,15 @@ export default function SearchableSelect({
               : 'bg-white border-slate-200 hover:border-slate-300 text-slate-800 shadow-2xs'
         } ${buttonClassName}`}
       >
-        <div className="flex-1 min-w-0 pr-2 overflow-hidden">
+        <div className="flex-1 min-w-0 pr-2 overflow-hidden" title={selectedOption ? (selectedOption.label || selectedOption.name) : undefined}>
           {selectedOption ? (
             <div className="flex items-center gap-2 min-w-0">
-              {selectedOption.code && (
+              {showCodeBadgeInTrigger && selectedOption.code && (
                 <span className="font-mono font-semibold text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md border border-slate-200/80 shrink-0">
                   {selectedOption.code}
                 </span>
               )}
-              <span className="font-semibold text-slate-900 truncate block text-xs sm:text-sm">
+              <span className="font-medium text-slate-800 text-xs sm:text-sm truncate block leading-none">
                 {selectedOption.label}
               </span>
             </div>
@@ -219,20 +226,21 @@ export default function SearchableSelect({
         />
       </button>
 
-      {/* Dropdown Popup rendered in Portal on document.body */}
-      {isOpen && createPortal(
-        <div
-          ref={dropdownRef}
-          style={{
-            position: 'fixed',
-            left: `${dropdownCoords.left}px`,
-            width: `${dropdownCoords.width}px`,
-            top: dropdownCoords.openUpward ? 'auto' : `${dropdownCoords.top}px`,
-            bottom: dropdownCoords.openUpward ? `${window.innerHeight - dropdownCoords.top}px` : 'auto',
-            zIndex: 99999
-          }}
-          className="bg-white rounded-2xl border border-slate-200/90 shadow-xl overflow-hidden animate-zoom-in text-slate-800"
-        >
+      {/* Dropdown Popup rendered in Portal on document.body or inline */}
+      {isOpen && (() => {
+        const popupContent = (
+          <div
+            ref={dropdownRef}
+            style={{
+              position: 'fixed',
+              left: `${dropdownCoords.left}px`,
+              width: `${dropdownCoords.width}px`,
+              top: dropdownCoords.openUpward ? 'auto' : `${dropdownCoords.top}px`,
+              bottom: dropdownCoords.openUpward ? `${(typeof window !== 'undefined' ? window.innerHeight : 800) - dropdownCoords.top}px` : 'auto',
+              zIndex: 99999
+            }}
+            className="bg-white rounded-2xl border border-slate-200/90 shadow-xl overflow-hidden animate-zoom-in text-slate-800"
+          >
           {/* Optional Quick Add Action Header */}
           {onAddOption && (
             <div className="p-2 border-b border-slate-100 bg-indigo-50/50">
@@ -295,7 +303,7 @@ export default function SearchableSelect({
 
                 return (
                   <div
-                    key={opt.value || `empty-${idx}`}
+                    key={opt.key || `${opt.code || opt.id || opt.value || 'opt'}-${idx}`}
                     onClick={() => handleSelect(opt)}
                     onMouseEnter={() => setHighlightedIndex(idx)}
                     className={`group/opt px-3 py-2 rounded-xl cursor-pointer transition-all flex items-center justify-between gap-2 ${
@@ -384,9 +392,14 @@ export default function SearchableSelect({
             <span>แสดง {filteredOptions.length} รายการ</span>
             <span>ลูกศร ↑ ↓ เพื่อเลือก</span>
           </div>
-        </div>,
-        document.body
-      )}
+        </div>
+        );
+
+        if (typeof document !== 'undefined' && document?.body) {
+          return createPortal(popupContent, document.body);
+        }
+        return popupContent;
+      })()}
     </div>
   );
 }

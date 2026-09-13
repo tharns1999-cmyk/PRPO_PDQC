@@ -118,6 +118,7 @@ const getShortPOStatus = (status) => {
       return { label: 'กำลังจัดส่ง', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
     case 'IN_PROGRESS_ONLINE':
       return { label: 'รอสั่ง Online', color: 'bg-violet-50 text-violet-700 border-violet-200' };
+    case 'ORDERED':
     case 'ORDERED_PENDING_DELIVERY':
       return { label: 'รอจัดส่ง', color: 'bg-purple-50 text-purple-700 border-purple-200' };
     case 'PARTIAL':
@@ -138,7 +139,10 @@ const getShortPOStatus = (status) => {
 };
 
 export default function POListView({ pos = EMPTY_ARRAY, departments: propDepartments, currentRole, onRefresh }) {
-  const context = useAppContext();
+  let context = null;
+  try {
+    context = useAppContext();
+  } catch {}
   const rawDepartments = propDepartments ?? context?.departments ?? EMPTY_ARRAY;
   const currentUser = context?.currentUser;
   const rawRole = typeof currentUser?.role === 'object' 
@@ -181,6 +185,8 @@ export default function POListView({ pos = EMPTY_ARRAY, departments: propDepartm
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const handleViewPODetails = (po) => setSelectedPO(po);
 
   // Sync department filter whenever user switches role via Fast Switcher
   useEffect(() => {
@@ -486,135 +492,131 @@ export default function POListView({ pos = EMPTY_ARRAY, departments: propDepartm
       </div>
 
       {/* ── 4. Comfortable PO Table Card ── */}
-      <div className="w-full overflow-x-auto rounded-2xl border border-slate-200/80 bg-white shadow-xs">
-        <table className="w-full min-w-[880px] table-fixed divide-y divide-slate-100 text-left">
-          <colgroup>
-            <col className="w-[14%]" />
-            <col className="w-[18%]" />
-            <col className="w-[28%]" />
-            <col className="w-[11%]" />
-            <col className="w-[13%]" />
-            <col className="w-[10%]" />
-            <col className="w-[6%] min-w-[70px]" />
-          </colgroup>
-          <thead>
-            <tr className="bg-slate-50/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">
-              <th className="w-[14%] px-4 py-3">เลขที่เอกสาร</th>
-              <th className="w-[18%] px-4 py-3">ร้านค้า / ผู้ขาย</th>
-              <th className="w-[28%] px-4 py-3">รายการสินค้า</th>
-              <th className="w-[11%] px-2 py-3 text-center">ช่องทาง</th>
-              <th className="w-[13%] px-3 py-3 text-right">ยอดรวมสุทธิ</th>
-              <th className="w-[10%] px-2 py-3 text-center">สถานะ</th>
-              <th className="w-[6%] min-w-[70px] px-3 py-3 text-center">จัดการ</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-sm">
-            {filteredPOs.length === 0 ? (
-              <tr>
-                <td colSpan="7" className="p-0">
-                  <EmptyState 
-                    title="ไม่พบข้อมูลใบ PO" 
-                    description="ลองเปลี่ยนตัวกรอง ค้นหาด้วยคำอื่น หรือกดล้างการค้นหา"
-                  />
-                </td>
+      <div className="w-full bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <div className="w-full overflow-x-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+          <table className="w-full min-w-[980px] text-left border-collapse">
+            <colgroup>
+              <col className="w-[16%]" />
+              <col className="w-[22%]" />
+              <col className="w-[20%]" />
+              <col className="w-[10%]" />
+              <col className="w-[14%]" />
+              <col className="w-[10%]" />
+              <col className="w-[12%]" />
+            </colgroup>
+            <thead>
+              <tr className="bg-slate-50/75 border-b border-slate-200/80 text-xs font-semibold text-slate-600">
+                <th className="w-[16%] min-w-[140px] pl-6 pr-4 py-3 text-left">เลขที่เอกสาร</th>
+                <th className="w-[22%] min-w-[190px] px-4 py-3 text-left">ร้านค้า / ผู้ขาย</th>
+                <th className="w-[20%] min-w-[170px] px-4 py-3 text-left">รายการสินค้า</th>
+                <th className="w-[10%] min-w-[95px] px-3 py-3 text-center">ช่องทาง</th>
+                <th className="w-[14%] min-w-[120px] px-4 py-3 text-right">ยอดรวมสุทธิ</th>
+                <th className="w-[10%] min-w-[105px] px-3 py-3 text-center">สถานะ</th>
+                <th className="w-[12%] min-w-[120px] pl-3 pr-6 py-3 text-right">จัดการ</th>
               </tr>
-            ) : (
-              paginatedPOs.map(po => {
-                const canAction = workflowEngine.canAction ? workflowEngine.canAction(currentRole, po) : false;
-                const statusConf = getShortPOStatus(po.status);
-                const itemsList = po.items || [];
-                const firstItemName = itemsList[0]?.name || itemsList[0]?.itemName || '-';
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-sm">
+              {filteredPOs.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="p-0">
+                    <EmptyState 
+                      title="ไม่พบข้อมูลใบ PO" 
+                      description="ลองเปลี่ยนตัวกรอง ค้นหาด้วยคำอื่น หรือกดล้างการค้นหา"
+                    />
+                  </td>
+                </tr>
+              ) : (
+                paginatedPOs.map(po => {
+                  const statusConf = getShortPOStatus(po.status);
+                  const itemsList = po.items || [];
+                  const firstItemName = itemsList[0]?.name || itemsList[0]?.itemName || '-';
 
-                return (
-                  <tr key={po.id} className="group hover:bg-slate-50/80 transition-colors">
-                    {/* เลขที่เอกสาร (w-[14%]) */}
-                    <td className="w-[14%] px-4 py-3.5 align-middle overflow-hidden">
-                      <div className="flex flex-col items-start">
-                        <span className="text-sm font-bold font-mono text-slate-900 tracking-tight">
-                          {po.poNo}
-                        </span>
-                        <div className="text-xs text-slate-400 mt-0.5 truncate font-mono">
-                          PR: {po.prNo || '-'}
+                  return (
+                    <tr key={po.id} className="group hover:bg-slate-50/60 transition-colors duration-100 border-b border-slate-100 last:border-b-0">
+                      {/* Col 1: เลขที่เอกสาร */}
+                      <td className="w-[16%] min-w-[140px] pl-6 pr-4 py-3.5 align-middle text-left">
+                        <div className="flex flex-col items-start">
+                          <span className="text-sm font-bold font-mono text-slate-900 tracking-tight">
+                            {po.poNo}
+                          </span>
+                          <div className="text-xs text-slate-400 mt-0.5 truncate font-mono">
+                            PR: {po.prNo || '-'}
+                          </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* ร้านค้า / ผู้ขาย (w-[18%]) */}
-                    <td className="w-[18%] px-4 py-3.5 align-middle overflow-hidden min-w-0">
-                      <div className="text-sm font-semibold text-slate-800 truncate flex items-center gap-1.5" title={po.vendorName || (po.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์ (Shopee/Lazada)' : 'ยังไม่ระบุ')}>
+                      {/* Col 2: ร้านค้า / ผู้ขาย */}
+                      <td className="w-[22%] min-w-[190px] px-4 py-3.5 align-middle text-left min-w-0">
+                        <div className="text-sm font-semibold text-slate-800 truncate flex items-center gap-1.5" title={po.vendorName || (po.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์ (Shopee/Lazada)' : 'ยังไม่ระบุ')}>
+                          {po.purchaseChannel === 'ONLINE' ? (
+                            <Store className="w-4 h-4 text-purple-600 shrink-0" />
+                          ) : (
+                            <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
+                          )}
+                          <span className="truncate">{po.vendorName || (po.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์' : 'ยังไม่ระบุ')}</span>
+                        </div>
+                        <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1 truncate">
+                          <Building2 size={12} className="text-slate-400 shrink-0" />
+                          <span className="truncate">ฝ่าย {po.department}</span>
+                        </div>
+                      </td>
+
+                      {/* Col 3: รายการสินค้า */}
+                      <td className="w-[20%] min-w-[170px] px-4 py-3.5 align-middle text-left min-w-0">
+                        <div className="min-w-0 max-w-full">
+                          <div className="text-sm text-slate-700 font-medium truncate block max-w-full" title={itemsList.map(i => i?.name || '').filter(Boolean).join(', ')}>
+                            {firstItemName}
+                          </div>
+                          <div className="text-xs text-slate-400 font-mono mt-0.5">
+                            ({itemsList.length} รายการ)
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Col 4: ช่องทาง */}
+                      <td className="w-[10%] min-w-[95px] px-3 py-3.5 text-center align-middle whitespace-nowrap">
                         {po.purchaseChannel === 'ONLINE' ? (
-                          <Store className="w-4 h-4 text-purple-600 shrink-0" />
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200/60 whitespace-nowrap">
+                            🛒 ออนไลน์
+                          </span>
                         ) : (
-                          <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200/60 whitespace-nowrap">
+                            🏢 ภายใน
+                          </span>
                         )}
-                        <span className="truncate">{po.vendorName || (po.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์' : 'ยังไม่ระบุ')}</span>
-                      </div>
-                      <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1 truncate">
-                        <Building2 size={12} className="text-slate-400 shrink-0" />
-                        <span className="truncate">ฝ่าย {po.department}</span>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* รายการสินค้า (w-[28%]) */}
-                    <td className="w-[28%] px-4 py-3.5 align-middle overflow-hidden min-w-0">
-                      <div className="min-w-0 max-w-full">
-                        <div className="text-sm text-slate-700 font-medium truncate block max-w-full" title={itemsList.map(i => i?.name || '').filter(Boolean).join(', ')}>
-                          {firstItemName}
-                        </div>
-                        <div className="text-xs text-slate-400 font-mono mt-0.5">
-                          ({itemsList.length} รายการ)
-                        </div>
-                      </div>
-                    </td>
+                      {/* Col 5: ยอดรวมสุทธิ */}
+                      <td className="w-[14%] min-w-[120px] px-4 py-3.5 text-right align-middle whitespace-nowrap font-mono font-bold text-slate-800 text-sm sm:text-base tabular-nums">
+                        ฿{(po.grandTotal || po.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
 
-                    {/* ช่องทาง (w-[11%]) */}
-                    <td className="w-[11%] px-2 py-3.5 text-center align-middle overflow-hidden whitespace-nowrap">
-                      {po.purchaseChannel === 'ONLINE' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200/60 whitespace-nowrap">
-                          🛒 ออนไลน์
+                      {/* Col 6: สถานะ */}
+                      <td className="w-[10%] min-w-[105px] px-3 py-3.5 text-center align-middle whitespace-nowrap">
+                        <span className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border shadow-2xs ${statusConf.color}`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80 shrink-0"></span>
+                          <span className="truncate">{statusConf.label}</span>
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200/60 whitespace-nowrap">
-                          🏢 ภายใน
-                        </span>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* ยอดรวมสุทธิ (w-[13%]) */}
-                    <td className="w-[13%] px-3 py-3.5 text-right align-middle overflow-hidden whitespace-nowrap font-mono font-bold text-slate-900 text-base tabular-nums">
-                      ฿{(po.grandTotal || po.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-
-                    {/* สถานะ (w-[10%]) */}
-                    <td className="w-[10%] px-2 py-3.5 text-center align-middle overflow-hidden whitespace-nowrap">
-                      <span className={`inline-flex items-center justify-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border shadow-2xs ${statusConf.color}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80 shrink-0"></span>
-                        <span className="truncate">{statusConf.label}</span>
-                      </span>
-                    </td>
-
-                    {/* จัดการ (w-[6%] min-w-[70px]) */}
-                    <td className="w-[6%] min-w-[70px] px-3 py-3.5 text-center align-middle overflow-hidden whitespace-nowrap">
-                      <button 
-                        type="button"
-                        onClick={() => setSelectedPO(po)}
-                        className="inline-flex items-center justify-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition-colors whitespace-nowrap cursor-pointer"
-                        title={isOperational && canAction ? 'ตรวจรับสินค้าเข้าคลัง' : 'ดูรายละเอียดใบ PO'}
-                      >
-                        {isOperational && canAction ? (
-                          <PackageCheck size={13} className="text-slate-500 shrink-0" />
-                        ) : (
-                          <Eye size={13} className="text-slate-500 shrink-0" />
-                        )}
-                        <span>{isOperational && canAction ? 'ตรวจรับ' : 'ดูข้อมูล'}</span>
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                      {/* Col 7: จัดการ */}
+                      <td className="w-[12%] min-w-[120px] pl-3 pr-6 py-3.5 text-right align-middle whitespace-nowrap">
+                        <button 
+                          type="button"
+                          onClick={() => handleViewPODetails(po)}
+                          className="inline-flex items-center justify-end gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg shadow-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                          <span>ดูรายละเอียด</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {/* Pagination Controls */}
         <Pagination

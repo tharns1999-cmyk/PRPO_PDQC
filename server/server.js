@@ -335,14 +335,32 @@ function ensureBootstrapData() {
 // Execute one-time bootstrap on startup
 ensureBootstrapData();
 
+// ── Permanent Blacklist Guard against Test / Mock Artifacts ──
+export const DUMMY_BLACKLIST = new Set(['P01', 'P02', 'PROD-01', 'PROD-02']);
+export const isBlacklistedProduct = (item) => {
+  if (!item || typeof item !== 'object') return false;
+  const actual = item.product || item.item || item;
+  const code = String(actual.code || actual.id || '').trim().toUpperCase();
+  const id = String(actual.id || '').trim().toUpperCase();
+  const name = String(actual.name || actual.itemName || actual.title || '').trim().toLowerCase();
+  return DUMMY_BLACKLIST.has(code) || DUMMY_BLACKLIST.has(id) || name === 'item 1' || name === 'item 2';
+};
+
 // ── 1. Products ──
 app.get('/api/products', async (req, res) => {
   try {
     const rawProducts = await readFile('products.json', []);
     const sanitized = (Array.isArray(rawProducts) ? rawProducts : [])
       .flatMap(p => Array.isArray(p) ? p : [p])
-      .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title));
-    res.json(sanitized);
+      .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title) && !isBlacklistedProduct(p));
+    const map = new Map();
+    sanitized.forEach(item => {
+      const key = String(item.code || item.id || '').trim().toUpperCase();
+      if (key && !map.has(key)) {
+        map.set(key, item);
+      }
+    });
+    res.json(Array.from(map.values()));
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -354,16 +372,59 @@ app.post('/api/products', async (req, res) => {
     if (Array.isArray(data)) {
       const sanitized = data
         .flatMap(p => Array.isArray(p) ? p : [p])
-        .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title));
-      await writeFile('products.json', sanitized);
-      return res.json(sanitized);
+        .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title) && !isBlacklistedProduct(p));
+      const map = new Map();
+      sanitized.forEach(item => {
+        const key = String(item.code || item.id || '').trim().toUpperCase();
+        if (key && !map.has(key)) {
+          map.set(key, item);
+        }
+      });
+      const deduped = Array.from(map.values());
+      await writeFile('products.json', deduped);
+      return res.json(deduped);
+    }
+    if (isBlacklistedProduct(data)) {
+      return res.json(data);
     }
     const products = (await readFile('products.json', []))
       .flatMap(p => Array.isArray(p) ? p : [p])
-      .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title));
+      .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title) && !isBlacklistedProduct(p));
     products.unshift(data);
-    await writeFile('products.json', products);
+    const map = new Map();
+    products.forEach(item => {
+      const key = String(item.code || item.id || '').trim().toUpperCase();
+      if (key && !map.has(key)) {
+        map.set(key, item);
+      }
+    });
+    const deduped = Array.from(map.values());
+    await writeFile('products.json', deduped);
     res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put('/api/products/batch', async (req, res) => {
+  try {
+    const data = req.body;
+    if (Array.isArray(data)) {
+      const sanitized = data
+        .flatMap(p => Array.isArray(p) ? p : [p])
+        .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title) && !isBlacklistedProduct(p));
+      const map = new Map();
+      sanitized.forEach(item => {
+        const key = String(item.code || item.id || '').trim().toUpperCase();
+        if (key && !map.has(key)) {
+          map.set(key, item);
+        }
+      });
+      const deduped = Array.from(map.values());
+      await writeFile('products.json', deduped);
+      return res.json(deduped);
+    }
+    res.status(400).json({ error: 'Expected array body for batch update' });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -374,7 +435,10 @@ app.put('/api/products/:id', async (req, res) => {
     const { id } = req.params;
     const targetId = decodeURIComponent(String(id || '')).trim().toLowerCase();
     const updated = req.body;
-    const products = await readFile('products.json', []);
+    const rawProducts = await readFile('products.json', []);
+    const products = (Array.isArray(rawProducts) ? rawProducts : [])
+      .flatMap(p => Array.isArray(p) ? p : [p])
+      .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title) && !isBlacklistedProduct(p));
     const idx = products.findIndex(p => {
       const pId = String(p.id || '').trim().toLowerCase();
       const pCode = String(p.code || '').trim().toLowerCase();
@@ -382,7 +446,7 @@ app.put('/api/products/:id', async (req, res) => {
     });
     if (idx !== -1) {
       products[idx] = { ...products[idx], ...updated };
-    } else {
+    } else if (!isBlacklistedProduct(updated)) {
       products.unshift(updated);
     }
     await writeFile('products.json', products);
@@ -394,16 +458,19 @@ app.put('/api/products/:id', async (req, res) => {
 
 app.delete('/api/products/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const targetId = decodeURIComponent(String(id || '')).trim().toLowerCase();
-    const products = await readFile('products.json', []);
+    const target = decodeURIComponent(String(req.params.id || '')).trim().toLowerCase();
+    const rawProducts = await readFile('products.json', []);
+    const products = (Array.isArray(rawProducts) ? rawProducts : [])
+      .flatMap(p => Array.isArray(p) ? p : [p])
+      .filter(p => p && typeof p === 'object' && (p.name || p.itemName || p.title));
+    const initialLength = products.length;
     const filtered = products.filter(p => {
       const pId = String(p.id || '').trim().toLowerCase();
       const pCode = String(p.code || '').trim().toLowerCase();
-      return pId !== targetId && pCode !== targetId;
+      return pId !== target && pCode !== target && !isBlacklistedProduct(p);
     });
     await writeFile('products.json', filtered);
-    res.json({ success: true, id });
+    res.json({ success: true, count: filtered.length, deleted: initialLength - filtered.length, id: req.params.id });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -920,7 +987,6 @@ app.post(['/api/pos/:id/receive', '/api/receive-goods'], async (req, res) => {
   try {
     const poId = req.params.id || req.body.poId;
     const { receivingItems = [], user = {}, note = '', options = {}, grNumber: bodyGrNo } = req.body;
-    const grNumber = bodyGrNo || options?.grNumber || options?.grId || `GR-${poId}-${Date.now()}`;
     const timestamp = new Date().toLocaleString('th-TH');
 
     const [pos, products, stockLogs, budgets] = await Promise.all([
@@ -936,6 +1002,10 @@ app.post(['/api/pos/:id/receive', '/api/receive-goods'], async (req, res) => {
     }
 
     const po = pos[poIndex];
+    const roundNumber = options?.round || options?.roundNumber || (po.grnHistory?.length || 0) + 1;
+    const cleanPoNo = (po.poNo || po.id || '').trim();
+    const safeRound = String(Math.max(1, Number(roundNumber) || 1)).padStart(2, '0');
+    const grNumber = bodyGrNo || options?.grNumber || options?.grId || (cleanPoNo ? `GRN-${cleanPoNo}-${safeRound}` : `GRN-${Date.now()}-01`);
 
     // 1. PO Status Validity Check
     if (['CLOSED', 'CANCELLED', 'RECEIVED'].includes(po.status)) {
@@ -1011,10 +1081,26 @@ app.post(['/api/pos/:id/receive', '/api/receive-goods'], async (req, res) => {
       const defectNote = (probInfo?.description || probInfo?.defectReason || '').trim();
 
       const rate = Number(poItem.conversionRate) > 0 ? Number(poItem.conversionRate) : 1;
-      const prodIndex = products.findIndex(p => p.id === poItem.productId);
+      const tId = String(poItem.productId || poItem.id || '').trim().toLowerCase();
+      const tCode = String(poItem.code || poItem.productCode || '').trim().toLowerCase();
+      const tName = String(poItem.name || '').trim().toLowerCase();
+
+      const prodIndex = products.findIndex(p => {
+        if (!p) return false;
+        const pId = String(p.id || '').trim().toLowerCase();
+        const pCode = String(p.code || '').trim().toLowerCase();
+        const pName = String(p.name || '').trim().toLowerCase();
+        return (
+          (tId && (pId === tId || pCode === tId)) ||
+          (tCode && (pCode === tCode || pId === tCode)) ||
+          (tName && pName === tName)
+        );
+      });
       const prod = prodIndex !== -1 ? products[prodIndex] : null;
       const sUnit = prod?.stockUnit || prod?.unit || poItem.stockUnit || poItem.unit || 'ชิ้น';
       const pUnit = prod?.purchaseUnit || prod?.unit || poItem.purchaseUnit || sUnit;
+      const itemUnitPrice = Number(poItem.actUnitPrice ?? poItem.actualPrice ?? poItem.price ?? prod?.price) || 0;
+      const stockUnitPrice = itemUnitPrice > 0 && rate > 0 ? (itemUnitPrice / rate) : (Number(prod?.price) || 0);
 
       // 4.1 Update stock and write stockLogs only for actual accepted quantity
       if (thisReceive > 0) {
@@ -1037,14 +1123,27 @@ app.post(['/api/pos/:id/receive', '/api/receive-goods'], async (req, res) => {
             stockLogs.unshift({
               id: `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
               grNumber,
+              documentNo: grNumber,
+              docNo: grNumber,
+              grnNo: grNumber,
+              grnNumber: grNumber,
               date: timestamp,
-              productId: poItem.productId,
-              productCode: poItem.code,
+              isoDate: new Date().toISOString(),
+              productId: prod.id,
+              productCode: prod.code,
+              name: prod.name,
               type: 'IN',
-              docNo: po.poNo,
+              poNo: po.poNo,
+              poNumber: po.poNo,
+              refPo: po.poNo,
+              roundNumber,
               qty: stockReceive,
+              receivedQty: thisReceive,
               unit: sUnit,
               balance: newBal,
+              unitPrice: stockUnitPrice,
+              totalPrice: stockUnitPrice * stockReceive,
+              actualPrice: itemUnitPrice,
               user: `${user.name || 'System'} (${user.title || 'Requester'})`,
               locationId: prod.locationId || '',
               locationName: prod.locationName || '',
@@ -1054,11 +1153,18 @@ app.post(['/api/pos/:id/receive', '/api/receive-goods'], async (req, res) => {
             stockLogs.unshift({
               id: `LOG-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
               grNumber,
+              documentNo: grNumber,
+              docNo: grNumber,
+              grnNo: grNumber,
+              grnNumber: grNumber,
               date: timestamp,
               productId: poItem.productId,
               productCode: poItem.code,
               type: 'IN_NG',
-              docNo: po.poNo,
+              poNo: po.poNo,
+              poNumber: po.poNo,
+              refPo: po.poNo,
+              roundNumber,
               qty: stockReceive,
               unit: sUnit,
               balance: currentBal,
@@ -1564,9 +1670,11 @@ app.post('/api/storage', async (req, res) => {
     const data = req.body || {};
     const writes = [];
 
-    // Master Data Anti-Overwrite Guards: Never overwrite with empty/partial data
     if (Array.isArray(data.prpo_products_data) && data.prpo_products_data.length > 0) {
-      writes.push(writeFile('products.json', data.prpo_products_data));
+      const sanitizedProds = data.prpo_products_data
+        .flatMap(p => Array.isArray(p) ? p : [p])
+        .filter(p => p && typeof p === 'object' && !isBlacklistedProduct(p));
+      writes.push(writeFile('products.json', sanitizedProds));
     }
     if (Array.isArray(data.prpo_vendors_data) && data.prpo_vendors_data.length > 0) {
       writes.push(writeFile('vendors.json', data.prpo_vendors_data));

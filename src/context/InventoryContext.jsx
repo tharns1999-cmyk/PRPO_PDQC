@@ -2,6 +2,7 @@ import React, { createContext, useContext, useMemo, useCallback } from 'react';
 import { useAppContext } from './AppContext';
 import { storageService } from '../services/storageService';
 import { apiService } from '../services/apiService';
+import { generateGRNNumber } from '../services/warehouseService';
 
 const InventoryContext = createContext(null);
 
@@ -14,6 +15,7 @@ export async function receiveToStock(items, options = {}) {
   const products = storageService.getProducts() || [];
   const stockLogs = storageService.getStockLogs() || [];
   const timestamp = options.date || new Date().toLocaleString('th-TH');
+  const isoTimestamp = new Date().toISOString();
 
   const processedItems = [];
 
@@ -29,12 +31,21 @@ export async function receiveToStock(items, options = {}) {
       return;
     }
 
-    const prodIdx = products.findIndex(p => 
-      p.id === item.productId || 
-      p.code === item.productId || 
-      p.code === item.code || 
-      (item.name && p.name === item.name)
-    );
+    const tId = String(item.productId || item.id || '').trim().toLowerCase();
+    const tCode = String(item.code || item.productCode || '').trim().toLowerCase();
+    const tName = String(item.name || '').trim().toLowerCase();
+
+    const prodIdx = products.findIndex(p => {
+      if (!p) return false;
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || '').trim().toLowerCase();
+      const pName = String(p.name || '').trim().toLowerCase();
+      return (
+        (tId && (pId === tId || pCode === tId)) ||
+        (tCode && (pCode === tCode || pId === tCode)) ||
+        (tName && pName === tName)
+      );
+    });
 
     if (prodIdx !== -1) {
       const prod = { ...products[prodIdx] };
@@ -48,29 +59,53 @@ export async function receiveToStock(items, options = {}) {
 
       const sUnit = prod.stockUnit || prod.unit || 'ชิ้น';
       const pUnit = prod.purchaseUnit || prod.unit || sUnit;
-      const grNumber = options.grNumber || item.grNumber || options.grnNumber || '';
-      const docNo = options.docNo || item.docNo || item.poNo || 'GRN';
+      const rawPo = options.poNo || options.poNumber || item.poNo || item.poNumber || (String(options.docNo || item.docNo || '').startsWith('PO-') ? (options.docNo || item.docNo) : '');
+      const round = options.round || options.roundNumber || item.round || item.roundNumber || 1;
+      const grNumber = (options.grNumber && options.grNumber.startsWith('GRN-'))
+        ? options.grNumber
+        : (options.grnNumber && options.grnNumber.startsWith('GRN-'))
+          ? options.grnNumber
+          : generateGRNNumber(rawPo, round);
+      const docNo = grNumber;
+      const poNumber = rawPo || '';
+      const actualPrice = Number(item.actualPrice ?? item.unitPrice ?? item.price ?? prod.price) || 0;
+      const stockUnitPrice = actualPrice > 0 && rate > 0 ? (actualPrice / rate) : (Number(prod.price) || 0);
 
       const logNote = rate > 1
-        ? `รับสินค้าเข้าคลังเฉพาะยอดสมบูรณ์ ${goodQty} ${pUnit} (= +${stockQtyToAdd} ${sUnit}) จากเอกสาร ${docNo}`
-        : `รับสินค้าเข้าคลังเฉพาะยอดสมบูรณ์ +${stockQtyToAdd} ${sUnit} จากเอกสาร ${docNo}`;
+        ? `รับสินค้าเข้าคลังเฉพาะยอดสมบูรณ์ ${goodQty} ${pUnit} (= +${stockQtyToAdd} ${sUnit}) จากเอกสาร ${grNumber}${rawPo ? ` (PO: ${rawPo})` : ''}`
+        : `รับสินค้าเข้าคลังเฉพาะยอดสมบูรณ์ +${stockQtyToAdd} ${sUnit} จากเอกสาร ${grNumber}${rawPo ? ` (PO: ${rawPo})` : ''}`;
 
-      stockLogs.unshift({
+      const logEntry = {
         id: `LOG-IN-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
-        grNumber,
-        date: timestamp,
+        date: isoTimestamp,
+        displayDate: timestamp,
         productId: prod.id,
         productCode: prod.code,
+        name: prod.name,
         type: 'IN',
-        docNo,
+        documentNo: grNumber,
+        docNo: grNumber,
+        grnNo: grNumber,
+        grnNumber: grNumber,
+        grNumber: grNumber,
+        poNo: poNumber,
+        poNumber: poNumber,
+        refPo: poNumber,
+        roundNumber: Number(round) || 1,
         qty: stockQtyToAdd,
+        receivedQty: goodQty,
         unit: sUnit,
         balance: newBal,
+        unitPrice: stockUnitPrice,
+        totalPrice: stockUnitPrice * stockQtyToAdd,
+        actualPrice: actualPrice,
         user: typeof options.user === 'object' ? `${options.user.name} (${options.user.title || ''})` : (options.user || 'Warehouse Staff'),
         locationId: prod.locationId || '',
         locationName: prod.locationName || '',
         note: options.note || logNote
-      });
+      };
+
+      stockLogs.unshift(logEntry);
 
       processedItems.push({
         productId: prod.id,
@@ -79,7 +114,8 @@ export async function receiveToStock(items, options = {}) {
         goodQty,
         stockQtyAdded: stockQtyToAdd,
         previousBalance: currentBal,
-        newBalance: newBal
+        newBalance: newBal,
+        log: logEntry
       });
     }
   });
@@ -88,12 +124,20 @@ export async function receiveToStock(items, options = {}) {
     storageService.saveProducts(products);
     storageService.saveStockLogs(stockLogs);
 
+    // Atomic backend sync for both products and stock logs
     try {
-      await fetch('http://localhost:3001/api/products/batch', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(products)
-      });
+      await Promise.all([
+        fetch('http://localhost:3001/api/products/batch', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(products)
+        }),
+        fetch('http://localhost:3001/api/stock-logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(stockLogs)
+        })
+      ]);
     } catch {
       // Graceful offline fallback
     }
@@ -103,7 +147,8 @@ export async function receiveToStock(items, options = {}) {
     success: true,
     processedCount: processedItems.length,
     processedItems,
-    products
+    products,
+    stockLogs
   };
 }
 

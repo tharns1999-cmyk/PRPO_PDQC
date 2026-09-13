@@ -14,8 +14,53 @@ import { modalService } from '../services/modalService';
 import { sanitizeExternalUrl, getProductUrl } from '../utils/urlHelper';
 import { getNextPRNumber } from '../utils/idGenerator';
 
+/**
+ * Deduplicate Master Data & Inventory list for product dropdowns/comboboxes
+ * Prevents 1:1 duplication and merges inventory stock/ROP without creating duplicate items.
+ */
+export const getUnifiedProductList = (products = [], inventory = []) => {
+  const productMap = new Map();
+
+  // 1. นำ Master Data สินค้าตั้งต้นใส่ Map
+  (Array.isArray(products) ? products : []).forEach(p => {
+    if (!p) return;
+    const raw = p.product || p.item || p;
+    const key = String(raw.code || raw.id || '').trim().toUpperCase();
+    if (!key) return;
+
+    // ข้ามสินค้าที่ปิดใช้งาน หรืออยู่ใน Blacklist ขยะ
+    if (raw.isActive === false || raw.status === 'INACTIVE') return;
+    if (['P01', 'P02', 'PROD-01', 'PROD-02'].includes(key)) return;
+
+    if (!productMap.has(key)) {
+      productMap.set(key, { ...raw });
+    }
+  });
+
+  // 2. ดึงข้อมูลสต็อกคงเหลือและ ROP จาก Inventory มาประกบ (Enrich Data) โดยไม่สร้างรายการใหม่
+  (Array.isArray(inventory) ? inventory : []).forEach(inv => {
+    if (!inv) return;
+    const key = String(inv.code || inv.productId || inv.id || '').trim().toUpperCase();
+    if (!key) return;
+
+    if (productMap.has(key)) {
+      const existing = productMap.get(key);
+      productMap.set(key, {
+        ...existing,
+        stock: inv.stock ?? inv.remainingQty ?? inv.quantity ?? existing.stock ?? 0,
+        rop: inv.rop ?? inv.minStock ?? inv.reorderPoint ?? existing.rop ?? 0,
+        unit: existing.unit || inv.unit || 'ชิ้น',
+        department: existing.department || inv.department || 'ส่วนกลาง'
+      });
+    }
+  });
+
+  return Array.from(productMap.values());
+};
+
 export default function PRCreateView({ 
   products = [], 
+  inventory = [],
   departments = [],
   vendors = [],
   currentRole, 
@@ -190,26 +235,30 @@ export default function PRCreateView({
 
   // Filter products by the active department (Exclude Deactivated/Inactive products)
   const availableProducts = useMemo(() => {
-    return products
-      .filter(p => {
-        const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
-        if (isInactive) return false;
-        return (p.category || p.department) === department;
-      })
-      .sort((a, b) => (a.code || '').localeCompare(b.code || ''));
-  }, [products, department]);
+    const rawList = getUnifiedProductList(products, inventory);
+    
+    // กรองตามแผนกของผู้ขอซื้อ (ถ้ามีการล็อกแผนก เช่น แผนก PD)
+    const userDepartment = department || currentRole?.department;
+    if (!userDepartment || userDepartment === 'ALL') return rawList;
+    return rawList.filter(p => {
+      const pDept = (p.department || p.category || '').toUpperCase();
+      return !pDept || pDept === 'ALL' || pDept === userDepartment.toUpperCase();
+    }).sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+  }, [products, inventory, department, currentRole?.department]);
 
   // Transform available products into searchable options
   const productOptions = useMemo(() => {
-    return availableProducts.map(p => {
+    return availableProducts.map((p, index) => {
       const pUnit = p.purchaseUnit || p.unit || 'ชิ้น';
       const sUnit = p.stockUnit || p.unit || 'ชิ้น';
       const pCat = p.category || p.department || 'PD';
       return {
+        id: p.id,
+        code: p.code,
+        key: `${p.code || p.id || 'PROD'}-${index}`,
         value: p.id,
         label: p.name,
-        code: p.code,
-        subLabel: `฿${Number(p.price || 0).toLocaleString()} / ${pUnit} • คงเหลือ: ${Number(p.stockBalance || 0).toLocaleString()} ${sUnit} • ROP: ${Number(p.reorderPoint || 0).toLocaleString()} ${sUnit}`,
+        subLabel: `฿${Number(p.price || 0).toLocaleString()} / ${pUnit} • คงเหลือ: ${Number(p.stockBalance ?? p.stock ?? 0).toLocaleString()} ${sUnit} • ROP: ${Number(p.reorderPoint ?? p.rop ?? 0).toLocaleString()} ${sUnit}`,
         badge: deptMap[pCat]?.name || pCat,
         keywords: `${p.code} ${p.name} ${pUnit} ${sUnit} ${pCat}`
       };
@@ -228,8 +277,10 @@ export default function PRCreateView({
           discountPercent: parseFloat(it.discountPercent) || 0,
           discountAmount: parseFloat(it.discountAmount) || 0,
           vendorId: it.vendorId || it.supplierId || '',
-          platform: it.platform || 'Shopee',
-          storeName: it.storeName || '',
+          platform: it.platform || it.storePlatform || 'Shopee',
+          storePlatform: it.storePlatform || it.platform || 'Shopee',
+          storeName: it.storeName || it.actualStoreName || '',
+          actualStoreName: it.actualStoreName || it.storeName || '',
           onlineUrl: getProductUrl(it) || '',
           productUrl: getProductUrl(it) || '',
           usageLocation: location,
@@ -272,7 +323,8 @@ export default function PRCreateView({
         }));
       }
     }
-    const initialList = products.filter(p => {
+    const unifiedInitial = getUnifiedProductList(products, inventory);
+    const initialList = unifiedInitial.filter(p => {
       const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
       return !isInactive && (p.category === initialDept || p.department === initialDept);
     });
@@ -787,8 +839,10 @@ export default function PRCreateView({
           supplierName: vName,
           onlineUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
           productUrl: sanitizeExternalUrl(item.productUrl || item.onlineUrl || ''),
-          platform: item.platform || 'Shopee',
-          storeName: item.storeName || '',
+          platform: item.platform || item.storePlatform || 'Shopee',
+          storePlatform: item.storePlatform || item.platform || 'Shopee',
+          storeName: (item.storeName || item.actualStoreName || '').trim(),
+          actualStoreName: (item.actualStoreName || item.storeName || '').trim(),
           total: rowTotal,
           usageLocation: itemLocation,
           source: itemLocation,
@@ -1172,18 +1226,18 @@ export default function PRCreateView({
                         : 'border-slate-200/80 hover:border-slate-300'
                     }`}
                   >
-                    {/* Primary Row: Standardized h-11 (44px) Elements along exact Baseline */}
-                    <div className="flex items-center gap-2.5 w-full flex-wrap sm:flex-nowrap">
+                    {/* Primary Row: Standardized h-10 (40px) Elements along exact Baseline */}
+                    <div className="flex items-center gap-2 sm:gap-2.5 w-full flex-wrap sm:flex-nowrap">
                       
                       {/* Index Badge [ 1 ] */}
-                      <span className="w-10 h-11 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-sm font-mono font-bold flex items-center justify-center shrink-0">
+                      <span className="w-10 h-10 shrink-0 flex items-center justify-center rounded-xl bg-slate-100 text-slate-700 font-semibold text-xs border border-slate-200">
                         {idx + 1}
                       </span>
 
                       {/* Product Select Box */}
                       {item.isCustom ? (
-                        <div className="flex-1 min-w-[200px] h-11 flex items-center gap-2">
-                          <span className="h-full px-3.5 bg-purple-50 text-purple-700 text-sm font-mono font-bold rounded-xl border border-purple-200 flex items-center shrink-0">
+                        <div className="flex-1 min-w-[200px] max-w-xl h-10 flex items-center gap-2">
+                          <span className="h-full px-3 bg-purple-50 text-purple-700 text-xs sm:text-sm font-mono font-bold rounded-xl border border-purple-200 flex items-center shrink-0">
                             {item.customCode || 'NON-CAT'}
                           </span>
                           <input
@@ -1191,12 +1245,13 @@ export default function PRCreateView({
                             value={item.customName || ''}
                             onChange={e => handleItemChange(idx, 'customName', e.target.value)}
                             placeholder="พิมพ์ชื่อสินค้า/สเปกที่ต้องการขอซื้อ (Non-Catalog)..."
-                            className="w-full h-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 text-sm font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                            className="w-full h-10 bg-slate-50 border border-slate-200 rounded-xl px-3 text-xs sm:text-sm font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all truncate"
                             required
+                            title={item.customName || ''}
                           />
                         </div>
                       ) : (
-                        <div className="flex-1 min-w-[200px] h-11">
+                        <div className="flex-1 min-w-[200px] max-w-xl h-10">
                           <SearchableSelect
                             options={productOptions}
                             value={item.productId}
@@ -1204,95 +1259,93 @@ export default function PRCreateView({
                             placeholder="-- ค้นหาหรือเลือกสินค้า --"
                             searchPlaceholder={`ค้นหารหัส ชื่อสินค้า ในแผนก ${department}...`}
                             emptyMessage={`ไม่พบสินค้าของแผนก ${department}`}
-                            className="w-full h-11"
-                            buttonClassName="!h-11 !min-h-[44px] !rounded-xl !bg-slate-50/80 !border-slate-200 !text-sm !font-medium !px-3.5"
+                            className="w-full h-10"
+                            buttonClassName="!h-10 !min-h-[40px] !px-3 !rounded-xl !bg-white hover:!border-slate-300 !border-slate-200 !text-xs sm:!text-sm !font-medium"
                             required
+                            showCodeBadgeInTrigger={false}
                           />
                         </div>
                       )}
 
-                      {/* Price Input Box */}
-                      <div className="h-11 w-32 relative shrink-0 flex items-center">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-mono font-semibold text-slate-400 select-none pointer-events-none">฿</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.price}
-                          onChange={e => handleItemChange(idx, 'price', e.target.value)}
-                          placeholder="0.00"
-                          className="w-full h-11 pl-8 pr-3 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono font-bold text-slate-800 text-right focus:bg-white focus:border-indigo-500 outline-none focus:ring-2 focus:ring-indigo-500/20 tabular-nums transition-all"
-                          title="ราคาต่อหน่วย"
-                        />
-                      </div>
+                      {/* Compact Financial Cluster (Price, Qty Stepper, Unit, Total, Remove) */}
+                      <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
+                        {/* ช่องราคาต่อหน่วย: รองรับทศนิยม ไม่โดนตัดขอบ พร้อมปิด spinner */}
+                        <div className="relative w-28 sm:w-30 h-10 shrink-0">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs select-none pointer-events-none">฿</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.price}
+                            onChange={e => handleItemChange(idx, 'price', e.target.value)}
+                            placeholder="0.00"
+                            className="w-full h-10 pl-5 pr-2 text-right font-mono text-sm tracking-tight text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-indigo-500 focus:outline-none transition-all tabular-nums [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            title="ราคาต่อหน่วย"
+                          />
+                        </div>
 
-                      {/* Quantity Stepper [ - 1 + ] */}
-                      <div className="h-11 rounded-xl border border-slate-200 bg-slate-50 flex items-center shrink-0 overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => handleDecrementQty(idx)}
-                          disabled={Number(item.qty) <= 1}
-                          className="w-9 h-11 flex items-center justify-center text-slate-600 hover:bg-slate-200 text-base font-bold cursor-pointer transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                          title="ลดจำนวน"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                        <input
-                          type="number"
-                          step="any"
-                          min="0.001"
-                          value={item.qty}
-                          onChange={e => handleItemChange(idx, 'qty', e.target.value)}
-                          required
-                          className="w-12 h-11 text-center text-sm font-mono font-bold text-slate-900 bg-transparent border-none focus:outline-none tabular-nums"
-                          title="ระบุจำนวน"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleIncrementQty(idx)}
-                          className="w-9 h-11 flex items-center justify-center text-slate-600 hover:bg-slate-200 text-base font-bold cursor-pointer transition-colors"
-                          title="เพิ่มจำนวน"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-                      </div>
+                        {/* ชุดนับจำนวน: Unified h-10 */}
+                        <div className="h-10 w-22 sm:w-24 p-1 flex items-center justify-between border border-slate-200 rounded-xl bg-slate-50 shrink-0">
+                          <button 
+                            type="button" 
+                            onClick={() => handleDecrementQty(idx)}
+                            disabled={Number(item.qty) <= 1}
+                            className="w-8 h-8 rounded-lg bg-white border border-slate-200/80 shadow-2xs flex items-center justify-center text-slate-600 hover:bg-slate-100 active:scale-95 text-xs font-bold transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
+                            title="ลดจำนวน"
+                          >
+                            -
+                          </button>
+                          <span className="font-mono text-xs sm:text-sm font-semibold text-slate-800 text-center flex-1 leading-none tabular-nums">
+                            {item.qty}
+                          </span>
+                          <button 
+                            type="button" 
+                            onClick={() => handleIncrementQty(idx)}
+                            className="w-8 h-8 rounded-lg bg-white border border-slate-200/80 shadow-2xs flex items-center justify-center text-slate-600 hover:bg-slate-100 active:scale-95 text-xs font-bold transition-all cursor-pointer"
+                            title="เพิ่มจำนวน"
+                          >
+                            +
+                          </button>
+                        </div>
 
-                      {/* Unit Badge */}
-                      <div 
-                        className="h-11 px-3.5 rounded-xl bg-slate-100/90 border border-slate-200 text-slate-700 text-sm font-medium flex items-center justify-center shrink-0 whitespace-nowrap min-w-[48px] max-w-[140px] truncate"
-                        title={item.isCustom ? (item.customUnit || 'ชิ้น') : (selProd?.purchaseUnit || selProd?.unit || 'ชิ้น')}
-                      >
+                        {/* หน่วยนับ: ขยายพื้นที่รองรับหน่วยข้อความยาว พร้อม Tooltip */}
                         {item.isCustom ? (
                           <input
                             type="text"
                             value={item.customUnit || 'ชิ้น'}
                             onChange={e => handleItemChange(idx, 'customUnit', e.target.value)}
-                            className="w-12 bg-transparent text-center outline-none text-sm font-medium text-slate-700"
+                            className="min-w-[40px] max-w-[85px] text-xs text-slate-500 font-medium text-center truncate shrink-0 px-1 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none py-0.5"
                             placeholder="หน่วย"
+                            title={item.customUnit || 'หน่วยนับ'}
                           />
                         ) : (
-                          selProd?.purchaseUnit || selProd?.unit || 'ชิ้น'
+                          <span 
+                            className="min-w-[40px] max-w-[85px] text-xs text-slate-500 font-medium text-center truncate shrink-0 px-1"
+                            title={selProd?.purchaseUnit || selProd?.unit || 'ชิ้น'}
+                          >
+                            {selProd?.purchaseUnit || selProd?.unit || 'ชิ้น'}
+                          </span>
+                        )}
+
+                        {/* ยอดเงินรวมรายบรรทัด */}
+                        <span className="font-mono font-bold text-slate-900 text-xs sm:text-sm text-right min-w-[85px] sm:min-w-[90px] tabular-nums shrink-0">
+                          ฿{(item.qty * item.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+
+                        {/* ปุ่มลบรายการ */}
+                        {prItems.length > 1 ? (
+                          <button 
+                            type="button"
+                            onClick={() => handleRemoveItemRow(idx)}
+                            className="w-8 h-8 shrink-0 flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="ลบรายการนี้"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        ) : (
+                          <span className="w-8 shrink-0"></span>
                         )}
                       </div>
-
-                      {/* Total Price */}
-                      <div className="min-w-[110px] text-right font-mono font-bold text-slate-900 text-sm shrink-0 self-center tabular-nums">
-                        ฿{itemRowNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-
-                      {/* Remove Row Button */}
-                      {prItems.length > 1 ? (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItemRow(idx)}
-                          className="w-9 h-11 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer shrink-0"
-                          title="ลบรายการนี้"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      ) : (
-                        <span className="w-9 shrink-0"></span>
-                      )}
 
                     </div>
 

@@ -20,6 +20,7 @@ export const ORDERED_STATUSES = [
   'ordered',
   'ordered_pending_delivery',
   'in_delivery',
+  'in_transit',
   'waiting_delivery',
   'waiting_delivery_round_2',
   'สั่งซื้อแล้ว',
@@ -27,6 +28,8 @@ export const ORDERED_STATUSES = [
 ];
 
 export const CLAIM_STATUSES = [
+  'claim',
+  'dispute',
   'in_claim',
   'partially_received_in_claim',
   'claim_reported',

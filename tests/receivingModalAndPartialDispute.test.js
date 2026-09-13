@@ -9,8 +9,8 @@ describe('ReceivingModal Logic & Partial Receiving Engine', () => {
   beforeEach(() => {
     storageService.resetData();
     storageService.saveProducts([
-      { id: 'PROD-01', code: 'P01', name: 'Item 1', stockBalance: 10, unit: 'ชิ้น' },
-      { id: 'PROD-02', code: 'P02', name: 'Item 2', stockBalance: 5, unit: 'กล่อง' }
+      { id: 'PROD-T01', code: 'PT01', name: 'Part A', stockBalance: 10, unit: 'ชิ้น' },
+      { id: 'PROD-T02', code: 'PT02', name: 'Part B', stockBalance: 5, unit: 'กล่อง' }
     ]);
     storageService.savePOs([
       {
@@ -21,8 +21,8 @@ describe('ReceivingModal Logic & Partial Receiving Engine', () => {
         purchaseChannel: 'ONLINE',
         vendor: 'Shopee Supplier',
         items: [
-          { productId: 'PROD-01', code: 'P01', name: 'Item 1', orderedQty: 10, receivedQty: 0, price: 100 },
-          { productId: 'PROD-02', code: 'P02', name: 'Item 2', orderedQty: 5, receivedQty: 0, price: 200 }
+          { productId: 'PROD-T01', code: 'PT01', name: 'Part A', orderedQty: 10, receivedQty: 0, price: 100 },
+          { productId: 'PROD-T02', code: 'PT02', name: 'Part B', orderedQty: 5, receivedQty: 0, price: 200 }
         ]
       }
     ]);
@@ -50,9 +50,9 @@ describe('ReceivingModal Logic & Partial Receiving Engine', () => {
       statusOverride: 'PARTIALLY_RECEIVED_IN_CLAIM',
       receivingItems: [
         {
-          productId: 'PROD-01',
-          code: 'P01',
-          name: 'Item 1',
+          productId: 'PROD-T01',
+          code: 'PT01',
+          name: 'Part A',
           receivedThisTime: 6, // 6 accepted + 0 damaged
           goodQty: 6,
           damagedQty: 0,
@@ -61,9 +61,9 @@ describe('ReceivingModal Logic & Partial Receiving Engine', () => {
           condition: 'SHORTAGE'
         },
         {
-          productId: 'PROD-02',
-          code: 'P02',
-          name: 'Item 2',
+          productId: 'PROD-T02',
+          code: 'PT02',
+          name: 'Part B',
           receivedThisTime: 5,
           goodQty: 5,
           damagedQty: 0,
@@ -96,9 +96,9 @@ describe('ReceivingModal Logic & Partial Receiving Engine', () => {
       waitingRound2: true,
       receivingItems: [
         {
-          productId: 'PROD-01',
-          code: 'P01',
-          name: 'Item 1',
+          productId: 'PROD-T01',
+          code: 'PT01',
+          name: 'Part A',
           receivedThisTime: 5,
           goodQty: 5,
           damagedQty: 0,
@@ -115,16 +115,16 @@ describe('ReceivingModal Logic & Partial Receiving Engine', () => {
   });
 
   it('4. receiveToStock adds only intact/complete items to stock and does not add shortage or damaged items', async () => {
-    // Before: PROD-01 stock is 10
-    const initialProd = storageService.getProducts().find(p => p.id === 'PROD-01');
+    // Before: PROD-T01 stock is 10
+    const initialProd = storageService.getProducts().find(p => p.id === 'PROD-T01');
     expect(initialProd.stockBalance).toBe(10);
 
     // Receive only intact (acceptedQty: 6)
     const intactStockItems = [
       {
-        productId: 'PROD-01',
-        code: 'P01',
-        name: 'Item 1',
+        productId: 'PROD-T01',
+        code: 'PT01',
+        name: 'Part A',
         qty: 6,
         receivedQty: 6,
         damagedQty: 0,
@@ -139,11 +139,11 @@ describe('ReceivingModal Logic & Partial Receiving Engine', () => {
       note: 'รับเฉพาะยอดสมบูรณ์'
     });
 
-    const updatedProd = storageService.getProducts().find(p => p.id === 'PROD-01');
+    const updatedProd = storageService.getProducts().find(p => p.id === 'PROD-T01');
     // 10 initial + 6 intact = 16 (4 shortage units NOT in stock)
     expect(updatedProd.stockBalance).toBe(16);
 
-    const stockLogs = storageService.getStockLogs().filter(l => l.productId === 'PROD-01');
+    const stockLogs = storageService.getStockLogs().filter(l => l.productId === 'PROD-T01');
     expect(stockLogs[stockLogs.length - 1].qty).toBe(6);
     expect(stockLogs[stockLogs.length - 1].balance).toBe(16);
   });

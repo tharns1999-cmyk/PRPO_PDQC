@@ -223,17 +223,17 @@ describe('Online Claim Management Overhaul & Workflow Closure', () => {
       // Must NOT display "ปิดงานสำเร็จ (เคลมครบ)" in claim tab
       expect(html).not.toContain('ปิดงานสำเร็จ (เคลมครบ)');
 
-      // Compact issue alert banner check
-      expect(html).toContain('⚠️ คลังแจ้งปัญหา:');
-      expect(html).toContain('ขาด 2 ขวด');
-      expect(html).toContain('มูลค่า ฿400.00');
+      // High-contrast issue chip and pop-out claim amount directly in item row (No redundant yellow alert box)
+      expect(html).not.toContain('⚠️ คลังแจ้งปัญหา:');
+      expect(html).toContain('🚨 ขาด 2 ขวด');
+      expect(html).toContain('มูลค่าที่ต้องเคลม');
+      expect(html).toContain('฿400.00');
 
       // Form inputs: Dropdown, Refund Amount (with คืนเต็มจำนวน), Progress Note, Save Button
       expect(html).toContain('💰 คืนเงิน (Refund)');
-      expect(html).toContain('📦 ร้านส่งของใหม่มาเปลี่ยน (Replacement)');
+      expect(html).toContain('📦 ส่งของใหม่ชดเชย (Replacement)');
       expect(html).toContain('❌ ยกเลิกรายการ');
       expect(html).toContain('คืนเต็มจำนวน');
-      expect(html).toContain('บันทึกความคืบหน้าสั้น ๆ เช่น แชทร้านค้าโอนเงินคืนแล้ว...');
 
       // Button must be indigo/emerald style, NOT rose-600 red
       expect(html).toContain('✓ บันทึกผลเจรจา');

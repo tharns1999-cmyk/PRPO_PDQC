@@ -16,6 +16,32 @@ import { useAppContext } from '../context/AppContext';
 import Pagination from '../components/common/Pagination';
 import { getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
 
+// ── Permanent Blacklist Guard against Test / Mock Artifacts ──
+export const DUMMY_BLACKLIST = new Set(['P01', 'P02', 'PROD-01', 'PROD-02']);
+export const isBlacklistedProduct = (item) => {
+  if (!item) return false;
+  const actual = item.product || item.item || item;
+  const code = String(actual.code || actual.id || '').trim().toUpperCase();
+  const id = String(actual.id || '').trim().toUpperCase();
+  const name = String(actual.name || actual.itemName || actual.title || '').trim().toLowerCase();
+  return DUMMY_BLACKLIST.has(code) || DUMMY_BLACKLIST.has(id) || name === 'item 1' || name === 'item 2';
+};
+
+// ฟังก์ชันตัดของซ้ำ (Deduplication Guard) พร้อม Blacklist Guard
+export const deduplicateMasterData = (list = []) => {
+  const map = new Map();
+  (Array.isArray(list) ? list : []).forEach(item => {
+    if (!item) return;
+    const actual = item.product || item.item || item;
+    if (isBlacklistedProduct(actual)) return;
+    const key = String(actual.code || actual.id || '').trim().toUpperCase();
+    if (key && !map.has(key)) {
+      map.set(key, actual);
+    }
+  });
+  return Array.from(map.values());
+};
+
 export default function MasterDataView(props) {
   return <MasterDataContent {...props} />;
 }
@@ -43,7 +69,12 @@ function MasterDataContent({
   onSaveUser,
   onDeleteUser
 }) {
-  const context = useAppContext();
+  let context = null;
+  try {
+    context = useAppContext();
+  } catch (e) {
+    context = null;
+  }
 
   // Role and Admin evaluation defined right at top to eliminate Temporal Dead Zone (TDZ)
   const effectiveRole = currentRole || context?.currentRole;
@@ -93,8 +124,10 @@ function MasterDataContent({
 
   // Dedicated React State for Products & Vendors to guarantee immediate UI mutation
   const [productsList, setProductsList] = useState(() => {
-    if (initialProductsList && initialProductsList.length > 0) return initialProductsList;
-    return storageService.getProducts?.() || [];
+    const raw = (initialProductsList && initialProductsList.length > 0)
+      ? initialProductsList
+      : (storageService.getProducts?.() || []);
+    return deduplicateMasterData(raw);
   });
   const [vendorsList, setVendorsList] = useState(() => {
     if (initialVendorsList && initialVendorsList.length > 0) return initialVendorsList;
@@ -118,13 +151,45 @@ function MasterDataContent({
     return storageService.getUsers?.() || [];
   });
 
+  // Keep state in sync with props while strictly deduplicating
   useEffect(() => {
-    if (initialProductsList && initialProductsList.length > 0) {
-      setProductsList(initialProductsList);
-    } else {
-      setProductsList(storageService.getProducts?.() || []);
-    }
+    const raw = (initialProductsList && initialProductsList.length > 0)
+      ? initialProductsList
+      : (storageService.getProducts?.() || []);
+    setProductsList(deduplicateMasterData(raw));
   }, [initialProductsList]);
+
+  // Auto-Cleanup Migration on Mount: Detect duplicate or blacklisted items and auto-sanitize storage
+  useEffect(() => {
+    const stored = storageService.getProducts?.() || [];
+    const dedupedStored = deduplicateMasterData(stored);
+
+    const hasBlacklisted = stored.some(p => isBlacklistedProduct(p));
+    const hasDuplicateProd01 = stored.filter(p => {
+      const k = String(p?.code || p?.id || '').trim().toUpperCase();
+      return k === 'PROD-01' || k === 'P01';
+    }).length > 0;
+
+    const hasDuplicateProd02 = stored.filter(p => {
+      const k = String(p?.code || p?.id || '').trim().toUpperCase();
+      return k === 'PROD-02' || k === 'P02';
+    }).length > 0;
+
+    const hasIssues = stored.length !== dedupedStored.length || hasBlacklisted || hasDuplicateProd01 || hasDuplicateProd02;
+
+    if (hasIssues) {
+      console.warn('[MasterDataView] Blacklisted/duplicate items detected. Running auto-cleanup migration...');
+      storageService.saveProducts(dedupedStored);
+      setProductsList(dedupedStored);
+      try {
+        fetch('http://localhost:3001/api/products/batch', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dedupedStored)
+        }).catch(() => {});
+      } catch (err) {}
+    }
+  }, []);
 
   useEffect(() => {
     if (initialVendorsList && initialVendorsList.length > 0) {
@@ -436,6 +501,7 @@ function MasterDataContent({
     const prodId = String(prod.id || prod.code || '').trim();
     const prodCode = String(prod.code || prod.id || '').trim();
     const prodName = prod.name || prodCode;
+    const isDummyArtifact = isBlacklistedProduct(prod);
 
     // ─── Requirement 4: Referential Integrity Guard ───
     const stockQty = Number(prod.stockBalance ?? prod.currentStock ?? prod.stockRemaining ?? 0);
@@ -469,50 +535,75 @@ function MasterDataContent({
       })
     );
 
-    const hasActiveTransactions = hasRemainingStock || activePRs.length > 0 || activePOs.length > 0;
-
-    if (hasActiveTransactions) {
+    // If bound to active PRs or POs, guard against deletion unless it's a test/dummy artifact
+    if (!isDummyArtifact && (activePRs.length > 0 || activePOs.length > 0)) {
       const reasons = [];
-      if (hasRemainingStock) reasons.push(`สต็อกคงเหลือ ${stockQty.toLocaleString()} ${prod.stockUnit || prod.unit || 'ชิ้น'}`);
       if (activePRs.length > 0) reasons.push(`ผูกกับใบขอซื้อ PR ที่เปิดอยู่ ${activePRs.length} ฉบับ`);
       if (activePOs.length > 0) reasons.push(`ผูกกับใบสั่งซื้อ PO ที่ยังไม่ปิดรอบ ${activePOs.length} ฉบับ`);
+      if (hasRemainingStock) reasons.push(`สต็อกคงเหลือ ${stockQty.toLocaleString()} ${prod.stockUnit || prod.unit || 'ชิ้น'}`);
 
       setDeactivateItem({ product: prod, reasons });
       return;
     }
 
-    // ─── Unlinked / Test Item: 100% Deletion Flow ───
+    // Force Delete Guard for items with stock balance
+    let forceDeleteStock = false;
+    let confirmMessage = `คุณต้องการลบรายการสินค้า "${prodName}" (รหัส SKU: ${prodCode}) ออกจากระบบถาวรใช่หรือไม่?\nข้อมูลจะถูกลบออกจากฐานข้อมูลทันที`;
+
+    if (hasRemainingStock) {
+      if (!isAdmin && !isDummyArtifact) {
+        setDeactivateItem({ product: prod, reasons: [`สต็อกคงเหลือ ${stockQty.toLocaleString()} ${prod.stockUnit || prod.unit || 'ชิ้น'}`] });
+        return;
+      }
+      forceDeleteStock = true;
+      confirmMessage = `⚠️ สินค้ารายการนี้มียอดสต็อกคงเหลือ ${stockQty.toLocaleString()} ${prod.stockUnit || prod.unit || 'ชิ้น'}\n\nคุณในฐานะผู้ดูแลระบบต้องการยืนยันการลบสินค้า "${prodName}" (SKU: ${prodCode}) แบบ Force Delete หรือไม่?\nระบบจะทำการตัดยอด Stock Card ออกและลบออกจากระบบถาวร`;
+    }
+
+    // ─── Unlinked / Test Item / Admin Force Delete Flow ───
     const confirmed = await modalService.confirm({
-      title: 'ยืนยันการลบสินค้า',
-      message: `คุณต้องการลบรายการสินค้า "${prodName}" (รหัส SKU: ${prodCode}) ออกจากระบบถาวรใช่หรือไม่?\nข้อมูลจะถูกลบออกจากฐานข้อมูลทันที`,
+      title: forceDeleteStock ? '⚠️ ยืนยัน Force Delete สินค้าพร้อมตัดสต็อก' : 'ยืนยันการลบสินค้า',
+      message: confirmMessage,
       type: 'error',
-      confirmText: 'ยืนยันการลบ',
+      confirmText: forceDeleteStock ? 'ยืนยัน Force Delete' : 'ยืนยันการลบ',
       cancelText: 'ยกเลิก'
     });
     if (!confirmed) return;
 
     // 1. Optimistically mutate React state immediately so the row disappears without reload
-    setProductsList(prev => prev.filter(p => {
+    setProductsList(prev => deduplicateMasterData(prev.filter(p => {
       const pId = String(p.id || '').trim().toLowerCase();
       const pCode = String(p.code || '').trim().toLowerCase();
-      return pId !== prodId.toLowerCase() && pCode !== prodCode.toLowerCase();
-    }));
+      return pId !== prodId.toLowerCase() && pCode !== prodCode.toLowerCase() && !isBlacklistedProduct(p);
+    })));
 
-    // 2. Local Storage Persistence: update localStorage right away
-    const localProds = storageService.getProducts();
-    const updatedLocal = localProds.filter(p => {
-      const pId = String(p.id || '').trim().toLowerCase();
-      const pCode = String(p.code || '').trim().toLowerCase();
-      return pId !== prodId.toLowerCase() && pCode !== prodCode.toLowerCase();
-    });
-    storageService.saveProducts(updatedLocal);
+    // 2. Local Storage Persistence: update localStorage and purge stock logs
+    if (storageService.deleteProduct) {
+      storageService.deleteProduct(prod.id || prod.code);
+      if (prod.code && prod.code !== prod.id) {
+        storageService.deleteProduct(prod.code);
+      }
+    } else {
+      const localProds = storageService.getProducts();
+      const updatedLocal = deduplicateMasterData(localProds.filter(p => {
+        const pId = String(p.id || '').trim().toLowerCase();
+        const pCode = String(p.code || '').trim().toLowerCase();
+        return pId !== prodId.toLowerCase() && pCode !== prodCode.toLowerCase() && !isBlacklistedProduct(p);
+      }));
+      storageService.saveProducts(updatedLocal);
+    }
 
     // 3. Delete from backend API (server products.json)
     try {
       if (onDeleteProduct) {
         await onDeleteProduct(prod.id || prod.code);
+        if (prod.code && prod.code !== prod.id) {
+          await onDeleteProduct(prod.code).catch(() => {});
+        }
       } else {
         await apiService.deleteProduct(prod.id || prod.code, currentRole);
+        if (prod.code && prod.code !== prod.id) {
+          await apiService.deleteProduct(prod.code, currentRole).catch(() => {});
+        }
       }
     } catch (err) {
       console.warn('[MasterData] Backend deleteProduct fallback:', err);
@@ -534,19 +625,19 @@ function MasterDataContent({
       const updated = { ...prod, isActive: false, status: 'INACTIVE' };
 
       // 1. Optimistically mutate local state
-      setProductsList(prev => prev.map(p => {
+      setProductsList(prev => deduplicateMasterData(prev.map(p => {
+        const pId = String(p.id || '').trim().toLowerCase();
+        const pCode = String(p.code || '').trim().toLowerCase();
+        return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
+      })));
+
+      // 2. Persist to storageService / localStorage
+      const localProds = storageService.getProducts();
+      const updatedLocal = deduplicateMasterData(localProds.map(p => {
         const pId = String(p.id || '').trim().toLowerCase();
         const pCode = String(p.code || '').trim().toLowerCase();
         return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
       }));
-
-      // 2. Persist to storageService / localStorage
-      const localProds = storageService.getProducts();
-      const updatedLocal = localProds.map(p => {
-        const pId = String(p.id || '').trim().toLowerCase();
-        const pCode = String(p.code || '').trim().toLowerCase();
-        return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
-      });
       storageService.saveProducts(updatedLocal);
 
       // 3. Persist to API
@@ -588,19 +679,19 @@ function MasterDataContent({
     const updated = { ...prod, isActive: true, status: 'ACTIVE' };
 
     // 1. Optimistically mutate local state
-    setProductsList(prev => prev.map(p => {
+    setProductsList(prev => deduplicateMasterData(prev.map(p => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || '').trim().toLowerCase();
+      return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
+    })));
+
+    // 2. Persist to storageService / localStorage
+    const localProds = storageService.getProducts();
+    const updatedLocal = deduplicateMasterData(localProds.map(p => {
       const pId = String(p.id || '').trim().toLowerCase();
       const pCode = String(p.code || '').trim().toLowerCase();
       return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
     }));
-
-    // 2. Persist to storageService / localStorage
-    const localProds = storageService.getProducts();
-    const updatedLocal = localProds.map(p => {
-      const pId = String(p.id || '').trim().toLowerCase();
-      const pCode = String(p.code || '').trim().toLowerCase();
-      return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
-    });
     storageService.saveProducts(updatedLocal);
 
     // 3. Persist to API
@@ -1145,11 +1236,11 @@ function MasterDataContent({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {paginatedProducts.map(p => {
+                  {paginatedProducts.map((p, index) => {
                     const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
                     return (
                       <tr 
-                        key={p.id} 
+                        key={p.id ? `${p.id}-${index}` : `${p.code}-${index}`} 
                         className={`transition-colors ${
                           isInactive 
                             ? 'opacity-60 bg-slate-50/50 hover:bg-slate-100/60' 
@@ -1205,17 +1296,32 @@ function MasterDataContent({
                               <Edit3 className="w-4 h-4" />
                             </button>
                             {isInactive ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleReactivateProduct(p);
-                                }}
-                                className="p-1.5 hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
-                                title="เปิดใช้งานใหม่ (Reactivate / Restore)"
-                              >
-                                <RotateCcw className="w-4 h-4 pointer-events-none" />
-                              </button>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReactivateProduct(p);
+                                  }}
+                                  className="p-1.5 hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                                  title="เปิดใช้งานใหม่ (Reactivate / Restore)"
+                                >
+                                  <RotateCcw className="w-4 h-4 pointer-events-none" />
+                                </button>
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteProduct(p);
+                                    }}
+                                    className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                                    title="ลบสินค้าถาวร (Delete Permanently)"
+                                  >
+                                    <Trash2 className="w-4 h-4 pointer-events-none" />
+                                  </button>
+                                )}
+                              </div>
                             ) : (
                               <button
                                 type="button"
