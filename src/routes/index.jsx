@@ -1,11 +1,14 @@
 import React from 'react';
 import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
 import { AppProvider, useAppContext } from '../context/AppContext';
+import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ProcurementProvider } from '../context/ProcurementContext';
 import { BudgetProvider } from '../context/BudgetContext';
 import { InventoryProvider } from '../context/InventoryContext';
 import MainLayout from '../layouts/MainLayout';
 import NotFoundView from '../views/NotFoundView';
+import LoginView from '../views/auth/LoginView';
+import ProtectedRoute from '../components/common/ProtectedRoute';
 
 // View Imports
 import DashboardView from '../views/DashboardView';
@@ -38,27 +41,35 @@ function AppLoadingScreen() {
   );
 }
 
-// Root Layout wrapping the router with AppProvider, ProcurementProvider, BudgetProvider, InventoryProvider
+// Root Layout wrapping the router with AuthProvider, AppProvider, and domain providers
 function AppRootLayout() {
   return (
-    <AppProvider>
-      <ProcurementProvider>
-        <BudgetProvider>
-          <InventoryProvider>
-            <Outlet />
-          </InventoryProvider>
-        </BudgetProvider>
-      </ProcurementProvider>
-    </AppProvider>
+    <AuthProvider>
+      <AppProvider>
+        <ProcurementProvider>
+          <BudgetProvider>
+            <InventoryProvider>
+              <Outlet />
+            </InventoryProvider>
+          </BudgetProvider>
+        </ProcurementProvider>
+      </AppProvider>
+    </AuthProvider>
   );
 }
 
-// Direct Layout without login gate - system is always authenticated with Auto-Login
+// Direct Layout with session validation
 function DirectAppLayout() {
-  const { isAuthLoading, isLoading } = useAppContext();
+  const { isAuthLoading, isLoading } = useAppContext() || {};
+  const auth = useAuth();
 
-  if (isAuthLoading || isLoading) {
+  if (isAuthLoading || isLoading || auth?.isLoading) {
     return <AppLoadingScreen />;
+  }
+
+  // If user is not authenticated, redirect to /login
+  if (!auth?.isAuthenticated) {
+    return <Navigate to="/login" replace />;
   }
 
   return <MainLayout />;
@@ -343,7 +354,7 @@ export const router = createBrowserRouter([
     children: [
       {
         path: '/login',
-        element: <Navigate to="/dashboard" replace />
+        element: <LoginView />
       },
       {
         path: '/',
@@ -359,7 +370,14 @@ export const router = createBrowserRouter([
           // PRs
           { path: 'prs', element: <PRListRoute /> },
           { path: 'pr-list', element: <Navigate to="/prs" replace /> },
-          { path: 'prs/create', element: <PRCreateRoute /> },
+          { 
+            path: 'prs/create', 
+            element: (
+              <ProtectedRoute requiredPermission="PR_CREATE">
+                <PRCreateRoute />
+              </ProtectedRoute>
+            ) 
+          },
           { path: 'pr-create', element: <Navigate to="/prs/create" replace /> },
           
           // POs
@@ -373,13 +391,55 @@ export const router = createBrowserRouter([
           { path: 'quick-issue', element: <Navigate to="/inventory/quick-issue" replace /> },
           
           // Administrative & Business Control
-          { path: 'budget', element: <BudgetRoute /> },
-          { path: 'master-data', element: <MasterDataRoute /> },
-          { path: 'master-data/users', element: <UserMasterRoute /> },
-          { path: 'admin/users', element: <UserMasterRoute /> },
-          { path: 'admin/audit-logs', element: <AuditLogRoute /> },
+          { 
+            path: 'budget', 
+            element: (
+              <ProtectedRoute requiredPermission="BUDGET_MANAGE">
+                <BudgetRoute />
+              </ProtectedRoute>
+            ) 
+          },
+          { 
+            path: 'master-data', 
+            element: (
+              <ProtectedRoute allowedRoles={['REQUESTER', 'PURCHASER', 'WAREHOUSE', 'APPROVER', 'ADMIN']}>
+                <MasterDataRoute />
+              </ProtectedRoute>
+            ) 
+          },
+          { 
+            path: 'master-data/users', 
+            element: (
+              <ProtectedRoute requiredPermission="SYSTEM_ADMIN">
+                <UserMasterRoute />
+              </ProtectedRoute>
+            ) 
+          },
+          { 
+            path: 'admin/users', 
+            element: (
+              <ProtectedRoute requiredPermission="SYSTEM_ADMIN">
+                <UserMasterRoute />
+              </ProtectedRoute>
+            ) 
+          },
+          { 
+            path: 'admin/audit-logs', 
+            element: (
+              <ProtectedRoute requiredPermission="SYSTEM_ADMIN">
+                <AuditLogRoute />
+              </ProtectedRoute>
+            ) 
+          },
           { path: 'audit-logs', element: <Navigate to="/admin/audit-logs" replace /> },
-          { path: 'online-tasks', element: <OnlineTaskRoute /> },
+          { 
+            path: 'online-tasks', 
+            element: (
+              <ProtectedRoute requiredPermission="ONLINE_PROCURE">
+                <OnlineTaskRoute />
+              </ProtectedRoute>
+            ) 
+          },
           { path: 'online-procurement', element: <Navigate to="/online-tasks" replace /> },
           { path: 'procurement/online', element: <Navigate to="/online-tasks" replace /> },
 

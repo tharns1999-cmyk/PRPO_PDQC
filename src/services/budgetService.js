@@ -2,11 +2,77 @@ import { storageService } from './storageService';
 import { apiService } from './apiService';
 
 /**
+ * Clean baseline generator matching current fiscal period (September 2026 / 2569)
+ * Allocations:
+ * - PD (ฝ่ายผลิต): ฿1,000,000.00
+ * - QC (ฝ่ายควบคุมคุณภาพ): ฿150,000.00
+ * - WH (ฝ่ายคลังสินค้า): ฿120,000.00
+ * - PUR (ฝ่ายจัดซื้อ): ฿100,000.00
+ * - ENG (ฝ่ายวิศวกรรม): ฿205,000.00
+ * With 0 initial spent and strictly the active month (2026-09 / กันยายน 2569), eliminating empty past-month placeholder rows.
+ */
+export const generateCleanBudgetBaseline = () => {
+  const activeMonth = '2026-09';
+  const deptConfigs = {
+    PD: { monthlyBudget: 1000000 },
+    QC: { monthlyBudget: 150000 },
+    WH: { monthlyBudget: 120000 },
+    PUR: { monthlyBudget: 100000 },
+    ENG: { monthlyBudget: 205000 }
+  };
+
+  const baseline = {};
+  for (const [code, cfg] of Object.entries(deptConfigs)) {
+    baseline[code] = {
+      monthlyBudget: cfg.monthlyBudget,
+      spent: 0,
+      actualExpense: 0,
+      budgetSpent: 0,
+      pending: 0,
+      variance: cfg.monthlyBudget,
+      remainingBudget: cfg.monthlyBudget,
+      budgetRemaining: cfg.monthlyBudget,
+      history: {
+        [activeMonth]: cfg.monthlyBudget
+      },
+      historicalSpent: {
+        [activeMonth]: 0
+      },
+      refundCredits: {}
+    };
+  }
+  return baseline;
+};
+
+export const CLEAN_BUDGET_BASELINE = generateCleanBudgetBaseline();
+
+/**
  * BudgetService (Enterprise Department Budget & Settlement Engine)
  * Authoritative single source of truth for budget crediting, reconciliations,
  * and duplicate-refund protection.
  */
 export const budgetService = {
+  /**
+   * Reset Budget Data to clean minimal baseline matching current fiscal period (2026-09)
+   * Writes to storageService and syncs with backend server if available.
+   */
+  resetBudgetData() {
+    const cleanBudgets = generateCleanBudgetBaseline();
+    storageService.saveBudgets(cleanBudgets);
+    try {
+      if (typeof fetch === 'function') {
+        fetch('http://localhost:3001/api/budgets/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cleanBudgets)
+        }).catch(() => {});
+      }
+    } catch {
+      // Graceful offline fallback
+    }
+    return cleanBudgets;
+  },
+
   /**
    * Credit Department Budget on Claim Refund with strict idempotency
    * Ensures:

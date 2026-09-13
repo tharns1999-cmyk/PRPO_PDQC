@@ -48,6 +48,7 @@ export const normalizeDocNumber = (record) => {
 export const parseOrderYearMonth = (dateInput) => {
   if (!dateInput) return { year: null, month: null, ymKey: null };
   const str = String(dateInput).trim();
+  if (!str) return { year: null, month: null, ymKey: null };
   
   // Case 1: DD/MM/YYYY or DD/MM/YYYY HH:mm:ss or DD/MM/YY
   const dmyMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
@@ -55,16 +56,16 @@ export const parseOrderYearMonth = (dateInput) => {
     let year = parseInt(dmyMatch[3], 10);
     if (year === 69 || year === 26) year = 2026;
     else if (year < 100) year = 2000 + year;
-    else if (year > 2500) year -= 543; // Convert Thai Buddhist Era to CE
+    else if (year > 2400) year -= 543; // Convert Thai Buddhist Era (e.g. 2569 -> 2026)
     const month = String(parseInt(dmyMatch[2], 10)).padStart(2, '0');
     return { year, month, ymKey: `${year}-${month}` };
   }
 
-  // Case 2: ISO YYYY-MM-DD or YYYY-MM
+  // Case 2: ISO YYYY-MM-DD or YYYY-MM or ISO timestamp
   const isoMatch = str.match(/^(\d{4})-(\d{1,2})/);
   if (isoMatch) {
     let year = parseInt(isoMatch[1], 10);
-    if (year > 2500) year -= 543;
+    if (year > 2400) year -= 543;
     const month = String(parseInt(isoMatch[2], 10)).padStart(2, '0');
     return { year, month, ymKey: `${year}-${month}` };
   }
@@ -73,7 +74,7 @@ export const parseOrderYearMonth = (dateInput) => {
   const parsed = new Date(str);
   if (!isNaN(parsed.getTime())) {
     let year = parsed.getFullYear();
-    if (year > 2500) year -= 543;
+    if (year > 2400) year -= 543;
     const month = String(parsed.getMonth() + 1).padStart(2, '0');
     return { year, month, ymKey: `${year}-${month}` };
   }
@@ -244,8 +245,11 @@ export const storageService = {
     _setItem(STORAGE_KEYS.POS, [], false);
     _setItem(STORAGE_KEYS.STOCK_LOGS, [], false);
     _setItem(STORAGE_KEYS.BUDGETS, {
-      PD: { monthlyBudget: 250000, spent: 0, pending: 0, variance: 0 },
-      QC: { monthlyBudget: 150000, spent: 0, pending: 0, variance: 0 }
+      PD: { monthlyBudget: 1000000, spent: 0, pending: 0, variance: 1000000 },
+      QC: { monthlyBudget: 150000, spent: 0, pending: 0, variance: 150000 },
+      WH: { monthlyBudget: 120000, spent: 0, pending: 0, variance: 120000 },
+      PUR: { monthlyBudget: 100000, spent: 0, pending: 0, variance: 100000 },
+      ENG: { monthlyBudget: 205000, spent: 0, pending: 0, variance: 205000 }
     }, false);
     _setItem(STORAGE_KEYS.PR_COUNTERS, {
       PD: { PR: 0, PO: 0 },
@@ -842,6 +846,44 @@ export const storageService = {
         needsSave = true;
       }
 
+      // Strict PO-level scoping & line-item guard for defective records (ngItems)
+      let ngItems = po.ngItems;
+      if (Array.isArray(ngItems) && ngItems.length > 0) {
+        const poIdentSet = new Set([po.poNo, po.poNumber, po.id].filter(Boolean));
+        const validProductIds = new Set(items.map(it => it.productId || it.id).filter(Boolean));
+        const validProductCodes = new Set(items.map(it => (it.code || it.productCode || it.sku || '').toUpperCase()).filter(Boolean));
+        const validProductNames = new Set(items.map(it => (it.name || it.itemName || '').trim().toLowerCase()).filter(Boolean));
+
+        const scopedNg = ngItems.filter(ng => {
+          if (!ng || typeof ng !== 'object') return false;
+
+          // 1. Reject cross-PO defect records if PO identifier is specified
+          const ngPoNum = ng.poNumber || ng.poNo;
+          if (ngPoNum && !poIdentSet.has(ngPoNum)) return false;
+          if (ng.poId && !poIdentSet.has(ng.poId)) return false;
+
+          // 2. Strict Line-Item Guard: defective item must belong to this PO's line items
+          const ngProdId = ng.productId;
+          const ngCode = (ng.productCode || ng.code || '').toUpperCase();
+          const ngName = (ng.name || '').trim().toLowerCase();
+
+          const matchesId = ngProdId && validProductIds.has(ngProdId);
+          const matchesCode = ngCode && validProductCodes.has(ngCode);
+          const matchesName = ngName && validProductNames.has(ngName);
+
+          const belongsToPO = matchesId || matchesCode || matchesName;
+          const hasQty = Number(ng.qty || ng.damagedQty || 0) > 0;
+
+          return belongsToPO && hasQty;
+        });
+
+        if (scopedNg.length !== ngItems.length) {
+          poUpdated = true;
+          needsSave = true;
+          ngItems = scopedNg;
+        }
+      }
+
       // Sanitize & Recover PO-QC-2026-001: Restore Item 1 (2 @ 750 = 1500) and Item 2 (8 @ 70 = 560), Total 2060
       if (po.poNo === 'PO-QC-2026-001' || po.id === 'PO-1789172239513-1') {
         const item1 = items[0] || {};
@@ -923,13 +965,50 @@ export const storageService = {
         }
       }
 
-      return poUpdated ? { ...po, prNo, prNumber, prId, vat, grandTotal, items } : po;
+      return poUpdated ? { ...po, prNo, prNumber, prId, vat, grandTotal, items, ngItems } : po;
     });
 
     if (needsSave) {
-      _setItem(STORAGE_KEYS.POS, migrated);
+      _setItem(STORAGE_KEYS.POS, migrated, true);
     }
     return migrated;
+  },
+
+  // Defective / Inspection Records Scoping Helper
+  getDefectiveItemsForPO(poOrPoNumber) {
+    if (!poOrPoNumber) return [];
+    let po = null;
+    if (typeof poOrPoNumber === 'object') {
+      po = poOrPoNumber;
+    } else {
+      const pos = this.getPOs();
+      po = pos.find(p => p.poNo === poOrPoNumber || p.poNumber === poOrPoNumber || p.id === poOrPoNumber);
+    }
+    if (!po) return [];
+
+    const poIdentSet = new Set([po.poNo, po.poNumber, po.id].filter(Boolean));
+    const items = po.items || [];
+    const validProductIds = new Set(items.map(it => it.productId || it.id).filter(Boolean));
+    const validProductCodes = new Set(items.map(it => (it.code || it.productCode || it.sku || '').toUpperCase()).filter(Boolean));
+    const validProductNames = new Set(items.map(it => (it.name || it.itemName || '').trim().toLowerCase()).filter(Boolean));
+
+    const rawList = Array.isArray(po.ngItems) ? po.ngItems : [];
+    return rawList.filter(ng => {
+      if (!ng || typeof ng !== 'object') return false;
+      const ngPo = ng.poNumber || ng.poNo;
+      if (ngPo && !poIdentSet.has(ngPo)) return false;
+      if (ng.poId && !poIdentSet.has(ng.poId)) return false;
+
+      const ngProdId = ng.productId;
+      const ngCode = (ng.productCode || ng.code || '').toUpperCase();
+      const ngName = (ng.name || '').trim().toLowerCase();
+
+      const matchesId = ngProdId && validProductIds.has(ngProdId);
+      const matchesCode = ngCode && validProductCodes.has(ngCode);
+      const matchesName = ngName && validProductNames.has(ngName);
+
+      return (matchesId || matchesCode || matchesName) && Number(ng.qty || ng.damagedQty || 0) > 0;
+    });
   },
 
   // Direct Recovery & Reset Method for PO-QC-2026-001
@@ -1018,20 +1097,37 @@ export const storageService = {
   getCompletedPOsByMonth(month, options = {}) {
     const pos = this.getPOs() || [];
     return pos.filter(po => {
+      const s = String(po.status || '').toLowerCase();
+      const ws = String(po.workflowStatus || '').toLowerCase();
+      const statusUpper = s.toUpperCase();
       const isClosed = !po.isInClaim && (
-        po.status === 'COMPLETED' ||
-        po.status === 'CLOSED' ||
-        po.isClosed ||
-        String(po.status || '').toUpperCase().startsWith('COMPLETED') ||
-        String(po.status || '').toUpperCase().startsWith('CLOSED')
+        s === 'completed' || s === 'closed' ||
+        ws === 'completed' || ws === 'closed' ||
+        statusUpper === 'COMPLETED' || statusUpper === 'CLOSED' ||
+        Boolean(po.isClosed)
       );
       if (!isClosed) return false;
-      if (!month || month === 'ALL') return true;
-      const orderDateStr = po.completedAt || po.updatedAt || po.orderDate || po.createdAt || '';
-      const { year, ymKey } = parseOrderYearMonth(orderDateStr);
-      if (month === 'ALL_YEAR') {
+
+      const orderDateStr = 
+        po.completedAt || 
+        po.receivedAt || 
+        po.receivingInfo?.receivedAt || 
+        po.orderDate || 
+        po.issueDate || 
+        po.orderedAt || 
+        po.date || 
+        po.createdAt || 
+        po.updatedAt || 
+        (Array.isArray(po.grnHistory) && po.grnHistory[0]?.date) ||
+        (Array.isArray(po.timeline) && po.timeline[po.timeline.length - 1]?.timestamp) || 
+        '';
+      const parsed = parseOrderYearMonth(orderDateStr);
+      const year = parsed.year || 2026;
+      const ymKey = parsed.ymKey || '2026-09';
+
+      if (!month || month === 'ALL_YEAR' || month === 'ALL' || month === '2569' || month === '2026') {
         const targetYear = options.year ? parseInt(options.year, 10) : 2026;
-        return year === targetYear;
+        return year === targetYear || year === targetYear + 543;
       }
       return ymKey === month;
     });
@@ -1121,8 +1217,14 @@ export const storageService = {
     const data = _getItem(STORAGE_KEYS.BUDGETS);
     const budgets = data || initialBudgets;
     const sanitized = {};
-    if (budgets.PD) sanitized.PD = budgets.PD;
-    if (budgets.QC) sanitized.QC = budgets.QC;
+    if (budgets && typeof budgets === 'object') {
+      ['PD', 'QC', 'WH', 'PUR', 'ENG'].forEach(code => {
+        if (budgets[code]) sanitized[code] = budgets[code];
+      });
+      Object.keys(budgets).forEach(code => {
+        if (!sanitized[code]) sanitized[code] = budgets[code];
+      });
+    }
     return sanitized;
   },
   saveBudgets(budgets) {

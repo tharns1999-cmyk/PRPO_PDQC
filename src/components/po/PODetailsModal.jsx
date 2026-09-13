@@ -571,7 +571,17 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     }
   };
 
-  const statusInfo = PO_STATUS[selectedPO.status] || { label: selectedPO.status, color: 'bg-slate-100 text-slate-700 border-slate-200' };
+  const rawStatus = String(selectedPO.workflowStatus || selectedPO.status || '').trim().toUpperCase();
+  const isCompletedOrClosed = (
+    rawStatus === 'COMPLETED' || 
+    rawStatus === 'CLOSED' || 
+    Boolean(selectedPO.isCompleted) || 
+    Boolean(selectedPO.isClosed)
+  );
+
+  const statusInfo = PO_STATUS[selectedPO.status] || 
+    (isCompletedOrClosed ? PO_STATUS.CLOSED : null) || 
+    { label: selectedPO.status, color: 'bg-slate-100 text-slate-700 border-slate-200' };
 
   // ─── PO Lifecycle Steps ───
   const lifecycleSteps = [
@@ -582,9 +592,68 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     { key: 'RECEIVED',                  label: 'รับครบ' },
     { key: 'CLOSED',                    label: 'ปิด PO' },
   ];
+
+  const resolveCurrentStepIndex = (po) => {
+    if (!po) return 0;
+    const s = String(po.status || '').trim().toLowerCase();
+    const ws = String(po.workflowStatus || '').trim().toLowerCase();
+    
+    // Step 5: "ปิด PO" (COMPLETED / CLOSED)
+    if (
+      s === 'completed' || s === 'closed' ||
+      ws === 'completed' || ws === 'closed' ||
+      Boolean(po.isCompleted) || Boolean(po.isClosed)
+    ) {
+      return 5;
+    }
+
+    if (s === 'cancelled' || ws === 'cancelled') return -1;
+
+    // Step 4: "รับครบ" (RECEIVED)
+    if (
+      s === 'received' || ws === 'received' ||
+      s === 'goods_received' || s === 'inspected' ||
+      Boolean(po.isAllReceived)
+    ) {
+      return 4;
+    }
+
+    // Step 3: "รับบางส่วน" (PARTIAL)
+    if (
+      s === 'partial' || ws === 'partial' ||
+      s === 'partially_received' || ws === 'partially_received' ||
+      s.includes('partial') || ws.includes('partial')
+    ) {
+      return 3;
+    }
+
+    // Step 2: "กำลังส่ง" (SHIPPED / IN_DELIVERY / IN_TRANSIT)
+    if (
+      s === 'in_delivery' || ws === 'in_delivery' ||
+      s === 'in_transit' || ws === 'in_transit' ||
+      s === 'shipped' || ws === 'shipped' ||
+      s.includes('transit') || (s.includes('delivery') && !s.includes('pending_delivery'))
+    ) {
+      return 2;
+    }
+
+    // Step 1: "สั่งซื้อแล้ว" (ORDERED)
+    if (
+      s === 'ordered' || ws === 'ordered' ||
+      s === 'ordered_pending_delivery' || ws === 'ordered_pending_delivery' ||
+      s === 'waiting_delivery' || ws === 'waiting_delivery' ||
+      s.startsWith('ordered') || ws.startsWith('ordered')
+    ) {
+      return 1;
+    }
+
+    // Step 0: "ออก PO" (ISSUED)
+    return 0;
+  };
+
   const specialStatuses = ['CANCELLED', 'CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'];
-  const isSpecial = specialStatuses.includes(selectedPO.status);
-  const currentStepIndex = isSpecial ? -1 : lifecycleSteps.findIndex(s => s.key === selectedPO.status);
+  const isSpecial = !isCompletedOrClosed && specialStatuses.includes(rawStatus);
+  const currentStepIndex = isSpecial ? -1 : resolveCurrentStepIndex(selectedPO);
 
   // Seamless Modal Swapping: Eliminate Stacking Modals Anti-pattern
   // When user clicks "ตรวจรับพัสดุ", swap view completely to ReceivingModal without double backdrops
@@ -886,39 +955,40 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                 <div className="h-8 bg-slate-50 border border-slate-200/80 rounded-xl px-3 mt-3 flex items-center overflow-x-auto scrollbar-none shadow-2xs">
                   <div className="flex items-center justify-between w-full gap-1 min-w-[480px] sm:min-w-0">
                     {lifecycleSteps.map((step, i) => {
-                      const isAllCompleted = selectedPO.status === 'CLOSED';
-                      const isDone = isAllCompleted || (currentStepIndex >= 0 && i < currentStepIndex);
-                      const isCurrent = !isAllCompleted && (i === currentStepIndex);
+                      const isCompletedOrder = currentStepIndex === 5;
+                      const isStepDone = isCompletedOrder ? (i <= 5) : (currentStepIndex >= 0 && i < currentStepIndex);
+                      const isStepCurrent = !isCompletedOrder && (i === currentStepIndex);
+                      const isConnectorActive = currentStepIndex >= 0 && i < currentStepIndex;
                       const isLast = i === lifecycleSteps.length - 1;
 
                       return (
                         <React.Fragment key={step.key}>
                           <div className="flex items-center gap-1.5 min-w-0 shrink-0">
-                            {isDone ? (
+                            {isStepDone ? (
                               <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-2xs">
                                 <Check className="w-2 h-2 stroke-[3]" />
                               </span>
-                            ) : isCurrent ? (
-                              <span className="relative flex h-3 w-3 shrink-0 items-center justify-center">
+                            ) : isStepCurrent ? (
+                              <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-600"></span>
+                                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-600"></span>
                               </span>
                             ) : (
                               <span className="w-2 h-2 rounded-full bg-slate-300 shrink-0"></span>
                             )}
-                            <span className={`text-[11px] font-semibold truncate ${
-                              isCurrent 
+                            <span className={`text-[11px] truncate ${
+                              isStepCurrent 
                                 ? 'text-indigo-700 font-bold' 
-                                : isDone 
-                                  ? 'text-slate-700' 
-                                  : 'text-slate-400'
+                                : isStepDone 
+                                  ? (isCompletedOrder ? 'text-emerald-700 font-bold' : 'text-slate-800 font-semibold')
+                                  : 'text-slate-400 font-medium'
                             }`}>
                               {step.label}
                             </span>
                           </div>
                           {!isLast && (
-                            <div className={`flex-1 h-0.5 mx-1.5 rounded-full ${
-                              isDone ? 'bg-emerald-400' : 'bg-slate-200'
+                            <div className={`flex-1 h-0.5 mx-1.5 rounded-full transition-colors ${
+                              isConnectorActive ? 'bg-emerald-500' : 'bg-slate-200'
                             }`} />
                           )}
                         </React.Fragment>
@@ -1269,27 +1339,31 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                 )}
 
                 {/* NG Items */}
-                {selectedPO.ngItems && selectedPO.ngItems.length > 0 && (
-                  <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-2 shadow-2xs">
-                    <div className="flex items-center gap-2 font-semibold text-xs text-rose-800">
-                      <ShieldAlert className="w-4 h-4 text-rose-600" />
-                      บันทึกสินค้าชำรุด (Defective Items)
-                    </div>
-                    <div className="divide-y divide-rose-200/50">
-                      {selectedPO.ngItems.map((ng, i) => (
-                        <div key={i} className="py-2 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5">
-                          <div className="font-medium text-rose-900">
-                            <span className="font-semibold font-mono">[{ng.code || ng.productId}]</span> {ng.name}
-                            <span className="text-rose-600 ml-2 font-mono">{ng.qty} {ng.unit}</span>
+                {(() => {
+                  const scopedNgItems = storageService.getDefectiveItemsForPO(selectedPO);
+                  if (!scopedNgItems || scopedNgItems.length === 0) return null;
+                  return (
+                    <div className="po-defective-items-section bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-2 shadow-2xs">
+                      <div className="flex items-center gap-2 font-semibold text-xs text-rose-800">
+                        <ShieldAlert className="w-4 h-4 text-rose-600" />
+                        บันทึกสินค้าชำรุด (Defective Items)
+                      </div>
+                      <div className="divide-y divide-rose-200/50">
+                        {scopedNgItems.map((ng, i) => (
+                          <div key={i} className="py-2 flex flex-col sm:flex-row sm:items-center justify-between text-xs gap-1.5">
+                            <div className="font-medium text-rose-900">
+                              <span className="font-semibold font-mono">[{ng.code || ng.productCode || ng.productId}]</span> {ng.name}
+                              <span className="text-rose-600 ml-2 font-mono">{ng.qty} {ng.unit}</span>
+                            </div>
+                            <div className="text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-rose-200/70 text-[11px]">
+                              <span className="text-rose-700 font-semibold">อาการ:</span> {ng.defectReason}
+                            </div>
                           </div>
-                          <div className="text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-rose-200/70 text-[11px]">
-                            <span className="text-rose-700 font-semibold">อาการ:</span> {ng.defectReason}
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* GR Attachments */}
                 {selectedPO.grAttachments && selectedPO.grAttachments.length > 0 && (

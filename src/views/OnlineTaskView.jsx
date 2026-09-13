@@ -229,10 +229,16 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
       );
 
       // แท็บ "ปิดงานสำเร็จ" (CLOSED)
+      const ws = String(po.workflowStatus || '').toLowerCase();
       const isClosed = !isPending && !poHasClaim && (
-        statusUpper === 'COMPLETED' || 
-        statusUpper === 'CLOSED' || 
-        isOrderClosed(statusUpper)
+        s === 'completed' ||
+        s === 'closed' ||
+        ws === 'completed' ||
+        ws === 'closed' ||
+        statusUpper === 'COMPLETED' ||
+        statusUpper === 'CLOSED' ||
+        isOrderClosed(statusUpper) ||
+        Boolean(po.isClosed)
       );
 
       // แท็บ "รอเคลม" (CLAIM)
@@ -270,22 +276,41 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
   // Completed Orders filtered by selectedMonth for KPI Executive banner
   const completedOrders = useMemo(() => {
     return pos.filter(po => {
-      const statusUpper = String(po.status || '').toUpperCase();
+      const s = String(po.status || '').toLowerCase();
+      const ws = String(po.workflowStatus || '').toLowerCase();
+      const statusUpper = s.toUpperCase();
       const poHasClaim = hasUnresolvedClaim(po);
       const isClosed = !poHasClaim && (
-        statusUpper === 'COMPLETED' || 
-        statusUpper === 'CLOSED' || 
+        s === 'completed' ||
+        s === 'closed' ||
+        ws === 'completed' ||
+        ws === 'closed' ||
+        statusUpper === 'COMPLETED' ||
+        statusUpper === 'CLOSED' ||
         isOrderClosed(statusUpper) ||
         Boolean(po.isClosed)
       );
       if (!isClosed) return false;
 
-      if (!selectedMonth || selectedMonth === 'ALL') return true;
-      const orderDateStr = po.completedAt || po.updatedAt || po.orderDate || po.createdAt || '';
-      const { year, ymKey } = parseOrderYearMonth(orderDateStr);
-      if (selectedMonth === 'ALL_YEAR') {
-        const targetYear = 2026;
-        return year === targetYear;
+      const orderDateStr = 
+        po.completedAt || 
+        po.receivedAt || 
+        po.receivingInfo?.receivedAt || 
+        po.orderDate || 
+        po.issueDate || 
+        po.orderedAt || 
+        po.date || 
+        po.createdAt || 
+        po.updatedAt || 
+        (Array.isArray(po.grnHistory) && po.grnHistory[0]?.date) ||
+        (Array.isArray(po.timeline) && po.timeline[po.timeline.length - 1]?.timestamp) || 
+        '';
+      const parsed = parseOrderYearMonth(orderDateStr);
+      const year = parsed.year || 2026;
+      const ymKey = parsed.ymKey || '2026-09';
+
+      if (!selectedMonth || selectedMonth === 'ALL_YEAR' || selectedMonth === 'ALL' || selectedMonth === '2569' || selectedMonth === '2026') {
+        return year === 2026 || year === 2569;
       }
       return ymKey === selectedMonth;
     });
@@ -329,24 +354,40 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
       } else if (activeTab === 'CLAIM') {
         matchTab = !isOrderClosed(statusUpper) && poHasClaim;
       } else if (activeTab === 'CLOSED' || activeTab === 'COMPLETED') {
+        const ws = String(po.workflowStatus || '').toLowerCase();
         const isClosed = !poHasClaim && (
-          statusUpper === 'COMPLETED' || 
-          statusUpper === 'CLOSED' || 
+          s === 'completed' ||
+          s === 'closed' ||
+          ws === 'completed' ||
+          ws === 'closed' ||
+          statusUpper === 'COMPLETED' ||
+          statusUpper === 'CLOSED' ||
           isOrderClosed(statusUpper) ||
           Boolean(po.isClosed)
         );
         if (!isClosed) return false;
 
-        // Scoped to selectedMonth if activeTab is CLOSED / COMPLETED
-        if (selectedMonth && selectedMonth !== 'ALL') {
-          const orderDateStr = po.completedAt || po.updatedAt || po.orderDate || po.createdAt || '';
-          const { year, ymKey } = parseOrderYearMonth(orderDateStr);
-          if (selectedMonth === 'ALL_YEAR') {
-            const targetYear = 2026;
-            if (year !== targetYear) return false;
-          } else {
-            if (ymKey !== selectedMonth) return false;
-          }
+        const orderDateStr = 
+          po.completedAt || 
+          po.receivedAt || 
+          po.receivingInfo?.receivedAt || 
+          po.orderDate || 
+          po.issueDate || 
+          po.orderedAt || 
+          po.date || 
+          po.createdAt || 
+          po.updatedAt || 
+          (Array.isArray(po.grnHistory) && po.grnHistory[0]?.date) ||
+          (Array.isArray(po.timeline) && po.timeline[po.timeline.length - 1]?.timestamp) || 
+          '';
+        const parsed = parseOrderYearMonth(orderDateStr);
+        const year = parsed.year || 2026;
+        const ymKey = parsed.ymKey || '2026-09';
+
+        if (!selectedMonth || selectedMonth === 'ALL_YEAR' || selectedMonth === 'ALL' || selectedMonth === '2569' || selectedMonth === '2026') {
+          if (year !== 2026 && year !== 2569) return false;
+        } else {
+          if (ymKey !== selectedMonth) return false;
         }
         matchTab = true;
       }

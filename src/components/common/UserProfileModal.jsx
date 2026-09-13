@@ -2,9 +2,10 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { 
   UserCheck, Shield, X, Check, User, ArrowRightLeft, 
-  Sparkles, Building2, ShoppingBag, Crown, Layers
+  Sparkles, Building2, ShoppingBag, Crown, Layers, LogOut
 } from 'lucide-react';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth, normalizeRole, PERMISSIONS } from '../../context/AuthContext';
 import { getUserDepartments } from '../../utils/permissions';
 
 const getDeptBadgeStyle = (dept) => {
@@ -26,21 +27,116 @@ const getDeptBadgeStyle = (dept) => {
   }
 };
 
-export default function UserProfileModal({ isOpen, onClose, currentRole, onLogout }) {
-  const { availableUsers = [], handleSwitchUser } = useAppContext();
+export default function UserProfileModal({ 
+  isOpen, 
+  onClose, 
+  currentRole, 
+  currentUser,
+  onLogout,
+  isDev
+}) {
+  const appContext = useAppContext() || {};
+  const { availableUsers = [], handleSwitchUser } = appContext;
 
-  if (!isOpen || !currentRole) return null;
+  let auth = null;
+  try {
+    auth = useAuth();
+  } catch (e) {
+    auth = null;
+  }
 
-  const currentDepts = getUserDepartments(currentRole);
+  if (!isOpen) return null;
+
+  // Environment Detection: dev when in import.meta.env.DEV and not GAS
+  const isGas = typeof google !== 'undefined' && typeof google.script !== 'undefined' && typeof google.script.run !== 'undefined';
+  const isDevEnvironment = isDev !== undefined
+    ? Boolean(isDev)
+    : Boolean(import.meta.env.DEV && !isGas);
+
+  const targetUser = currentRole || currentUser || auth?.currentUser || auth?.currentRole;
+  if (!targetUser) return null;
+
+  const currentDepts = getUserDepartments(targetUser);
+  const canonicalRole = targetUser?.canonicalRole || 
+    (targetUser ? normalizeRole(targetUser) : null) || 
+    auth?.canonicalRole || 
+    'REQUESTER';
 
   const handleSelectUser = (userAcc) => {
-    handleSwitchUser(userAcc);
+    if (handleSwitchUser) {
+      handleSwitchUser(userAcc);
+    }
     onClose();
   };
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden">
-      <div className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in">
+  const handleLogoutFromModal = (e) => {
+    if (e) e.stopPropagation();
+    onClose();
+    if (onLogout) {
+      onLogout();
+    } else if (appContext?.handleLogout) {
+      appContext.handleLogout();
+    } else if (auth?.logout) {
+      auth.logout();
+    }
+  };
+
+  // Dynamic Read-Only Permissions Matrix
+  const canAccess = (perm) => {
+    if (canonicalRole === 'ADMIN') return true;
+    if (auth?.canAccess && !currentRole && !currentUser) {
+      return auth.canAccess(perm);
+    }
+    const allowed = PERMISSIONS?.[perm];
+    return allowed ? allowed.includes(canonicalRole) : false;
+  };
+
+  const canCreatePR = Boolean(
+    canAccess('PR_CREATE') || 
+    ['REQUESTER', 'ADMIN'].includes(canonicalRole) || 
+    targetUser?.canCreatePR
+  );
+
+  const canApprove = Boolean(
+    canAccess('PR_APPROVE') || 
+    ['APPROVER', 'ADMIN'].includes(canonicalRole) || 
+    targetUser?.canReview || 
+    targetUser?.canFinalApprove
+  );
+
+  const canOnlineProcure = Boolean(
+    canAccess('ONLINE_PROCURE') || 
+    ['PURCHASER', 'ADMIN'].includes(canonicalRole) || 
+    targetUser?.canOnlinePurchase
+  );
+
+  const canReceiveGRN = Boolean(
+    canAccess('GRN_RECEIVE') || 
+    ['WAREHOUSE', 'REQUESTER', 'ADMIN'].includes(canonicalRole) || 
+    targetUser?.canReceiveGRN
+  );
+
+  const canManageBudget = Boolean(
+    canAccess('BUDGET_MANAGE') || 
+    ['APPROVER', 'ADMIN'].includes(canonicalRole) || 
+    targetUser?.canViewBudgetMenu
+  );
+
+  const canManageMaster = Boolean(
+    canAccess('SYSTEM_ADMIN') || 
+    canonicalRole === 'ADMIN' || 
+    targetUser?.canManageMaster
+  );
+
+  const modalContent = (
+    <div 
+      data-testid="user-profile-modal-backdrop"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-fade-in print:hidden"
+    >
+      <div 
+        data-testid="user-profile-modal"
+        className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-3xl bg-white shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800 animate-zoom-in"
+      >
         
         {/* ── 1. Fixed Header (Sticky Top / Non-scrollable) ── */}
         <div className="shrink-0 px-6 py-4 border-b border-slate-100 bg-white flex items-center justify-between gap-4 sticky top-0 z-20">
@@ -49,11 +145,19 @@ export default function UserProfileModal({ isOpen, onClose, currentRole, onLogou
               <User className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h3 className="font-bold text-slate-900 text-base tracking-tight">
-                ข้อมูลผู้ใช้งาน & สลับบัญชี
+              <h3 
+                data-testid="profile-modal-title"
+                className="font-bold text-slate-900 text-base tracking-tight"
+              >
+                {isDevEnvironment ? 'ข้อมูลผู้ใช้งาน & สลับบัญชี' : 'ข้อมูลผู้ใช้งานและสิทธิ์ในระบบ'}
               </h3>
-              <p className="text-xs text-slate-500 font-normal truncate mt-0.5">
-                สิทธิ์การทำงานและสลับบทบาทจำลอง (Fast Account Switcher)
+              <p 
+                data-testid="profile-modal-subtitle"
+                className="text-xs text-slate-500 font-normal truncate mt-0.5"
+              >
+                {isDevEnvironment 
+                  ? 'สิทธิ์การทำงานและสลับบทบาทจำลอง (Fast Account Switcher)' 
+                  : 'รายละเอียดบัญชีผู้ใช้งานปัจจุบันและขอบเขตสิทธิ์การดำเนินงาน'}
               </p>
             </div>
           </div>
@@ -62,6 +166,7 @@ export default function UserProfileModal({ isOpen, onClose, currentRole, onLogou
             type="button"
             onClick={onClose} 
             className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+            aria-label="ปิดหน้าต่าง"
           >
             <X className="w-5 h-5" />
           </button>
@@ -72,20 +177,20 @@ export default function UserProfileModal({ isOpen, onClose, currentRole, onLogou
           
           {/* Active User Info Card */}
           <div className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
-            {currentRole.pictureUrl ? (
+            {targetUser.pictureUrl ? (
               <img
-                src={currentRole.pictureUrl}
+                src={targetUser.pictureUrl}
                 alt="Profile"
                 className="w-14 h-14 rounded-full object-cover border-2 border-indigo-500 shadow-xs shrink-0"
               />
             ) : (
               <div className="w-14 h-14 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xl border-2 border-indigo-300 shrink-0">
-                {currentRole.name?.charAt(0) || 'U'}
+                {targetUser.name?.charAt(0) || 'U'}
               </div>
             )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h4 className="font-bold text-slate-900 text-base truncate">{currentRole.name}</h4>
+                <h4 className="font-bold text-slate-900 text-base truncate">{targetUser.name}</h4>
                 {currentDepts.map(d => (
                   <span key={d} className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${getDeptBadgeStyle(d)}`}>
                     {d}
@@ -96,113 +201,118 @@ export default function UserProfileModal({ isOpen, onClose, currentRole, onLogou
                 </span>
               </div>
               <p className="text-xs text-slate-600 mt-0.5 font-medium">
-                ตำแหน่ง: <span className="font-bold text-slate-800">{currentRole.title}</span>
+                ตำแหน่ง: <span className="font-bold text-slate-800">{targetUser.title || targetUser.canonicalRole || 'ผู้ใช้งาน'}</span>
                 {currentDepts.length > 1 && (
                   <span className="text-indigo-600 font-bold ml-1.5">
                     ({currentDepts.join(', ')})
                   </span>
                 )}
               </p>
-              {currentRole.username && (
-                <p className="text-[11px] font-mono text-slate-400 mt-0.5">
-                  @{currentRole.username} • {currentRole.employeeId || 'Staff'}
-                </p>
-              )}
+              <div className="flex items-center gap-2 mt-0.5 text-[11px] font-mono text-slate-400 flex-wrap">
+                {targetUser.username && <span>@{targetUser.username}</span>}
+                {targetUser.employeeId && <span>• {targetUser.employeeId}</span>}
+                {targetUser.email && <span>• {targetUser.email}</span>}
+                <span className="bg-indigo-50 text-indigo-700 border border-indigo-200/60 px-1.5 py-0.2 rounded font-sans text-[10px] font-bold">
+                  {canonicalRole}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Fast Account Switcher Section */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
-                <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
-                <span>สลับบัญชีผู้ใช้งาน (Fast Account Switcher)</span>
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono">
-                {availableUsers.length} บัญชีในระบบ
-              </span>
-            </div>
+          {/* Fast Account Switcher Section (Dev Environment Only) */}
+          {isDevEnvironment && (
+            <div data-testid="dev-account-switcher-section" className="space-y-2.5">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
+                  <ArrowRightLeft className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>สลับบัญชีผู้ใช้งาน (Fast Account Switcher)</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {availableUsers.length} บัญชีในระบบ
+                </span>
+              </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {availableUsers.map((userAcc) => {
-                const isCurrent = userAcc.id === currentRole.id || 
-                  userAcc.username === currentRole.username || 
-                  (userAcc.roleId && userAcc.roleId === currentRole.roleId);
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {availableUsers.map((userAcc) => {
+                  const isCurrent = userAcc.id === targetUser.id || 
+                    userAcc.username === targetUser.username || 
+                    (userAcc.roleId && userAcc.roleId === targetUser.roleId);
 
-                return (
-                  <button
-                    key={userAcc.id}
-                    type="button"
-                    onClick={() => handleSelectUser(userAcc)}
-                    className={`p-3 rounded-2xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between gap-2.5 group ${
-                      isCurrent
-                        ? 'bg-indigo-50/80 border-indigo-300/80 shadow-xs ring-1 ring-indigo-500/20'
-                        : 'bg-white hover:bg-slate-50 border-slate-200/80 hover:border-slate-300 shadow-2xs'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="relative shrink-0">
-                        {userAcc.pictureUrl ? (
-                          <img
-                            src={userAcc.pictureUrl}
-                            alt=""
-                            className="w-9 h-9 rounded-full object-cover border border-slate-200"
-                          />
-                        ) : (
-                          <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs border border-slate-200">
-                            {userAcc.name?.charAt(0) || <User className="w-4 h-4" />}
+                  return (
+                    <button
+                      key={userAcc.id}
+                      type="button"
+                      onClick={() => handleSelectUser(userAcc)}
+                      className={`p-3 rounded-2xl border text-left transition-all duration-150 cursor-pointer flex items-center justify-between gap-2.5 group ${
+                        isCurrent
+                          ? 'bg-indigo-50/80 border-indigo-300/80 shadow-xs ring-1 ring-indigo-500/20'
+                          : 'bg-white hover:bg-slate-50 border-slate-200/80 hover:border-slate-300 shadow-2xs'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="relative shrink-0">
+                          {userAcc.pictureUrl ? (
+                            <img
+                              src={userAcc.pictureUrl}
+                              alt=""
+                              className="w-9 h-9 rounded-full object-cover border border-slate-200"
+                            />
+                          ) : (
+                            <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs border border-slate-200">
+                              {userAcc.name?.charAt(0) || <User className="w-4 h-4" />}
+                            </div>
+                          )}
+                          {isCurrent && (
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5"></span>
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-xs font-bold block truncate ${
+                              isCurrent ? 'text-indigo-900' : 'text-slate-800 group-hover:text-indigo-600'
+                            }`}>
+                              {userAcc.name}
+                            </span>
                           </div>
-                        )}
-                        {isCurrent && (
-                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5"></span>
-                        )}
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`text-xs font-bold block truncate ${
-                            isCurrent ? 'text-indigo-900' : 'text-slate-800 group-hover:text-indigo-600'
-                          }`}>
-                            {userAcc.name}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                          <span className="text-[10px] text-slate-500 block truncate font-normal">
-                            {userAcc.title}
-                          </span>
-                          {(() => {
-                            const accDepts = getUserDepartments(userAcc).filter(d => d !== 'ALL' && d !== '*');
-                            if (accDepts.length > 1) {
-                              return (
-                                <div className="flex items-center gap-1">
-                                  {accDepts.map(d => (
-                                    <span key={d} className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md border ${getDeptBadgeStyle(d)}`}>
-                                      {d}
-                                    </span>
-                                  ))}
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className="text-[10px] text-slate-500 block truncate font-normal">
+                              {userAcc.title}
+                            </span>
+                            {(() => {
+                              const accDepts = getUserDepartments(userAcc).filter(d => d !== 'ALL' && d !== '*');
+                              if (accDepts.length > 1) {
+                                return (
+                                  <div className="flex items-center gap-1">
+                                    {accDepts.map(d => (
+                                      <span key={d} className={`text-[9px] font-bold px-1.5 py-0.2 rounded-md border ${getDeptBadgeStyle(d)}`}>
+                                        {d}
+                                      </span>
+                                    ))}
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {isCurrent ? (
-                      <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                        <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 font-medium shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        สลับ
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                      {isCurrent ? (
+                        <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 group-hover:text-indigo-600 font-medium shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          สลับ
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Permissions Matrix Box */}
           <div className="p-4 bg-white border border-slate-200/80 rounded-2xl space-y-2.5 text-xs shadow-xs">
@@ -213,38 +323,38 @@ export default function UserProfileModal({ isOpen, onClose, currentRole, onLogou
             <ul className="space-y-2 text-slate-600 text-xs pt-1">
               <li className="flex items-center justify-between">
                 <span>สร้างใบขอซื้อ (PR):</span>
-                <span className={`font-semibold inline-flex items-center gap-1 ${currentRole.canCreatePR ? 'text-emerald-600' : 'text-slate-400'}`}>
-                  {currentRole.canCreatePR ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ไม่มีสิทธิ์</>}
+                <span className={`font-semibold inline-flex items-center gap-1 ${canCreatePR ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {canCreatePR ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ไม่มีสิทธิ์</>}
                 </span>
               </li>
               <li className="flex items-center justify-between">
-                <span>ตรวจทาน PR (Reviewer Level 1):</span>
-                <span className={`font-semibold inline-flex items-center gap-1 ${currentRole.canReview ? 'text-emerald-600' : 'text-slate-400'}`}>
-                  {currentRole.canReview ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ไม่มีสิทธิ์</>}
+                <span>ตรวจทาน / อนุมัติ (Approver):</span>
+                <span className={`font-semibold inline-flex items-center gap-1 ${canApprove ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {canApprove ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ไม่มีสิทธิ์</>}
                 </span>
               </li>
               <li className="flex items-center justify-between">
-                <span>อนุมัติสั่งซื้อ (Final Approver):</span>
-                <span className={`font-semibold inline-flex items-center gap-1 ${currentRole.canFinalApprove ? 'text-emerald-600' : 'text-slate-400'}`}>
-                  {currentRole.canFinalApprove ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ไม่มีสิทธิ์</>}
+                <span>สั่งซื้อและดำเนินการออนไลน์:</span>
+                <span className={`font-semibold inline-flex items-center gap-1 ${canOnlineProcure ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {canOnlineProcure ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ไม่มีสิทธิ์</>}
                 </span>
               </li>
               <li className="flex items-center justify-between">
-                <span>ดูภาพรวมงบประมาณ (Budget):</span>
-                <span className={`font-semibold inline-flex items-center gap-1 ${currentRole.canViewBudgetMenu ? 'text-emerald-600' : 'text-slate-400'}`}>
-                  {currentRole.canViewBudgetMenu ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ซ่อน</>}
+                <span>ตรวจรับพัสดุเข้าคลัง (GRN):</span>
+                <span className={`font-semibold inline-flex items-center gap-1 ${canReceiveGRN ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {canReceiveGRN ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ไม่มีสิทธิ์</>}
                 </span>
               </li>
               <li className="flex items-center justify-between">
-                <span>จัดการจัดซื้อออนไลน์ (Online Tasks):</span>
-                <span className={`font-semibold inline-flex items-center gap-1 ${currentRole.canOnlinePurchase ? 'text-emerald-600' : 'text-slate-400'}`}>
-                  {currentRole.canOnlinePurchase ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ไม่มีสิทธิ์</>}
+                <span>จัดการงบประมาณแผนก:</span>
+                <span className={`font-semibold inline-flex items-center gap-1 ${canManageBudget ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {canManageBudget ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ไม่มีสิทธิ์</>}
                 </span>
               </li>
               <li className="flex items-center justify-between">
                 <span>จัดการข้อมูลหลัก (Master Data):</span>
-                <span className={`font-semibold inline-flex items-center gap-1 ${currentRole.canManageMaster ? 'text-emerald-600' : 'text-slate-400'}`}>
-                  {currentRole.canManageMaster ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ไม่มีสิทธิ์</>}
+                <span className={`font-semibold inline-flex items-center gap-1 ${canManageMaster ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {canManageMaster ? <><Check className="w-3.5 h-3.5" /> มีสิทธิ์</> : <><X className="w-3.5 h-3.5" /> ไม่มีสิทธิ์</>}
                 </span>
               </li>
             </ul>
@@ -253,15 +363,30 @@ export default function UserProfileModal({ isOpen, onClose, currentRole, onLogou
 
         {/* ── 3. Sticky Action Footer ── */}
         <div className="shrink-0 px-6 py-4 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-3 sticky bottom-0 z-20">
-          <button
-            type="button"
-            onClick={onLogout}
-            className="px-4 py-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5"
-            title="รีเซ็ตกลับเป็นบัญชีเริ่มต้น (คุณวิชัย - PD)"
-          >
-            <ArrowRightLeft className="w-3.5 h-3.5 text-slate-400" />
-            <span>รีเซ็ตบัญชีเริ่มต้น</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {isDevEnvironment && (
+              <button
+                type="button"
+                onClick={onLogout}
+                className="px-4 py-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5"
+                title="รีเซ็ตกลับเป็นบัญชีเริ่มต้น (คุณวิชัย - PD)"
+                data-testid="modal-reset-default-btn"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5 text-slate-400" />
+                <span>รีเซ็ตบัญชีเริ่มต้น</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleLogoutFromModal}
+              data-testid="modal-logout-btn"
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100/80 border border-rose-200/70 rounded-xl transition-colors duration-150 cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>ออกจากระบบ (Sign Out)</span>
+            </button>
+          </div>
 
           <button
             type="button"
@@ -273,7 +398,11 @@ export default function UserProfileModal({ isOpen, onClose, currentRole, onLogou
         </div>
 
       </div>
-    </div>,
-    document.body
+    </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modalContent, document.body);
+  }
+  return modalContent;
 }

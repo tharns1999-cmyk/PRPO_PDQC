@@ -719,17 +719,20 @@ export default function OnlineOrderCard({
   }, [items]);
 
   const totalRefundAmount = useMemo(() => {
+    if (po?.totalRefunded !== undefined && po?.totalRefunded !== null) {
+      return Number(po.totalRefunded);
+    }
+    if (po?.refundAmount !== undefined && po?.refundAmount !== null) {
+      return Number(po.refundAmount);
+    }
     let sum = 0;
     if (po?.storeClaims) {
       Object.values(po.storeClaims).forEach(c => {
         sum += Number(c?.refundAmount || 0);
       });
     }
-    if (sum === 0 && Number(po?.refundAmount) > 0) {
-      sum = Number(po.refundAmount);
-    }
     return sum;
-  }, [po?.storeClaims, po?.refundAmount]);
+  }, [po?.totalRefunded, po?.refundAmount, po?.storeClaims]);
 
   const priceDiff = totalEstimatedAmount - originalTotalAmount;
 
@@ -1623,23 +1626,38 @@ export default function OnlineOrderCard({
   }, [uniqueStores, po]);
 
   const completionDateTag = useMemo(() => {
-    const rawDate = po.completedAt || po.updatedAt || po.orderDate || po.createdAt || '';
+    const rawDate = 
+      po.completedAt || 
+      po.receivedAt || 
+      po.receivingInfo?.receivedAt || 
+      po.orderDate || 
+      po.issueDate || 
+      po.orderedAt || 
+      po.date || 
+      po.createdAt || 
+      po.updatedAt || 
+      (Array.isArray(po.grnHistory) && po.grnHistory[0]?.date) ||
+      (Array.isArray(po.timeline) && po.timeline[po.timeline.length - 1]?.timestamp) || 
+      '';
     if (!rawDate) return '13/09/2026';
     try {
       const d = new Date(rawDate);
       if (isNaN(d.getTime())) {
-        const parts = String(rawDate).split('T')[0].split('-');
-        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        const parts = String(rawDate).split('T')[0].split('/');
+        if (parts.length === 3) return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+        const dashParts = String(rawDate).split('T')[0].split('-');
+        if (dashParts.length === 3) return `${dashParts[2].padStart(2, '0')}/${dashParts[1].padStart(2, '0')}/${dashParts[0]}`;
         return String(rawDate);
       }
       const day = String(d.getDate()).padStart(2, '0');
       const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
+      let year = d.getFullYear();
+      if (year > 2400) year -= 543;
       return `${day}/${month}/${year}`;
     } catch {
       return '13/09/2026';
     }
-  }, [po.completedAt, po.updatedAt, po.orderDate, po.createdAt]);
+  }, [po.completedAt, po.receivedAt, po.receivingInfo, po.orderDate, po.issueDate, po.orderedAt, po.date, po.createdAt, po.updatedAt, po.grnHistory, po.timeline]);
 
   const storeChipsSummary = useMemo(() => {
     const items = Array.isArray(po.items) ? po.items : [];
@@ -1668,8 +1686,21 @@ export default function OnlineOrderCard({
     return `${firstItemName} และอีก ${items.length - 1} รายการ`;
   }, [po.items]);
 
-  const actualTotalValue = Number(po.actualTotal ?? (totalEstimatedAmount - totalRefundAmount) ?? po.totalAmount ?? po.grandTotal ?? 0);
-  const totalRefundedValue = Number(po.totalRefunded ?? totalRefundAmount ?? 0);
+  const rawItemsTotal = totalEstimatedAmount || Number(po.grandTotal ?? po.totalAmount ?? 0);
+  const rawOriginalBudget = originalTotalAmount || Number(po.estimatedAmount ?? po.grandTotal ?? po.totalAmount ?? 0);
+
+  let actualSpent = Number(po.actualTotal ?? (rawItemsTotal - totalRefundAmount));
+  if (actualSpent <= 0 || isNaN(actualSpent)) {
+    actualSpent = Number(po.grandTotal ?? po.totalAmount ?? rawItemsTotal ?? 0);
+  }
+
+  let safeRefundAmount = Math.max(0, rawOriginalBudget - actualSpent);
+  if (safeRefundAmount === 0 && Number(po.refundAmount) > 0 && actualSpent < rawOriginalBudget) {
+    safeRefundAmount = Number(po.refundAmount);
+  }
+
+  const actualTotalValue = Math.max(0, actualSpent);
+  const totalRefundedValue = Number(po.totalRefunded ?? safeRefundAmount);
 
   // ── Structured 2-Tier Micro Card (~58px) (When collapsed in Closed/Completed or Passive mode) ──
   if (!isCardExpanded) {
@@ -2721,12 +2752,12 @@ export default function OnlineOrderCard({
       {(activeTab === 'CLOSED' || isClosed) && !isPending && (
         <div className="mt-2.5 px-3 py-1.5 bg-slate-50/90 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2 font-mono">
-            <span className="text-slate-500">งบเดิม ฿{originalTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="text-slate-500">งบเดิม ฿{rawOriginalBudget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             <span className="text-slate-300">→</span>
-            <span className="font-bold text-slate-800">จ่ายจริง ฿{(totalEstimatedAmount - totalRefundAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            {totalRefundAmount > 0 ? (
+            <span className="font-bold text-slate-800">จ่ายจริง ฿{actualTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            {totalRefundedValue > 0 ? (
               <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                +คืนงบ ฿{totalRefundAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                +คืนงบ ฿{totalRefundedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             ) : null}
           </div>

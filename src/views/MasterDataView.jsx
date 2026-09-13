@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Database, Plus, Edit3, Trash2, ShieldAlert, Building2, Search, X, Package, Store, PenTool, MapPin, Layers, Boxes, DoorClosed, Users, ShieldCheck, UserCheck, RotateCcw, Shield } from 'lucide-react';
 import ProductCRUDModal from '../components/admin/ProductCRUDModal';
 import DeactivateItemModal from '../components/admin/DeactivateItemModal';
@@ -9,12 +10,16 @@ import UsageUnitCRUDModal from '../components/admin/UsageUnitCRUDModal';
 import DepartmentCRUDModal from '../components/admin/DepartmentCRUDModal';
 import UserCRUDModal from '../components/admin/UserCRUDModal';
 import UserMasterView from './admin/UserMasterView';
+import MasterDataNav, { MASTER_DATA_TABS, normalizeTabId, isTabActive } from '../components/master/MasterDataNav';
 import { storageService } from '../services/storageService';
 import { apiService } from '../services/apiService';
 import { modalService } from '../services/modalService';
 import { useAppContext } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/common/Pagination';
 import { getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
+
+export { MASTER_DATA_TABS, normalizeTabId, isTabActive };
 
 // ── Permanent Blacklist Guard against Test / Mock Artifacts ──
 export const DUMMY_BLACKLIST = new Set(['P01', 'P02', 'PROD-01', 'PROD-02']);
@@ -76,12 +81,31 @@ function MasterDataContent({
     context = null;
   }
 
+  let auth = null;
+  try {
+    auth = useAuth();
+  } catch (e) {
+    auth = null;
+  }
+
+  let searchParams, setSearchParams;
+  try {
+    [searchParams, setSearchParams] = useSearchParams();
+  } catch {
+    searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+    setSearchParams = () => {};
+  }
+
   // Role and Admin evaluation defined right at top to eliminate Temporal Dead Zone (TDZ)
-  const effectiveRole = currentRole || context?.currentRole;
-  const effectiveUser = currentUser || context?.currentUser;
+  const effectiveRole = currentRole || context?.currentRole || auth?.currentRole;
+  const effectiveUser = currentUser || context?.currentUser || auth?.currentUser;
   const targetUserObj = effectiveUser || effectiveRole;
   const userDepts = getUserDepartments(targetUserObj);
   const isAdmin = Boolean(
+    auth?.canonicalRole === 'ADMIN' ||
+    (auth?.hasRole && auth.hasRole('ADMIN')) ||
+    effectiveUser?.canonicalRole === 'ADMIN' ||
+    effectiveRole?.canonicalRole === 'ADMIN' ||
     effectiveRole?.id === 'ADMIN' ||
     effectiveRole?.roleId === 'ADMIN' ||
     effectiveRole?.role === 'admin' ||
@@ -89,9 +113,7 @@ function MasterDataContent({
     effectiveUser?.roleId === 'ADMIN' ||
     effectiveUser?.isAdmin === true ||
     Number(effectiveRole?.level) >= 99 ||
-    Number(effectiveUser?.level) >= 99 ||
-    userDepts.includes('ALL') ||
-    userDepts.includes('*')
+    Number(effectiveUser?.level) >= 99
   );
   const canSeeAll = Boolean(isAdmin || effectiveRole?.canViewAllDepts);
   const myDept = effectiveRole?.department;
@@ -105,7 +127,75 @@ function MasterDataContent({
     Number(effectiveUser?.level) >= 2
   );
 
-  const [activeTab, setActiveTab] = useState('products');
+  // Tab Resolution & Defensive Fallback
+  const resolveTab = useCallback((targetTab, adminFlag) => {
+    const norm = normalizeTabId(targetTab);
+    const tabDef = MASTER_DATA_TABS.find(t => t.id === norm);
+    if (tabDef?.adminOnly && !adminFlag) {
+      return 'catalog';
+    }
+    return norm;
+  }, []);
+
+  const queryTab = searchParams?.get('tab') || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null);
+
+  const [activeTab, setActiveTabState] = useState(() => {
+    return resolveTab(queryTab || 'catalog', isAdmin);
+  });
+
+  const setActiveTab = useCallback((nextTab) => {
+    const resolved = resolveTab(nextTab, isAdmin);
+    setActiveTabState(resolved);
+    try {
+      if (setSearchParams) {
+        setSearchParams(prev => {
+          const next = new URLSearchParams(prev);
+          next.set('tab', resolved);
+          return next;
+        }, { replace: true });
+      }
+    } catch (e) {}
+  }, [isAdmin, resolveTab, setSearchParams]);
+
+  // Defensive Tab Fallback: if non-admin user lands on or attempts to navigate to users or departments
+  useEffect(() => {
+    const norm = normalizeTabId(activeTab);
+    const resolved = resolveTab(norm, isAdmin);
+    if (resolved !== norm) {
+      setActiveTabState(resolved);
+      try {
+        if (setSearchParams) {
+          setSearchParams(prev => {
+            const next = new URLSearchParams(prev);
+            next.set('tab', resolved);
+            return next;
+          }, { replace: true });
+        }
+      } catch (e) {}
+    }
+  }, [activeTab, isAdmin, resolveTab, setSearchParams]);
+
+  // Defensive fallback if URL query param is tampered to ?tab=users or ?tab=departments by non-admin
+  useEffect(() => {
+    const currentQuery = searchParams?.get('tab') || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null);
+    if (currentQuery) {
+      const resolved = resolveTab(currentQuery, isAdmin);
+      if (normalizeTabId(activeTab) !== resolved) {
+        setActiveTabState(resolved);
+      }
+      if (currentQuery !== resolved) {
+        try {
+          if (setSearchParams) {
+            setSearchParams(prev => {
+              const next = new URLSearchParams(prev);
+              next.set('tab', resolved);
+              return next;
+            }, { replace: true });
+          }
+        } catch (e) {}
+      }
+    }
+  }, [searchParams, isAdmin, resolveTab, activeTab, setSearchParams]);
   const [showProdModal, setShowProdModal] = useState(false);
   const [showVendorModal, setShowVendorModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
@@ -231,25 +321,31 @@ function MasterDataContent({
     }
   }, [initialDepartments]);
 
-  // Search & Dept Filter States
-  // Search & Dept Filter States (Default to 'ALL' so multi-department users see all their accessible data)
+  // Department Scoping:
+  // Requesters and department-restricted users default and lock to their assigned department (e.g. 'PD')
+  // Admin and unrestricted cross-dept roles retain full visibility ('ALL' / 'ทุกแผนก')
+  const isDeptRestricted = !isAdmin && !canSeeAll && userDepts.length > 0 && !userDepts.includes('ALL') && !userDepts.includes('*');
+  const userPrimaryDept = userDepts[0] || effectiveUser?.department || 'PD';
+  const initialDeptFilter = isDeptRestricted ? userPrimaryDept : 'ALL';
+
   const [prodSearch, setProdSearch] = useState('');
-  const [prodCategoryFilter, setProdCategoryFilter] = useState('ALL');
+  const [prodCategoryFilter, setProdCategoryFilter] = useState(initialDeptFilter);
   const [prodStatusFilter, setProdStatusFilter] = useState('ACTIVE'); // 'ACTIVE' | 'ALL' | 'INACTIVE'
   const [vendorSearch, setVendorSearch] = useState('');
-  const [vendorDeptFilter, setVendorDeptFilter] = useState('ALL');
+  const [vendorDeptFilter, setVendorDeptFilter] = useState(initialDeptFilter);
   const [locSearch, setLocSearch] = useState('');
-  const [locDeptFilter, setLocDeptFilter] = useState('ALL');
+  const [locDeptFilter, setLocDeptFilter] = useState(initialDeptFilter);
   const [unitSearch, setUnitSearch] = useState('');
-  const [unitDeptFilter, setUnitDeptFilter] = useState('ALL');
+  const [unitDeptFilter, setUnitDeptFilter] = useState(initialDeptFilter);
 
-  // Reset department filters to 'ALL' whenever active user switches
+  // Sync department filters whenever active user switches
   useEffect(() => {
-    setProdCategoryFilter('ALL');
-    setVendorDeptFilter('ALL');
-    setLocDeptFilter('ALL');
-    setUnitDeptFilter('ALL');
-  }, [targetUserObj?.id, targetUserObj?.username]);
+    const nextDefault = isDeptRestricted ? userPrimaryDept : 'ALL';
+    setProdCategoryFilter(nextDefault);
+    setVendorDeptFilter(nextDefault);
+    setLocDeptFilter(nextDefault);
+    setUnitDeptFilter(nextDefault);
+  }, [targetUserObj?.id, targetUserObj?.username, isDeptRestricted, userPrimaryDept]);
   const [deptSearch, setDeptSearch] = useState('');
   const [deptStatusFilter, setDeptStatusFilter] = useState('ALL');
   const [userSearch, setUserSearch] = useState('');
@@ -441,17 +537,8 @@ function MasterDataContent({
   }, [filteredUsers, userPage, userPageSize]);
 
   // Dynamic Department Filter Options (Scoped to user's assigned departments if non-admin)
-  // Dynamic Department Filter Options (Scoped to user's assigned departments if non-admin)
   const deptFilterOptions = useMemo(() => {
     const baseDepts = departmentsList.filter(d => d.isActive);
-    const visibleDepts = (isAdmin || canSeeAll)
-      ? baseDepts
-      : baseDepts.filter(d => userDepts.some(ud => ud.toUpperCase() === d.code?.toUpperCase()));
-
-    const allLabel = (isAdmin || canSeeAll)
-      ? 'ทุกแผนก'
-      : (userDepts.length > 1 ? 'ทั้งหมดของฉัน' : 'ทั้งหมด');
-
     const deptNameMap = {
       'PD': 'ฝ่ายผลิต',
       'QC': 'ฝ่ายควบคุมคุณภาพ',
@@ -460,19 +547,34 @@ function MasterDataContent({
       'ENG': 'วิศวกรรม'
     };
 
-    return [
-      { code: 'ALL', label: allLabel },
-      ...visibleDepts.map(d => {
-        const name = d.name || deptNameMap[d.code] || d.code;
-        return {
-          code: d.code,
-          label: `${name} (${d.code})`
-        };
-      })
-    ];
+    if (isAdmin || canSeeAll) {
+      return [
+        { code: 'ALL', label: 'ทุกแผนก' },
+        ...baseDepts.map(d => {
+          const name = d.name || deptNameMap[d.code] || d.code;
+          return {
+            code: d.code,
+            label: `${name} (${d.code})`
+          };
+        })
+      ];
+    }
+
+    // For Department-Restricted Requesters/Users:
+    // Omit 'ALL' / 'ทุกแผนก' entirely to ensure they manage only their own department's items
+    const myDepts = baseDepts.filter(d => userDepts.some(ud => ud.toUpperCase() === d.code?.toUpperCase()));
+    const resultDepts = myDepts.length > 0 ? myDepts : userDepts.map(code => ({ code, name: deptNameMap[code] || code }));
+
+    return resultDepts.map(d => {
+      const name = d.name || deptNameMap[d.code] || d.code;
+      return {
+        code: d.code,
+        label: `${name} (${d.code})`
+      };
+    });
   }, [departmentsList, isAdmin, canSeeAll, userDepts]);
 
-  const showDeptFilterToolbar = Boolean(isAdmin || canSeeAll || userDepts.length > 1 || deptFilterOptions.length > 2);
+  const showDeptFilterToolbar = deptFilterOptions.length > 0;
 
   // Filtered Departments
   const filteredDepartments = useMemo(() => {
@@ -502,6 +604,12 @@ function MasterDataContent({
     const prodCode = String(prod.code || prod.id || '').trim();
     const prodName = prod.name || prodCode;
     const isDummyArtifact = isBlacklistedProduct(prod);
+
+    // Guard: Non-admin users cannot delete products outside their department
+    if (!isAdmin && !canAccessDepartmentData(targetUserObj, prod.department || prod.category)) {
+      modalService.warning('ไม่มีสิทธิ์ดำเนินการ', 'คุณไม่มีสิทธิ์ลบข้อมูลสินค้าของแผนกอื่น');
+      return;
+    }
 
     // ─── Requirement 4: Referential Integrity Guard ───
     const stockQty = Number(prod.stockBalance ?? prod.currentStock ?? prod.stockRemaining ?? 0);
@@ -714,6 +822,12 @@ function MasterDataContent({
     const vendorCode = String(vendor.code || vendor.id || '').trim();
     const vendorName = vendor.name || vendorCode;
 
+    // Guard: Non-admin users cannot delete vendors outside their department
+    if (!isAdmin && !canAccessDepartmentData(targetUserObj, vendor.department)) {
+      modalService.warning('ไม่มีสิทธิ์ดำเนินการ', 'คุณไม่มีสิทธิ์ลบข้อมูลผู้ขายของแผนกอื่น');
+      return;
+    }
+
     // Check active POs
     const allPOs = (initialPOs && initialPOs.length > 0) ? initialPOs : (context?.pos || storageService.getPOs?.() || []);
     const linkedPOs = allPOs.filter(po => 
@@ -801,6 +915,12 @@ function MasterDataContent({
   };
 
   const handleDeleteUsageUnit = async (unit) => {
+    // Guard: Non-admin users cannot delete usage units outside their department
+    if (!isAdmin && !canAccessDepartmentData(targetUserObj, unit.department)) {
+      modalService.warning('ไม่มีสิทธิ์ดำเนินการ', 'คุณไม่มีสิทธิ์ลบหน่วยเบิกใช้งานของแผนกอื่น');
+      return;
+    }
+
     const confirmed = await modalService.confirm({
       title: 'ยืนยันการลบหน่วยเบิกใช้งาน',
       message: `ต้องการลบหน่วยเบิกใช้งาน "${unit.name}" (${unit.department}) ออกจากระบบหรือไม่?`,
@@ -991,7 +1111,7 @@ function MasterDataContent({
 
         {/* Primary Action Button in Header */}
         <div className="flex items-center gap-2.5">
-          {activeTab === 'products' ? (
+          {(activeTab === 'catalog' || activeTab === 'products') ? (
             <button
               onClick={() => { setEditProd(null); setShowProdModal(true); }}
               className="bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white text-xs sm:text-sm font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-sm transition-all cursor-pointer"
@@ -1015,7 +1135,7 @@ function MasterDataContent({
               <Plus className="w-4 h-4" />
               <span>เพิ่มจุดจัดเก็บใหม่</span>
             </button>
-          ) : activeTab === 'usageUnits' ? (
+          ) : (activeTab === 'rooms' || activeTab === 'usageUnits') ? (
             <button
               onClick={() => { setEditUsageUnit(null); setShowUsageUnitModal(true); }}
               className="bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white text-xs sm:text-sm font-semibold px-5 py-2.5 rounded-xl flex items-center gap-2 shadow-sm transition-all cursor-pointer"
@@ -1036,100 +1156,24 @@ function MasterDataContent({
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1.5 bg-slate-100/80 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-2xs overflow-x-auto custom-scrollbar">
-        <button
-          onClick={() => setActiveTab('products')}
-          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'products'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <Package className="w-4 h-4 text-indigo-600" />
-          <span>แคตตาล็อกสินค้า</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
-            {filteredProducts.length}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('vendors')}
-          aria-label="ผู้ขาย / Vendor"
-          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'vendors'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <Store className="w-4 h-4 text-emerald-600" />
-          <span>รายชื่อผู้ขาย / ร้านค้า</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
-            {filteredVendors.length}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('locations')}
-          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'locations'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <MapPin className="w-4 h-4 text-violet-600" />
-          <span>จุดจัดเก็บสินค้า</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
-            {filteredLocations.length}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('usageUnits')}
-          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            activeTab === 'usageUnits'
-              ? 'bg-white text-slate-900 shadow-xs font-bold'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <DoorClosed className="w-4 h-4 text-cyan-600" />
-          <span>หน่วยเบิกใช้งาน / ห้อง</span>
-          <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
-            {filteredUsageUnits.length}
-          </span>
-        </button>
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'users'
-                ? 'bg-white text-slate-900 shadow-xs font-bold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-            }`}
-          >
-            <Users className="w-4 h-4 text-sky-600" />
-            <span>ผู้ใช้งานและสิทธิ์</span>
-            <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
-              {filteredUsers.length}
-            </span>
-          </button>
-        )}
-        {isAdmin && (
-          <button
-            onClick={() => setActiveTab('departments')}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'departments'
-                ? 'bg-white text-slate-900 shadow-xs font-bold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-            }`}
-          >
-            <Building2 className="w-4 h-4 text-blue-600" />
-            <span>แผนก / ฝ่าย</span>
-            <span className="px-1.5 py-0.5 rounded-full text-[11px] font-mono bg-slate-100 text-slate-600">
-              {departmentsList.length}
-            </span>
-          </button>
-        )}
-      </div>
+      <MasterDataNav
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        isAdmin={isAdmin}
+        counts={{
+          catalog: filteredProducts.length,
+          products: filteredProducts.length,
+          vendors: filteredVendors.length,
+          locations: filteredLocations.length,
+          rooms: filteredUsageUnits.length,
+          usageUnits: filteredUsageUnits.length,
+          users: filteredUsers.length,
+          departments: departmentsList.length
+        }}
+      />
 
-      {/* Tab 1: Products */}
-      {activeTab === 'products' && (
+      {/* Tab 1: Products / Catalog */}
+      {(activeTab === 'catalog' || activeTab === 'products') && (
         <div className="space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap">
@@ -1286,56 +1330,78 @@ function MasterDataContent({
                           {p.reorderPoint || 0} <span className="text-xs text-slate-400 font-sans">{p.unit}</span>
                         </td>
                         <td className="py-3.5 pr-6 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => { setEditProd(p); setShowProdModal(true); }}
-                              className="p-1.5 hover:bg-slate-100 text-slate-600 hover:text-indigo-600 rounded-lg transition-colors cursor-pointer"
-                              title="แก้ไขสินค้า"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            {isInactive ? (
-                              <div className="flex items-center gap-1">
+                          {(() => {
+                            const canModifyProd = isAdmin || canAccessDepartmentData(targetUserObj, p.department || p.category);
+                            return (
+                              <div className="flex items-center justify-center gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleReactivateProduct(p);
+                                  disabled={!canModifyProd}
+                                  onClick={() => {
+                                    if (!canModifyProd) return;
+                                    setEditProd(p);
+                                    setShowProdModal(true);
                                   }}
-                                  className="p-1.5 hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
-                                  title="เปิดใช้งานใหม่ (Reactivate / Restore)"
+                                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                    canModifyProd
+                                      ? 'hover:bg-slate-100 text-slate-600 hover:text-indigo-600'
+                                      : 'opacity-30 cursor-not-allowed text-slate-300'
+                                  }`}
+                                  title={canModifyProd ? "แก้ไขสินค้า" : "ไม่มีสิทธิ์แก้ไขสินค้านอกแผนก"}
                                 >
-                                  <RotateCcw className="w-4 h-4 pointer-events-none" />
+                                  <Edit3 className="w-4 h-4" />
                                 </button>
-                                {isAdmin && (
+                                {isInactive ? (
+                                  <div className="flex items-center gap-1">
+                                    {canModifyProd && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleReactivateProduct(p);
+                                        }}
+                                        className="p-1.5 hover:bg-emerald-50 text-emerald-600 hover:text-emerald-700 rounded-lg transition-colors cursor-pointer"
+                                        title="เปิดใช้งานใหม่ (Reactivate / Restore)"
+                                      >
+                                        <RotateCcw className="w-4 h-4 pointer-events-none" />
+                                      </button>
+                                    )}
+                                    {isAdmin && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteProduct(p);
+                                        }}
+                                        className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                                        title="ลบสินค้าถาวร (Delete Permanently)"
+                                      >
+                                        <Trash2 className="w-4 h-4 pointer-events-none" />
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
                                   <button
                                     type="button"
+                                    disabled={!canModifyProd}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (!canModifyProd) return;
                                       handleDeleteProduct(p);
                                     }}
-                                    className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
-                                    title="ลบสินค้าถาวร (Delete Permanently)"
+                                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                      canModifyProd
+                                        ? 'hover:bg-rose-50 text-slate-400 hover:text-rose-600'
+                                        : 'opacity-30 cursor-not-allowed text-slate-300'
+                                    }`}
+                                    title={canModifyProd ? "ลบ / ปิดการใช้งานสินค้า" : "ไม่มีสิทธิ์ลบสินค้านอกแผนก"}
                                   >
                                     <Trash2 className="w-4 h-4 pointer-events-none" />
                                   </button>
                                 )}
                               </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteProduct(p);
-                                }}
-                                className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
-                                title="ลบ / ปิดการใช้งานสินค้า"
-                              >
-                                <Trash2 className="w-4 h-4 pointer-events-none" />
-                              </button>
-                            )}
-                          </div>
+                            );
+                          })()}
                         </td>
                       </tr>
                     );
@@ -1413,26 +1479,46 @@ function MasterDataContent({
                       <td className="py-3.5 px-4 font-mono text-slate-600">{v.phone || '-'}</td>
                       <td className="py-3.5 px-4">{deptBadge(v.department)}</td>
                       <td className="py-3.5 pr-6 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => { setEditVendor(v); setShowVendorModal(true); }}
-                            className="p-1.5 hover:bg-slate-100 text-slate-600 hover:text-indigo-600 rounded-lg transition-colors cursor-pointer"
-                            title="แก้ไขข้อมูลผู้ขาย"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteVendor(v);
-                            }}
-                            className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
-                            title="ลบผู้ขาย"
-                          >
-                            <Trash2 className="w-4 h-4 pointer-events-none" />
-                          </button>
-                        </div>
+                        {(() => {
+                          const canModifyVendor = isAdmin || canAccessDepartmentData(targetUserObj, v.department);
+                          return (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                disabled={!canModifyVendor}
+                                onClick={() => {
+                                  if (!canModifyVendor) return;
+                                  setEditVendor(v);
+                                  setShowVendorModal(true);
+                                }}
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                  canModifyVendor
+                                    ? 'hover:bg-slate-100 text-slate-600 hover:text-indigo-600'
+                                    : 'opacity-30 cursor-not-allowed text-slate-300'
+                                }`}
+                                title={canModifyVendor ? "แก้ไขข้อมูลผู้ขาย" : "ไม่มีสิทธิ์แก้ไขผู้ขายนอกแผนก"}
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canModifyVendor}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!canModifyVendor) return;
+                                  handleDeleteVendor(v);
+                                }}
+                                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                  canModifyVendor
+                                    ? 'hover:bg-rose-50 text-slate-400 hover:text-rose-600'
+                                    : 'opacity-30 cursor-not-allowed text-slate-300'
+                                }`}
+                                title={canModifyVendor ? "ลบผู้ขาย" : "ไม่มีสิทธิ์ลบผู้ขายนอกแผนก"}
+                              >
+                                <Trash2 className="w-4 h-4 pointer-events-none" />
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -1534,22 +1620,44 @@ function MasterDataContent({
                             </span>
                           </td>
                           <td className="py-3.5 pr-6 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                onClick={() => { setEditLocation(loc); setShowLocationModal(true); }}
-                                className="p-2 hover:bg-slate-100 text-slate-600 hover:text-indigo-600 rounded-xl transition-colors cursor-pointer"
-                                title="แก้ไขจุดจัดเก็บ"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => setDeleteLocationItem(loc)}
-                                className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-colors cursor-pointer"
-                                title="ลบจุดจัดเก็บ"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
+                            {(() => {
+                              const canModifyLoc = isAdmin || canAccessDepartmentData(targetUserObj, loc.department);
+                              return (
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    disabled={!canModifyLoc}
+                                    onClick={() => {
+                                      if (!canModifyLoc) return;
+                                      setEditLocation(loc);
+                                      setShowLocationModal(true);
+                                    }}
+                                    className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                                      canModifyLoc
+                                        ? 'hover:bg-slate-100 text-slate-600 hover:text-indigo-600'
+                                        : 'opacity-30 cursor-not-allowed text-slate-300'
+                                    }`}
+                                    title={canModifyLoc ? "แก้ไขจุดจัดเก็บ" : "ไม่มีสิทธิ์แก้ไขจุดจัดเก็บนอกแผนก"}
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    disabled={!canModifyLoc}
+                                    onClick={() => {
+                                      if (!canModifyLoc) return;
+                                      setDeleteLocationItem(loc);
+                                    }}
+                                    className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                                      canModifyLoc
+                                        ? 'hover:bg-rose-50 text-slate-400 hover:text-rose-600'
+                                        : 'opacity-30 cursor-not-allowed text-slate-300'
+                                    }`}
+                                    title={canModifyLoc ? "ลบจุดจัดเก็บ" : "ไม่มีสิทธิ์ลบจุดจัดเก็บนอกแผนก"}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              );
+                            })()}
                           </td>
                         </tr>
                       );
@@ -1569,8 +1677,8 @@ function MasterDataContent({
         </div>
       )}
 
-      {/* Tab 4: Usage Units (Department-Scoped Rooms) */}
-      {activeTab === 'usageUnits' && (
+      {/* Tab 4: Usage Units / Rooms (Department-Scoped Rooms) */}
+      {(activeTab === 'rooms' || activeTab === 'usageUnits') && (
         <div className="space-y-4">
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {showDeptFilterToolbar && (
@@ -1668,22 +1776,44 @@ function MasterDataContent({
                             </span>
                           </td>
                           <td className="py-3.5 pr-6 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1.5">
-                              <button
-                                onClick={() => { setEditUsageUnit(unit); setShowUsageUnitModal(true); }}
-                                className="p-2 hover:bg-slate-100 text-slate-600 hover:text-indigo-600 rounded-xl transition-colors cursor-pointer"
-                                title="แก้ไขหน่วยเบิก"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteUsageUnit(unit)}
-                                className="p-2 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-colors cursor-pointer"
-                                title="ลบหน่วยเบิก"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
+                            {(() => {
+                              const canModifyUnit = isAdmin || canAccessDepartmentData(targetUserObj, unit.department);
+                              return (
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    disabled={!canModifyUnit}
+                                    onClick={() => {
+                                      if (!canModifyUnit) return;
+                                      setEditUsageUnit(unit);
+                                      setShowUsageUnitModal(true);
+                                    }}
+                                    className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                                      canModifyUnit
+                                        ? 'hover:bg-slate-100 text-slate-600 hover:text-indigo-600'
+                                        : 'opacity-30 cursor-not-allowed text-slate-300'
+                                    }`}
+                                    title={canModifyUnit ? "แก้ไขหน่วยเบิก" : "ไม่มีสิทธิ์แก้ไขหน่วยเบิกนอกแผนก"}
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    disabled={!canModifyUnit}
+                                    onClick={() => {
+                                      if (!canModifyUnit) return;
+                                      handleDeleteUsageUnit(unit);
+                                    }}
+                                    className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                                      canModifyUnit
+                                        ? 'hover:bg-rose-50 text-slate-400 hover:text-rose-600'
+                                        : 'opacity-30 cursor-not-allowed text-slate-300'
+                                    }`}
+                                    title={canModifyUnit ? "ลบหน่วยเบิก" : "ไม่มีสิทธิ์ลบหน่วยเบิกนอกแผนก"}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              );
+                            })()}
                           </td>
                         </tr>
                       );

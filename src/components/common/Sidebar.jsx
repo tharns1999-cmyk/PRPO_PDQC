@@ -4,7 +4,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, Sparkles, ScrollText, ReceiptText, Boxes, Zap, 
   SlidersHorizontal, WalletCards, ShoppingBag, Factory, X,
-  User, ArrowRightLeft, ShieldCheck
+  User, ArrowRightLeft, ShieldCheck, LogOut
 } from 'lucide-react';
 import { workflowEngine } from '../../services/workflowEngine';
 import NotificationBell from './NotificationBell';
@@ -13,6 +13,7 @@ import NotificationPopover from './NotificationPopover';
 import { notificationService } from '../../services/notificationService';
 import UserProfileModal from './UserProfileModal';
 import { useAppContext } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { getUserDepartments } from '../../utils/permissions';
 import { calculateActiveClaimCount, calculatePendingActionCount, calculateUrgentTaskCount } from '../../context/ProcurementContext';
 
@@ -30,7 +31,8 @@ export default function Sidebar({
   onOpenPR,
   onOpenPO,
   onLogout,
-  onRefresh
+  onRefresh,
+  isDev
 }) {
   const [showNotiDrawer, setShowNotiDrawer] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -42,6 +44,19 @@ export default function Sidebar({
   } catch {
     context = null;
   }
+
+  let auth = null;
+  try {
+    auth = useAuth();
+  } catch {
+    auth = null;
+  }
+
+  // Environment Detection: dev when in import.meta.env.DEV and not GAS
+  const isGas = typeof google !== 'undefined' && typeof google.script !== 'undefined' && typeof google.script.run !== 'undefined';
+  const isDevEnvironment = isDev !== undefined
+    ? Boolean(isDev)
+    : Boolean(import.meta.env.DEV && !isGas);
 
   // Single-Click Instant Reactive Notification State (Role-scoped)
   const [notifications, setNotifications] = useState(() => {
@@ -443,15 +458,16 @@ export default function Sidebar({
         })}
       </nav>
 
-      {/* ── 3. Footer: Modern Minimalist User Profile ── */}
+      {/* ── 3. Footer: Modern Minimalist User Profile with Dedicated Logout Action ── */}
       <div className="mt-auto pt-2.5 border-t border-slate-100 shrink-0">
-        <button
-          type="button"
-          onClick={() => setShowProfileModal(true)}
-          className="w-full p-2 rounded-2xl hover:bg-slate-100 transition-colors cursor-pointer border border-transparent hover:border-slate-200/60 flex items-center justify-between gap-2.5 group text-left"
-          title="คลิกเพื่อดูข้อมูลผู้ใช้งานและสลับบทบาทการทำงาน"
-        >
-          <div className="relative shrink-0">
+        <div className="w-full p-2 rounded-2xl bg-slate-50/60 hover:bg-slate-100/80 border border-slate-200/60 transition-colors flex items-center justify-between gap-2 text-left">
+          {/* Left: User avatar with active status dot */}
+          <button
+            type="button"
+            onClick={() => setShowProfileModal(true)}
+            className="relative shrink-0 cursor-pointer focus:outline-none"
+            title="คลิกเพื่อดูข้อมูลผู้ใช้งาน"
+          >
             {currentRole?.pictureUrl ? (
               <img
                 src={currentRole.pictureUrl}
@@ -463,9 +479,10 @@ export default function Sidebar({
                 {currentRole?.name?.charAt(0) || <User className="w-4 h-4" />}
               </div>
             )}
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white absolute -bottom-0.5 -right-0.5"></span>
-          </div>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white absolute -bottom-0.5 -right-0.5" />
+          </button>
 
+          {/* Middle: Truncated Info */}
           {(() => {
             const userDepts = getUserDepartments(currentRole || currentUser).filter(d => d !== 'ALL' && d !== '*');
             const rawTitle = currentRole?.title || 'Staff';
@@ -474,19 +491,52 @@ export default function Sidebar({
             const displayRole = deptDisplay ? `${baseTitle} ${deptDisplay}` : rawTitle;
 
             return (
-              <div className="overflow-hidden min-w-0 flex-1">
-                <span className="text-sm font-semibold text-slate-900 truncate block leading-tight group-hover:text-indigo-600 transition-colors">
+              <div 
+                className="overflow-hidden min-w-0 flex-1 cursor-pointer"
+                onClick={() => setShowProfileModal(true)}
+                title="คลิกเพื่อดูข้อมูลโปรไฟล์และสลับบทบาท"
+              >
+                <span className="text-xs font-semibold text-slate-900 truncate block leading-tight hover:text-indigo-600 transition-colors">
                   {currentRole?.name || 'ผู้ใช้งาน'}
                 </span>
-                <span className="text-xs font-normal text-slate-500 truncate block leading-tight mt-0.5" title={displayRole}>
+                <span className="text-[11px] font-normal text-slate-500 truncate block leading-tight mt-0.5" title={displayRole}>
                   {displayRole}
                 </span>
               </div>
             );
           })()}
 
-          <ArrowRightLeft className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors shrink-0" />
-        </button>
+          {/* Right: Action Group */}
+          <div className="flex items-center gap-1 shrink-0">
+            {isDevEnvironment && (
+              <button
+                type="button"
+                onClick={() => setShowProfileModal(true)}
+                title="สลับบัญชีผู้ใช้ (Switch Role)"
+                className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors duration-150 focus:outline-none cursor-pointer"
+                aria-label="สลับบัญชีผู้ใช้"
+                data-testid="sidebar-role-switch-btn"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                if (e) e.stopPropagation();
+                if (onLogout) onLogout();
+                else if (context?.handleLogout) context.handleLogout();
+                else if (auth?.logout) auth.logout();
+              }}
+              title="ออกจากระบบ (Sign Out)"
+              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-rose-500/20 cursor-pointer"
+              aria-label="ออกจากระบบ"
+              data-testid="sidebar-logout-btn"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -535,7 +585,9 @@ export default function Sidebar({
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
         currentRole={currentRole}
+        currentUser={currentUser}
         onLogout={onLogout}
+        isDev={isDev}
       />
     </>
   );

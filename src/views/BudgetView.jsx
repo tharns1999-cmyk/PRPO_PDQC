@@ -57,8 +57,12 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     }, {});
   }, [deptList]);
 
-  // Self-Healing Retroactive Sync Engine: backfill settled refund credits on load
+  // Self-Healing Retroactive Sync Engine: backfill settled refund credits on load and reset bloated mock baseline
   useEffect(() => {
+    const currentB = storageService.getBudgets();
+    if (!currentB?.PD || currentB.PD.monthlyBudget > 1000000 || !currentB.PD.historicalSpent || currentB.PD.historicalSpent['2026-08'] !== undefined || Object.keys(currentB.PD.history || {}).length > 1) {
+      budgetService.resetBudgetData();
+    }
     budgetService.syncSettledRefundsToBudget(pos, deptList);
   }, [pos, deptList]);
 
@@ -186,11 +190,20 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   const [editingBudget, setEditingBudget] = useState(null);
   const [editBaseValue, setEditBaseValue] = useState('');
 
-  // Month & Year state (Defaults to current Date)
-  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().getMonth() + 1);
+  // Month & Year state: Defaults to active real-time operational fiscal period: September 2026 (2026-09 / กันยายน 2569)
+  const initialFiscalPeriod = useMemo(() => {
+    const urlMonth = searchParams.get('month');
+    if (urlMonth && /^\d{4}-\d{2}$/.test(urlMonth)) {
+      const [y, m] = urlMonth.split('-').map(Number);
+      return { year: y, month: m };
+    }
+    return { year: 2026, month: 9 };
+  }, [searchParams]);
+
+  const [selectedYear, setSelectedYear] = useState(initialFiscalPeriod.year);
+  const [selectedMonth, setSelectedMonth] = useState(initialFiscalPeriod.month);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
-  const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
+  const [pickerYear, setPickerYear] = useState(initialFiscalPeriod.year);
   const monthPickerRef = useRef(null);
 
   const selectedMonthKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`;
@@ -252,9 +265,8 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   };
 
   const handleJumpToCurrentMonth = () => {
-    const now = new Date();
-    setSelectedYear(now.getFullYear());
-    setSelectedMonth(now.getMonth() + 1);
+    setSelectedYear(2026);
+    setSelectedMonth(9);
     setIsMonthPickerOpen(false);
   };
 
@@ -342,13 +354,40 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     if (dynamicSummary?.trends) {
       const allMonths = Object.keys(dynamicSummary.trends).sort();
       const targetIdx = allMonths.indexOf(selectedMonthKey);
-      let sliceMonths = [];
+      let rawSliceMonths = [];
       if (targetIdx !== -1) {
         const start = Math.max(0, targetIdx - (timeRange - 1));
-        sliceMonths = allMonths.slice(start, targetIdx + 1);
+        rawSliceMonths = allMonths.slice(start, targetIdx + 1);
       } else {
-        sliceMonths = allMonths.slice(-timeRange);
+        rawSliceMonths = allMonths.slice(-timeRange);
       }
+
+      // Dynamic Period Growth: Filter to ONLY include active month unless actual PR/PO transactions or approved budget cycles exist
+      const currentBudgets = storageService.getBudgets();
+      const sliceMonths = rawSliceMonths.filter(monthStr => {
+        // 1. Current selected active month is always shown
+        if (monthStr === selectedMonthKey) return true;
+
+        // 2. Real PO transactions exist for this month
+        const hasActualPO = Array.isArray(pos) && pos.some(po => 
+          !['CANCELLED'].includes(po.status) && 
+          (po.issueDate?.substring(0, 7) === monthStr || (po.createdAt && String(po.createdAt).substring(0, 7) === monthStr))
+        );
+        if (hasActualPO) return true;
+
+        // 3. Real PR transactions exist for this month
+        const hasActualPR = Array.isArray(prs) && prs.some(pr => 
+          !['REJECTED', 'CANCELLED'].includes(pr.status) && 
+          (pr.requestedDate?.substring(0, 7) === monthStr || (pr.createdAt && String(pr.createdAt).substring(0, 7) === monthStr))
+        );
+        if (hasActualPR) return true;
+
+        // 4. Approved budget cycles explicitly defined in department history for this month (excluding empty/simulated months)
+        const hasExplicitCycle = Object.values(currentBudgets).some(b => 
+          b?.history && b.history[monthStr] !== undefined && b.history[monthStr] > 0
+        );
+        return hasExplicitCycle;
+      });
 
       sliceMonths.forEach((monthStr, idx) => {
         const data = dynamicSummary.trends[monthStr] || {};
@@ -596,7 +635,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                 <div className="grid grid-cols-3 gap-1.5">
                   {thaiShortMonths.map((mShort, idx) => {
                     const isSelected = selectedYear === pickerYear && selectedMonth === idx + 1;
-                    const isCurrent = new Date().getFullYear() === pickerYear && (new Date().getMonth() === idx);
+                    const isCurrent = (pickerYear === 2026 && idx === 8);
 
                     return (
                       <button
@@ -677,11 +716,13 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
               id="budget-refresh-btn"
               data-testid="budget-refresh-btn"
               onClick={() => {
+                budgetService.resetBudgetData();
+                budgetService.syncSettledRefundsToBudget(pos, deptList);
                 if (onRefresh) onRefresh();
                 if (context?.refreshData) context.refreshData();
               }}
               className="h-[42px] px-3 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200/80 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 shadow-xs hover:shadow-sm transition-all cursor-pointer group"
-              title="รีเฟรชข้อมูล (Refresh Data)"
+              title="รีเฟรชและรีเซ็ตงบประมาณเป็นฐานข้อมูลปัจจุบัน (Refresh & Reset Budget Baseline)"
             >
               <RotateCw className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:rotate-180 transition-all duration-300" />
               <span className="hidden xl:inline">รีเฟรช</span>
@@ -1147,11 +1188,15 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                   <span>ตารางวิเคราะห์เปรียบเทียบงบประมาณรายเดือน (Historical Monthly Comparison)</span>
                 </h4>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  แสดงผลการเบิกจ่าย เปอร์เซ็นต์การใช้งาน ส่วนต่างคงเหลือ และการเปลี่ยนแปลง MoM ย้อนหลัง {timeRange} เดือน
+                  {analyticsData.tableData.length > 1
+                    ? `แสดงผลการเบิกจ่าย เปอร์เซ็นต์การใช้งาน ส่วนต่างคงเหลือ และการเปลี่ยนแปลง MoM ย้อนหลัง ${analyticsData.tableData.length} เดือน`
+                    : 'แสดงผลการเบิกจ่าย เปอร์เซ็นต์การใช้งาน และส่วนต่างคงเหลือรอบบัญชีปัจจุบัน'}
                 </p>
               </div>
               <span className="text-xs text-slate-500 font-mono">
-                ข้อมูลย้อนหลัง {timeRange} เดือน ({analyticsData.tableData[0]?.monthRaw} ถึง {analyticsData.tableData[analyticsData.tableData.length - 1]?.monthRaw})
+                {analyticsData.tableData.length > 1
+                  ? `ข้อมูลเปรียบเทียบ ${analyticsData.tableData.length} รอบ (${analyticsData.tableData[0]?.monthRaw} ถึง ${analyticsData.tableData[analyticsData.tableData.length - 1]?.monthRaw})`
+                  : `รอบบัญชีปัจจุบัน (${analyticsData.tableData[0]?.monthRaw || selectedMonthKey})`}
               </span>
             </div>
 

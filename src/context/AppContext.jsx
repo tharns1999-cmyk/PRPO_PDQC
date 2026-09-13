@@ -10,8 +10,9 @@ import { modalService } from '../services/modalService';
 import { generateGRNNumber } from '../services/warehouseService';
 import { getUserDepartments } from '../utils/permissions';
 import { getUnifiedProductList } from '../views/PRCreateView';
+import { normalizeRole, useAuth } from './AuthContext';
 
-const AppContext = createContext(null);
+export const AppContext = createContext(null);
 
 // Route mapping table for legacy view ID translations
 export const VIEW_PATH_MAP = {
@@ -44,6 +45,7 @@ const getInitialUserSession = () => {
     const userDepts = cleanUserDepts.length > 0 ? cleanUserDepts : (existing.department ? [existing.department] : ['PD']);
     return {
       ...existing,
+      canonicalRole: normalizeRole(existing),
       departments: userDepts,
       assignedDepartments: existing.assignedDepartments || userDepts,
       allowedDepartments: existing.allowedDepartments || userDepts,
@@ -56,29 +58,37 @@ const getInitialUserSession = () => {
   // Auto-Login fallback: Default User enriched with permissions
   const permissions = resolveUserPermissions(DEFAULT_USER);
   const isAdmin = DEFAULT_USER.roleId === 'ADMIN' || DEFAULT_USER.level >= 99 || DEFAULT_USER.username === 'admin';
-  const sessionData = {
+  return {
     ...DEFAULT_USER,
     ...permissions,
+    canonicalRole: normalizeRole(DEFAULT_USER),
+    expiresAt: Date.now() + (24 * 60 * 60 * 1000),
     role: isAdmin ? 'admin' : (DEFAULT_USER.roleId || 'user').toLowerCase(),
     rolePermissions: permissions
   };
-  try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('prpo_auth_session', JSON.stringify(sessionData));
-    }
-  } catch (e) {
-    console.warn('[AppContext] Could not persist default user session:', e);
-  }
-  return sessionData;
 };
 
 export function AppProvider({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const auth = useAuth();
 
-  // 1. Session & Auth State: Auto-login with fallback (Never null)
-  const [currentUser, setCurrentUser] = useState(getInitialUserSession);
+  // 1. Session & Auth State: Synchronized with AuthContext
+  const [currentUser, setCurrentUser] = useState(() => {
+    if (auth && auth.currentUser !== undefined) {
+      return auth.currentUser;
+    }
+    return getInitialUserSession();
+  });
   const [currentRole, setCurrentRole] = useState(() => currentUser);
+
+  // Sync with AuthContext when auth.currentUser changes (e.g. login/logout)
+  useEffect(() => {
+    if (auth && auth.currentUser !== undefined) {
+      setCurrentUser(auth.currentUser);
+      setCurrentRole(auth.currentUser ? { ...auth.currentUser, canonicalRole: auth.canonicalRole } : null);
+    }
+  }, [auth?.currentUser, auth?.canonicalRole]);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -359,6 +369,8 @@ export function AppProvider({ children }) {
     const newSession = {
       ...targetUser,
       ...permissions,
+      canonicalRole: normalizeRole(targetUser),
+      expiresAt: Date.now() + (24 * 60 * 60 * 1000),
       departments: userDepts,
       assignedDepartments: targetUser.assignedDepartments || userDepts,
       allowedDepartments: targetUser.allowedDepartments || userDepts,
@@ -412,10 +424,27 @@ export function AppProvider({ children }) {
     }
   }, [availableUsers, location.pathname, navigate]);
 
-  // Reset to default user instead of logging out to a blank screen
+  // Clear session and navigate to /login
   const handleLogout = useCallback(() => {
-    handleSwitchUser(DEFAULT_USER.id);
-  }, [handleSwitchUser]);
+    try {
+      localStorage.removeItem('prpo_auth_session');
+      localStorage.removeItem('prpo_current_user');
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.clear();
+      }
+    } catch (e) {
+      console.warn('[AppContext] Error clearing session:', e);
+    }
+
+    setCurrentUser(null);
+    setCurrentRole(null);
+
+    if (auth?.logout) {
+      auth.logout();
+    }
+
+    navigate('/login', { replace: true });
+  }, [auth, navigate]);
 
   // Unified onNavigate adapter: translates legacy view IDs or accepts direct paths
   const onNavigate = useCallback((target) => {
@@ -1290,8 +1319,5 @@ export function AppProvider({ children }) {
 
 export function useAppContext() {
   const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useAppContext must be used within an AppProvider');
-  }
-  return context;
+  return context || {};
 }

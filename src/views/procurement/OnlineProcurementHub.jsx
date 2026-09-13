@@ -62,6 +62,7 @@ export function getNextMonth(currentMonthStr) {
 export const parseOrderYearMonth = (dateInput) => {
   if (!dateInput) return { year: null, month: null, ymKey: null };
   const str = String(dateInput).trim();
+  if (!str) return { year: null, month: null, ymKey: null };
   
   // Case 1: DD/MM/YYYY or DD/MM/YYYY HH:mm:ss or DD/MM/YY
   const dmyMatch = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
@@ -69,16 +70,16 @@ export const parseOrderYearMonth = (dateInput) => {
     let year = parseInt(dmyMatch[3], 10);
     if (year === 69 || year === 26) year = 2026;
     else if (year < 100) year = 2000 + year;
-    else if (year > 2500) year -= 543; // Convert Thai Buddhist Era to CE
+    else if (year > 2400) year -= 543; // Convert Thai Buddhist Era (e.g. 2569 -> 2026)
     const month = String(parseInt(dmyMatch[2], 10)).padStart(2, '0');
     return { year, month, ymKey: `${year}-${month}` };
   }
 
-  // Case 2: ISO YYYY-MM-DD or YYYY-MM
+  // Case 2: ISO YYYY-MM-DD or YYYY-MM or ISO timestamp
   const isoMatch = str.match(/^(\d{4})-(\d{1,2})/);
   if (isoMatch) {
     let year = parseInt(isoMatch[1], 10);
-    if (year > 2500) year -= 543;
+    if (year > 2400) year -= 543;
     const month = String(parseInt(isoMatch[2], 10)).padStart(2, '0');
     return { year, month, ymKey: `${year}-${month}` };
   }
@@ -87,7 +88,7 @@ export const parseOrderYearMonth = (dateInput) => {
   const parsed = new Date(str);
   if (!isNaN(parsed.getTime())) {
     let year = parsed.getFullYear();
-    if (year > 2500) year -= 543;
+    if (year > 2400) year -= 543;
     const month = String(parsed.getMonth() + 1).padStart(2, '0');
     return { year, month, ymKey: `${year}-${month}` };
   }
@@ -100,15 +101,20 @@ export function calculateCompletedKPIs(completedOrders = []) {
   let totalRefunds = 0;
 
   (completedOrders || []).forEach(po => {
-    let refund = Number(po.totalRefunded ?? po.refundAmount ?? 0);
-    if (!refund && po.storeClaims) {
+    let refund = 0;
+    if (po.totalRefunded !== undefined && po.totalRefunded !== null) {
+      refund = Number(po.totalRefunded);
+    } else if (po.refundAmount !== undefined && po.refundAmount !== null) {
+      refund = Number(po.refundAmount);
+    } else if (po.storeClaims) {
       Object.values(po.storeClaims).forEach(sc => {
         if (sc?.isResolved && (sc.type === 'REFUND' || sc.resolutionType === 'REFUND' || sc.actionType === 'REFUND')) {
           refund += Number(sc.refundAmount || 0);
         }
       });
     }
-    if (!refund && Array.isArray(po.items)) {
+    
+    if (refund === 0 && Array.isArray(po.items) && po.refundAmount === undefined) {
       po.items.forEach(it => {
         if (it.refundAmount) {
           refund += Number(it.refundAmount);
@@ -120,8 +126,16 @@ export function calculateCompletedKPIs(completedOrders = []) {
       });
     }
 
-    const gross = Number(po.totalAmount ?? po.grandTotal ?? po.estimatedAmount ?? 0);
-    const spent = Number(po.actualTotal ?? po.actualAmount ?? (refund > 0 ? (gross - refund) : gross) ?? 0);
+    const gross = Number(po.grandTotal ?? po.totalAmount ?? po.estimatedAmount ?? 0);
+    let spent = Number(po.actualTotal ?? po.actualAmount ?? (gross - refund));
+    if (spent <= 0 || isNaN(spent)) {
+      spent = gross;
+    }
+    refund = Math.max(0, gross - spent);
+    if (refund === 0 && Number(po.refundAmount) > 0 && spent < gross) {
+      refund = Number(po.refundAmount);
+    }
+
     totalActualSpent += spent;
     totalRefunds += refund;
   });
@@ -183,9 +197,12 @@ export function filteredOrders(orders, activeTab, selectedMonth = null) {
 
     // แท็บ "ปิดงานสำเร็จ" (CLOSED หรือ COMPLETED)
     if (activeTab === 'CLOSED' || activeTab === 'COMPLETED') {
+      const ws = String(po.workflowStatus || '').toLowerCase();
       const isClosed = !poHasClaim && (
-        po.status === 'COMPLETED' ||
-        po.status === 'CLOSED' ||
+        s === 'completed' ||
+        s === 'closed' ||
+        ws === 'completed' ||
+        ws === 'closed' ||
         statusUpper === 'COMPLETED' ||
         statusUpper === 'CLOSED' ||
         isOrderClosed(statusUpper) ||
@@ -193,12 +210,25 @@ export function filteredOrders(orders, activeTab, selectedMonth = null) {
       );
       if (!isClosed) return false;
 
-      if (!selectedMonth || selectedMonth === 'ALL') return true;
-      const orderDateStr = po.completedAt || po.updatedAt || po.orderDate || po.createdAt || '';
-      const { year, ymKey } = parseOrderYearMonth(orderDateStr);
-      if (selectedMonth === 'ALL_YEAR') {
-        const targetYear = 2026;
-        return year === targetYear;
+      const orderDateStr = 
+        po.completedAt || 
+        po.receivedAt || 
+        po.receivingInfo?.receivedAt || 
+        po.orderDate || 
+        po.issueDate || 
+        po.orderedAt || 
+        po.date || 
+        po.createdAt || 
+        po.updatedAt || 
+        (Array.isArray(po.grnHistory) && po.grnHistory[0]?.date) ||
+        (Array.isArray(po.timeline) && po.timeline[po.timeline.length - 1]?.timestamp) || 
+        '';
+      const parsed = parseOrderYearMonth(orderDateStr);
+      const year = parsed.year || 2026;
+      const ymKey = parsed.ymKey || '2026-09';
+
+      if (!selectedMonth || selectedMonth === 'ALL_YEAR' || selectedMonth === 'ALL' || selectedMonth === '2569' || selectedMonth === '2026') {
+        return year === 2026 || year === 2569;
       }
       return ymKey === selectedMonth;
     }
@@ -237,12 +267,16 @@ export function getTabMetrics(orders) {
       ['in_progress_online', 'waiting_order', 'waiting', 'issued', 'รอดำเนินการ', 'รอดำเนินการสั่งซื้อ'].includes(s)
     );
 
+    const ws = String(po.workflowStatus || '').toLowerCase();
     const isClosed = !isPending && !poHasClaim && (
-      po.status === 'COMPLETED' ||
-      po.status === 'CLOSED' ||
+      s === 'completed' ||
+      s === 'closed' ||
+      ws === 'completed' ||
+      ws === 'closed' ||
       statusUpper === 'COMPLETED' ||
       statusUpper === 'CLOSED' ||
-      isOrderClosed(statusUpper)
+      isOrderClosed(statusUpper) ||
+      Boolean(po.isClosed)
     );
 
     const isClaim = !isPending && !isClosed && poHasClaim;
