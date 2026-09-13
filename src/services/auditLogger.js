@@ -148,8 +148,6 @@ export function logAuditEvent({ action, module = 'SYSTEM', targetRef = '-', summ
     listeners.forEach(fn => {
       try { fn(logEntry); } catch (e) { console.error('[auditLogger] listener error:', e); }
     });
-
-    console.log(`[AuditLogger] [${logEntry.module}] ${logEntry.action} -> ${logEntry.targetRef} by ${actor.name}`);
     return logEntry;
   } catch (err) {
     console.error('[AuditLogger] Failed to log audit event:', err);

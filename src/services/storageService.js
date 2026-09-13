@@ -145,8 +145,6 @@ const _migrateLocalStorageCache = () => {
 
     const currentVersion = localStorage.getItem('prpo_data_version');
     if (currentVersion !== DATA_VERSION) {
-      console.log(`[StorageService] Migrating LocalStorage cache to ${DATA_VERSION} (Clean Transactional State)...`);
-
       // 1. Reset all Transactional Data to empty arrays []
       localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify([]));
       localStorage.setItem(STORAGE_KEYS.POS, JSON.stringify([]));
@@ -236,7 +234,6 @@ export const storageService = {
         const data = await res.json();
         _cache = data || {};
         _apiReady = true;
-        console.log('[StorageService] Synced with Local Node.js File API successfully.');
         return;
       }
     } catch (e) {
@@ -273,7 +270,6 @@ export const storageService = {
     _setItem('prpo_audit_logs', [], false);
     _setItem('prpo_notifications', [], false);
     _setItem('prpo_in_app_notifications', [], false);
-    console.log('[StorageService] Local browser cache reset. Server SSOT preserved.');
   },
 
   // Clear transactional data only (PRs, POs, Stock movement, Notifications, Audit logs) while preserving 100% of Master Data
@@ -305,7 +301,6 @@ export const storageService = {
       };
     }
     this.saveBudgets(cleanBudgets);
-    console.log('[StorageService] Transactional data cleared. Master data preserved.');
     return true;
   },
 
@@ -1572,9 +1567,6 @@ export const storageService = {
     }
 
     return newLogs;
-  },
-  normalizeDocNumber(record) {
-    return normalizeDocNumber(record);
   },
   getGRNs() {
     const pos = this.getPOs() || [];

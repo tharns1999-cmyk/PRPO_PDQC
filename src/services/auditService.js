@@ -83,8 +83,6 @@ export const auditService = {
         console.warn('[AuditService] auditLogger sync error:', logErr);
       }
 
-      console.log(`[AuditService] Action logged: ${action} by ${actorName} (${docNo})`);
-
       return logEntry;
     } catch (err) {
       console.error('[AuditService] Error writing audit log:', err);
@@ -131,6 +129,5 @@ export const auditService = {
    */
   clearLogs() {
     localStorage.removeItem(STORAGE_KEYS.AUDIT_LOGS || 'prpo_audit_logs');
-    console.log('[AuditService] Audit logs cleared.');
   }
 };

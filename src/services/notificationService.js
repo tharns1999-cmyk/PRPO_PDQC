@@ -329,7 +329,6 @@ export const notificationService = {
       }).catch(() => {});
     } catch (e) {}
 
-    console.log('[NotificationService] In-App Notification created:', newNoti);
     return newNoti;
   }
 };
