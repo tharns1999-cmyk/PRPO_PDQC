@@ -17,7 +17,7 @@ import AttachmentViewerModal from '../common/AttachmentViewerModal';
 import CollapsibleActivityTimeline from '../common/CollapsibleActivityTimeline';
 import { generatePoPdf } from '../../utils/generatePoPdf';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
-import ReceivingModal from '../../views/inventory/ReceivingModal';
+import ReceivingModal, { resolveRefundedQtyAndAmount } from '../../views/inventory/ReceivingModal';
 
 const getVendorDisplayName = (vendorData) => {
   if (!vendorData) return '';
@@ -1213,11 +1213,27 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
 
                   <div className="divide-y divide-slate-100">
                     {selectedPO.items?.map((item, idx) => {
-                      const pQty = item.actualQty ?? item.purchaseQty ?? item.qty;
-                      const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
-                      const price = item.actualPrice ?? item.unitPrice ?? item.estimatedPrice ?? item.price ?? 0;
-                      const isFullyReceived = Number(item.receivedQty || 0) >= Number(pQty);
+                      const pQty = Number(item.actualQty ?? item.purchaseQty ?? item.qty ?? 0);
+                      const price = Number(item.actualPrice ?? item.unitPrice ?? item.estimatedPrice ?? item.price ?? 0);
                       const lineTotal = item.total !== undefined ? Number(item.total) : (price * pQty);
+
+                      // Resolve refund and receipt details
+                      const refInfo = typeof resolveRefundedQtyAndAmount === 'function' 
+                        ? resolveRefundedQtyAndAmount(item, selectedPO) 
+                        : { refundedQty: Number(item.refundedQty || 0) };
+                      const refundedQty = Number(item.refundedQty ?? refInfo?.refundedQty ?? 0);
+                      const receivedQty = Number(item.receivedQty ?? item.goodQty ?? 0);
+                      const isOrderResolved = (receivedQty + refundedQty) >= pQty;
+                      const isFullyReceived = receivedQty >= pQty;
+
+                      // Dual-UOM Master Lookup
+                      const uom = storageService?.getUomConversion ? storageService.getUomConversion(item.code || item.productId || item.id) : null;
+                      let ratio = Number(item.conversionRatio || item.conversionRate || uom?.conversionRatio || 1);
+                      if (!ratio || isNaN(ratio) || ratio <= 0) ratio = 1;
+                      const purchaseUom = item.purchaseUom || item.purchaseUnit || item.pUnit || uom?.purchaseUom || item.unit || 'ชิ้น';
+                      const baseUom = item.baseUom || item.stockUnit || item.sUnit || uom?.baseUom || purchaseUom;
+                      const baseStockQty = pQty * ratio;
+                      const baseUnitCost = ratio > 0 ? (price / ratio) : price;
 
                       return (
                         <div key={idx} className="p-3.5 sm:p-4 hover:bg-slate-50/60 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1232,7 +1248,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                               </h4>
                             </div>
 
-                            {/* Platform Tag & External Link */}
+                            {/* Platform Tag, Dual-UOM badge & External Link */}
                             <div className="flex items-center gap-2 flex-wrap text-xs pt-0.5">
                               {item.storePlatform && (
                                 <span className={`px-2 py-0.5 rounded-md font-semibold text-[11px] ${
@@ -1243,6 +1259,11 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                                       : 'bg-purple-50 text-purple-700 border border-purple-200'
                                 }`}>
                                   {item.storePlatform}
+                                </span>
+                              )}
+                              {ratio > 1 && (
+                                <span className="px-2 py-0.5 rounded-md font-semibold text-[11px] bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  1 {purchaseUom} = {ratio.toLocaleString()} {baseUom}
                                 </span>
                               )}
                               {(item.actualStoreName || item.storeName) && (
@@ -1272,18 +1293,43 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
 
                           {/* Right: Grouped Numbers */}
                           <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 font-mono">
-                            <div className="text-left sm:text-right text-xs space-y-0.5">
-                              <div className="text-slate-500 text-[11px]">
-                                สั่ง: <span className="font-bold text-slate-800">{Number(pQty).toLocaleString()}</span> {pUnit}
-                                <span className="mx-1.5 text-slate-300">|</span>
-                                รับแล้ว: <span className={`font-bold ${isFullyReceived ? 'text-emerald-700' : 'text-slate-700'}`}>
-                                  {Number(item.receivedQty || 0).toLocaleString()}
-                                </span>
-                                {isFullyReceived && <Check className="w-3 h-3 text-emerald-500 inline ml-0.5" />}
-                              </div>
-                              <div className="text-[11px] text-slate-400">
-                                @ ฿{Number(price).toLocaleString()} / {pUnit}
-                              </div>
+                            <div className="text-left sm:text-right text-xs space-y-1">
+                              {/* Receipt & Refund Badges */}
+                              {refundedQty > 0 ? (
+                                <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-semibold">
+                                    รับแล้ว: {receivedQty.toLocaleString()}
+                                  </span>
+                                  <span className="text-slate-400 font-bold text-[11px]">+</span>
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-[11px] font-semibold">
+                                    คืนเงินแล้ว: {refundedQty.toLocaleString()} {purchaseUom} (ปิดรับ)
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="text-slate-500 text-[11px]">
+                                  สั่ง: <span className="font-bold text-slate-800">{pQty.toLocaleString()}</span> {purchaseUom}
+                                  <span className="mx-1.5 text-slate-300">|</span>
+                                  รับแล้ว: <span className={`font-bold ${isFullyReceived ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                    {receivedQty.toLocaleString()}
+                                  </span>
+                                  {isFullyReceived && <Check className="w-3 h-3 text-emerald-500 inline ml-0.5" />}
+                                </div>
+                              )}
+
+                              {/* Item Specifications: Dual-UOM if applicable */}
+                              {ratio > 1 ? (
+                                <div className="text-[11px] text-slate-600 font-sans sm:text-right">
+                                  <span className="font-semibold text-slate-800">{pQty.toLocaleString()} {purchaseUom}</span>{' '}
+                                  <span className="text-indigo-600 font-mono font-medium">({baseStockQty.toLocaleString()} {baseUom})</span>{' '}
+                                  <span className="text-slate-400">@</span>{' '}
+                                  <span className="font-mono text-slate-700 font-semibold">฿{price.toLocaleString()} / {purchaseUom}</span>{' '}
+                                  <span className="text-slate-500 font-mono text-[11px]">(฿{baseUnitCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {baseUom})</span>
+                                </div>
+                              ) : (
+                                <div className="text-[11px] text-slate-400">
+                                  @ ฿{price.toLocaleString()} / {purchaseUom}
+                                </div>
+                              )}
                             </div>
 
                             <div className="text-right shrink-0 pl-3 sm:border-l sm:border-slate-100">

@@ -85,8 +85,31 @@ export function AuthProvider({ children }) {
     }
   });
 
+  const [originalUser, setOriginalUser] = useState(() => {
+    try {
+      if (typeof localStorage === 'undefined') return null;
+      const stored = localStorage.getItem('prpo_original_admin_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
+
+  // Determine if current user or original user is Administrator
+  const isAdmin = useMemo(() => {
+    const userToCheck = originalUser || currentUser;
+    if (!userToCheck) return false;
+    const roleStr = String(userToCheck.canonicalRole || userToCheck.roleId || userToCheck.role || userToCheck.positionKey || '').toUpperCase();
+    return userToCheck.isAdmin === true || 
+      roleStr.includes('ADMIN') || 
+      Number(userToCheck.level) >= 99 || 
+      userToCheck.username === 'admin';
+  }, [currentUser, originalUser]);
+
+  const isSimulating = Boolean(originalUser && originalUser.id !== currentUser?.id);
 
   // Synchronize canonical role and department info
   const canonicalRole = useMemo(() => {
@@ -111,6 +134,7 @@ export function AuthProvider({ children }) {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem('prpo_current_user');
       localStorage.removeItem('prpo_auth_session');
+      localStorage.removeItem('prpo_original_admin_user');
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.clear();
       }
@@ -118,6 +142,7 @@ export function AuthProvider({ children }) {
       console.warn('[AuthContext] Error clearing session:', e);
     }
     setCurrentUser(null);
+    setOriginalUser(null);
     setAuthError(null);
   }, []);
 
@@ -218,7 +243,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   /**
-   * Fast Switcher for Development and Testing
+   * Fast Switcher for Development, UAT, and Admin Testing
    */
   const switchRoleDev = useCallback((roleOrUser) => {
     let target = null;
@@ -231,6 +256,16 @@ export function AuthProvider({ children }) {
 
     if (!target) return;
 
+    // If simulating for the first time, save the original user session
+    if (!originalUser && currentUser) {
+      setOriginalUser(currentUser);
+      try {
+        localStorage.setItem('prpo_original_admin_user', JSON.stringify(currentUser));
+      } catch (e) {
+        console.warn('[AuthContext] Error storing original admin user:', e);
+      }
+    }
+
     const normalized = normalizeRole(target);
     const sessionPayload = {
       ...target,
@@ -242,7 +277,26 @@ export function AuthProvider({ children }) {
     storageService.setCurrentRole?.(sessionPayload);
     setCurrentUser(sessionPayload);
     return sessionPayload;
-  }, []);
+  }, [currentUser, originalUser]);
+
+  /**
+   * Revert simulation back to the primary authenticated admin user
+   */
+  const revertSimulation = useCallback(() => {
+    if (!originalUser) return null;
+    const restoredUser = {
+      ...originalUser,
+      canonicalRole: normalizeRole(originalUser),
+      expiresAt: Date.now() + SESSION_EXPIRATION_MS
+    };
+
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(restoredUser));
+    localStorage.removeItem('prpo_original_admin_user');
+    storageService.setCurrentRole?.(restoredUser);
+    setCurrentUser(restoredUser);
+    setOriginalUser(null);
+    return restoredUser;
+  }, [originalUser]);
 
   const value = useMemo(() => ({
     currentUser,
@@ -252,9 +306,13 @@ export function AuthProvider({ children }) {
     isAuthenticated,
     isLoading,
     authError,
+    isAdmin,
+    isSimulating,
+    originalUser,
     login,
     logout,
     switchRoleDev,
+    revertSimulation,
     hasRole,
     canAccess,
     canAccessDepartment
@@ -266,9 +324,13 @@ export function AuthProvider({ children }) {
     isAuthenticated,
     isLoading,
     authError,
+    isAdmin,
+    isSimulating,
+    originalUser,
     login,
     logout,
     switchRoleDev,
+    revertSimulation,
     hasRole,
     canAccess,
     canAccessDepartment
@@ -292,9 +354,13 @@ export const useAuth = () => {
       isAuthenticated: false,
       isLoading: false,
       authError: null,
+      isAdmin: false,
+      isSimulating: false,
+      originalUser: null,
       login: async () => ({}),
       logout: () => {},
       switchRoleDev: () => ({}),
+      revertSimulation: () => ({}),
       hasRole: () => false,
       canAccess: () => false,
       canAccessDepartment: () => false

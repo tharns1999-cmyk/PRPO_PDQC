@@ -55,4 +55,49 @@ describe('Scenario 8: Username/Password & Position Login for Localhost Testing',
     authService.logout();
     expect(authService.getCurrentSession()).toBeNull();
   });
+
+  it('Default employee accounts have valid company emails and metadata', () => {
+    DEFAULT_EMPLOYEE_ACCOUNTS.forEach(account => {
+      expect(account.email).toBeDefined();
+      expect(account.email).toContain('@company.com');
+      expect(account.employeeId).toBeDefined();
+      expect(account.department).toBeDefined();
+    });
+  });
+
+  it('Role permissions checklist maps accurately for Requester', async () => {
+    const { getRolePermissionsChecklist } = await import('../src/services/authService');
+    const requester = DEFAULT_EMPLOYEE_ACCOUNTS.find(a => a.roleId === 'REQUESTER_PD');
+    const checklist = getRolePermissionsChecklist(requester);
+
+    const prCreation = checklist.find(p => p.key === 'PR_CREATION');
+    const approval = checklist.find(p => p.key === 'APPROVAL');
+    const purchasing = checklist.find(p => p.key === 'PURCHASING');
+    const inventory = checklist.find(p => p.key === 'INVENTORY');
+
+    expect(prCreation.allowed).toBe(true);
+    expect(approval.allowed).toBe(false);
+    expect(purchasing.allowed).toBe(false);
+    expect(inventory.allowed).toBe(true); // Requester can receive in department
+  });
+
+  it('Role permissions checklist grants full access to Admin', async () => {
+    const { getRolePermissionsChecklist } = await import('../src/services/authService');
+    const adminUser = DEFAULT_EMPLOYEE_ACCOUNTS.find(a => a.roleId === 'ADMIN');
+    const checklist = getRolePermissionsChecklist(adminUser);
+
+    expect(checklist.every(p => p.allowed === true)).toBe(true);
+  });
+
+  it('Role permissions checklist maps accurately for Purchaser', async () => {
+    const { getRolePermissionsChecklist } = await import('../src/services/authService');
+    const purchaser = DEFAULT_EMPLOYEE_ACCOUNTS.find(a => a.roleId === 'ONLINE_PURCHASER');
+    const checklist = getRolePermissionsChecklist(purchaser);
+
+    const prCreation = checklist.find(p => p.key === 'PR_CREATION');
+    const purchasing = checklist.find(p => p.key === 'PURCHASING');
+
+    expect(prCreation.allowed).toBe(false);
+    expect(purchasing.allowed).toBe(true);
+  });
 });

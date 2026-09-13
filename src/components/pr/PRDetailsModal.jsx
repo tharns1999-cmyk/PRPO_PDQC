@@ -223,8 +223,64 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   const displayedItems = isEditingItems ? editItems : (selectedPR.items || []);
   const calculatedTotal = displayedItems.reduce((sum, it) => sum + (Number(it.total) || ((Number(it.purchaseQty ?? it.qty) || 1) * (Number(it.price) || 0))), 0);
 
+  // Canonical Status Resolution: bind to workflowStatus or status with case-insensitive normalization
+  const rawStatus = (selectedPR.workflowStatus || selectedPR.status || '').trim();
+  const rawStatusUpper = rawStatus.toUpperCase();
+
+  // Activity Timeline / Approval History inspection for completed approvals
+  const hasPlantMgrApproval = React.useMemo(() => {
+    const fromActivity = (selectedPR.activityLog || []).some(log => {
+      const act = String(log.action || '').toLowerCase();
+      const role = String(log.role || '').toLowerCase();
+      const note = String(log.note || '').toLowerCase();
+      return (
+        act.includes('อนุมัติ') || 
+        act.includes('approved') || 
+        role.includes('plant mgr') || 
+        role.includes('plant manager') ||
+        note.includes('อนุมัติแล้ว')
+      );
+    });
+    const fromHistory = (selectedPR.approvalHistory || []).some(h => {
+      const act = String(h.action || '').toUpperCase();
+      const role = String(h.actorRole || '').toLowerCase();
+      return act === 'APPROVED' || role.includes('plant');
+    });
+    return fromActivity || fromHistory || Boolean(selectedPR.approvedBy);
+  }, [selectedPR]);
+
+  // Derive resolved canonical status
+  const resolvedStatusKey = React.useMemo(() => {
+    if (PR_STATUS[rawStatusUpper]) {
+      // If status is still WAITING_REVIEW / SUBMITTED but timeline confirms final approval, self-heal to PO_ISSUED or APPROVED
+      if (['WAITING_REVIEW', 'SUBMITTED', 'DRAFT'].includes(rawStatusUpper) && hasPlantMgrApproval) {
+        return (selectedPR.poNo || selectedPR.poNumber || relatedPOs.length > 0) ? 'PO_ISSUED' : 'APPROVED';
+      }
+      return rawStatusUpper;
+    }
+
+    // Lowercase / legacy fallback mappings
+    const lower = rawStatus.toLowerCase();
+    if (lower === 'approved') return 'APPROVED';
+    if (lower === 'po_issued' || lower === 'ordered') return 'PO_ISSUED';
+    if (lower === 'in_progress_online') return 'IN_PROGRESS_ONLINE';
+    if (lower === 'reviewed') return 'REVIEWED';
+    if (lower === 'completed' || lower === 'closed') return 'CLOSED';
+    if (lower === 'waiting_review') return 'WAITING_REVIEW';
+    if (lower === 'submitted') return 'SUBMITTED';
+    if (lower === 'draft') return 'DRAFT';
+    if (lower === 'cancelled') return 'CANCELLED';
+    if (lower === 'rejected') return 'REJECTED';
+
+    if (hasPlantMgrApproval) {
+      return (selectedPR.poNo || selectedPR.poNumber || relatedPOs.length > 0) ? 'PO_ISSUED' : 'APPROVED';
+    }
+
+    return rawStatusUpper || 'SUBMITTED';
+  }, [rawStatus, rawStatusUpper, hasPlantMgrApproval, selectedPR.poNo, selectedPR.poNumber, relatedPOs.length]);
+
   // State Guard: PR must be approved or in PO-linked state to consider related POs
-  const isPRApproved = ['approved', 'ordered', 'completed', 'closed', 'po_issued', 'in_progress_online'].includes(selectedPR.status?.toLowerCase());
+  const isPRApproved = ['approved', 'ordered', 'completed', 'closed', 'po_issued', 'in_progress_online'].includes(resolvedStatusKey.toLowerCase());
 
   const relatedPOs = React.useMemo(() => {
     if (!isPRApproved) return [];
@@ -238,7 +294,10 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   }, [selectedPR, isPRApproved]);
 
   const isPRCancellable = workflowEngine.canCancelPR(currentRole, selectedPR);
-  const statusInfo = PR_STATUS[selectedPR.status] || { label: selectedPR.status, color: 'bg-slate-100 text-slate-700 border-slate-200' };
+  const statusInfo = PR_STATUS[resolvedStatusKey] || { 
+    label: selectedPR.status || resolvedStatusKey, 
+    color: 'bg-slate-100 text-slate-700 border-slate-200' 
+  };
   const isOverBudget = apiService.isOverBudget(selectedPR.department, calculatedTotal);
 
   const modalContent = (

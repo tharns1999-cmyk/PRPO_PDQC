@@ -91,6 +91,21 @@ export const resolveRefundedQtyAndAmount = (item, po) => {
 };
 
 /**
+ * Helper to check if an order's items are 100% accounted for
+ * (receivedQty + refundedQty >= orderedQty for all items, or remainingToReceive is 0)
+ */
+export const checkIsFullyAccounted = (items = []) => {
+  if (!items || items.length === 0) return false;
+  return items.every(it => {
+    const ordered = Number(it.ordered ?? it.orderedQty ?? it.quantity ?? it.actualQty ?? it.purchaseQty ?? it.qty ?? 0);
+    const prevReceived = Number(it.accumulated ?? it.alreadyReceived ?? it.receivedQty ?? it.goodQty ?? 0);
+    const refunded = Number(it.refunded ?? it.refundedQty ?? 0);
+    const remaining = Math.max(0, ordered - prevReceived - refunded);
+    return (prevReceived + refunded >= ordered) || (ordered > 0 && remaining === 0);
+  });
+};
+
+/**
  * ReceivingModal (GoodsReceiptModal)
  * Enterprise-grade partial receiving modal with automatic shortage calculation,
  * stock acceptance filtering, and automatic dispute task routing to Online Hub.
@@ -184,8 +199,12 @@ export default function ReceivingModal({
       const hasShortage = !isRowLocked && (shortageQty > 0 || (acceptedQty < remainingToReceive && (acceptedQty + damagedQty < remainingToReceive)));
       const hasDamage = !isRowLocked && (safeDamaged > 0 || Number(state.damagedQty) > 0);
 
-      const pUnit = item.purchaseUnit || item.unit || 'ชิ้น';
-      const sUnit = item.stockUnit || item.unit || pUnit;
+      const uom = storageService?.getUomConversion ? storageService.getUomConversion(item.code || item.productId || item.id) : null;
+      let conversionRatio = Number(item.conversionRatio || item.conversionRate || uom?.conversionRatio || 1);
+      if (!conversionRatio || isNaN(conversionRatio) || conversionRatio <= 0) conversionRatio = 1;
+
+      const pUnit = item.purchaseUom || item.purchaseUnit || item.pUnit || uom?.purchaseUom || item.unit || 'ชิ้น';
+      const sUnit = item.baseUom || item.stockUnit || item.sUnit || uom?.baseUom || (conversionRatio > 1 ? 'หน่วย' : pUnit);
 
       const shortageAction = state.shortageAction || (state.shortageReason === 'SPLIT_SHIPMENT' ? 'WAIT_NEXT_ROUND' : 'CLAIM_SHORTAGE');
       const shortageReason = state.shortageReason || (shortageAction === 'WAIT_NEXT_ROUND' ? 'SPLIT_SHIPMENT' : 'VENDOR_SHORTAGE');
@@ -220,6 +239,12 @@ export default function ReceivingModal({
         shortageReason,
         defectNote: isRowLocked ? '' : (state.defectNote || ''),
         isDamagedExpanded: !isRowLocked && Boolean(state.isDamagedExpanded || hasDamage),
+        conversionRatio,
+        conversionRate: conversionRatio,
+        purchaseUom: pUnit,
+        purchaseUnit: pUnit,
+        baseUom: sUnit,
+        stockUnit: sUnit,
         pUnit,
         sUnit
       };
@@ -256,6 +281,12 @@ export default function ReceivingModal({
       isFullyAccepted,
       isClaimRequired
     };
+  }, [computedItems]);
+
+  // ── Intelligent GRN Resolution: Calculate whether all items are completely resolved ──
+  const isFullyAccounted = useMemo(() => {
+    if (!computedItems || computedItems.length === 0) return false;
+    return checkIsFullyAccounted(computedItems);
   }, [computedItems]);
 
   const totalAcceptedQty = summary.totalAccepted;
@@ -429,7 +460,7 @@ export default function ReceivingModal({
       }
     }
 
-    if (summary.totalAccepted === 0 && summary.totalDamaged === 0 && summary.totalShortage === 0) {
+    if (!isFullyAccounted && summary.totalAccepted === 0 && summary.totalDamaged === 0 && summary.totalShortage === 0) {
       return modalService.warning('กรุณาระบุจำนวนสินค้าที่ตรวจรับ');
     }
 
@@ -438,7 +469,11 @@ export default function ReceivingModal({
     let confirmDesc = `ยืนยันบันทึกตรวจรับสินค้าเข้าคลังสำหรับ PO ${targetPO.poNo || targetPO.id} หรือไม่?`;
     let confirmType = 'success';
 
-    if (summary.isClaimRequired) {
+    if (isFullyAccounted) {
+      confirmTitle = 'ยืนยันปิดงานใบสั่งซื้อ';
+      confirmDesc = `สินค้าทุกรายการในใบสั่งซื้อ ${targetPO.poNo || targetPO.id} ได้รับการตรวจรับหรือชดเชยครบถ้วนแล้ว ยืนยันปิดงานใบสั่งซื้อ (Finalize PO) หรือไม่?`;
+      confirmType = 'success';
+    } else if (summary.isClaimRequired) {
       confirmTitle = 'ยืนยันตรวจรับสินค้า & ส่งเรื่องเคลม';
       confirmDesc = 'ตรวจพบสินค้าขาดส่งหรือชำรุดเสียหาย ระบบจะบันทึกรับเฉพาะสินค้าที่สมบูรณ์เข้าคลัง และส่งเรื่องเคลมไปยังฝ่ายจัดซื้อทันที';
       confirmType = 'warning';
@@ -452,7 +487,9 @@ export default function ReceivingModal({
       title: confirmTitle,
       message: confirmDesc,
       type: confirmType,
-      confirmText: summary.isClaimRequired ? 'ยืนยันตรวจรับ & ส่งเรื่องเคลม' : (summary.hasSplitShipment ? 'ยืนยันรับพัสดุรอบนี้' : 'ยืนยันรับเข้าคลังสมบูรณ์'),
+      confirmText: isFullyAccounted
+        ? 'ยืนยันปิดงานใบสั่งซื้อ (Finalize PO)'
+        : (summary.isClaimRequired ? 'ยืนยันตรวจรับ & ส่งเรื่องเคลม' : (summary.hasSplitShipment ? 'ยืนยันรับพัสดุรอบนี้' : 'ยืนยันรับเข้าคลังสมบูรณ์')),
       cancelText: 'ยกเลิก'
     });
 
@@ -467,7 +504,9 @@ export default function ReceivingModal({
 
       // Status determination
       let statusOverride = 'PARTIAL';
-      if (summary.isClaimRequired) {
+      if (isFullyAccounted) {
+        statusOverride = 'COMPLETED';
+      } else if (summary.isClaimRequired) {
         statusOverride = 'PARTIALLY_RECEIVED_IN_CLAIM';
       } else if (summary.hasSplitShipment) {
         statusOverride = 'WAITING_DELIVERY_ROUND_2';
@@ -558,53 +597,88 @@ export default function ReceivingModal({
           ? await appContext.recordGoodsReceipt(targetPO.id, grnPayload)
           : await recordGoodsReceiptFn(targetPO.id, grnPayload);
 
-      // 5. Call receiveToStock from Inventory Context or warehouseService (STRICTLY complete good items only)
+      // 5. Call receiveToStock / submitGRN and emit enterprise stockMovements with Dual-UOM (Strictly good goods only)
       const stockItemsToReceive = computedItems
-        .filter(it => it.acceptedQty > 0 && !it.isRowLocked)
-        .map(it => ({
-          productId: it.productId,
-          code: it.code,
-          name: it.name,
-          qty: it.acceptedQty,
-          receivedQty: it.acceptedQty,
-          damagedQty: 0, // only intact good goods
-          conversionRate: it.conversionRate || 1,
-          purchaseUnit: it.purchaseUnit || it.pUnit,
-          stockUnit: it.stockUnit || it.sUnit,
-          docNo: targetPO.poNo || targetPO.id,
-          poNo: targetPO.poNo || targetPO.id,
-          poNumber: targetPO.poNo || targetPO.id,
-          unitPrice: Number(it.actUnitPrice ?? it.actualPrice ?? it.price) || 0,
-          actualPrice: Number(it.actUnitPrice ?? it.actualPrice ?? it.price) || 0,
-          grNumber: grnNumber,
-          grnNumber
-        }));
+        .filter(it => Number(it.acceptedQty || 0) > 0 && !it.isRowLocked)
+        .map(it => {
+          const uom = storageService?.getUomConversion ? storageService.getUomConversion(it.code || it.productId || it.id) : null;
+          let ratio = Number(it.conversionRatio || it.conversionRate || uom?.conversionRatio || 1);
+          if (!ratio || isNaN(ratio) || ratio <= 0) ratio = 1;
+
+          const purchaseUnit = it.purchaseUom || it.purchaseUnit || it.pUnit || uom?.purchaseUom || 'ชิ้น';
+          const stockUnit = it.baseUom || it.stockUnit || it.sUnit || uom?.baseUom || purchaseUnit;
+          const purchasePrice = Number(it.actUnitPrice ?? it.actualPrice ?? it.price ?? uom?.purchaseUnitPrice ?? 0);
+          const baseUnitCost = ratio > 0 ? (purchasePrice / ratio) : purchasePrice;
+          const baseStockQty = Number(it.acceptedQty) * ratio;
+          const totalVal = baseStockQty * baseUnitCost;
+
+          return {
+            productId: it.productId || it.id,
+            id: it.id || it.productId,
+            code: it.code,
+            itemCode: it.code || it.productId,
+            name: it.name,
+            qty: baseStockQty,
+            quantity: baseStockQty,
+            receivedQty: Number(it.acceptedQty),
+            purchaseQty: Number(it.acceptedQty),
+            goodQty: Number(it.acceptedQty),
+            damagedQty: 0, // only intact good goods
+            conversionRate: ratio,
+            conversionRatio: ratio,
+            purchaseUnit,
+            purchaseUom: purchaseUnit,
+            stockUnit,
+            baseUom: stockUnit,
+            docNo: targetPO.poNo || targetPO.id,
+            poNo: targetPO.poNo || targetPO.id,
+            poNumber: targetPO.poNo || targetPO.id,
+            unitPrice: baseUnitCost,
+            baseUnitCost,
+            actualPrice: purchasePrice,
+            purchaseUnitPrice: purchasePrice,
+            totalValue: totalVal,
+            totalPrice: totalVal,
+            grNumber: grnNumber,
+            grnNumber
+          };
+        });
 
       if (stockItemsToReceive.length > 0) {
-        const receiveOptions = {
-          docNo: targetPO.poNo || targetPO.id,
-          poNo: targetPO.poNo || targetPO.id,
+        // Single SSOT Pipeline: logStockMovements is the canonical Dual-UOM stock intake path.
+        // It updates stockBalance, enforces deduplication by (documentNo + productCode),
+        // and persists atomically. Do NOT invoke receiveToStock / submitGRN here —
+        // doing so creates a parallel log entry for the same GRN (duplicate +IN rows).
+        const movementsToEmit = stockItemsToReceive.map(it => ({
+          documentNo: grnNumber,
+          docNo: grnNumber,
+          grnNumber: grnNumber,
           poNumber: targetPO.poNo || targetPO.id,
-          grNumber: grnNumber,
-          grnNumber,
-          user: currentUser,
-          note: `รับเข้าคลังรอบ ${nextRound} (GRN: ${grnNumber}) เฉพาะยอดสมบูรณ์`
-        };
-
-        if (inventory?.receiveToStock) {
-          await inventory.receiveToStock(stockItemsToReceive, receiveOptions);
-        } else if (appContext?.receiveToStock) {
-          await appContext.receiveToStock(stockItemsToReceive, receiveOptions);
-        } else {
-          await warehouseService.submitGRN(targetPO.id, {
-            grnNumber,
-            round: nextRound,
-            receivedDate: timestamp,
-            receivedBy: currentUser,
-            receivingItems: stockItemsToReceive,
-            note: grnNote.trim()
-          }, { user: currentUser });
-        }
+          poNo: targetPO.poNo || targetPO.id,
+          itemCode: it.code || it.productId,
+          productId: it.productId,
+          name: it.name,
+          type: 'IN',
+          quantity: it.quantity, // base stock units
+          qty: it.quantity,
+          receivedQty: it.receivedQty, // purchase units
+          unit: it.baseUom,
+          baseUom: it.baseUom,
+          purchaseUom: it.purchaseUom,
+          conversionRatio: it.conversionRatio,
+          unitPrice: it.unitPrice, // base unit cost
+          baseUnitCost: it.unitPrice,
+          purchaseUnitPrice: it.purchaseUnitPrice,
+          totalValue: it.totalValue,
+          totalPrice: it.totalValue,
+          createdAt: timestamp,
+          date: new Date().toLocaleString('th-TH'),
+          user: typeof currentUser === 'object' ? `${currentUser.name || 'Staff'}` : String(currentUser || 'Warehouse Staff'),
+          note: it.conversionRatio > 1
+            ? `รับสินค้าสมบูรณ์เข้าคลัง ${it.receivedQty} ${it.purchaseUom} (= +${it.quantity.toLocaleString()} ${it.baseUom}) [GRN: ${grnNumber}, PO: ${targetPO.poNo || targetPO.id}]`
+            : `รับสินค้าสมบูรณ์เข้าคลัง +${it.quantity.toLocaleString()} ${it.baseUom} [GRN: ${grnNumber}, PO: ${targetPO.poNo || targetPO.id}]`
+        }));
+        storageService.logStockMovements(movementsToEmit);
       }
 
       // 6. Calculate updatedPoItems reflecting this inspection round with dynamic remaining quantity & refund settlement
@@ -669,12 +743,19 @@ export default function ReceivingModal({
         items: updatedPoItems
       };
 
-      const isCompleteReceipt = summary.isFullyAccepted || statusOverride === 'CLOSED' || statusOverride === 'COMPLETED' || finalTargetPO.status === 'COMPLETED';
+      const isCompleteReceipt = isFullyAccounted || summary.isFullyAccepted || statusOverride === 'CLOSED' || statusOverride === 'COMPLETED' || finalTargetPO.status === 'COMPLETED';
 
       if (isCompleteReceipt) {
         finalTargetPO = {
           ...finalTargetPO,
           status: 'COMPLETED',
+          workflowStatus: 'COMPLETED',
+          isCompleted: true,
+          isClosed: true,
+          claimStatus: (finalTargetPO.claimStatus === 'RESOLVED' || isFullyAccounted) ? 'RESOLVED' : (finalTargetPO.claimStatus || 'RESOLVED'),
+          hasDispute: false,
+          isInClaim: false,
+          completedAt: finalTargetPO.completedAt || new Date().toISOString(),
           receivingInfo: receivingMetadata,
           receivedBy: receivingMetadata.receiverName,
           receiverName: receivingMetadata.receiverName,
@@ -719,6 +800,9 @@ export default function ReceivingModal({
       }
 
       // 8. Atomic Persistence to StorageService, Contexts & API
+      if (isFullyAccounted) {
+        storageService.finalizePO?.(targetPO.id, finalTargetPO);
+      }
       const allPos = storageService.getPOs() || [];
       const pIdx = allPos.findIndex(p => p.id === targetPO.id || p.poNo === targetPO.id || p.poNumber === targetPO.id);
       if (pIdx !== -1) {
@@ -745,10 +829,12 @@ export default function ReceivingModal({
       }
 
       modalService.success(
-        summary.isClaimRequired ? 'บันทึกตรวจรับ & ส่งเรื่องเคลมเรียบร้อย' : 'บันทึกตรวจรับสินค้าสำเร็จ',
-        summary.isClaimRequired
-          ? `บันทึกรับของเข้าคลัง ${summary.totalAccepted} ชิ้น และส่งต่อเรื่องเคลมไปยังฝ่ายจัดซื้อเรียบร้อยแล้ว`
-          : `บันทึกรับสินค้าเข้าคลังเรียบร้อย (เลขที่ GRN: ${grnNumber})`
+        isFullyAccounted ? 'ปิดงานใบสั่งซื้อสำเร็จ' : (summary.isClaimRequired ? 'บันทึกตรวจรับ & ส่งเรื่องเคลมเรียบร้อย' : 'บันทึกตรวจรับสินค้าสำเร็จ'),
+        isFullyAccounted
+          ? `ใบสั่งซื้อ ${targetPO.poNo || targetPO.id} ตรวจรับและเคลมชดเชยครบถ้วนแล้ว ปิดงานใบสั่งซื้อเรียบร้อย`
+          : (summary.isClaimRequired
+              ? `บันทึกรับของเข้าคลัง ${summary.totalAccepted} ชิ้น และส่งต่อเรื่องเคลมไปยังฝ่ายจัดซื้อเรียบร้อยแล้ว`
+              : `บันทึกรับสินค้าเข้าคลังเรียบร้อย (เลขที่ GRN: ${grnNumber})`)
       );
 
       if (onSuccess) onSuccess({ po: finalTargetPO, grn: grResult?.grn });
@@ -819,6 +905,19 @@ export default function ReceivingModal({
         {/* ── 2. SCROLLABLE BODY (Zero Banner / Clean Workspace) ── */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 bg-slate-50/50" style={{ scrollbarWidth: 'thin' }}>
           
+          {/* Informational notice when all items are fully accounted for via receipts and claims */}
+          {isFullyAccounted && (
+            <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl p-3 flex items-start gap-2.5 text-xs text-emerald-900 shadow-2xs">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-bold text-emerald-800">สินค้าทุกรายการได้รับการตรวจรับหรือเคลมชดเชยครบถ้วนแล้ว (100% Accounted)</div>
+                <div className="text-emerald-700 text-[11px] mt-0.5">
+                  รายการสินค้าในใบสั่งซื้อนี้รับเข้าคลังครบถ้วนหรือได้รับการชดเชยเงินคืนแล้ว สามารถกดปุ่ม &quot;ยืนยันปิดงานใบสั่งซื้อ (Finalize PO)&quot; ด้านล่างเพื่อบันทึกปิดงานสมบูรณ์
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── Line-Items Clean Compact Table ── */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="bg-slate-50/90 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between text-xs">
@@ -864,8 +963,13 @@ export default function ReceivingModal({
                               {item.name}
                             </span>
                           </div>
-                          <div className="text-xs text-slate-500 font-mono flex items-center gap-2">
-                            <span>หน่วย: {item.pUnit}</span>
+                          <div className="text-xs text-slate-500 font-mono flex items-center gap-2 flex-wrap">
+                            <span>หน่วย: <strong className="text-slate-700">{item.pUnit}</strong></span>
+                            {item.conversionRatio > 1 && (
+                              <span className="text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded font-sans">
+                                (1 {item.pUnit} = {item.conversionRatio.toLocaleString()} {item.sUnit})
+                              </span>
+                            )}
                             {item.originalPurchaseQty && Number(item.originalPurchaseQty) !== Number(item.orderedQty) && (
                               <span className="text-[11px] text-indigo-700 font-sans">
                                 (ปรับจาก PR: {item.originalPurchaseQty})
@@ -1142,6 +1246,17 @@ export default function ReceivingModal({
               className="h-9 px-5 rounded-lg text-slate-500 text-xs sm:text-sm font-bold bg-slate-200 cursor-not-allowed flex items-center gap-2"
             >
               <span>กำลังบันทึกตรวจรับ...</span>
+            </button>
+          ) : isFullyAccounted ? (
+            /* กรณีสินค้าทุกรายการตรวจรับหรือเคลมชดเชยครบถ้วนแล้ว (Finalize PO): ปุ่มสีเขียว Emerald */
+            <button
+              type="button"
+              onClick={handleConfirmReceiving}
+              disabled={isSubmitting || isUploading}
+              className="h-9 px-5 rounded-lg text-white text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-98 transition-all flex items-center gap-2 shadow-xs cursor-pointer"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>✓ ยืนยันปิดงานใบสั่งซื้อ (Finalize PO)</span>
             </button>
           ) : summary.isFullyAccepted ? (
             /* กรณีรับครบ 100%: ปุ่มสีเขียว Emerald */

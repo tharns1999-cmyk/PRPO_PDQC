@@ -104,4 +104,35 @@ describe('Scenario 2: PR Lifecycle & Workflow Transitions', () => {
     // Asst Manager can now review the resubmitted PR
     expect(workflowEngine.canAction(ROLES.ASST_MANAGER, updatedPR)).toBe(true);
   });
+
+  it('Final Approval sets canonical status and workflowStatus to PO_ISSUED/APPROVED and invalidates cache', async () => {
+    const pr = await workflowEngine.createPR({
+      department: 'PD',
+      source: 'FACTORY',
+      purchaseChannel: 'SELF',
+      requiredDate: '2026-09-15',
+      items: [{ productId: 'P-TEST', code: 'P01', name: 'Item', qty: 2, price: 1000 }],
+      totalAmount: 2000,
+      reason: 'Final approval sync test',
+      isDraft: false
+    }, ROLES.REQUESTER_PD);
+
+    // Pass review
+    await workflowEngine.updatePRStatus(pr.id, 'REVIEWED', ROLES.ASST_MANAGER);
+
+    // Final approval
+    const { pr: approvedPR, po } = await workflowEngine.updatePRStatus(pr.id, 'APPROVED', ROLES.PLANT_MANAGER);
+
+    expect(approvedPR.status).toBe('PO_ISSUED');
+    expect(approvedPR.workflowStatus).toBe('PO_ISSUED');
+    expect(approvedPR.poNumber).toBeDefined();
+
+    // Verify storageService loads the fresh non-cached record
+    const reloadedPRs = storageService.getPRs();
+    const targetPR = reloadedPRs.find(p => p.id === pr.id);
+    expect(targetPR).toBeDefined();
+    expect(targetPR.status).toBe('PO_ISSUED');
+    expect(targetPR.workflowStatus).toBe('PO_ISSUED');
+  });
 });
+

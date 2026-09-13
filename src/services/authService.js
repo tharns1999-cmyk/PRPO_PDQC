@@ -12,6 +12,7 @@ export const DEFAULT_EMPLOYEE_ACCOUNTS = [
     password: 'password123',
     name: 'คุณวิชัย (PD)',
     employeeName: 'คุณวิชัย สุขใจ',
+    email: 'wichai.pd@company.com',
     displayName: 'Wichai (PD)',
     department: 'PD',
     roleId: 'REQUESTER_PD',
@@ -29,6 +30,7 @@ export const DEFAULT_EMPLOYEE_ACCOUNTS = [
     password: 'password123',
     name: 'คุณสมหญิง (QC)',
     employeeName: 'คุณสมหญิง รักดี',
+    email: 'somying.qc@company.com',
     displayName: 'Somying (QC)',
     department: 'QC',
     roleId: 'REQUESTER_QC',
@@ -46,6 +48,7 @@ export const DEFAULT_EMPLOYEE_ACCOUNTS = [
     password: 'password123',
     name: 'คุณสมชาย (Asst. Mgr)',
     employeeName: 'คุณสมชาย มุ่งมั่น',
+    email: 'somchai.am@company.com',
     displayName: 'Somchai (Asst Mgr)',
     department: 'PD',
     primaryDepartment: 'PD',
@@ -67,6 +70,7 @@ export const DEFAULT_EMPLOYEE_ACCOUNTS = [
     password: 'password123',
     name: 'คุณนัท (Online Purchaser)',
     employeeName: 'คุณนัท จัดซื้อ',
+    email: 'nat.on@company.com',
     displayName: 'Nat (Online)',
     department: 'ALL',
     roleId: 'ONLINE_PURCHASER',
@@ -84,6 +88,7 @@ export const DEFAULT_EMPLOYEE_ACCOUNTS = [
     password: 'password123',
     name: 'คุณประเสริฐ (Plant Mgr)',
     employeeName: 'คุณประเสริฐ ยิ่งยง',
+    email: 'prasert.pm@company.com',
     displayName: 'Prasert (Plant Mgr)',
     department: 'ALL',
     roleId: 'PLANT_MANAGER',
@@ -101,6 +106,7 @@ export const DEFAULT_EMPLOYEE_ACCOUNTS = [
     password: 'admin123',
     name: 'Admin System',
     displayName: 'Admin',
+    email: 'admin@company.com',
     department: 'ALL',
     roleId: 'ADMIN',
     positionKey: 'ADMIN',
@@ -111,6 +117,53 @@ export const DEFAULT_EMPLOYEE_ACCOUNTS = [
     description: 'ผู้ดูแลระบบ สิทธิ์สูงสุดในการจัดการข้อมูลทุกส่วน'
   }
 ];
+
+/**
+ * Check if the current environment is UAT mode
+ */
+export const isUATEnv = () => {
+  return typeof import.meta !== 'undefined' && import.meta.env?.VITE_APP_ENV === 'uat';
+};
+
+/**
+ * Role-based access mapping for read-only permission checklist
+ */
+export const getRolePermissionsChecklist = (userOrRole) => {
+  if (!userOrRole) return [];
+  const roleStr = String(userOrRole.canonicalRole || userOrRole.roleId || userOrRole.role || userOrRole.positionKey || '').toUpperCase();
+  const isAdmin = userOrRole.isAdmin === true || roleStr.includes('ADMIN') || Number(userOrRole.level) >= 99 || userOrRole.username === 'admin';
+  const isApprover = isAdmin || roleStr.includes('APPROV') || roleStr.includes('PLANT_MANAGER');
+  const isPurchaser = isAdmin || roleStr.includes('PURCHAS') || roleStr.includes('BUYER');
+  const isWarehouseOrRequester = isAdmin || roleStr.includes('WAREHOUSE') || roleStr.includes('REQUEST') || roleStr.includes('STOCK') || roleStr.includes('PD') || roleStr.includes('QC');
+  const isRequester = isAdmin || roleStr.includes('REQUEST') || roleStr.includes('PD') || roleStr.includes('QC');
+
+  return [
+    {
+      key: 'PR_CREATION',
+      label: 'สร้างใบขอซื้อ (PR Creation)',
+      description: 'สร้าง ร่าง และส่งคำขอซื้อเข้าระบบ',
+      allowed: Boolean(isAdmin || isRequester || userOrRole.canCreatePR)
+    },
+    {
+      key: 'APPROVAL',
+      label: 'ตรวจทานและอนุมัติ (Approval)',
+      description: 'ตรวจทานงบประมาณและอนุมัติใบขอซื้อ',
+      allowed: Boolean(isAdmin || isApprover || userOrRole.canReview || userOrRole.canFinalApprove)
+    },
+    {
+      key: 'PURCHASING',
+      label: 'จัดซื้อและสั่งซื้อออนไลน์ (Purchasing)',
+      description: 'ดำเนินการสั่งซื้อ เทียบราคา และบันทึกราคาจริง',
+      allowed: Boolean(isAdmin || isPurchaser || userOrRole.canOnlinePurchase)
+    },
+    {
+      key: 'INVENTORY',
+      label: 'ตรวจรับและจัดการคลัง (Inventory)',
+      description: 'ตรวจรับพัสดุ (GRN) เบิกจ่าย และตัดสต็อกสินค้า',
+      allowed: Boolean(isAdmin || isWarehouseOrRequester || userOrRole.canReceiveGRN || userOrRole.canReceiveGoods)
+    }
+  ];
+};
 
 export const authService = {
   // Get all registered accounts

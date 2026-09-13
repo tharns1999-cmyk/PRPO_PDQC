@@ -1,15 +1,15 @@
 {
   "PD": {
     "monthlyBudget": 1000000,
-    "spent": 0,
+    "spent": 9250,
     "actualExpense": 0,
     "pending": 0,
-    "variance": 1000000,
+    "variance": 990750,
     "history": {
       "2026-09": 1000000
     },
     "historicalSpent": {
-      "2026-09": 0
+      "2026-09": 9250
     },
     "refundCredits": {}
   },

@@ -1612,8 +1612,11 @@ export const workflowEngine = {
         throw new Error(`ไม่อนุญาตให้อนุมัติออกใบสั่งซื้อ (PO): ใบขอซื้อ ${pr.prNo || pr.id} อยู่ในสถานะ "${previousStatus}" ซึ่งยังไม่ผ่านการตรวจทาน (ต้องผ่านการตรวจทานเป็นสถานะ REVIEWED ก่อนเท่านั้น)`);
       }
       pr.status = 'APPROVED';
+      pr.workflowStatus = 'APPROVED';
       generatedPO = await this.createPOFromPR(pr, user);
-      pr.status = pr.purchaseChannel === 'ONLINE' ? 'IN_PROGRESS_ONLINE' : 'PO_ISSUED';
+      const finalApprovedStatus = pr.purchaseChannel === 'ONLINE' ? 'IN_PROGRESS_ONLINE' : 'PO_ISSUED';
+      pr.status = finalApprovedStatus;
+      pr.workflowStatus = finalApprovedStatus;
       if (Array.isArray(generatedPO) && generatedPO.length > 0) {
         pr.poNumbers = generatedPO.map(p => p.poNo);
         pr.poNumber = generatedPO.map(p => p.poNo).join(', ');
@@ -1626,6 +1629,7 @@ export const workflowEngine = {
       }
     } else {
       pr.status = nextStatus;
+      pr.workflowStatus = nextStatus;
     }
 
     storageService.savePRs(prs);

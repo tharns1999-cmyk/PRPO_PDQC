@@ -1,12 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { History, ArrowDownRight, ArrowUpRight, X, MapPin, Search } from 'lucide-react';
 import Portal from '../common/Portal';
 import CollapsibleActivityTimeline from '../common/CollapsibleActivityTimeline';
 import { storageService, normalizeDocNumber } from '../../services/storageService';
 
+const PAGE_SIZE = 50;
+
 export default function StockMovementTable({ selectedProduct: propSelectedProduct, product, stockLogs = [], pos = [], onClose }) {
   const [filterType, setFilterType] = useState('ALL'); // ALL, IN, OUT
   const [searchQuery, setSearchQuery] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const selectedProduct = product || propSelectedProduct;
 
   // Retrieve pos list from props or storageService as a safe fallback
@@ -193,96 +196,115 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
     });
   }, [productMovementLogs, selectedProduct]);
 
-  // Helper to format currency numbers
-  const formatCurrency = (val) => {
+  // Helper to format currency numbers (stable reference via useCallback)
+  const formatCurrency = useCallback((val) => {
     if (val === null || val === undefined || isNaN(val)) return '-';
     return Number(val).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
+  }, []);
 
   /**
-   * Data Enrichment logic for each log row:
-   * Returns: { poNumber, totalPurchaseAmount, avgUnitPrice }
+   * Pre-computed purchase detail lookup Map (Performance)
+   * Runs once per productMovementLogs/resolvedPOs change instead of
+   * re-computing on every render cycle for every visible row.
+   * Returns: Map<log.id, { poNumber, totalPurchaseAmount, avgUnitPrice }>
    */
-  const getPurchaseDetails = (log) => {
-    // Only calculate and display for incoming inventory (+IN / IN_NG)
-    if (log.type !== 'IN' && log.type !== 'IN_NG') {
-      return { poNumber: '-', totalPurchaseAmount: '-', avgUnitPrice: '-' };
-    }
-
-    // 1. Direct fields already attached to the stock log
-    let poNumber = log.poNo || log.poNumber || (log.docNo && String(log.docNo).startsWith('PO-') ? log.docNo : null);
-    let totalAmount = log.totalPrice !== undefined && log.totalPrice !== null ? Number(log.totalPrice) : null;
-    let unitPrice = log.unitPrice !== undefined && log.unitPrice !== null ? Number(log.unitPrice) : null;
-
-    // 2. If PO number not directly found, try to extract from note (e.g. "...จาก PO PO-PD-2026-001")
-    if (!poNumber && log.note) {
-      const match = log.note.match(/PO[-\s]?([A-Z0-9\-_/]+)/i);
-      if (match) {
-        poNumber = match[0].trim();
+  const purchaseDetailMap = useMemo(() => {
+    const map = new Map();
+    const _compute = (log) => {
+      // Only calculate and display for incoming inventory (+IN / IN_NG)
+      if (log.type !== 'IN' && log.type !== 'IN_NG') {
+        return { poNumber: '-', totalPurchaseAmount: '-', avgUnitPrice: '-' };
       }
-    }
 
-    // 3. Match with PO in state/storage
-    if (poNumber || log.poId) {
-      const matchedPO = resolvedPOs.find(p => 
-        (poNumber && (p.poNo === poNumber || p.poNumber === poNumber)) || 
-        (log.poId && p.id === log.poId) ||
-        (log.docNo && (p.poNo === log.docNo || p.id === log.docNo))
-      );
+      // 1. Direct fields already attached to the stock log
+      let poNumber = log.poNo || log.poNumber || (log.docNo && String(log.docNo).startsWith('PO-') ? log.docNo : null);
+      let totalAmount = log.totalPrice !== undefined && log.totalPrice !== null ? Number(log.totalPrice) : null;
+      let unitPrice = log.unitPrice !== undefined && log.unitPrice !== null ? Number(log.unitPrice) : null;
 
-      if (matchedPO) {
-        if (!poNumber) poNumber = matchedPO.poNo || matchedPO.poNumber;
+      // 2. If PO number not directly found, try to extract from note (e.g. "...จาก PO PO-PD-2026-001")
+      if (!poNumber && log.note) {
+        const match = log.note.match(/PO[-\s]?([A-Z0-9\-_/]+)/i);
+        if (match) {
+          poNumber = match[0].trim();
+        }
+      }
 
-        // Find matching item in PO items
-        const matchedItem = (matchedPO.items || []).find(item => 
-          (item.productId && (item.productId === log.productId || item.productId === selectedProduct.id)) ||
-          (item.code && (item.code === log.productCode || item.code === selectedProduct.code)) ||
-          (item.name && selectedProduct.name && item.name === selectedProduct.name)
+      // 3. Match with PO in state/storage
+      if (poNumber || log.poId) {
+        const matchedPO = resolvedPOs.find(p =>
+          (poNumber && (p.poNo === poNumber || p.poNumber === poNumber)) ||
+          (log.poId && p.id === log.poId) ||
+          (log.docNo && (p.poNo === log.docNo || p.id === log.docNo))
         );
 
-        if (matchedItem) {
-          const itemPrice = Number(matchedItem.actUnitPrice ?? matchedItem.actualPrice ?? matchedItem.price) || 0;
-          const discountAmt = Number(matchedItem.discountAmount) || 0;
-          const itemTotal = matchedItem.total !== undefined 
-            ? Number(matchedItem.total) 
-            : Math.max(0, (itemPrice * (Number(matchedItem.purchaseQty ?? matchedItem.qty) || 1)) - discountAmt);
+        if (matchedPO) {
+          if (!poNumber) poNumber = matchedPO.poNo || matchedPO.poNumber;
 
-          const convRate = Number(matchedItem.conversionRate) > 0 ? Number(matchedItem.conversionRate) : 1;
+          // Find matching item in PO items
+          const matchedItem = (matchedPO.items || []).find(item =>
+            (item.productId && (item.productId === log.productId || item.productId === selectedProduct.id)) ||
+            (item.code && (item.code === log.productCode || item.code === selectedProduct.code)) ||
+            (item.name && selectedProduct.name && item.name === selectedProduct.name)
+          );
 
-          // Price per stock unit (เช่น ราคากิโลกรัมละ / แผ่นละ)
-          if (unitPrice === null || unitPrice === 0) {
-            unitPrice = itemPrice / convRate;
-          }
+          if (matchedItem) {
+            const itemPrice = Number(matchedItem.actUnitPrice ?? matchedItem.actualPrice ?? matchedItem.price) || 0;
+            const discountAmt = Number(matchedItem.discountAmount) || 0;
+            const itemTotal = matchedItem.total !== undefined
+              ? Number(matchedItem.total)
+              : Math.max(0, (itemPrice * (Number(matchedItem.purchaseQty ?? matchedItem.qty) || 1)) - discountAmt);
 
-          // Total amount for this received log:
-          if (totalAmount === null || totalAmount === 0) {
-            if (Number(log.qty) > 0 && unitPrice > 0) {
-              totalAmount = unitPrice * Number(log.qty);
-            } else {
-              totalAmount = itemTotal;
+            const convRate = Number(matchedItem.conversionRate) > 0 ? Number(matchedItem.conversionRate) : 1;
+
+            // Price per stock unit (เช่น ราคากิโลกรัมละ / แผ่นละ)
+            if (unitPrice === null || unitPrice === 0) {
+              unitPrice = itemPrice / convRate;
             }
-          }
-        } else if ((totalAmount === null || totalAmount === 0) && matchedPO.grandTotal) {
-          // Fallback if PO only had 1 item
-          if (matchedPO.items?.length === 1) {
-            totalAmount = Number(matchedPO.grandTotal);
+
+            // Total amount for this received log:
+            if (totalAmount === null || totalAmount === 0) {
+              if (Number(log.qty) > 0 && unitPrice > 0) {
+                totalAmount = unitPrice * Number(log.qty);
+              } else {
+                totalAmount = itemTotal;
+              }
+            }
+          } else if ((totalAmount === null || totalAmount === 0) && matchedPO.grandTotal) {
+            // Fallback if PO only had 1 item
+            if (matchedPO.items?.length === 1) {
+              totalAmount = Number(matchedPO.grandTotal);
+            }
           }
         }
       }
-    }
 
-    // 4. Fallback calculation for avgUnitPrice with guard against division by zero
-    const qtyNum = Number(log.qty) || 0;
-    if ((unitPrice === null || unitPrice === 0) && totalAmount !== null && qtyNum > 0) {
-      unitPrice = totalAmount / qtyNum;
-    }
+      // 4. Fallback calculation for avgUnitPrice with guard against division by zero
+      const qtyNum = Number(log.qty) || 0;
+      if ((unitPrice === null || unitPrice === 0) && totalAmount !== null && qtyNum > 0) {
+        unitPrice = totalAmount / qtyNum;
+      }
 
-    return {
-      poNumber: poNumber || log.poNo || log.poNumber || '-',
-      totalPurchaseAmount: totalAmount !== null && totalAmount > 0 ? `${formatCurrency(totalAmount)} ฿` : '-',
-      avgUnitPrice: unitPrice !== null && unitPrice > 0 ? `${formatCurrency(unitPrice)} ฿` : '-'
+      return {
+        poNumber: poNumber || log.poNo || log.poNumber || '-',
+        totalPurchaseAmount: totalAmount !== null && totalAmount > 0 ? `${formatCurrency(totalAmount)} ฿` : '-',
+        avgUnitPrice: unitPrice !== null && unitPrice > 0 ? `${formatCurrency(unitPrice)} ฿` : '-'
+      };
     };
-  };
+
+    productMovementLogs.forEach(log => {
+      map.set(log.id, _compute(log));
+    });
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productMovementLogs, resolvedPOs, selectedProduct, formatCurrency]);
+
+  // Paginated slice — caps DOM nodes to PAGE_SIZE rows; user can load more
+  const visibleLogs = useMemo(
+    () => productMovementLogs.slice(0, visibleCount),
+    [productMovementLogs, visibleCount]
+  );
+  const hasMore = visibleCount < productMovementLogs.length;
+
 
   return (
     <Portal>
@@ -330,7 +352,7 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
               <span className="text-xs font-bold text-slate-500 mr-1 uppercase tracking-wider">ประเภท:</span>
               <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl">
                 <button
-                  onClick={() => setFilterType('ALL')}
+                  onClick={() => { setFilterType('ALL'); setVisibleCount(PAGE_SIZE); }}
                   className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     filterType === 'ALL' ? 'bg-white text-slate-900 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
@@ -338,7 +360,7 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
                   ทั้งหมด
                 </button>
                 <button
-                  onClick={() => setFilterType('IN')}
+                  onClick={() => { setFilterType('IN'); setVisibleCount(PAGE_SIZE); }}
                   className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     filterType === 'IN' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
@@ -346,7 +368,7 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
                   +IN (รับเข้า)
                 </button>
                 <button
-                  onClick={() => setFilterType('OUT')}
+                  onClick={() => { setFilterType('OUT'); setVisibleCount(PAGE_SIZE); }}
                   className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     filterType === 'OUT' ? 'bg-rose-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
@@ -414,8 +436,8 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
                     </td>
                   </tr>
                 ) : (
-                  productMovementLogs.map(log => {
-                    const purchase = getPurchaseDetails(log);
+                  visibleLogs.map(log => {
+                    const purchase = purchaseDetailMap.get(log.id) || { poNumber: '-', totalPurchaseAmount: '-', avgUnitPrice: '-' };
                     const isIncoming = log.type === 'IN' || log.type === 'IN_NG';
 
                     return (
@@ -519,6 +541,18 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
               </tbody>
             </table>
           </div>
+
+          {/* Load More Pagination — prevents unbounded DOM growth */}
+          {hasMore && (
+            <div className="pt-1 flex justify-center">
+              <button
+                onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                className="px-4 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+              >
+                โหลดเพิ่ม ({productMovementLogs.length - visibleCount} รายการที่เหลือ)
+              </button>
+            </div>
+          )}
 
           {/* Footer */}
           <div className="pt-2 flex items-center justify-between text-xs text-slate-400">
