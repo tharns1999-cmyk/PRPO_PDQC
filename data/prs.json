@@ -1,7 +1,7 @@
 [
   {
-    "id": "PR-1789371406282-3RI",
-    "prNo": "PD003/2026",
+    "id": "PR-1789372994436-APQ",
+    "prNo": "PD001/2026",
     "department": "PD",
     "source": "FACTORY",
     "purchaseChannel": "SELF",
@@ -20,14 +20,29 @@
     "supplierId": "VEND-001",
     "supplierName": "บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด",
     "hasVat": true,
-    "specUrl": "",
-    "attachments": [],
+    "specUrl": "รายงานสรุปผลการตรวจติดตามคุณภาพภายใน การ.pdf",
+    "attachments": [
+      {
+        "name": "รายงานสรุปผลการตรวจติดตามคุณภาพภายใน การ.pdf",
+        "size": 96598,
+        "type": "application/pdf",
+        "previewUrl": "blob:https://n-b5t5vydffddzemp5lfwufgbpq4vy44mlr2bvyny-0lu-script.googleusercontent.com/f42a50b2-fa70-43ea-820a-f074bf468661",
+        "category": "QUOTATION"
+      },
+      {
+        "name": "SC_banner_0.png",
+        "size": 53049,
+        "type": "image/png",
+        "previewUrl": "blob:https://n-b5t5vydffddzemp5lfwufgbpq4vy44mlr2bvyny-0lu-script.googleusercontent.com/b816413d-2bb3-4380-8c45-e6db9c612589",
+        "category": "GENERAL"
+      }
+    ],
     "note": "",
     "items": [
       {
-        "productId": "PROD-PD-1789366906429",
-        "code": "1",
-        "name": "ถุงมือกันความร้อน",
+        "productId": "PROD-PD-1789372902810",
+        "code": "2",
+        "name": "ถุงมือกันร้อน",
         "purchaseUnit": "คู่",
         "stockUnit": "ชิ้น",
         "conversionRate": 2,
@@ -35,7 +50,7 @@
         "stockQty": 20,
         "qty": 10,
         "unit": "คู่",
-        "price": 100,
+        "price": 50,
         "discountPercent": 0,
         "discountAmount": 0,
         "vendorId": "VEND-001",
@@ -48,7 +63,7 @@
         "storePlatform": "Shopee",
         "storeName": "",
         "actualStoreName": "",
-        "total": 1000,
+        "total": 500,
         "usageLocation": "FACTORY",
         "source": "FACTORY",
         "isCustom": false,
@@ -58,50 +73,34 @@
       }
     ],
     "financials": {
-      "subtotal": 1000,
+      "subtotal": 500,
       "itemDiscountTotal": 0,
       "combinedDiscountType": "percent",
       "combinedDiscountValue": 0,
       "combinedDiscountAmount": 0,
       "totalDiscount": 0,
       "vatMode": "AFTER_DISCOUNT",
-      "vatAmount": 70,
+      "vatAmount": 35,
       "roundingAdj": 0,
       "shippingCost": 0,
-      "grandTotal": 1070
+      "grandTotal": 535
     },
-    "totalAmount": 1070,
-    "status": "PO_ISSUED",
+    "totalAmount": 535,
+    "status": "SUBMITTED",
     "requestedBy": "สิรภัทร แจ่มมิน",
     "requestedByRole": "Requester (PD)",
     "requestedDept": "PD",
-    "createdAt": "2026-09-14T07:36:46.282Z",
-    "submittedAt": "2026-09-14T07:36:46.282Z",
-    "updatedAt": "2026-09-14T07:36:46.282Z",
+    "createdAt": "2026-09-14T08:03:14.428Z",
+    "submittedAt": "2026-09-14T08:03:14.428Z",
+    "updatedAt": "2026-09-14T08:03:14.430Z",
     "approvalHistory": [
       {
         "actorName": "สิรภัทร แจ่มมิน",
         "actorRole": "Requester (PD)",
         "action": "SUBMITTED",
-        "date": "2026-09-14T07:36:46.282Z",
-        "timestamp": "2026-09-14T07:36:46.282Z",
+        "date": "2026-09-14T08:03:14.430Z",
+        "timestamp": "2026-09-14T08:03:14.430Z",
         "comment": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
-      },
-      {
-        "actorName": "กัลยาณี พลไกร",
-        "actorRole": "Asst. Manager (PD, QC)",
-        "action": "REVIEWED",
-        "date": "14/9/2569 14:37:04",
-        "timestamp": "14/9/2569 14:37:04",
-        "comment": ""
-      },
-      {
-        "actorName": "คุณประเสริฐ ยิ่งยง",
-        "actorRole": "Plant Manager (PD, QC, ALL)",
-        "action": "APPROVED",
-        "date": "14/9/2569 14:37:18",
-        "timestamp": "14/9/2569 14:37:18",
-        "comment": ""
       }
     ],
     "memo": null,
@@ -110,351 +109,9 @@
         "action": "สร้างและยื่นส่ง PR (PR Submitted)",
         "user": "สิรภัทร แจ่มมิน",
         "role": "Requester (PD)",
-        "timestamp": "14/9/2569 14:36:46",
+        "timestamp": "14/9/2569 15:03:14",
         "note": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
-      },
-      {
-        "action": "ตรวจสอบแล้ว (Level 1 - Asst Mgr)",
-        "user": "กัลยาณี พลไกร",
-        "role": "Asst. Manager (PD, QC)",
-        "timestamp": "14/9/2569 14:37:04",
-        "note": "เปลี่ยนสถานะเป็น ผ่านตรวจ / รออนุมัติ (Plant Mgr)"
-      },
-      {
-        "action": "อนุมัติ (Final Approval - Plant Mgr)",
-        "user": "คุณประเสริฐ ยิ่งยง",
-        "role": "Plant Manager (PD, QC, ALL)",
-        "timestamp": "14/9/2569 14:37:18",
-        "note": "เปลี่ยนสถานะเป็น อนุมัติแล้ว (สร้าง PO)"
       }
-    ],
-    "reviewedBy": {
-      "id": "ASST_MANAGER",
-      "name": "กัลยาณี พลไกร",
-      "signature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M20 50 Q 50 10, 80 50 T 140 50 T 180 30\" fill=\"none\" stroke=\"%231e3a8a\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Somchai (Asst. Mgr)</text></svg>",
-      "timestamp": "2026-09-14T07:37:04.403Z"
-    },
-    "reviewerName": "กัลยาณี พลไกร",
-    "reviewerSignature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M20 50 Q 50 10, 80 50 T 140 50 T 180 30\" fill=\"none\" stroke=\"%231e3a8a\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Somchai (Asst. Mgr)</text></svg>",
-    "reviewedAt": "2026-09-14T07:37:04.403Z",
-    "workflowStatus": "PO_ISSUED",
-    "approvedBy": {
-      "id": "PLANT_MANAGER",
-      "name": "คุณประเสริฐ ยิ่งยง",
-      "signature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M15 45 Q 60 5, 90 45 T 150 45 T 190 25\" fill=\"none\" stroke=\"%230f766e\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Prasert (Plant Mgr)</text></svg>",
-      "timestamp": "2026-09-14T07:37:18.323Z"
-    },
-    "approverName": "คุณประเสริฐ ยิ่งยง",
-    "approverSignature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M15 45 Q 60 5, 90 45 T 150 45 T 190 25\" fill=\"none\" stroke=\"%230f766e\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Prasert (Plant Mgr)</text></svg>",
-    "approvedAt": "2026-09-14T07:37:18.323Z",
-    "poNumber": "PO-PD-2026-003",
-    "poNo": "PO-PD-2026-003",
-    "poId": "PO-1789371438323-1"
-  },
-  {
-    "id": "PR-1789371319346-8J3",
-    "prNo": "PD002/2026",
-    "department": "PD",
-    "source": "FACTORY",
-    "purchaseChannel": "SELF",
-    "vendorId": "VEND-001",
-    "vendorName": "บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด",
-    "vendor": {
-      "id": "VEND-001",
-      "code": "VEND-IND-01",
-      "name": "บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด",
-      "taxId": 105551234567,
-      "address": "88/9 หมู่ 4 นิคมอุตสาหกรรมบางชัน ถ.เสรีไทย คันนายาว กทม. 10230",
-      "phone": "02-123-4567",
-      "email": "sales@siamind.co.th",
-      "contactPerson": "คุณสมชาย มุ่งมั่น"
-    },
-    "supplierId": "VEND-001",
-    "supplierName": "บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด",
-    "hasVat": true,
-    "specUrl": "",
-    "attachments": [],
-    "note": "",
-    "items": [
-      {
-        "productId": "PROD-PD-1789366959972",
-        "code": "001",
-        "name": "ใยขัด",
-        "purchaseUnit": "ชิ้น",
-        "stockUnit": "ชิ้น",
-        "conversionRate": 1,
-        "purchaseQty": 10,
-        "stockQty": 10,
-        "qty": 10,
-        "unit": "ชิ้น",
-        "price": 100,
-        "discountPercent": 0,
-        "discountAmount": 0,
-        "vendorId": "VEND-001",
-        "vendorName": "บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด",
-        "supplierId": "VEND-001",
-        "supplierName": "บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด",
-        "onlineUrl": "",
-        "productUrl": "",
-        "platform": "Shopee",
-        "storePlatform": "Shopee",
-        "storeName": "",
-        "actualStoreName": "",
-        "total": 1000,
-        "usageLocation": "FACTORY",
-        "source": "FACTORY",
-        "isCustom": false,
-        "isUnitOverridden": false,
-        "images": [],
-        "attachments": []
-      }
-    ],
-    "financials": {
-      "subtotal": 1000,
-      "itemDiscountTotal": 0,
-      "combinedDiscountType": "percent",
-      "combinedDiscountValue": 0,
-      "combinedDiscountAmount": 0,
-      "totalDiscount": 0,
-      "vatMode": "AFTER_DISCOUNT",
-      "vatAmount": 70,
-      "roundingAdj": 0,
-      "shippingCost": 0,
-      "grandTotal": 1070
-    },
-    "totalAmount": 1070,
-    "status": "completed",
-    "requestedBy": "สิรภัทร แจ่มมิน",
-    "requestedByRole": "Requester (PD)",
-    "requestedDept": "PD",
-    "createdAt": "2026-09-14T07:35:19.329Z",
-    "submittedAt": "2026-09-14T07:35:19.329Z",
-    "updatedAt": "2026-09-14T07:35:19.336Z",
-    "approvalHistory": [
-      {
-        "actorName": "สิรภัทร แจ่มมิน",
-        "actorRole": "Requester (PD)",
-        "action": "SUBMITTED",
-        "date": "2026-09-14T07:35:19.336Z",
-        "timestamp": "2026-09-14T07:35:19.336Z",
-        "comment": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
-      },
-      {
-        "actorName": "กัลยาณี พลไกร",
-        "actorRole": "Asst. Manager (PD, QC)",
-        "action": "REVIEWED",
-        "date": "14/9/2569 14:35:39",
-        "timestamp": "14/9/2569 14:35:39",
-        "comment": ""
-      },
-      {
-        "actorName": "คุณประเสริฐ ยิ่งยง",
-        "actorRole": "Plant Manager (PD, QC, ALL)",
-        "action": "APPROVED",
-        "date": "14/9/2569 14:36:05",
-        "timestamp": "14/9/2569 14:36:05",
-        "comment": ""
-      }
-    ],
-    "memo": null,
-    "activityLog": [
-      {
-        "action": "สร้างและยื่นส่ง PR (PR Submitted)",
-        "user": "สิรภัทร แจ่มมิน",
-        "role": "Requester (PD)",
-        "timestamp": "14/9/2569 14:35:19",
-        "note": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
-      },
-      {
-        "action": "ตรวจสอบแล้ว (Level 1 - Asst Mgr)",
-        "user": "กัลยาณี พลไกร",
-        "role": "Asst. Manager (PD, QC)",
-        "timestamp": "14/9/2569 14:35:39",
-        "note": "เปลี่ยนสถานะเป็น ผ่านตรวจ / รออนุมัติ (Plant Mgr)"
-      },
-      {
-        "action": "อนุมัติ (Final Approval - Plant Mgr)",
-        "user": "คุณประเสริฐ ยิ่งยง",
-        "role": "Plant Manager (PD, QC, ALL)",
-        "timestamp": "14/9/2569 14:36:05",
-        "note": "เปลี่ยนสถานะเป็น อนุมัติแล้ว (สร้าง PO)"
-      }
-    ],
-    "reviewedBy": {
-      "id": "ASST_MANAGER",
-      "name": "กัลยาณี พลไกร",
-      "signature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M20 50 Q 50 10, 80 50 T 140 50 T 180 30\" fill=\"none\" stroke=\"%231e3a8a\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Somchai (Asst. Mgr)</text></svg>",
-      "timestamp": "2026-09-14T07:35:39.863Z"
-    },
-    "reviewerName": "กัลยาณี พลไกร",
-    "reviewerSignature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M20 50 Q 50 10, 80 50 T 140 50 T 180 30\" fill=\"none\" stroke=\"%231e3a8a\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Somchai (Asst. Mgr)</text></svg>",
-    "reviewedAt": "2026-09-14T07:35:39.863Z",
-    "workflowStatus": "PO_ISSUED",
-    "approvedBy": {
-      "id": "PLANT_MANAGER",
-      "name": "คุณประเสริฐ ยิ่งยง",
-      "signature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M15 45 Q 60 5, 90 45 T 150 45 T 190 25\" fill=\"none\" stroke=\"%230f766e\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Prasert (Plant Mgr)</text></svg>",
-      "timestamp": "2026-09-14T07:36:05.730Z"
-    },
-    "approverName": "คุณประเสริฐ ยิ่งยง",
-    "approverSignature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M15 45 Q 60 5, 90 45 T 150 45 T 190 25\" fill=\"none\" stroke=\"%230f766e\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Prasert (Plant Mgr)</text></svg>",
-    "approvedAt": "2026-09-14T07:36:05.730Z",
-    "poNumber": "PO-PD-2026-002",
-    "poNo": "PO-PD-2026-002",
-    "poId": "PO-1789371365731-1",
-    "fullyReceivedAt": "2026-09-14T07:36:46.325Z"
-  },
-  {
-    "id": "PR-1789370011005-QZ9",
-    "prNo": "PD001/2026",
-    "department": "PD",
-    "source": "FACTORY",
-    "purchaseChannel": "SELF",
-    "vendorId": "VEND-003",
-    "vendorName": "ห้างหุ้นส่วนจำกัด เซฟตี้เฟิร์สท์ โปรดักส์",
-    "vendor": {
-      "id": "VEND-003",
-      "code": "VEND-SAF-03",
-      "name": "ห้างหุ้นส่วนจำกัด เซฟตี้เฟิร์สท์ โปรดักส์",
-      "taxId": 103554567890,
-      "address": "45/12 ถ.กิ่งแก้ว ต.ราชาเทวะ อ.บางพลี จ.สมุทรปราการ 10540",
-      "phone": "081-456-7890",
-      "email": "service@safetyfirst.co.th",
-      "contactPerson": "คุณธวัชชัย รักษ์ดี"
-    },
-    "supplierId": "VEND-003",
-    "supplierName": "ห้างหุ้นส่วนจำกัด เซฟตี้เฟิร์สท์ โปรดักส์",
-    "hasVat": true,
-    "specUrl": "",
-    "attachments": [],
-    "note": "",
-    "items": [
-      {
-        "productId": "PROD-PD-1789366906429",
-        "code": "1",
-        "name": "ถุงมือกันความร้อน",
-        "purchaseUnit": "คู่",
-        "stockUnit": "ชิ้น",
-        "conversionRate": 2,
-        "purchaseQty": 8,
-        "stockQty": 16,
-        "qty": 8,
-        "unit": "คู่",
-        "price": 100,
-        "discountPercent": 0,
-        "discountAmount": 0,
-        "vendorId": "VEND-003",
-        "vendorName": "ห้างหุ้นส่วนจำกัด เซฟตี้เฟิร์สท์ โปรดักส์",
-        "supplierId": "VEND-003",
-        "supplierName": "ห้างหุ้นส่วนจำกัด เซฟตี้เฟิร์สท์ โปรดักส์",
-        "onlineUrl": "",
-        "productUrl": "",
-        "platform": "Shopee",
-        "storePlatform": "Shopee",
-        "storeName": "",
-        "actualStoreName": "",
-        "total": 800,
-        "usageLocation": "FACTORY",
-        "source": "FACTORY",
-        "isCustom": false,
-        "isUnitOverridden": false,
-        "images": [],
-        "attachments": []
-      }
-    ],
-    "financials": {
-      "subtotal": 800,
-      "itemDiscountTotal": 0,
-      "combinedDiscountType": "percent",
-      "combinedDiscountValue": 0,
-      "combinedDiscountAmount": 0,
-      "totalDiscount": 0,
-      "vatMode": "AFTER_DISCOUNT",
-      "vatAmount": 56,
-      "roundingAdj": 0,
-      "shippingCost": 0,
-      "grandTotal": 856
-    },
-    "totalAmount": 856,
-    "status": "completed",
-    "requestedBy": "สิรภัทร แจ่มมิน",
-    "requestedByRole": "Requester (PD)",
-    "requestedDept": "PD",
-    "createdAt": "2026-09-14T07:13:31.001Z",
-    "submittedAt": "2026-09-14T07:13:31.001Z",
-    "updatedAt": "2026-09-14T07:13:31.002Z",
-    "approvalHistory": [
-      {
-        "actorName": "สิรภัทร แจ่มมิน",
-        "actorRole": "Requester (PD)",
-        "action": "SUBMITTED",
-        "date": "2026-09-14T07:13:31.002Z",
-        "timestamp": "2026-09-14T07:13:31.002Z",
-        "comment": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
-      },
-      {
-        "actorName": "กัลยาณี พลไกร",
-        "actorRole": "Asst. Manager (PD, QC)",
-        "action": "REVIEWED",
-        "date": "14/9/2569 14:19:33",
-        "timestamp": "14/9/2569 14:19:33",
-        "comment": ""
-      },
-      {
-        "actorName": "คุณประเสริฐ ยิ่งยง",
-        "actorRole": "Plant Manager (PD, QC, ALL)",
-        "action": "APPROVED",
-        "date": "14/9/2569 14:20:04",
-        "timestamp": "14/9/2569 14:20:04",
-        "comment": ""
-      }
-    ],
-    "memo": null,
-    "activityLog": [
-      {
-        "action": "สร้างและยื่นส่ง PR (PR Submitted)",
-        "user": "สิรภัทร แจ่มมิน",
-        "role": "Requester (PD)",
-        "timestamp": "14/9/2569 14:13:31",
-        "note": "ยื่นเสนอขอซื้อเข้าสู่ระบบ"
-      },
-      {
-        "action": "ตรวจสอบแล้ว (Level 1 - Asst Mgr)",
-        "user": "กัลยาณี พลไกร",
-        "role": "Asst. Manager (PD, QC)",
-        "timestamp": "14/9/2569 14:19:33",
-        "note": "เปลี่ยนสถานะเป็น ผ่านตรวจ / รออนุมัติ (Plant Mgr)"
-      },
-      {
-        "action": "อนุมัติ (Final Approval - Plant Mgr)",
-        "user": "คุณประเสริฐ ยิ่งยง",
-        "role": "Plant Manager (PD, QC, ALL)",
-        "timestamp": "14/9/2569 14:20:04",
-        "note": "เปลี่ยนสถานะเป็น อนุมัติแล้ว (สร้าง PO)"
-      }
-    ],
-    "reviewedBy": {
-      "id": "ASST_MANAGER",
-      "name": "กัลยาณี พลไกร",
-      "signature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M20 50 Q 50 10, 80 50 T 140 50 T 180 30\" fill=\"none\" stroke=\"%231e3a8a\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Somchai (Asst. Mgr)</text></svg>",
-      "timestamp": "2026-09-14T07:19:33.117Z"
-    },
-    "reviewerName": "กัลยาณี พลไกร",
-    "reviewerSignature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M20 50 Q 50 10, 80 50 T 140 50 T 180 30\" fill=\"none\" stroke=\"%231e3a8a\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Somchai (Asst. Mgr)</text></svg>",
-    "reviewedAt": "2026-09-14T07:19:33.117Z",
-    "workflowStatus": "PO_ISSUED",
-    "approvedBy": {
-      "id": "PLANT_MANAGER",
-      "name": "คุณประเสริฐ ยิ่งยง",
-      "signature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M15 45 Q 60 5, 90 45 T 150 45 T 190 25\" fill=\"none\" stroke=\"%230f766e\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Prasert (Plant Mgr)</text></svg>",
-      "timestamp": "2026-09-14T07:20:04.378Z"
-    },
-    "approverName": "คุณประเสริฐ ยิ่งยง",
-    "approverSignature": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"80\"><path d=\"M15 45 Q 60 5, 90 45 T 150 45 T 190 25\" fill=\"none\" stroke=\"%230f766e\" stroke-width=\"3\" stroke-linecap=\"round\"/><text x=\"20\" y=\"70\" font-family=\"sans-serif\" font-size=\"12\" fill=\"%23475569\">Prasert (Plant Mgr)</text></svg>",
-    "approvedAt": "2026-09-14T07:20:04.378Z",
-    "poNumber": "PO-PD-2026-001",
-    "poNo": "PO-PD-2026-001",
-    "poId": "PO-1789370404379-1",
-    "fullyReceivedAt": "2026-09-14T07:33:37.392Z"
+    ]
   }
 ]

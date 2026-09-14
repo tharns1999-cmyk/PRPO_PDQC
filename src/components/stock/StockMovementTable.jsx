@@ -32,24 +32,33 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
     }
   }, [stockLogs]);
 
-  // Resiliently match logs for this product across id, code, and name
+  // Resiliently match logs for this product across id, code, and legacy sku (Defensive Matching)
   const rawProductLogs = useMemo(() => {
     if (!selectedProduct) return [];
-    const pId = String(selectedProduct.id || '').trim().toLowerCase();
-    const pCode = String(selectedProduct.code || '').trim().toLowerCase();
+    const pId = String(selectedProduct.id || '').trim();
+    const pCode = String(selectedProduct.code || selectedProduct.sku || '').trim().toLowerCase();
     const pName = String(selectedProduct.name || '').trim().toLowerCase();
 
-    return resolvedStockLogs.filter(log => {
-      if (!log) return false;
-      const logPId = String(log.productId || '').trim().toLowerCase();
-      const logPCode = String(log.productCode || '').trim().toLowerCase();
-      const logPName = String(log.name || '').trim().toLowerCase();
-
-      return (
-        (pId && (logPId === pId || logPCode === pId)) ||
-        (pCode && (logPCode === pCode || logPId === pCode)) ||
-        (pName && logPName === pName)
+    return resolvedStockLogs.filter(m => {
+      if (!m) return false;
+      const matchId = m.productId && String(m.productId).trim() === pId;
+      const matchCode = m.productCode && (
+        String(m.productCode).trim().toLowerCase() === pCode
       );
+      const matchLegacySku = m.sku && (
+        String(m.sku).trim().toLowerCase() === pCode
+      );
+      const matchItemCode = m.itemCode && (
+        String(m.itemCode).trim().toLowerCase() === pCode
+      );
+      const matchName = pName && (
+        (m.name && String(m.name).trim().toLowerCase() === pName) ||
+        (m.productName && String(m.productName).trim().toLowerCase() === pName)
+      );
+      const matchCrossId = (pId && String(m.productCode || m.sku || '').trim().toLowerCase() === pId.toLowerCase()) ||
+                           (pCode && String(m.productId || '').trim().toLowerCase() === pCode);
+
+      return matchId || matchCode || matchLegacySku || matchItemCode || matchName || matchCrossId;
     });
   }, [resolvedStockLogs, selectedProduct]);
 
@@ -479,7 +488,7 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
                       <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
                         {/* 1. Date */}
                         <td className="py-3.5 pl-5 text-slate-500 whitespace-nowrap font-mono text-xs">
-                          {log.displayDate || (log.date && String(log.date).includes('T') ? new Date(log.date).toLocaleString('th-TH') : (log.date || '-'))}
+                          {log.timestamp || log.displayDate || (log.date && String(log.date).includes('T') ? new Date(log.date).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) : (log.date || '-'))}
                         </td>
 
                         {/* 2. Type */}
@@ -502,12 +511,12 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
                         {/* 3. Document Number */}
                         <td className="py-3.5 px-3 font-mono text-xs whitespace-nowrap">
                           {(() => {
-                            const normalizedDocNo = normalizeDocNumber(log) || log.documentNo || log.docNo || log.grNumber || '-';
-                            const parentPo = log.refPo || log.poNumber || log.poNo || (purchase && purchase.poNumber !== '-' ? purchase.poNumber : null);
+                            const normalizedDocNo = log.docNo || log.documentNo || log.grnNo || log.grnNumber || log.grNumber || normalizeDocNumber(log) || '-';
+                            const parentPo = log.poNo || log.poNumber || log.refPo || (purchase && purchase.poNumber !== '-' ? purchase.poNumber : null);
                             return (
                               <div>
                                 <span className="font-mono font-bold text-slate-800">{normalizedDocNo}</span>
-                                {parentPo && parentPo !== '-' && (
+                                {parentPo && parentPo !== '-' && parentPo !== normalizedDocNo && (
                                   <div className="text-[11px] text-slate-400 font-sans">อ้างอิง: {parentPo}</div>
                                 )}
                               </div>
@@ -519,19 +528,19 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
                         <td className={`py-3.5 px-3 text-right font-mono font-bold tabular-nums whitespace-nowrap ${
                           isIncoming ? 'text-emerald-700' : 'text-rose-700'
                         }`}>
-                          {isIncoming ? `+${Number(log.qty).toLocaleString()}` : `-${Number(log.qty).toLocaleString()}`}
+                          {isIncoming ? `+${Number(log.quantity ?? log.qty ?? 0).toLocaleString()}` : `-${Number(log.quantity ?? log.qty ?? 0).toLocaleString()}`}
                         </td>
 
                         {/* 5. Balance */}
                         <td className="py-3.5 px-3 text-right font-mono font-bold text-slate-900 tabular-nums whitespace-nowrap">
-                          {Number(log.balance).toLocaleString()}
+                          {Number(log.balanceAfter ?? log.balance ?? 0).toLocaleString()}
                         </td>
 
                         {/* 6. [NEW] PO Number */}
                         <td className="py-3.5 px-3 font-mono text-xs whitespace-nowrap text-left">
-                          {isIncoming && (purchase.poNumber !== '-' || log.poNo || log.poNumber) ? (
+                          {isIncoming && ((log.poNo && log.poNo !== '-') || (log.poNumber && log.poNumber !== '-') || (purchase && purchase.poNumber !== '-')) ? (
                             <span className="inline-block px-2 py-0.5 rounded-md bg-indigo-50 font-bold text-indigo-700 border border-indigo-200/70">
-                              {purchase.poNumber !== '-' ? purchase.poNumber : (log.poNo || log.poNumber)}
+                              {(log.poNo && log.poNo !== '-') ? log.poNo : ((log.poNumber && log.poNumber !== '-') ? log.poNumber : purchase.poNumber)}
                             </span>
                           ) : (
                             <span className="text-slate-400 font-normal">-</span>
@@ -540,7 +549,11 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
 
                         {/* 7. [NEW] Total Purchase Amount */}
                         <td className="py-3.5 px-3 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-                          {isIncoming && purchase.totalPurchaseAmount !== '-' ? (
+                          {isIncoming && log.totalAmount !== undefined && Number(log.totalAmount) > 0 ? (
+                            <span className="font-semibold text-slate-900">
+                              {formatCurrency(log.totalAmount)} ฿
+                            </span>
+                          ) : isIncoming && purchase.totalPurchaseAmount !== '-' ? (
                             <span className="font-semibold text-slate-900">
                               {purchase.totalPurchaseAmount}
                             </span>
@@ -555,13 +568,17 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
 
                         {/* 8. [NEW] Average Unit Price */}
                         <td className="py-3.5 px-3 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-                          {isIncoming && purchase.avgUnitPrice !== '-' ? (
+                          {isIncoming && log.unitPrice !== undefined && Number(log.unitPrice) > 0 ? (
+                            <span className="font-semibold text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100">
+                              ฿{formatCurrency(log.unitPrice)} / {selectedProduct?.stockUnit || selectedProduct?.unit || log.unit || 'ชิ้น'}
+                            </span>
+                          ) : isIncoming && purchase.avgUnitPrice !== '-' ? (
                             <span className="font-semibold text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100">
                               {purchase.avgUnitPrice}
                             </span>
-                          ) : isIncoming && log.unitPrice !== undefined && Number(log.unitPrice) > 0 ? (
+                          ) : isIncoming && log.baseUnitCost !== undefined && Number(log.baseUnitCost) > 0 ? (
                             <span className="font-semibold text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100">
-                              ฿{formatCurrency(log.unitPrice)} / {selectedProduct?.stockUnit || selectedProduct?.unit || log.unit || 'ชิ้น'}
+                              ฿{formatCurrency(log.baseUnitCost)} / {selectedProduct?.stockUnit || selectedProduct?.unit || log.unit || 'ชิ้น'}
                             </span>
                           ) : (
                             <span className="text-slate-400 font-normal">-</span>
@@ -570,12 +587,12 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
 
                         {/* 9. User */}
                         <td className="py-3.5 px-3 text-slate-700 text-xs whitespace-nowrap">
-                          {log.user || '-'}
+                          {log.actorName || log.user || '-'}
                         </td>
 
                         {/* 10. Note */}
-                        <td className="py-3.5 pr-5 text-slate-600 text-xs max-w-xs truncate" title={log.note}>
-                          {log.note || '-'}
+                        <td className="py-3.5 pr-5 text-slate-600 text-xs max-w-xs truncate" title={log.notes || log.note}>
+                          {log.notes || log.note || '-'}
                         </td>
                       </tr>
                     );

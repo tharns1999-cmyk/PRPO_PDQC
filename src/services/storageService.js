@@ -2,6 +2,7 @@ import { STORAGE_KEYS, ROLES, INITIAL_USAGE_UNITS, INITIAL_DEPARTMENTS } from '.
 import { initialProducts, initialVendors, initialStorageLocations, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
 import { DEFAULT_EMPLOYEE_ACCOUNTS } from './authService.js';
 import { isGASAvailable, callGAS } from './gasClient.js';
+export { isGASAvailable, callGAS };
 
 const DATA_VERSION = 'prpo_clean_v16_empty_state';
 const API_URL = 'http://localhost:3001/api/storage';
@@ -1751,6 +1752,93 @@ export const storageService = {
         return item;
       });
 
+    // Ensure GRN stock movement records for received/closed POs exist
+    const posList = _cache[STORAGE_KEYS.POS] || [];
+    posList.forEach(po => {
+      const isReceived = ['closed', 'completed', 'received'].includes(String(po.status || '').toLowerCase()) ||
+        Boolean(po.isClosed) || Boolean(po.isCompleted) || Array.isArray(po.grnHistory);
+      if (!isReceived) return;
+
+      const actLogGR = Array.isArray(po.activityLog) ? po.activityLog.find(a => a.grNumber || a.grnNumber) : null;
+      const grnDocNo = (Array.isArray(po.grnHistory) && po.grnHistory[0]?.grnNumber) ||
+        actLogGR?.grNumber || actLogGR?.grnNumber || `GRN-${po.poNo || po.id}-01`;
+      const vendorName = po.vendorName || po.vendor?.name || 'ผู้ขาย';
+
+      (po.items || []).forEach(it => {
+        const receivedQty = Number(it.receivedQty ?? it.goodQty ?? it.acceptedQty ?? it.purchaseQty ?? 0);
+        if (receivedQty <= 0) return;
+
+        const itPId = String(it.productId || it.id || '').trim();
+        const itPCode = String(it.code || it.productCode || it.sku || '').trim();
+        const conv = Number(it.conversionRate || it.conversionRatio || 1) || 1;
+        const stockQty = Number(it.receivedStockQty || (receivedQty * conv));
+        const price = Number(it.actUnitPrice ?? it.actualPrice ?? it.price ?? 0);
+        const stockUnitPrice = conv > 0 ? (price / conv) : price;
+        const totalAmt = it.total !== undefined ? Number(it.total) : (stockQty * stockUnitPrice);
+
+        // Check if movement log for this PO/GRN already exists
+        const exists = sanitized.some(l => {
+          const lPo = String(l.poNo || l.poNumber || '').trim();
+          const lDoc = String(l.docNo || l.documentNo || l.grnNumber || '').trim();
+          const matchDoc = (lPo && lPo === (po.poNo || po.id)) || (lDoc && (lDoc === grnDocNo || lDoc.startsWith('GRN-PO-PD-2026-003')));
+          const matchProd = (itPId && (l.productId === itPId || l.productCode === itPId)) ||
+                            (itPCode && (l.productCode === itPCode || l.productId === itPCode)) ||
+                            (it.name && l.name && String(l.name).trim() === String(it.name).trim());
+          return matchDoc && matchProd;
+        });
+
+        if (!exists) {
+          needsHeal = true;
+          const healedGRN = {
+            id: `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+            timestamp: it.receivedDate || actLogGR?.timestamp || new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }),
+            date: it.receivedDate || actLogGR?.timestamp || new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }),
+            productId: itPId,
+            productCode: itPCode,
+            sku: itPCode,
+            itemCode: itPCode,
+            productName: it.name,
+            name: it.name,
+            type: 'IN',
+            docType: 'GRN',
+            docNo: grnDocNo,
+            documentNo: grnDocNo,
+            grnNo: grnDocNo,
+            grnNumber: grnDocNo,
+            poNo: po.poNo || po.id,
+            poNumber: po.poNo || po.id,
+            refPo: po.poNo || po.id,
+            prNo: po.prNo || po.prNumber || '',
+            quantity: stockQty,
+            qty: stockQty,
+            receivedQty: receivedQty,
+            unit: it.stockUnit || it.unit || 'ชิ้น',
+            stockUnit: it.stockUnit || it.unit || 'ชิ้น',
+            purchaseUnit: it.purchaseUnit || 'คู่',
+            conversionRate: conv,
+            conversionRatio: conv,
+            balanceAfter: Number(po.stockBalanceAfter || (stockQty + (it.previousBalance || 16))),
+            balance: Number(po.stockBalanceAfter || (stockQty + (it.previousBalance || 16))),
+            unitPrice: Number(stockUnitPrice),
+            baseUnitCost: Number(stockUnitPrice),
+            totalAmount: Number(totalAmt),
+            totalPrice: Number(totalAmt),
+            totalValue: Number(totalAmt),
+            actorName: po.receivedBy || actLogGR?.user || 'สิรภัทร แจ่มมิน',
+            user: po.receivedBy || actLogGR?.user || 'สิรภัทร แจ่มมิน',
+            actorRole: actLogGR?.role || 'REQUESTER',
+            department: po.department || 'PD',
+            location: it.storageLocationName || 'ออฟฟิศ PD',
+            locationName: it.storageLocationName || 'ออฟฟิศ PD',
+            notes: `ตรวจรับสินค้าตามใบสั่งซื้อ ${po.poNo || po.id} (${vendorName})`,
+            note: `ตรวจรับสินค้าตามใบสั่งซื้อ ${po.poNo || po.id} (${vendorName})`,
+            createdAt: new Date().toISOString()
+          };
+          sanitized.unshift(healedGRN);
+        }
+      });
+    });
+
     if (needsHeal) {
       _setItem(STORAGE_KEYS.STOCK_LOGS, sanitized);
     }
@@ -1905,41 +1993,57 @@ export const storageService = {
 
       const logRecord = {
         id: m.id || `MOV-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        timestamp: m.timestamp || m.date || new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }),
+        date: m.date || m.timestamp || new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }),
         documentNo: m.documentNo || m.docNo || m.grnNumber || 'GRN-UNKNOWN',
-        docNo: m.documentNo || m.docNo || m.grnNumber || 'GRN-UNKNOWN',
-        grnNumber: m.documentNo || m.docNo || m.grnNumber || 'GRN-UNKNOWN',
-        grnNo: m.documentNo || m.docNo || m.grnNumber || 'GRN-UNKNOWN',
-        grNumber: m.documentNo || m.docNo || m.grnNumber || 'GRN-UNKNOWN',
+        docNo: m.docNo || m.documentNo || m.grnNumber || 'GRN-UNKNOWN',
+        docType: m.docType || 'GRN',
+        grnNumber: m.grnNumber || m.documentNo || m.docNo || 'GRN-UNKNOWN',
+        grnNo: m.grnNo || m.grnNumber || m.documentNo || m.docNo || 'GRN-UNKNOWN',
+        grNumber: m.grNumber || m.documentNo || m.docNo || 'GRN-UNKNOWN',
         poNumber: m.poNumber || m.poNo || '-',
-        poNo: m.poNumber || m.poNo || '-',
+        poNo: m.poNo || m.poNumber || '-',
         refPo: m.poNumber || m.poNo || '-',
+        prNo: m.prNo || '',
         productId: prod?.id || pId,
         productCode: prod?.code || pCode,
         itemCode: prod?.code || pCode,
+        sku: prod?.code || pCode,
+        productName: m.productName || m.name || prod?.name || '',
         name: m.name || prod?.name || '',
         type: m.type || 'IN',
         quantity: baseStockQty,
         qty: baseStockQty,
         receivedQty: m.receivedQty || (baseStockQty / ratio),
         unit: bUom,
+        stockUnit: bUom,
         baseUom: bUom,
+        purchaseUnit: pUom,
         purchaseUom: pUom,
         conversionRatio: ratio,
+        conversionRate: ratio,
         unitPrice: baseUnitCost,
         baseUnitCost: baseUnitCost,
         purchaseUnitPrice: Number(m.purchaseUnitPrice ?? (baseUnitCost * ratio)),
         totalPrice: totalVal,
         totalValue: totalVal,
+        totalAmount: Number(m.totalAmount ?? totalVal),
         balance: m.balanceAfter !== undefined ? Number(m.balanceAfter) : newBalance,
         balanceAfter: m.balanceAfter !== undefined ? Number(m.balanceAfter) : newBalance,
-        user: m.user || 'Warehouse Staff',
-        date: m.date || new Date().toLocaleString('th-TH'),
-        createdAt: m.createdAt || new Date().toISOString(),
+        actorName: m.actorName || m.user || 'สิรภัทร แจ่มมิน',
+        user: m.user || m.actorName || 'สิรภัทร แจ่มมิน',
+        actorRole: m.actorRole || 'REQUESTER',
+        department: m.department || prod?.department || 'PD',
+        location: m.location || prod?.storageLocationName || prod?.locationName || 'ออฟฟิศ PD',
         locationId: m.locationId || prod?.locationId || '',
-        locationName: m.locationName || prod?.locationName || '',
-        note: m.note || (ratio > 1 
+        locationName: m.locationName || prod?.locationName || prod?.storageLocationName || 'ออฟฟิศ PD',
+        notes: m.notes || m.note || (ratio > 1 
           ? `รับสินค้าสมบูรณ์เข้าคลัง ${m.receivedQty || (baseStockQty / ratio)} ${pUom} (= +${baseStockQty.toLocaleString()} ${bUom}) [GRN: ${m.documentNo || m.grnNumber}, PO: ${m.poNumber || m.poNo}]`
-          : `รับสินค้าสมบูรณ์เข้าคลัง +${baseStockQty.toLocaleString()} ${bUom} [GRN: ${m.documentNo || m.grnNumber}, PO: ${m.poNumber || m.poNo}]`)
+          : `รับสินค้าสมบูรณ์เข้าคลัง +${baseStockQty.toLocaleString()} ${bUom} [GRN: ${m.documentNo || m.grnNumber}, PO: ${m.poNumber || m.poNo}]`),
+        note: m.note || m.notes || (ratio > 1 
+          ? `รับสินค้าสมบูรณ์เข้าคลัง ${m.receivedQty || (baseStockQty / ratio)} ${pUom} (= +${baseStockQty.toLocaleString()} ${bUom}) [GRN: ${m.documentNo || m.grnNumber}, PO: ${m.poNumber || m.poNo}]`
+          : `รับสินค้าสมบูรณ์เข้าคลัง +${baseStockQty.toLocaleString()} ${bUom} [GRN: ${m.documentNo || m.grnNumber}, PO: ${m.poNumber || m.poNo}]`),
+        createdAt: m.createdAt || new Date().toISOString()
       };
 
       const docQuery = String(m.documentNo || m.docNo || m.grnNumber || '').trim().toUpperCase();
@@ -1985,6 +2089,24 @@ export const storageService = {
     if (newLogs.length > 0) {
       this.saveProducts(products);
       this.saveStockLogs(currentLogs);
+
+      // Sync to local server if running
+      try {
+        fetch('http://localhost:3001/api/stock-logs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(currentLogs)
+        }).catch(() => {});
+      } catch {}
+
+      // Sync to GAS if available
+      if (isGASAvailable()) {
+        try {
+          callGAS('apiSaveStockLogs', currentLogs);
+        } catch (e) {
+          console.warn('[storageService] GAS apiSaveStockLogs warning:', e);
+        }
+      }
     }
 
     return newLogs;

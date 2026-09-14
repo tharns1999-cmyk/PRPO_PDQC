@@ -247,6 +247,8 @@ const mockGASRouter = async (functionName, args = []) => {
       };
     }
 
+    case 'apiClearTransactionalData':
+    case 'apiWipeAllGASData':
     case 'apiClearAllCache': {
       // In local dev, clear sessionStorage & localStorage cache keys
       const CACHE_STORAGE_KEYS = [
@@ -263,7 +265,7 @@ const mockGASRouter = async (functionName, args = []) => {
           CACHE_STORAGE_KEYS.forEach(k => localStorage.removeItem(k));
         }
       } catch(e) {}
-      return { success: true, message: 'Local dev cache cleared' };
+      return { success: true, message: 'Local dev wiped and cache cleared' };
     }
 
     default:

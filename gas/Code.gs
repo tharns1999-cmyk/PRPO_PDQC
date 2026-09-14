@@ -57,6 +57,78 @@ const AUDIT_HEADERS = [
   'clientEnv'      // เบราว์เซอร์/อุปกรณ์ (User Agent)
 ];
 
+const STOCK_MOVEMENT_HEADERS = [
+  'id', 'timestamp', 'date', 'productId', 'productCode', 'itemCode', 'sku', 
+  'productName', 'name', 'type', 'docType', 'docNo', 'documentNo', 'grnNo', 
+  'grnNumber', 'poNo', 'poNumber', 'refPo', 'prNo', 'quantity', 'qty', 
+  'receivedQty', 'unit', 'stockUnit', 'baseUom', 'purchaseUnit', 'purchaseUom', 
+  'conversionRatio', 'conversionRate', 'balanceAfter', 'balance', 'unitPrice', 
+  'baseUnitCost', 'totalAmount', 'totalPrice', 'totalValue', 'actorName', 'user', 
+  'actorRole', 'department', 'location', 'locationName', 'notes', 'note', 'createdAt'
+];
+
+function mapStockMovementRecord(movement) {
+  if (!movement || typeof movement !== 'object') return {};
+  const qty = movement.quantity !== undefined ? movement.quantity : (movement.qty !== undefined ? movement.qty : 0);
+  const bal = movement.balanceAfter !== undefined ? movement.balanceAfter : (movement.balance !== undefined ? movement.balance : 0);
+  const uPrice = movement.unitPrice !== undefined ? movement.unitPrice : (movement.baseUnitCost !== undefined ? movement.baseUnitCost : 0);
+  const totAmt = movement.totalAmount !== undefined ? movement.totalAmount : (movement.totalPrice !== undefined ? movement.totalPrice : movement.totalValue);
+  const dNo = movement.docNo || movement.documentNo || movement.grnNo || movement.grnNumber || movement.grNumber || '';
+  const pNo = movement.poNo || movement.poNumber || movement.refPo || '';
+  const ts = movement.timestamp || movement.date || Utilities.formatDate(new Date(), 'Asia/Bangkok', 'dd/MM/yyyy HH:mm:ss');
+  const prodName = movement.productName || movement.name || '';
+  const prodCode = movement.productCode || movement.itemCode || movement.sku || '';
+
+  return {
+    id: movement.id || ('MOV-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4)),
+    timestamp: ts,
+    date: ts,
+    productId: String(movement.productId || ''),
+    productCode: String(prodCode),
+    itemCode: String(prodCode),
+    sku: String(prodCode),
+    productName: prodName,
+    name: prodName,
+    type: movement.type || 'IN',
+    docType: movement.docType || 'GRN',
+    docNo: dNo,
+    documentNo: dNo,
+    grnNo: dNo,
+    grnNumber: dNo,
+    poNo: pNo,
+    poNumber: pNo,
+    refPo: pNo,
+    prNo: movement.prNo || '',
+    quantity: qty,
+    qty: qty,
+    receivedQty: movement.receivedQty !== undefined ? movement.receivedQty : qty,
+    unit: movement.unit || movement.stockUnit || movement.baseUom || 'ชิ้น',
+    stockUnit: movement.stockUnit || movement.unit || movement.baseUom || 'ชิ้น',
+    baseUom: movement.baseUom || movement.unit || 'ชิ้น',
+    purchaseUnit: movement.purchaseUnit || movement.purchaseUom || 'ชิ้น',
+    purchaseUom: movement.purchaseUom || movement.purchaseUnit || 'ชิ้น',
+    conversionRatio: Number(movement.conversionRatio || movement.conversionRate || 1),
+    conversionRate: Number(movement.conversionRate || movement.conversionRatio || 1),
+    balanceAfter: bal,
+    balance: bal,
+    unitPrice: uPrice,
+    baseUnitCost: uPrice,
+    purchaseUnitPrice: movement.purchaseUnitPrice || 0,
+    totalAmount: totAmt,
+    totalPrice: totAmt,
+    totalValue: totAmt,
+    actorName: movement.actorName || movement.user || 'สิรภัทร แจ่มมิน',
+    user: movement.user || movement.actorName || 'สิรภัทร แจ่มมิน',
+    actorRole: movement.actorRole || 'REQUESTER',
+    department: movement.department || 'PD',
+    location: movement.location || movement.locationName || 'ออฟฟิศ PD',
+    locationName: movement.locationName || movement.location || 'ออฟฟิศ PD',
+    notes: movement.notes || movement.note || '',
+    note: movement.note || movement.notes || '',
+    createdAt: movement.createdAt || new Date().toISOString()
+  };
+}
+
 /**
  * Web App entrypoint: Serves the compiled React Single Page App
  */
@@ -573,13 +645,64 @@ function ensureCoreSheetsInitialized(ss) {
   getOrCreateSheetWithHeaders(ss, CONFIG.SHEET_PO_RECORDS, poHeaders);
 
   // 11. Stock_Movements
-  const stockHeaders = ['id', 'date', 'productId', 'productCode', 'itemCode', 'name', 'type', 'documentNo', 'docNo', 'grnNumber', 'poNo', 'poNumber', 'refPo', 'qty', 'quantity', 'receivedQty', 'unit', 'baseUom', 'purchaseUom', 'conversionRatio', 'unitPrice', 'baseUnitCost', 'purchaseUnitPrice', 'totalPrice', 'totalValue', 'balance', 'balanceAfter', 'user', 'locationId', 'locationName', 'note', 'createdAt'];
-  const stockSheet = getOrCreateSheetWithHeaders(ss, CONFIG.SHEET_STOCK_MOVEMENTS, stockHeaders);
+  const stockSheet = getOrCreateSheetWithHeaders(ss, CONFIG.SHEET_STOCK_MOVEMENTS, STOCK_MOVEMENT_HEADERS);
   if (stockSheet.getLastRow() <= 1) {
     const seedStock = [
-      ['INIT-PROD-PD-001', '2026-09-01 00:00:00', 'PROD-PD-001', 'PD-OIL-068', 'PD-OIL-068', 'น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)', 'IN', 'INITIAL-BALANCE', 'INITIAL-BALANCE', 'INITIAL-BALANCE', '-', '-', '-', 2400, 2400, 12, 'ลิตร', 'ลิตร', 'ถัง (200L)', 200, 72.50, 72.50, 14500, 174000, 174000, 2400, 2400, 'System Initial Balance', 'LOC-PD-001', 'ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)', 'ยอดยกมาจากระบบเริ่มต้น', '2026-09-01T00:00:00.000Z']
+      mapStockMovementRecord({
+        id: 'INIT-PROD-PD-001',
+        timestamp: '01/09/2569 00:00:00',
+        date: '01/09/2569 00:00:00',
+        productId: 'PROD-PD-001',
+        productCode: 'PD-OIL-068',
+        itemCode: 'PD-OIL-068',
+        sku: 'PD-OIL-068',
+        productName: 'น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)',
+        name: 'น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)',
+        type: 'IN',
+        docType: 'GRN',
+        docNo: 'INITIAL-BALANCE',
+        documentNo: 'INITIAL-BALANCE',
+        grnNo: 'INITIAL-BALANCE',
+        grnNumber: 'INITIAL-BALANCE',
+        poNo: '-',
+        poNumber: '-',
+        refPo: '-',
+        prNo: '',
+        quantity: 2400,
+        qty: 2400,
+        receivedQty: 12,
+        unit: 'ลิตร',
+        stockUnit: 'ลิตร',
+        baseUom: 'ลิตร',
+        purchaseUnit: 'ถัง (200L)',
+        purchaseUom: 'ถัง (200L)',
+        conversionRatio: 200,
+        conversionRate: 200,
+        balanceAfter: 2400,
+        balance: 2400,
+        unitPrice: 72.50,
+        baseUnitCost: 72.50,
+        purchaseUnitPrice: 14500,
+        totalAmount: 174000,
+        totalPrice: 174000,
+        totalValue: 174000,
+        actorName: 'System Initial Balance',
+        user: 'System Initial Balance',
+        actorRole: 'ADMIN',
+        department: 'PD',
+        location: 'ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)',
+        locationName: 'ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)',
+        notes: 'ยอดยกมาจากระบบเริ่มต้น (System Initial Balance)',
+        note: 'ยอดยกมาจากระบบเริ่มต้น (System Initial Balance)',
+        createdAt: '2026-09-01T00:00:00.000Z'
+      })
     ];
-    seedStock.forEach(function(row) { stockSheet.appendRow(row); });
+    const seedRows = seedStock.map(function(item) {
+      return STOCK_MOVEMENT_HEADERS.map(function(h) {
+        return item[h] !== undefined && item[h] !== null ? item[h] : '';
+      });
+    });
+    seedRows.forEach(function(row) { stockSheet.appendRow(row); });
   }
 
   // 12. Notifications
@@ -1168,8 +1291,8 @@ function apiUpdateProduct(productData) {
 function apiSaveStockLogs(logs) {
   try {
     const ss = getOrCreateSpreadsheet();
-    const headers = ['id', 'date', 'productId', 'productCode', 'itemCode', 'name', 'type', 'documentNo', 'docNo', 'grnNumber', 'poNo', 'poNumber', 'refPo', 'qty', 'quantity', 'receivedQty', 'unit', 'baseUom', 'purchaseUom', 'conversionRatio', 'unitPrice', 'baseUnitCost', 'purchaseUnitPrice', 'totalPrice', 'totalValue', 'balance', 'balanceAfter', 'user', 'locationId', 'locationName', 'note', 'createdAt'];
-    writeObjectsToSheet(ss, CONFIG.SHEET_STOCK_MOVEMENTS, headers, logs);
+    const mappedLogs = (Array.isArray(logs) ? logs : []).map(mapStockMovementRecord);
+    writeObjectsToSheet(ss, CONFIG.SHEET_STOCK_MOVEMENTS, STOCK_MOVEMENT_HEADERS, mappedLogs);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -1182,14 +1305,42 @@ function apiSaveStockLogs(logs) {
 function apiLogStockMovement(movement) {
   try {
     const ss = getOrCreateSpreadsheet();
-    const headers = ['id', 'date', 'productId', 'productCode', 'itemCode', 'name', 'type', 'documentNo', 'docNo', 'grnNumber', 'poNo', 'poNumber', 'refPo', 'qty', 'quantity', 'receivedQty', 'unit', 'baseUom', 'purchaseUom', 'conversionRatio', 'unitPrice', 'baseUnitCost', 'purchaseUnitPrice', 'totalPrice', 'totalValue', 'balance', 'balanceAfter', 'user', 'locationId', 'locationName', 'note', 'createdAt'];
-    const sheet = getOrCreateSheetWithHeaders(ss, CONFIG.SHEET_STOCK_MOVEMENTS, headers);
+    const sheet = getOrCreateSheetWithHeaders(ss, CONFIG.SHEET_STOCK_MOVEMENTS, STOCK_MOVEMENT_HEADERS);
     
-    const row = headers.map(function(h) {
-      const val = movement[h];
-      return val !== undefined && val !== null ? val : '';
-    });
-    sheet.appendRow(row);
+    if (Array.isArray(movement)) {
+      const rows = movement.map(function(m) {
+        const mapped = mapStockMovementRecord(m);
+        return STOCK_MOVEMENT_HEADERS.map(function(h) {
+          const val = mapped[h];
+          return val !== undefined && val !== null ? val : '';
+        });
+      });
+      if (rows.length > 0) {
+        sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, STOCK_MOVEMENT_HEADERS.length).setValues(rows);
+      }
+    } else {
+      const mapped = mapStockMovementRecord(movement);
+      const row = STOCK_MOVEMENT_HEADERS.map(function(h) {
+        const val = mapped[h];
+        return val !== undefined && val !== null ? val : '';
+      });
+      sheet.appendRow(row);
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Receive goods for a PO: updates PO status, Products_Master balance, and logs Stock_Movements
+ */
+function apiReceiveGoods(poId, receivingPayload) {
+  try {
+    const ss = getOrCreateSpreadsheet();
+    if (receivingPayload && Array.isArray(receivingPayload.stockMovements) && receivingPayload.stockMovements.length > 0) {
+      apiLogStockMovement(receivingPayload.stockMovements);
+    }
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };

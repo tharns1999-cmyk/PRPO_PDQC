@@ -1,72 +1,62 @@
 {
-  "PD": {
-    "monthlyBudget": 25412,
-    "spent": 9250,
-    "actualExpense": 0,
-    "pending": 0,
-    "variance": 16162,
-    "history": {
-      "2026-09": 25412
-    },
-    "historicalSpent": {
-      "2026-09": 9250
-    },
-    "refundCredits": {}
-  },
-  "QC": {
-    "monthlyBudget": 74155,
-    "spent": 0,
-    "actualExpense": 0,
-    "pending": 0,
-    "variance": 74155,
-    "history": {
-      "2026-09": 74155
-    },
+  "WH": {
+    "monthlyBudget": 120000,
     "historicalSpent": {
       "2026-09": 0
     },
-    "refundCredits": {}
-  },
-  "WH": {
-    "monthlyBudget": 120000,
-    "spent": 0,
-    "actualExpense": 0,
-    "pending": 0,
-    "variance": 120000,
     "history": {
       "2026-09": 120000
     },
+    "variance": 120000,
+    "spent": 0,
+    "pending": 0
+  },
+  "QC": {
+    "monthlyBudget": 150000,
     "historicalSpent": {
       "2026-09": 0
     },
-    "refundCredits": {}
+    "history": {
+      "2026-09": 150000
+    },
+    "variance": 150000,
+    "pending": 0,
+    "spent": 0
+  },
+  "PD": {
+    "monthlyBudget": 1000000,
+    "historicalSpent": {
+      "2026-09": 0
+    },
+    "history": {
+      "2026-09": 1000000
+    },
+    "variance": 1000000,
+    "pending": 0,
+    "spent": 0
   },
   "PUR": {
     "monthlyBudget": 100000,
-    "spent": 0,
-    "actualExpense": 0,
-    "pending": 0,
-    "variance": 100000,
+    "historicalSpent": {
+      "2026-09": 0
+    },
     "history": {
       "2026-09": 100000
     },
-    "historicalSpent": {
-      "2026-09": 0
-    },
-    "refundCredits": {}
+    "variance": 100000,
+    "spent": 0,
+    "pending": 0
   },
   "ENG": {
     "monthlyBudget": 205000,
-    "spent": 0,
-    "actualExpense": 0,
-    "pending": 0,
-    "variance": 205000,
-    "history": {
-      "2026-09": 205000
-    },
     "historicalSpent": {
       "2026-09": 0
     },
-    "refundCredits": {}
+    "history": {
+      "2026-09": 205000
+    },
+    "variance": 205000,
+    "spent": 0,
+    "pending": 0
   }
 }

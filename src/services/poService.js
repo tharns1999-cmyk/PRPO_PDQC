@@ -1,6 +1,7 @@
 import { storageService } from './storageService.js';
 import { workflowEngine } from './workflowEngine.js';
 import { apiService } from './apiService.js';
+import { inventoryService } from './inventoryService.js';
 import { generateNextPOId } from '../utils/idGenerator.js';
 
 export const poService = {
@@ -24,6 +25,24 @@ export const poService = {
 
   async acknowledgeOnlineOrder(poId, storeName, user, items = null, note = '') {
     return apiService.acknowledgeOnlineTask(poId, storeName, user, items, note);
+  },
+
+  /**
+   * Receive goods for a PO with guaranteed stock movement records creation
+   */
+  async receiveGoods(poId, receivingItems, user, note = '', options = {}) {
+    const res = await apiService.receiveGoods(poId, receivingItems, user, note, options);
+    const pos = storageService.getPOs() || [];
+    const targetPO = pos.find(p => p.id === poId || p.poNo === poId);
+    if (targetPO) {
+      await inventoryService.recordGRNStockMovements({
+        po: targetPO,
+        grnNumber: options.grNumber || options.grnNumber,
+        receivingItems,
+        currentUser: user
+      });
+    }
+    return res;
   },
 
   getPOs() {

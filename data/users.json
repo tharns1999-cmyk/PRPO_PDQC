@@ -16,10 +16,10 @@
     ],
     "name": "สิรภัทร แจ่มมิน",
     "primaryDepartment": "PD",
+    "id": "USR-0001",
     "departments": [
       "PD"
     ],
-    "id": "USR-0001",
     "department": "PD",
     "email": "",
     "username": "siraphat.pd",
@@ -29,8 +29,8 @@
     "employeeName": "ณัฐธินีย์ สอนครบบุรี",
     "signature": "",
     "level": 1,
-    "displayName": "ณัฐธินีย์ สอนครบบุรี",
     "roleId": "REQUESTER_QC",
+    "displayName": "ณัฐธินีย์ สอนครบบุรี",
     "pictureUrl": "",
     "canonicalRole": "REQUESTER",
     "description": "สร้าง/ส่ง PR ฝ่าย QC/Lab, เบิกจ่ายสารเคมี, ตรวจรับของ",
@@ -48,15 +48,15 @@
     "id": "USR-0002",
     "department": "QC",
     "email": "",
-    "status": "ACTIVE",
-    "username": "natthinee.qc"
+    "username": "natthinee.qc",
+    "status": "ACTIVE"
   },
   {
     "employeeName": "กัลยาณี พลไกร",
-    "level": 2,
     "signature": "",
-    "roleId": "ASST_MANAGER",
+    "level": 2,
     "displayName": "กัลยาณี พลไกร",
+    "roleId": "ASST_MANAGER",
     "pictureUrl": "",
     "canonicalRole": "REVIEWER",
     "description": "ตรวจทาน PR (Level 1 Reviewer)",
@@ -69,11 +69,11 @@
     ],
     "name": "กัลยาณี พลไกร",
     "primaryDepartment": "PD",
+    "id": "USR-0003",
     "departments": [
       "PD",
       "QC"
     ],
-    "id": "USR-0003",
     "department": "PD",
     "email": "",
     "status": "ACTIVE",
@@ -81,10 +81,10 @@
   },
   {
     "employeeName": "คุณนัท จัดซื้อ",
-    "level": 2,
     "signature": "",
-    "displayName": "คุณนัท จัดซื้อ",
+    "level": 2,
     "roleId": "ONLINE_PURCHASER",
+    "displayName": "คุณนัท จัดซื้อ",
     "pictureUrl": "",
     "canonicalRole": "PURCHASER",
     "description": "จัดการสั่งซื้อออนไลน์ Shopee/Lazada",
@@ -98,12 +98,12 @@
     ],
     "name": "คุณนัท จัดซื้อ",
     "primaryDepartment": "ALL",
+    "id": "USR-0004",
     "departments": [
       "PD",
       "QC",
       "ALL"
     ],
-    "id": "USR-0004",
     "department": "ALL",
     "email": "",
     "username": "nat.on",
@@ -162,7 +162,7 @@
     ],
     "department": "ALL",
     "email": "",
-    "status": "ACTIVE",
-    "username": "admin"
+    "username": "admin",
+    "status": "ACTIVE"
   }
 ]

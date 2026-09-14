@@ -12,6 +12,7 @@ import { modalService } from '../../services/modalService';
 import { apiService } from '../../services/apiService';
 import { storageService } from '../../services/storageService';
 import { warehouseService, generateGRNNumber } from '../../services/warehouseService';
+import { formatLocalTimestamp } from '../../services/inventoryService';
 
 /**
  * Helper to resiliently resolve refund quantity and amount
@@ -647,38 +648,69 @@ export default function ReceivingModal({
       if (stockItemsToReceive.length > 0) {
         // Single SSOT Pipeline: logStockMovements is the canonical Dual-UOM stock intake path.
         // It updates stockBalance, enforces deduplication by (documentNo + productCode),
-        // and persists atomically. Do NOT invoke receiveToStock / submitGRN here —
-        // doing so creates a parallel log entry for the same GRN (duplicate +IN rows).
-        const movementsToEmit = stockItemsToReceive.map(it => ({
-          documentNo: grnNumber,
-          docNo: grnNumber,
-          grnNumber: grnNumber,
-          poNumber: targetPO.poNo || targetPO.id,
-          poNo: targetPO.poNo || targetPO.id,
-          itemCode: it.code || it.productId,
-          productId: it.productId,
-          name: it.name,
-          type: 'IN',
-          quantity: it.quantity, // base stock units
-          qty: it.quantity,
-          receivedQty: it.receivedQty, // purchase units
-          unit: it.baseUom,
-          baseUom: it.baseUom,
-          purchaseUom: it.purchaseUom,
-          conversionRatio: it.conversionRatio,
-          unitPrice: it.unitPrice, // base unit cost
-          baseUnitCost: it.unitPrice,
-          purchaseUnitPrice: it.purchaseUnitPrice,
-          totalValue: it.totalValue,
-          totalPrice: it.totalValue,
-          createdAt: timestamp,
-          date: new Date().toLocaleString('th-TH'),
-          user: typeof currentUser === 'object' ? `${currentUser.name || 'Staff'}` : String(currentUser || 'Warehouse Staff'),
-          note: it.conversionRatio > 1
-            ? `รับสินค้าสมบูรณ์เข้าคลัง ${it.receivedQty} ${it.purchaseUom} (= +${it.quantity.toLocaleString()} ${it.baseUom}) [GRN: ${grnNumber}, PO: ${targetPO.poNo || targetPO.id}]`
-            : `รับสินค้าสมบูรณ์เข้าคลัง +${it.quantity.toLocaleString()} ${it.baseUom} [GRN: ${grnNumber}, PO: ${targetPO.poNo || targetPO.id}]`
-        }));
+        // and persists atomically to storage, local backend, and GAS.
+        const allProducts = storageService.getProducts() || [];
+        const vendorName = targetPO.vendorName || targetPO.vendor?.name || 'ผู้จำหน่าย';
+        const movementsToEmit = stockItemsToReceive.map(it => {
+          const matchedProd = allProducts.find(p => p.id === it.productId || p.code === it.code);
+          const curBal = Number(matchedProd?.stockBalance || 0);
+          const newBal = curBal + it.quantity;
+
+          return {
+            id: `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+            timestamp: formatLocalTimestamp(), // เวลาไทย UTC+7
+            date: formatLocalTimestamp(),
+            productId: String(it.productId || '').trim(),
+            productCode: String(it.code || it.productId || '').trim(),
+            sku: String(it.code || it.productId || '').trim(),
+            itemCode: String(it.code || it.productId || '').trim(),
+            productName: it.name,
+            name: it.name,
+            type: 'IN', // รับเข้า (+IN)
+            docType: 'GRN',
+            docNo: grnNumber, // เช่น GRN-PO-PD-2026-003-01
+            documentNo: grnNumber,
+            grnNo: grnNumber,
+            grnNumber: grnNumber,
+            poNo: targetPO.poNo || targetPO.id, // เช่น PO-PD-2026-003
+            poNumber: targetPO.poNo || targetPO.id,
+            refPo: targetPO.poNo || targetPO.id,
+            prNo: targetPO.prNo || targetPO.prNumber || '',
+            quantity: it.quantity, // จำนวนในหน่วยสต็อก (เช่น +20 ชิ้น)
+            qty: it.quantity,
+            receivedQty: it.receivedQty, // จำนวนหน่วยจัดซื้อ (เช่น 10 คู่)
+            unit: it.stockUnit || it.baseUom || 'ชิ้น',
+            stockUnit: it.stockUnit || it.baseUom || 'ชิ้น',
+            baseUom: it.baseUom || 'ชิ้น',
+            purchaseUnit: it.purchaseUnit || it.purchaseUom || 'คู่',
+            purchaseUom: it.purchaseUom || 'คู่',
+            conversionRatio: it.conversionRatio,
+            conversionRate: it.conversionRatio,
+            balanceAfter: Number(newBal), // ยอดหลังรับ (เช่น 36)
+            balance: Number(newBal),
+            unitPrice: Number(it.unitPrice), // ต้นทุนต่อหน่วยสต็อก (เช่น ฿50.00 / ชิ้น)
+            baseUnitCost: Number(it.unitPrice),
+            purchaseUnitPrice: it.purchaseUnitPrice,
+            totalAmount: Number(it.totalValue), // มูลค่าเงินตาม PO จริง (เช่น 1,000.00 ฿)
+            totalPrice: Number(it.totalValue),
+            totalValue: Number(it.totalValue),
+            actorName: (typeof currentUser === 'object' ? currentUser?.name : String(currentUser || '')) || 'สิรภัทร แจ่มมิน',
+            user: (typeof currentUser === 'object' ? currentUser?.name : String(currentUser || '')) || 'สิรภัทร แจ่มมิน',
+            actorRole: currentUser?.canonicalRole || currentUser?.role || 'REQUESTER',
+            department: targetPO.department || matchedProd?.department || 'PD',
+            location: matchedProd?.storageLocationName || it.locationName || 'ออฟฟิศ PD',
+            locationName: matchedProd?.storageLocationName || it.locationName || 'ออฟฟิศ PD',
+            notes: `ตรวจรับสินค้าตามใบสั่งซื้อ ${targetPO.poNo || targetPO.id} (${vendorName})`,
+            note: `ตรวจรับสินค้าตามใบสั่งซื้อ ${targetPO.poNo || targetPO.id} (${vendorName})`,
+            createdAt: new Date().toISOString()
+          };
+        });
+
         storageService.logStockMovements(movementsToEmit);
+
+        if (appContext?.setStockLogs) {
+          appContext.setStockLogs(prev => [...movementsToEmit, ...(prev || [])]);
+        }
       }
 
       // 6. Calculate updatedPoItems reflecting this inspection round with dynamic remaining quantity & refund settlement

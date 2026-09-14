@@ -7,19 +7,19 @@
     "name": "K1",
     "id": "UNIT-PD-732609",
     "department": "PD",
-    "updatedAt": "2026-09-14T06:18:55.310Z",
-    "status": "ACTIVE"
+    "status": "ACTIVE",
+    "updatedAt": "2026-09-14T06:18:55.310Z"
   },
   {
     "createdAt": "2026-09-14T06:19:05.716Z",
     "badgeBg": "bg-emerald-100 text-emerald-800",
     "color": "bg-emerald-50 text-emerald-700 border-emerald-200/80",
-    "dot": "bg-emerald-500",
     "name": "K2",
+    "dot": "bg-emerald-500",
     "id": "UNIT-PD-743461",
     "department": "PD",
-    "status": "ACTIVE",
-    "updatedAt": "2026-09-14T06:19:05.715Z"
+    "updatedAt": "2026-09-14T06:19:05.715Z",
+    "status": "ACTIVE"
   },
   {
     "createdAt": "2026-09-14T06:19:20.992Z",
@@ -29,8 +29,8 @@
     "dot": "bg-rose-500",
     "id": "UNIT-PD-758390",
     "department": "PD",
-    "updatedAt": "2026-09-14T06:19:20.992Z",
-    "status": "ACTIVE"
+    "status": "ACTIVE",
+    "updatedAt": "2026-09-14T06:19:20.992Z"
   },
   {
     "createdAt": "2026-09-14T06:19:33.341Z",
@@ -40,8 +40,8 @@
     "dot": "bg-cyan-500",
     "id": "UNIT-PD-771252",
     "department": "PD",
-    "status": "ACTIVE",
-    "updatedAt": "2026-09-14T06:19:33.341Z"
+    "updatedAt": "2026-09-14T06:19:33.341Z",
+    "status": "ACTIVE"
   },
   {
     "createdAt": "2026-09-14T06:19:56.196Z",
