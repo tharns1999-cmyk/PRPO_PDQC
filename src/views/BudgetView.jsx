@@ -8,10 +8,10 @@ import { modalService } from '../services/modalService';
 import { 
   Wallet, ShieldAlert, TrendingUp,
   Building2, BarChart3, History,
-  Edit2, Save, X, ChevronLeft, ChevronRight, ChevronDown,
+  Edit2, ChevronLeft, ChevronRight, ChevronDown,
   ArrowUpRight, ArrowDownRight, Minus,
-  CheckCircle2, AlertTriangle, Layers, Calendar, Plus, RotateCw,
-  Clock, AlertCircle
+  CheckCircle2, AlertTriangle, Calendar, Plus, RotateCw,
+  Clock
 } from 'lucide-react';
 import BudgetManagementModal from '../components/budget/BudgetManagementModal';
 import DepartmentAllocationModal from '../components/budget/DepartmentAllocationModal';
@@ -219,7 +219,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   };
 
   const [editingBudget, setEditingBudget] = useState(null);
-  const [editBaseValue, setEditBaseValue] = useState('');
+  const [editBaseValue, _setEditBaseValue] = useState('');
 
   // Month & Year state: Defaults to active real-time operational fiscal period: September 2026 (2026-09 / กันยายน 2569)
   const initialFiscalPeriod = useMemo(() => {
@@ -360,7 +360,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     });
   }, [pos, prs, deptsToShow, context?.budgetTransactions]);
 
-  const handleEditSave = async (dept) => {
+  const _handleEditSave = async (dept) => {
     if (!editBaseValue || isNaN(editBaseValue) || Number(editBaseValue) < 0) return;
     if (!deptsToShow.includes(dept)) {
       modalService.error('ปฏิเสธการเข้าถึง', 'คุณไม่มีสิทธิ์แก้ไขงบประมาณของแผนกนี้');
@@ -376,7 +376,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     }
   };
 
-  const canEditBudget = canAllocateBudget;
+  const _canEditBudget = canAllocateBudget;
 
   // Analytics Calculations (6-Month Comparative Dataset & Category Breakdown)
   const analyticsData = useMemo(() => {
@@ -890,7 +890,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
             const committedPercent = (isAllocated && baseAllocated > 0) ? Math.round((committed / baseAllocated) * 100) : 0;
             const totalPercent = (isAllocated && baseAllocated > 0) ? (actualPercent + committedPercent) : 0;
 
-            const isEditing = editingBudget === dept;
+            const _isEditing = editingBudget === dept;
             const isCritical = isAllocated && (totalPercent >= 90 || remaining < 0);
             const isWarning = isAllocated && (totalPercent >= 70 && totalPercent < 90);
 

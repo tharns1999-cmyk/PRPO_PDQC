@@ -14,59 +14,8 @@ function cleanThaiText(rawText) {
   return text;
 }
 
-/**
- * Thai Date Time Formatter
- * Returns "DD/MM/YYYY เวลา HH:mm น." (e.g. "12/09/2026 เวลา 10:15 น.") or "..... / ..... / ........."
- */
-export function formatThaiDateTime(dt) {
-  if (!dt || dt === '-') return '..... / ..... / .........';
-  try {
-    const str = String(dt).trim();
-    const cleanStr = str.replace(/^วันที่\s*/, '');
-    
-    // 1. ตรวจสอบว่าเป็น ISO String หรือ Date Parseable (ยกเว้นรูปแบบ DD/MM/YYYY ที่มีเครื่องหมาย / เพื่อป้องกัน JS ตีความเป็น MM/DD/YYYY)
-    const d = !cleanStr.includes('/') ? new Date(cleanStr) : new Date(NaN);
-    if (!isNaN(d.getTime())) {
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      let year = d.getFullYear();
-      if (year > 2400) year -= 543; // แปลง พ.ศ. เป็น ค.ศ.
-      
-      const hours = String(d.getHours()).padStart(2, '0');
-      const minutes = String(d.getMinutes()).padStart(2, '0');
-      return `${day}/${month}/${year} เวลา ${hours}:${minutes} น.`;
-    }
-
-    // 2. จัดการกรณีสตริงภาษาไทยที่มีเวลาปนมา เช่น "11/09/2026 08:30" หรือ "11/9/2569 เวลา 21:42 น."
-    const match = cleanStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(?:เวลา\s*)?(\d{1,2}):(\d{1,2}))?/);
-    if (match) {
-      const [, day, month, rawYear, hh, mm] = match;
-      let year = Number(rawYear);
-      if (year > 2400) year -= 543;
-      const dd = String(Number(day)).padStart(2, '0');
-      const mmStr = String(Number(month)).padStart(2, '0');
-      if (hh !== undefined && mm !== undefined) {
-        return `${dd}/${mmStr}/${year} เวลา ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} น.`;
-      }
-      return `${dd}/${mmStr}/${year}`;
-    }
-
-    return cleanStr;
-  } catch {
-    return String(dt);
-  }
-}
-
-/**
- * Document Date Time Formatter
- * Formats ISO timestamps or Thai date strings to "วันที่ DD/MM/YYYY เวลา HH:mm น."
- */
-export function formatDocDateTime(dt) {
-  if (!dt || dt === '-') return 'วันที่ ..... / ..... / .........';
-  const formatted = formatThaiDateTime(dt);
-  if (formatted === '..... / ..... / .........') return 'วันที่ ..... / ..... / .........';
-  return formatted.startsWith('วันที่') ? formatted : `วันที่ ${formatted}`;
-}
+import { formatThaiDateTime, formatDocDateTime } from '../../utils/formatters.js';
+export { formatThaiDateTime, formatDocDateTime };
 
 export default function PrintablePO({ po }) {
   if (!po) return null;

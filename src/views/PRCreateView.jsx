@@ -4,9 +4,9 @@ import { apiService } from '../services/apiService';
 import { storageService } from '../services/storageService';
 import { useAppContext } from '../context/AppContext';
 import { 
-  ArrowLeft, AlertTriangle, Plus, Minus, Trash2, Building2, 
-  Globe, Sparkles, CheckCircle2, ShoppingCart, 
-  Factory, Building, Receipt, Loader2, Wallet, Link as LinkIcon, FileText
+  ArrowLeft, AlertTriangle, Plus, Trash2, Building2, 
+  Sparkles, CheckCircle2, ShoppingCart, 
+  Building, Receipt, Loader2, Wallet, Link as LinkIcon, FileText
 } from 'lucide-react';
 import { MEMO_THRESHOLD, DEPARTMENTS } from '../config/constants';
 import FileUploader from '../components/common/FileUploader';
@@ -1226,7 +1226,7 @@ export default function PRCreateView({
               {prItems.map((item, idx) => {
                 const selProd = !item.isCustom ? (availableProducts.find(p => p.id === item.productId) || products.find(p => p.id === item.productId)) : null;
                 const itemGross = (parseFloat(item.price) || 0) * (parseFloat(item.qty) || 0);
-                const itemRowNet = Math.max(0, itemGross - (parseFloat(item.discountAmount) || 0));
+                const _itemRowNet = Math.max(0, itemGross - (parseFloat(item.discountAmount) || 0));
                 const itemImages = item.images || item.attachments || [];
                 const hasImages = itemImages.length > 0;
                 const isMissingRequiredImage = isOnline && !hasImages;

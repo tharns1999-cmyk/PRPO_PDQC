@@ -156,8 +156,6 @@ export function filteredOrders(orders, activeTab, selectedMonth = null) {
   return (orders || []).filter(po => {
     const s = String(po.status || '').toLowerCase();
     const statusUpper = s.toUpperCase();
-    const poHasGRN = checkPOHasGRN(po);
-    const poHasDispute = checkPOHasDispute(po);
     const poHasClaim = hasUnresolvedClaim(po);
 
     // แท็บ "รอดำเนินการ" (PENDING)
@@ -255,8 +253,6 @@ export function getTabMetrics(orders) {
     const amount = Number(po.totalAmount || po.grandTotal || po.estimatedAmount || 0);
     totalAmount += amount;
 
-    const poHasGRN = checkPOHasGRN(po);
-    const poHasDispute = checkPOHasDispute(po);
     const poHasClaim = hasUnresolvedClaim(po);
 
     const isPending = (

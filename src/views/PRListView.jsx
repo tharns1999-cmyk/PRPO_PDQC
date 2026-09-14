@@ -1,16 +1,15 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { PR_STATUS, PURCHASE_CHANNEL } from '../config/constants';
 import { workflowEngine } from '../services/workflowEngine';
 import PRDetailsModal from '../components/pr/PRDetailsModal';
 import EmptyState from '../components/common/EmptyState';
 import Pagination from '../components/common/Pagination';
 import { 
-  ClipboardList, Plus, FileSearch, Search, X, DollarSign, Clock, 
-  CheckCircle2, Building2, Tag, ShoppingCart, Pencil, ArrowRight, 
+  ClipboardList, Plus, Search, Clock, 
+  CheckCircle2, Building2, Tag, Pencil, 
   Calendar, ChevronDown, Eye, WalletCards 
 } from 'lucide-react';
-import { hasDepartmentAccess, getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
+import { getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
 import { storageService } from '../services/storageService';
 
 const PR_TABS = [

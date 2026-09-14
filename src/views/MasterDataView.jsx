@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Database, Plus, Edit3, Trash2, ShieldAlert, Building2, Search, X, Package, Store, PenTool, MapPin, Layers, Boxes, DoorClosed, Users, ShieldCheck, UserCheck, RotateCcw, Shield } from 'lucide-react';
+import { Database, Plus, Edit3, Trash2, Building2, Search, X, MapPin, Boxes, DoorClosed, UserCheck, RotateCcw, Shield } from 'lucide-react';
 import ProductCRUDModal from '../components/admin/ProductCRUDModal';
 import DeactivateItemModal from '../components/admin/DeactivateItemModal';
 import VendorCRUDModal from '../components/admin/VendorCRUDModal';
@@ -67,7 +67,7 @@ function MasterDataContent({
   onSaveProduct,
   onDeleteVendor,
   onSaveVendor,
-  onSaveUsageUnit,
+  _onSaveUsageUnit,
   onDeleteUsageUnit,
   onSaveDepartment,
   onDeleteDepartment,
@@ -77,14 +77,14 @@ function MasterDataContent({
   let context = null;
   try {
     context = useAppContext();
-  } catch (e) {
+  } catch {
     context = null;
   }
 
   let auth = null;
   try {
     auth = useAuth();
-  } catch (e) {
+  } catch {
     auth = null;
   }
 
@@ -116,7 +116,7 @@ function MasterDataContent({
     Number(effectiveUser?.level) >= 99
   );
   const canSeeAll = Boolean(isAdmin || effectiveRole?.canViewAllDepts);
-  const myDept = effectiveRole?.department;
+  const _myDept = effectiveRole?.department;
   const isReviewer = Boolean(
     auth?.canonicalRole === 'REVIEWER' ||
     effectiveRole?.canonicalRole === 'REVIEWER' ||
@@ -149,7 +149,7 @@ function MasterDataContent({
   const queryTab = searchParams?.get('tab') || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null);
 
   const [activeTab, setActiveTabState] = useState(() => {
-    return resolveTab(queryTab || 'catalog', isAdmin);
+    return resolveTab(queryTab || 'products', isAdmin);
   });
 
   const setActiveTab = useCallback((nextTab) => {
@@ -163,7 +163,24 @@ function MasterDataContent({
           return next;
         }, { replace: true });
       }
-    } catch (e) {}
+    } catch {}
+  }, [isAdmin, resolveTab, setSearchParams]);
+
+  // 1. Initial URL Sync & Role Validation
+  useEffect(() => {
+    const rawTab = searchParams?.get('tab') || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null);
+    const initialTab = rawTab ? normalizeTabId(rawTab) : 'products';
+    const resolved = resolveTab(initialTab, isAdmin);
+    setActiveTabState(resolved);
+    try {
+      if (setSearchParams && resolved !== initialTab) {
+        setSearchParams(prev => {
+          const next = new URLSearchParams(prev);
+          next.set('tab', resolved);
+          return next;
+        }, { replace: true });
+      }
+    } catch {}
   }, [isAdmin, resolveTab, setSearchParams]);
 
   // Defensive Tab Fallback: if non-admin user lands on or attempts to navigate to users or departments
@@ -180,7 +197,7 @@ function MasterDataContent({
             return next;
           }, { replace: true });
         }
-      } catch (e) {}
+      } catch {}
     }
   }, [activeTab, isAdmin, resolveTab, setSearchParams]);
 
@@ -201,7 +218,7 @@ function MasterDataContent({
               return next;
             }, { replace: true });
           }
-        } catch (e) {}
+        } catch {}
       }
     }
   }, [searchParams, isAdmin, resolveTab, activeTab, setSearchParams]);
@@ -286,7 +303,7 @@ function MasterDataContent({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(dedupedStored)
         }).catch(() => {});
-      } catch (err) {}
+      } catch {}
     }
   }, []);
 
@@ -357,9 +374,9 @@ function MasterDataContent({
   }, [targetUserObj?.id, targetUserObj?.username, isDeptRestricted, userPrimaryDept]);
   const [deptSearch, setDeptSearch] = useState('');
   const [deptStatusFilter, setDeptStatusFilter] = useState('ALL');
-  const [userSearch, setUserSearch] = useState('');
-  const [userDeptFilter, setUserDeptFilter] = useState('ALL');
-  const [userRoleFilter, setUserRoleFilter] = useState('ALL');
+  const [userSearch, _setUserSearch] = useState('');
+  const [userDeptFilter, _setUserDeptFilter] = useState('ALL');
+  const [userRoleFilter, _setUserRoleFilter] = useState('ALL');
 
   // Pagination states
   const [prodPage, setProdPage] = useState(1);
@@ -367,13 +384,13 @@ function MasterDataContent({
   const [vendorPage, setVendorPage] = useState(1);
   const [vendorPageSize, setVendorPageSize] = useState(10);
   const [locPage, setLocPage] = useState(1);
-  const [locPageSize, setLocPageSize] = useState(10);
+  const [locPageSize, _setLocPageSize] = useState(10);
   const [unitPage, setUnitPage] = useState(1);
-  const [unitPageSize, setUnitPageSize] = useState(10);
+  const [unitPageSize, _setUnitPageSize] = useState(10);
   const [deptPage, setDeptPage] = useState(1);
-  const [deptPageSize, setDeptPageSize] = useState(10);
+  const [deptPageSize, _setDeptPageSize] = useState(10);
   const [userPage, setUserPage] = useState(1);
-  const [userPageSize, setUserPageSize] = useState(10);
+  const [userPageSize, _setUserPageSize] = useState(10);
 
   // Auto-resets on filter/search change
   useEffect(() => { setProdPage(1); }, [prodCategoryFilter, prodStatusFilter, prodSearch, prodPageSize]);
@@ -539,8 +556,8 @@ function MasterDataContent({
     });
   }, [usersList, userDeptFilter, userRoleFilter, userSearch]);
 
-  const userTotalPages = Math.ceil(filteredUsers.length / userPageSize) || 1;
-  const paginatedUsers = useMemo(() => {
+  const _userTotalPages = Math.ceil(filteredUsers.length / userPageSize) || 1;
+  const _paginatedUsers = useMemo(() => {
     const start = (userPage - 1) * userPageSize;
     return filteredUsers.slice(start, start + userPageSize);
   }, [filteredUsers, userPage, userPageSize]);
@@ -893,7 +910,7 @@ function MasterDataContent({
   };
 
   // ─── Requirement 1: Data Integrity Guardrail on Delete ───
-  const handleDeleteLocation = async (loc) => {
+  const _handleDeleteLocation = async (loc) => {
     // Check if any product is assigned to this storage location
     const allProds = storageService.getProducts();
     const assigned = allProds.filter(p => p.locationId === loc.id);
@@ -952,7 +969,7 @@ function MasterDataContent({
     }
   };
 
-  const handleDeleteUser = async (targetUser) => {
+  const _handleDeleteUser = async (targetUser) => {
     if (!canDeleteMaster) return;
 
     // Self-lockout guard: Prevent user from deleting own account
@@ -988,7 +1005,7 @@ function MasterDataContent({
     }
   };
 
-  const roleBadge = (user) => {
+  const _roleBadge = (user) => {
     const rawRoleId = user?.roleId || user?.positionKey;
     // Normalize legacy department-coupled roleIds
     const roleId = (rawRoleId === 'REQUESTER_PD' || rawRoleId === 'REQUESTER_QC') ? 'REQUESTER' : rawRoleId;

@@ -1,18 +1,17 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
-  Package, Download, AlertTriangle, AlertCircle, CheckCircle2, 
-  X, UploadCloud, Trash2, Camera, FileText, ArrowRight, ArrowLeft,
-  ShieldAlert, Store, Clock, Check, Truck, AlertOctagon
+  Package, Download, AlertTriangle, CheckCircle2, 
+  X, UploadCloud, Trash2, Camera, FileText, ArrowLeft,
+  Check, Truck, AlertOctagon
 } from 'lucide-react';
-import { useProcurementContext, recordGoodsReceipt as recordGoodsReceiptFn } from '../../context/ProcurementContext';
-import { useInventoryContext } from '../../context/InventoryContext';
-import { useAppContext } from '../../context/AppContext';
+import { recordGoodsReceipt as recordGoodsReceiptFn } from '../../context/ProcurementContext';
 import { modalService } from '../../services/modalService';
 import { apiService } from '../../services/apiService';
 import { storageService } from '../../services/storageService';
-import { warehouseService, generateGRNNumber } from '../../services/warehouseService';
+import { generateGRNNumber } from '../../services/warehouseService';
 import { formatLocalTimestamp } from '../../services/inventoryService';
+import { getValidConversionRate } from '../../utils/uomEngine.js';
 
 /**
  * Helper to resiliently resolve refund quantity and amount
@@ -119,20 +118,12 @@ export default function ReceivingModal({
   onSuccess,
   onBack,
   onBackToPO,
-  currentRole 
+  _currentRole 
 }) {
   const targetPO = po || selectedPO;
   if (!isOpen || !targetPO) return null;
 
   const handleBackToPO = onBack || onBackToPO;
-
-  let procurement = null;
-  let inventory = null;
-  let appContext = null;
-  try { procurement = useProcurementContext(); } catch {}
-  try { inventory = useInventoryContext(); } catch {}
-  try { appContext = useAppContext(); } catch {}
-  const currentUser = appContext?.currentUser || currentRole;
 
   const fileInputRef = useRef(null);
 
@@ -201,8 +192,7 @@ export default function ReceivingModal({
       const hasDamage = !isRowLocked && (safeDamaged > 0 || Number(state.damagedQty) > 0);
 
       const uom = storageService?.getUomConversion ? storageService.getUomConversion(item.code || item.productId || item.id) : null;
-      let conversionRatio = Number(item.conversionRatio || item.conversionRate || uom?.conversionRatio || 1);
-      if (!conversionRatio || isNaN(conversionRatio) || conversionRatio <= 0) conversionRatio = 1;
+      const conversionRatio = getValidConversionRate(item.conversionRatio || item.conversionRate || uom?.conversionRatio || 1);
 
       const pUnit = item.purchaseUom || item.purchaseUnit || item.pUnit || uom?.purchaseUom || item.unit || 'ชิ้น';
       const sUnit = item.baseUom || item.stockUnit || item.sUnit || uom?.baseUom || (conversionRatio > 1 ? 'หน่วย' : pUnit);
@@ -342,11 +332,6 @@ export default function ReceivingModal({
     });
   };
 
-  // Handler: Update shortage reason
-  const handleShortageReasonChange = (key, reason) => {
-    const action = (reason === 'SPLIT_SHIPMENT' || reason === 'WAIT_NEXT_ROUND') ? 'WAIT_NEXT_ROUND' : 'CLAIM_SHORTAGE';
-    handleShortageActionChange(key, action);
-  };
 
   // Handler: Update defect note
   const handleDefectNoteChange = (key, note) => {
@@ -603,14 +588,13 @@ export default function ReceivingModal({
         .filter(it => Number(it.acceptedQty || 0) > 0 && !it.isRowLocked)
         .map(it => {
           const uom = storageService?.getUomConversion ? storageService.getUomConversion(it.code || it.productId || it.id) : null;
-          let ratio = Number(it.conversionRatio || it.conversionRate || uom?.conversionRatio || 1);
-          if (!ratio || isNaN(ratio) || ratio <= 0) ratio = 1;
+          const ratio = getValidConversionRate(it.conversionRatio || it.conversionRate || uom?.conversionRatio || 1);
 
           const purchaseUnit = it.purchaseUom || it.purchaseUnit || it.pUnit || uom?.purchaseUom || 'ชิ้น';
           const stockUnit = it.baseUom || it.stockUnit || it.sUnit || uom?.baseUom || purchaseUnit;
           const purchasePrice = Number(it.actUnitPrice ?? it.actualPrice ?? it.price ?? uom?.purchaseUnitPrice ?? 0);
-          const baseUnitCost = ratio > 0 ? (purchasePrice / ratio) : purchasePrice;
-          const baseStockQty = Number(it.acceptedQty) * ratio;
+          const baseUnitCost = toStockUnitCost(purchasePrice, ratio);
+          const baseStockQty = toStockQuantity(it.acceptedQty, ratio);
           const totalVal = baseStockQty * baseUnitCost;
 
           return {

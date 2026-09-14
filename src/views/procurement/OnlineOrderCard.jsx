@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Package, ExternalLink, AlertCircle, Copy, Check, RotateCcw, 
-  Store, Sparkles, AlertTriangle, ArrowRight, FileText, CheckCircle2,
-  Clock, ShieldAlert, ChevronDown, ChevronUp, Paperclip, Eye, Download,
+  Package, ExternalLink, Copy, Check, 
+  Store, AlertTriangle, ArrowRight, FileText, CheckCircle2,
+  Clock, ChevronDown, ChevronUp, Paperclip, Eye, Download,
   Image as ImageIcon, X, Truck, Calendar
 } from 'lucide-react';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
@@ -17,6 +17,9 @@ import { isOrderPending, isOrderInClaim, isOrderClosed } from '../../context/Onl
 import ImageLightboxModal from '../../components/common/ImageLightboxModal';
 import { getFallbackAttachmentsForCode } from '../../services/workflowEngine';
 import AttachmentViewerModal from '../../components/common/AttachmentViewerModal';
+import { formatCurrency } from '../../utils/formatters.js';
+
+const formatMoney = (n) => formatCurrency(n);
 
 // ✅ สูตรการสร้าง Unique Store Group Key (Precise Multi-Store Grouping)
 export const getStoreGroupKey = (item, index) => {
@@ -47,7 +50,7 @@ export const getStoreGroupKey = (item, index) => {
         return `${platform}_${shopIdentifier.toLowerCase()}`;
       }
       return `${platform}_item_${item.id || index}`;
-    } catch (e) {
+    } catch {
       return `${platform}_item_${item.id || index}`;
     }
   }
@@ -344,8 +347,8 @@ export default function OnlineOrderCard({
   };
 
   const initialVendor = getVendorStr(po);
-  const [vendorName, setVendorName] = useState(initialVendor);
-  const [varianceNote, setVarianceNote] = useState('');
+  const [_vendorName, _setVendorName] = useState(initialVendor);
+  const [varianceNote, _setVarianceNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedCode, setCopiedCode] = useState('');
   const [copiedPO, setCopiedPO] = useState(false);
@@ -427,7 +430,7 @@ export default function OnlineOrderCard({
     });
   }, [po]);
 
-  const { currentUser, refundBudget, rollbackBudget, deductBudget } = useAppContext();
+  const { currentUser, refundBudget: _refundBudget, rollbackBudget, deductBudget } = useAppContext();
 
   // ── Status Mapping & Strict Mode Flags (Directive 1) ──
   const statusStr = String(po?.status || '').toLowerCase();
@@ -448,7 +451,7 @@ export default function OnlineOrderCard({
 
   const isClosed = !isPending && (activeTab === 'CLOSED' || (activeTab !== 'CLAIM' && isOrderClosed(po?.status)));
   const isPartialReceived = !isPending && ['partial', 'partially_received', 'partial_received', 'รับของแล้วบางส่วน'].includes(statusStr);
-  const isOrdered = !isPending && (activeTab === 'ORDERED' || ['ordered', 'ordered_pending_delivery', 'in_delivery', 'waiting_delivery', 'waiting_delivery_round_2'].includes(statusStr) || statusStr.startsWith('waiting_delivery'));
+  const _isOrdered = !isPending && (activeTab === 'ORDERED' || ['ordered', 'ordered_pending_delivery', 'in_delivery', 'waiting_delivery', 'waiting_delivery_round_2'].includes(statusStr) || statusStr.startsWith('waiting_delivery'));
 
   // 🛡️ Pre-inspection / Goods Receipt Note (GRN) detection
   const poHasGRN = useMemo(() => {
@@ -643,20 +646,20 @@ export default function OnlineOrderCard({
     handleItemChange(index, 'actualPrice', isNaN(num) || num < 0 ? '' : num);
   };
 
-  const handleQtyChange = (index, val) => {
+  const _handleQtyChange = (index, val) => {
     const num = parseFloat(val);
     handleItemChange(index, 'actualQty', isNaN(num) || num <= 0 ? '' : num);
   };
 
-  const handleItemStoreChange = (index, value) => {
+  const _handleItemStoreChange = (index, value) => {
     handleItemChange(index, 'actualStoreName', value);
   };
 
-  const handleItemPlatformChange = (index, platform) => {
+  const _handleItemPlatformChange = (index, platform) => {
     handleItemChange(index, 'storePlatform', platform);
   };
 
-  const handleItemOrderRefChange = (index, refNo) => {
+  const _handleItemOrderRefChange = (index, refNo) => {
     handleItemChange(index, 'orderRefNo', refNo);
   };
 
@@ -1140,7 +1143,7 @@ export default function OnlineOrderCard({
     if (priceDiff > 0) {
       const overBudgetConfirmed = await modalService.confirm({
         title: '⚠️ ยืนยันการสั่งซื้อเกินงบประมาณ (Over-Budget Confirmation)',
-        message: `ยอดสั่งซื้อจริงรวม (฿${totalEstimatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) สูงกว่างบประเมิน PR เดิม (฿${originalTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})\n\nส่วนต่างที่เกินงบประมาณ: +฿${priceDiff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\nระบบจะทำการหักงบประมาณคงเหลือของแผนก ${po.department || ''} เพิ่มเติมตามยอดจริง\n\nต้องการยืนยันสั่งซื้อด้วยยอดนี้ใช่หรือไม่?`,
+        message: `ยอดสั่งซื้อจริงรวม (฿${formatMoney(totalEstimatedAmount)}) สูงกว่างบประเมิน PR เดิม (฿${formatMoney(originalTotalAmount)})\n\nส่วนต่างที่เกินงบประมาณ: +฿${formatMoney(priceDiff)}\n\nระบบจะทำการหักงบประมาณคงเหลือของแผนก ${po.department || ''} เพิ่มเติมตามยอดจริง\n\nต้องการยืนยันสั่งซื้อด้วยยอดนี้ใช่หรือไม่?`,
         confirmText: 'ยืนยันสั่งซื้อเกินงบ',
         cancelText: 'กลับไปแก้ไข'
       });
@@ -1160,12 +1163,12 @@ export default function OnlineOrderCard({
     } else if (uniqueStores.length > 1) {
       confirmMsg += `\nร้านค้า: สั่งซื้อจาก ${uniqueStores.length} ร้านค้า (${uniqueStores.join(', ')})`;
     }
-    confirmMsg += `\nยอดสั่งซื้อรวม: ฿${totalEstimatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    confirmMsg += `\nยอดสั่งซื้อรวม: ฿${formatMoney(totalEstimatedAmount)}`;
     if (hasModifications) {
       if (priceDiff < 0) {
-        confirmMsg += `\n\n🎉 ประหยัดงบได้ ฿${Math.abs(priceDiff).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (ระบบจะคืนเงินส่วนต่างเข้า Remaining Budget ของแผนก ${po.department || ''})`;
+        confirmMsg += `\n\n🎉 ประหยัดงบได้ ฿${formatMoney(Math.abs(priceDiff))} (ระบบจะคืนเงินส่วนต่างเข้า Remaining Budget ของแผนก ${po.department || ''})`;
       } else if (priceDiff > 0) {
-        confirmMsg += `\n\n⚠️ เกินงบ ฿${priceDiff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (ระบบจะหักงบประมาณคงเหลือของแผนก ${po.department || ''} เพิ่มเติม)`;
+        confirmMsg += `\n\n⚠️ เกินงบ ฿${formatMoney(priceDiff)} (ระบบจะหักงบประมาณคงเหลือของแผนก ${po.department || ''} เพิ่มเติม)`;
       }
     }
     confirmMsg += `\n\nต้องการบันทึกและส่งต่องานใช่หรือไม่?`;
@@ -1705,10 +1708,10 @@ export default function OnlineOrderCard({
 
   // ── Structured 2-Tier Micro Card (~58px) (When collapsed in Closed/Completed or Passive mode) ──
   if (!isCardExpanded) {
-    const formattedActualSpent = actualTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const formattedOriginalBudget = originalTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const formattedRefund = totalRefundedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const formattedPriceDiff = Math.abs(priceDiff).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedActualSpent = formatMoney(actualTotalValue);
+    const formattedOriginalBudget = formatMoney(originalTotalAmount);
+    const formattedRefund = formatMoney(totalRefundedValue);
+    const formattedPriceDiff = formatMoney(Math.abs(priceDiff));
 
     return (
       <div 
@@ -1899,7 +1902,7 @@ export default function OnlineOrderCard({
         <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto">
           {renderStatusBadge(po.status)}
           <span className="text-sm sm:text-base font-mono font-black text-slate-900 ml-1 min-w-[70px] text-right">
-            ฿{totalEstimatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ฿{formatMoney(totalEstimatedAmount)}
           </span>
           <button
             type="button"
@@ -1927,7 +1930,7 @@ export default function OnlineOrderCard({
           );
           const isStoreClaimActive = isClaimOrder && (group.hasDispute || storeClaimState.showResolutionForm || storeClaimState.isManualDispute) && (storeClaimState.showResolutionForm ?? true) && !isStoreResolved && !isClosed;
           const claimHistory = po?.storeClaims?.[group.storeKey] || group.claimData || Object.entries(po?.storeClaims || {}).find(([k]) => k.toLowerCase() === group.storeKey.toLowerCase())?.[1];
-          const storeTotalFormatted = group.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+          const storeTotalFormatted = formatMoney(group.totalAmount);
 
           // Directive 2: ควบคุมการกาง/ยุบร้านค้า (Interactive Accordion) ในแท็บ "รอเคลม"
           const isDisputedPending = Boolean(group.hasDispute && !isStoreResolved);
@@ -1943,7 +1946,7 @@ export default function OnlineOrderCard({
             const rowClaimAmt = group.hasDispute && !isStoreResolved
               ? group.issueItems.reduce((sum, it) => sum + (Number(it.refundAmt) || 0), 0)
               : 0;
-            const rowClaimFmt = rowClaimAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const rowClaimFmt = formatMoney(rowClaimAmt);
 
             if (!group.hasDispute || isStoreResolved) {
               const isWaiting = Boolean(group.isWaitingNextRound || group.waitingNextRoundQty > 0 || group.status === 'WAITING_NEXT_ROUND');
@@ -1954,7 +1957,7 @@ export default function OnlineOrderCard({
                 ? (isClosed || activeTab === 'CLOSED'
                     ? '✓ เคลมเสร็จสิ้น'
                     : (effRefund > 0 
-                        ? `✓ บันทึกผลเจรจาเรียบร้อย: ได้รับเงินคืน ฿${effRefund.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} เข้าแผนกแล้ว` 
+                        ? `✓ บันทึกผลเจรจาเรียบร้อย: ได้รับเงินคืน ฿${formatMoney(effRefund)} เข้าแผนกแล้ว` 
                         : '✓ บันทึกผลเจรจาเรียบร้อย'))
                 : (isWaiting ? `(รอส่งมอบเพิ่ม ${waitingQty} ${waitingUnit})` : '(รับของครบสมบูรณ์)');
 
@@ -2087,7 +2090,7 @@ export default function OnlineOrderCard({
               {(isStoreResolved || isClosed || activeTab === 'CLOSED') && (po?.storeClaims?.[group.storeKey] || group.claimData || claimHistory || (storesGroup.length === 1 && Number(po?.refundAmount) > 0)) && (() => {
                 const effClaim = po?.storeClaims?.[group.storeKey] || group.claimData || claimHistory || { type: 'REFUND', refundAmount: Number(po.refundAmount) };
                 if (!effClaim || (!effClaim.isResolved && effClaim.status !== 'RESOLVED' && !isClosed && activeTab !== 'CLOSED')) return null;
-                const refundAmountFormatted = Number(effClaim.refundAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                const refundAmountFormatted = formatMoney(effClaim.refundAmount || 0);
                 return (
                   <div className="px-3 py-1 bg-emerald-50/50 border-b border-emerald-100 flex items-center justify-between text-[11px] text-emerald-800">
                     <div className="flex items-center gap-1.5">
@@ -2213,7 +2216,7 @@ export default function OnlineOrderCard({
                               )}
                             </button>
                             <span className="text-[11px] text-slate-400 font-mono shrink-0">
-                              (PR: {origQty} {pUnit} @ ฿{origPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                              (PR: {origQty} {pUnit} @ ฿{formatMoney(origPrice)})
                             </span>
                           </div>
                         </div>
@@ -2289,7 +2292,7 @@ export default function OnlineOrderCard({
 
                           {/* ราคารวมจริงรายบรรทัด: font-mono text-xs font-bold text-slate-900 min-w-[75px] text-right */}
                           <span className="font-mono text-xs font-bold text-slate-900 min-w-[75px] text-right shrink-0">
-                            ฿{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ฿{formatMoney(lineTotal)}
                           </span>
                         </div>
                       </div>
@@ -2472,7 +2475,7 @@ export default function OnlineOrderCard({
                               <div className="text-right shrink-0">
                                 <div className="text-[10px] text-slate-400 font-medium">มูลค่าที่ต้องเคลม</div>
                                 <div className="text-xs sm:text-sm font-mono font-bold text-rose-600">
-                                  ฿{itemMetrics.claimableAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                  ฿{formatMoney(itemMetrics.claimableAmount)}
                                 </div>
                               </div>
                             );
@@ -2480,10 +2483,10 @@ export default function OnlineOrderCard({
                           return (
                             <div className="flex items-center gap-2 shrink-0 font-mono text-xs text-slate-600">
                               <span>
-                                {pQty.toLocaleString()} {pUnit} × ฿{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} =
+                                {pQty.toLocaleString()} {pUnit} × ฿{formatMoney(price)} =
                               </span>
                               <strong className="text-slate-800 font-bold min-w-[75px] text-right">
-                                ฿{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                ฿{formatMoney(lineTotal)}
                               </strong>
                             </div>
                           );
@@ -2491,10 +2494,10 @@ export default function OnlineOrderCard({
                         {!isClaimOrder && (
                           <div className="flex items-center gap-2 shrink-0 font-mono text-xs text-slate-600">
                             <span>
-                              {pQty.toLocaleString()} {pUnit} × ฿{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} =
+                              {pQty.toLocaleString()} {pUnit} × ฿{formatMoney(price)} =
                             </span>
                             <strong className="text-slate-800 font-bold min-w-[75px] text-right">
-                              ฿{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              ฿{formatMoney(lineTotal)}
                             </strong>
                           </div>
                         )}
@@ -2673,7 +2676,7 @@ export default function OnlineOrderCard({
             <div className="flex items-center gap-1.5 font-medium text-slate-600">
               <span className="text-slate-500">งบประเมิน PR:</span>
               <span className="font-mono font-bold text-slate-700">
-                ฿{originalTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ฿{formatMoney(originalTotalAmount)}
               </span>
             </div>
 
@@ -2682,7 +2685,7 @@ export default function OnlineOrderCard({
             <div className="flex items-center gap-1.5 font-medium text-slate-800">
               <span className="text-slate-600">ยอดสั่งซื้อจริง:</span>
               <span className="font-mono font-bold text-slate-950 text-xs sm:text-sm">
-                ฿{totalEstimatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ฿{formatMoney(totalEstimatedAmount)}
               </span>
             </div>
 
@@ -2692,11 +2695,11 @@ export default function OnlineOrderCard({
             <div>
               {priceDiff < 0 ? (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold shadow-2xs">
-                  🎉 ประหยัดงบได้ ฿{Math.abs(priceDiff).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  🎉 ประหยัดงบได้ ฿{formatMoney(Math.abs(priceDiff))}
                 </span>
               ) : priceDiff > 0 ? (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold shadow-2xs">
-                  ⚠️ เกินงบ ฿{priceDiff.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ⚠️ เกินงบ ฿{formatMoney(priceDiff)}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 text-xs font-medium">
@@ -2753,12 +2756,12 @@ export default function OnlineOrderCard({
       {(activeTab === 'CLOSED' || isClosed) && !isPending && (
         <div className="mt-2.5 px-3 py-1.5 bg-slate-50/90 rounded-xl border border-slate-200/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2 font-mono">
-            <span className="text-slate-500">งบเดิม ฿{rawOriginalBudget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="text-slate-500">งบเดิม ฿{formatMoney(rawOriginalBudget)}</span>
             <span className="text-slate-300">→</span>
-            <span className="font-bold text-slate-800">จ่ายจริง ฿{actualTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="font-bold text-slate-800">จ่ายจริง ฿{formatMoney(actualTotalValue)}</span>
             {totalRefundedValue > 0 ? (
               <span className="font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                +คืนงบ ฿{totalRefundedValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                +คืนงบ ฿{formatMoney(totalRefundedValue)}
               </span>
             ) : null}
           </div>

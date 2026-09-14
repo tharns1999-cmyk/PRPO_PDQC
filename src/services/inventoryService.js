@@ -13,13 +13,16 @@ export function formatLocalTimestamp(dateInput = new Date()) {
   return d.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
 }
 
+import { getValidConversionRate, toStockQuantity, toStockUnitCost } from '../utils/uomEngine.js';
+
 /**
  * Inventory valuation calculation helper for Stock Movement Log
  * Ensures Dual-UOM base unit cost conversion is properly computed.
  */
 export function calculateStockMovementValue(movement, product = {}) {
-  const conversionRate = Number(product.conversionRate || product.conversionRatio || movement.conversionRate) || 1;
-  const unitCostInStock = Number(movement.baseUnitCost ?? movement.stockUnitPrice ?? (movement.unitPrice || product.price || 0)) / (movement.baseUnitCost ? 1 : conversionRate);
+  const conversionRate = getValidConversionRate(product.conversionRate || product.conversionRatio || movement.conversionRate);
+  const rawPrice = movement.baseUnitCost ?? movement.stockUnitPrice ?? (movement.unitPrice || product.price || 0);
+  const unitCostInStock = movement.baseUnitCost ? Number(movement.baseUnitCost) : toStockUnitCost(rawPrice, conversionRate);
   const totalAmount = movement.totalAmount !== undefined && movement.totalAmount !== null
     ? Number(movement.totalAmount)
     : (movement.totalPrice !== undefined && movement.totalPrice !== null && !movement.unitPrice
@@ -112,14 +115,14 @@ export const inventoryService = {
                (pName && prodName === pName);
       }) || {};
 
-      const conversionRate = Number(item.conversionRate || item.conversionRatio || prod.conversionRate || prod.conversionRatio || 1) || 1;
-      const receivedStockQty = goodQty * conversionRate;
+      const conversionRate = getValidConversionRate(item.conversionRate || item.conversionRatio || prod.conversionRate || prod.conversionRatio || 1);
+      const receivedStockQty = toStockQuantity(goodQty, conversionRate);
       const currentBalance = Number(prod.stockBalance ?? 0);
       const newBalance = currentBalance + receivedStockQty;
 
       // Calculate unit cost in stock unit
       const purchasePrice = Number(item.actUnitPrice ?? item.actualPrice ?? item.price ?? prod.price ?? 0);
-      const unitCostInStock = conversionRate > 0 ? (purchasePrice / conversionRate) : purchasePrice;
+      const unitCostInStock = toStockUnitCost(purchasePrice, conversionRate);
       const receivedPoItemTotal = item.total !== undefined && item.total !== null
         ? Number(item.total)
         : (receivedStockQty * unitCostInStock);

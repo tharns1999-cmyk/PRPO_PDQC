@@ -6,11 +6,11 @@ import { storageService } from '../../services/storageService';
 import { modalService } from '../../services/modalService';
 import { useAppContext } from '../../context/AppContext';
 import { 
-  Printer, Download, History, XCircle, CheckCircle, AlertTriangle, 
-  ExternalLink, ShoppingCart, Info, X, Building2, Calendar, FileText, 
-  CheckCircle2, Store, Truck, ArrowRight, MapPin, AlertOctagon,
-  UploadCloud, Paperclip, Camera, Trash2, Eye, ShieldAlert, Check, Percent, Globe, Package,
-  RotateCcw, Coins, ChevronRight, ArrowLeft
+  Printer, Download, XCircle, AlertTriangle, 
+  ExternalLink, ShoppingCart, X, FileText, 
+  CheckCircle2, Store, Truck, AlertOctagon,
+  Camera, Trash2, ShieldAlert, Check, Package,
+  ArrowLeft
 } from 'lucide-react';
 import PrintablePO from './PrintablePO';
 import AttachmentViewerModal from '../common/AttachmentViewerModal';
@@ -18,6 +18,7 @@ import CollapsibleActivityTimeline from '../common/CollapsibleActivityTimeline';
 import { generatePoPdf } from '../../utils/generatePoPdf';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
 import ReceivingModal, { resolveRefundedQtyAndAmount } from '../../views/inventory/ReceivingModal';
+import { getValidConversionRate, toStockQuantity } from '../../utils/uomEngine.js';
 
 const getVendorDisplayName = (vendorData) => {
   if (!vendorData) return '';
@@ -77,14 +78,14 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
   const [receivingQtys, setReceivingQtys] = useState({});
   const [problematicItems, setProblematicItems] = useState({});
   const [grAttachments, setGrAttachments] = useState([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [receiveNote, setReceiveNote] = useState('');
+  const [_isUploading, setIsUploading] = useState(false);
+  const [receiveNote, _setReceiveNote] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [customVendorName, setCustomVendorName] = useState('');
   const [vendors, setVendors] = useState([]);
   const [viewingAttachment, setViewingAttachment] = useState(null);
-  const [isShortClosing, setIsShortClosing] = useState(false);
+  const [_isShortClosing, setIsShortClosing] = useState(false);
   const [claimReason, setClaimReason] = useState('สินค้าชำรุด/เสียหาย');
   const [claimDescription, setClaimDescription] = useState('');
   const [claimPhoto, setClaimPhoto] = useState(null);
@@ -96,7 +97,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
   const [selfClaimNote, setSelfClaimNote] = useState('');
   const [selfClaimExpectedDate, setSelfClaimExpectedDate] = useState('');
   const [selfClaimRefundAmount, setSelfClaimRefundAmount] = useState('');
-  const [isResolvingSelfClaim, setIsResolvingSelfClaim] = useState(false);
+  const [_isResolvingSelfClaim, setIsResolvingSelfClaim] = useState(false);
   const fileInputRef = useRef(null);
 
   // Pre-fill receiving qtys, locations, and problematic items state
@@ -127,7 +128,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     }
   }, [selectedPO]);
 
-  const handleFillAll = () => initReceivingQtys(true);
+  const _handleFillAll = () => initReceivingQtys(true);
 
   // Compress image file via HTML Canvas
   const compressImageFile = (file) => {
@@ -176,7 +177,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
   };
 
   // Process and validate attachments (PDF max 2MB, Images compressed)
-  const handleFileUpload = async (e) => {
+  const _handleFileUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     setIsUploading(true);
@@ -219,11 +220,11 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     }
   };
 
-  const handleRemoveAttachment = (index) => {
+  const _handleRemoveAttachment = (index) => {
     setGrAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmitReceiving = async () => {
+  const _handleSubmitReceiving = async () => {
     // 1. Immediate Double-Click Guard
     if (isSubmitting || isReceiving) return;
     setIsSubmitting(true);
@@ -368,7 +369,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     }
   };
 
-  const handleShortClosePO = async () => {
+  const _handleShortClosePO = async () => {
     const reason = await modalService.prompt({
       title: 'ปิดใบสั่งซื้อก่อนได้รับของครบ (Short-Close PO)',
       message: `ระบุเหตุผลในการปิด PO ${selectedPO.poNo} ที่ได้ของไม่ครบ (เช่น ร้านค้าเลิกผลิต/ไม่ส่งของที่เหลือแล้ว):`,
@@ -520,7 +521,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
       (currentRole?.canReview && (currentRole?.department === selectedPO.department || currentRole?.canViewAllDepts))
     );
 
-  const handleResolveSelfClaim = async () => {
+  const _handleResolveSelfClaim = async () => {
     if (selfClaimResolutionType === 'RESEND' && !selfClaimExpectedDate) {
       return modalService.warning('กรุณาระบุวันที่คาดว่าจะได้รับสินค้าใหม่');
     }
@@ -1223,16 +1224,15 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                         : { refundedQty: Number(item.refundedQty || 0) };
                       const refundedQty = Number(item.refundedQty ?? refInfo?.refundedQty ?? 0);
                       const receivedQty = Number(item.receivedQty ?? item.goodQty ?? 0);
-                      const isOrderResolved = (receivedQty + refundedQty) >= pQty;
+                      const _isOrderResolved = (receivedQty + refundedQty) >= pQty;
                       const isFullyReceived = receivedQty >= pQty;
 
                       // Dual-UOM Master Lookup
                       const uom = storageService?.getUomConversion ? storageService.getUomConversion(item.code || item.productId || item.id) : null;
-                      let ratio = Number(item.conversionRatio || item.conversionRate || uom?.conversionRatio || 1);
-                      if (!ratio || isNaN(ratio) || ratio <= 0) ratio = 1;
+                      const ratio = getValidConversionRate(item.conversionRatio || item.conversionRate || uom?.conversionRatio || 1);
                       const purchaseUom = item.purchaseUom || item.purchaseUnit || item.pUnit || uom?.purchaseUom || item.unit || 'ชิ้น';
                       const baseUom = item.baseUom || item.stockUnit || item.sUnit || uom?.baseUom || purchaseUom;
-                      const baseStockQty = pQty * ratio;
+                      const baseStockQty = toStockQuantity(pQty, ratio);
                       const baseUnitCost = ratio > 0 ? (price / ratio) : price;
 
                       return (

@@ -3,23 +3,23 @@ import { apiService } from '../services/apiService';
 import { storageService } from '../services/storageService';
 import { useAppContext } from '../context/AppContext';
 import { 
-  ShoppingCart, CheckCircle2, Package, AlertCircle, Send, Check, 
-  Search, ExternalLink, Copy, Clock, Sparkles, Building2, Eye, FileText, 
-  ChevronRight, ChevronLeft, ChevronDown, DollarSign, Truck, Calendar, Store, Tag, RotateCcw, AlertTriangle, X
+  ShoppingCart, CheckCircle2,
+  Search, Clock,
+  ChevronRight, ChevronLeft, Truck, Calendar, RotateCcw, AlertTriangle, X
 } from 'lucide-react';
 import EmptyState from '../components/common/EmptyState';
 import AttachmentViewerModal from '../components/common/AttachmentViewerModal';
 import PODetailsModal from '../components/po/PODetailsModal';
 import { modalService } from '../services/modalService';
-import OnlineOrderCard, { OnlinePurchaseActionCard, getStoreGroupKey, calculateDisputeMetrics, isStoreClaimResolved, isStorePendingClaim } from './procurement/OnlineOrderCard';
+import OnlineOrderCard, { OnlinePurchaseActionCard, getStoreGroupKey, isStoreClaimResolved } from './procurement/OnlineOrderCard';
 import { 
   formatThaiMonth, 
   getPrevMonth, 
   getNextMonth, 
   calculateCompletedKPIs, 
-  parseOrderYearMonth,
-  THAI_MONTHS 
+  parseOrderYearMonth
 } from './procurement/OnlineProcurementHub';
+import { formatCurrency } from '../utils/formatters.js';
 
 // 🛡️ Helper: Check if PO has Goods Receipt Note (GRN) from warehouse inspection
 export function checkPOHasGRN(po) {
@@ -166,7 +166,7 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
   const [selectedPO, setSelectedPO] = useState(null);
 
   const isCompletedTab = activeTab === 'CLOSED' || activeTab === 'COMPLETED';
-  const formatMoney = (n) => Number(n || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatMoney = (n) => formatCurrency(n);
 
   useEffect(() => {
     fetchPOs();
@@ -217,8 +217,6 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
       const amount = Number(po.totalAmount || po.grandTotal || po.estimatedAmount || 0);
       totalAmount += amount;
 
-      const poHasGRN = checkPOHasGRN(po);
-      const poHasDispute = checkPOHasDispute(po);
       const poHasClaim = hasUnresolvedClaim(po);
 
       // แท็บ "รอดำเนินการ" (PENDING)
@@ -326,8 +324,6 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
     return pos.filter(po => {
       const s = String(po.status || '').toLowerCase();
       const statusUpper = s.toUpperCase();
-      const poHasGRN = checkPOHasGRN(po);
-      const poHasDispute = checkPOHasDispute(po);
       const poHasClaim = hasUnresolvedClaim(po);
 
       // Tab filter (Strict separation - Directive 2)

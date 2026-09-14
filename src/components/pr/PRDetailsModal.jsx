@@ -7,11 +7,11 @@ import { storageService } from '../../services/storageService';
 import { workflowEngine } from '../../services/workflowEngine';
 import { modalService } from '../../services/modalService';
 import { 
-  ExternalLink, History, ShieldCheck, CheckCircle2, XCircle, 
+  ExternalLink, ShieldCheck, CheckCircle2, XCircle, 
   Trash2, Send, Edit3, Save, RotateCcw, AlertTriangle, Layers, 
-  X, User, Calendar, FileText, 
+  X, User, FileText, 
   ChevronRight, MessageSquare, Pencil,
-  Paperclip, Globe, Tag, Factory, Building, Package
+  Paperclip, Package
 } from 'lucide-react';
 import MEMODetailsSection from './MEMODetailsSection';
 import POSplitModal from '../po/POSplitModal';
@@ -295,7 +295,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   }, [rawStatus, rawStatusUpper, hasPlantMgrApproval, selectedPR.poNo, selectedPR.poNumber, relatedPOs]);
 
   // State Guard: PR must be approved or in PO-linked state to consider related POs
-  const isPRApproved = ['approved', 'ordered', 'completed', 'closed', 'po_issued', 'in_progress_online'].includes(resolvedStatusKey.toLowerCase());
+  const _isPRApproved = ['approved', 'ordered', 'completed', 'closed', 'po_issued', 'in_progress_online'].includes(resolvedStatusKey.toLowerCase());
 
   const isPRCancellable = workflowEngine.canCancelPR(currentRole, selectedPR);
   const statusInfo = PR_STATUS[resolvedStatusKey] || { 

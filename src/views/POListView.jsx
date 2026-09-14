@@ -1,15 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { PO_STATUS, PURCHASE_CHANNEL } from '../config/constants';
-import { workflowEngine } from '../services/workflowEngine';
 import { 
-  ShoppingBag, FileText, Search, X, DollarSign, PackageCheck, 
-  AlertTriangle, Truck, ShoppingCart, Building2, Store, FileSearch, 
-  Calendar, ChevronDown, Eye, WalletCards, Clock, CheckCircle2 
+  ShoppingBag, Search, Truck, 
+  Building2, Store, Calendar, ChevronDown, 
+  Eye, WalletCards, CheckCircle2 
 } from 'lucide-react';
 import PODetailsModal from '../components/po/PODetailsModal';
 import EmptyState from '../components/common/EmptyState';
 import Pagination from '../components/common/Pagination';
-import { hasDepartmentAccess, getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
+import { getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
 import { useAppContext } from '../context/AppContext';
 import { storageService } from '../services/storageService';
 
@@ -150,9 +148,9 @@ export default function POListView({ pos = EMPTY_ARRAY, departments: propDepartm
     : (currentUser?.role || currentRole?.roleId || currentRole?.id || currentRole?.name || '');
   const role = String(rawRole).toLowerCase();
 
-  const isOperational = ['requester', 'asst_mgr', 'supervisor'].some(r => role.includes(r));
-  const isPlantManager = role.includes('plant_mgr') || role.includes('plant manager');
-  const isPurchaser = role.includes('purchaser');
+  const _isOperational = ['requester', 'asst_mgr', 'supervisor'].some(r => role.includes(r));
+  const _isPlantManager = role.includes('plant_mgr') || role.includes('plant manager');
+  const _isPurchaser = role.includes('purchaser');
 
   // Dynamic Departments from Master Data
   const deptList = useMemo(() => {
