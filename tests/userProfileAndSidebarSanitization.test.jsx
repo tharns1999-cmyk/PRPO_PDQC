@@ -31,7 +31,6 @@ import './setup.js';
 import UserProfileModal from '../src/components/common/UserProfileModal.jsx';
 import Sidebar from '../src/components/common/Sidebar.jsx';
 import { AuthProvider, AUTH_STORAGE_KEY, CANONICAL_ROLES } from '../src/context/AuthContext.jsx';
-import { MOCK_GAS_USERS } from '../src/services/gasClient.js';
 
 describe('User Profile Modal & Sidebar Production Sanitization Suite', () => {
   const mockRequesterUser = {

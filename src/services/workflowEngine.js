@@ -464,7 +464,7 @@ export const workflowEngine = {
 
     // Direct Sync to Local Backend File
     try {
-      fetch(`http://localhost:3001/api/prs/${pr.id}`, {
+      fetch(`/api/prs/${pr.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(pr)
@@ -2422,12 +2422,12 @@ export const workflowEngine = {
 
     try {
       await Promise.all([
-        fetch('http://localhost:3001/api/products/batch', {
+        fetch('/api/products/batch', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(products)
         }),
-        fetch('http://localhost:3001/api/stock-logs', {
+        fetch('/api/stock-logs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(stockLogs)

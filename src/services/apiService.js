@@ -3,18 +3,11 @@ import { workflowEngine } from './workflowEngine';
 import { auditService } from './auditService';
 import { PO_STATUS } from '../config/constants';
 import { clearMockTransactions, resetMockTransactions } from '../utils/dataResetHelper';
-import { isGASAvailable, callGAS } from './gasClient';
 
 // API Service Layer for Data & Operations
 export const apiService = {
   // --- Audit Trail Operations ---
   async getAuditLogs(filters) {
-    if (isGASAvailable()) {
-      if (storageService.fetchAuditLogs) {
-        await storageService.fetchAuditLogs();
-      }
-      return storageService.getAuditLogs ? storageService.getAuditLogs() : auditService.getLogs(filters);
-    }
     return auditService.getLogs(filters);
   },
   async clearAuditLogs() {
@@ -22,11 +15,8 @@ export const apiService = {
   },
   // --- Data Getters ---
   async getProducts() {
-    if (isGASAvailable()) {
-      return storageService.getProducts();
-    }
     try {
-      const res = await fetch('http://localhost:3001/api/products');
+      const res = await fetch('/api/products');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -40,11 +30,8 @@ export const apiService = {
     return storageService.getProducts();
   },
   async getVendors() {
-    if (isGASAvailable()) {
-      return storageService.getVendors();
-    }
     try {
-      const res = await fetch('http://localhost:3001/api/vendors');
+      const res = await fetch('/api/vendors');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -58,11 +45,8 @@ export const apiService = {
     return storageService.getVendors();
   },
   async getStorageLocations() {
-    if (isGASAvailable()) {
-      return storageService.getStorageLocations();
-    }
     try {
-      const res = await fetch('http://localhost:3001/api/storage-locations');
+      const res = await fetch('/api/storage-locations');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -76,13 +60,10 @@ export const apiService = {
     return storageService.getStorageLocations();
   },
   async getUsageUnits(department) {
-    if (isGASAvailable()) {
-      return storageService.getUsageUnits(department);
-    }
     try {
       const url = department && department !== 'ALL' 
-        ? `http://localhost:3001/api/usage-units?department=${encodeURIComponent(department)}`
-        : 'http://localhost:3001/api/usage-units';
+        ? `/api/usage-units?department=${encodeURIComponent(department)}`
+        : '/api/usage-units';
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -99,11 +80,8 @@ export const apiService = {
     return storageService.getUsageUnits(department);
   },
   async getUsers() {
-    if (isGASAvailable()) {
-      return storageService.getUsers();
-    }
     try {
-      const res = await fetch('http://localhost:3001/api/users');
+      const res = await fetch('/api/users');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -117,11 +95,8 @@ export const apiService = {
     return storageService.getUsers();
   },
   async getDepartments() {
-    if (isGASAvailable()) {
-      return storageService.getDepartments();
-    }
     try {
-      const res = await fetch('http://localhost:3001/api/departments');
+      const res = await fetch('/api/departments');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -135,17 +110,11 @@ export const apiService = {
     return storageService.getDepartments();
   },
   async getPRs() {
-    if (isGASAvailable()) {
-      if (storageService.fetchPRs) {
-        return await storageService.fetchPRs();
-      }
-      return storageService.getPRs();
-    }
     if (typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true') {
       return storageService.getPRs();
     }
     try {
-      const res = await fetch('http://localhost:3001/api/prs');
+      const res = await fetch('/api/prs');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -173,17 +142,11 @@ export const apiService = {
     });
   },
   async getPOs() {
-    if (isGASAvailable()) {
-      if (storageService.fetchPOs) {
-        return await storageService.fetchPOs();
-      }
-      return storageService.getPOs();
-    }
     if (typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true') {
       return storageService.getPOs();
     }
     try {
-      const res = await fetch('http://localhost:3001/api/pos');
+      const res = await fetch('/api/pos');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -211,14 +174,8 @@ export const apiService = {
     });
   },
   async getStockLogs() {
-    if (isGASAvailable()) {
-      if (storageService.fetchStockLogs) {
-        return await storageService.fetchStockLogs();
-      }
-      return storageService.getStockLogs();
-    }
     try {
-      const res = await fetch('http://localhost:3001/api/stock-logs');
+      const res = await fetch('/api/stock-logs');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -232,11 +189,8 @@ export const apiService = {
     return storageService.getStockLogs();
   },
   async getBudgets() {
-    if (isGASAvailable()) {
-      return storageService.getBudgets();
-    }
     try {
-      const res = await fetch('http://localhost:3001/api/budgets');
+      const res = await fetch('/api/budgets');
       if (res.ok) {
         const data = await res.json();
         if (data && typeof data === 'object') {
@@ -250,11 +204,8 @@ export const apiService = {
     return storageService.getBudgets();
   },
   async getNotifications() {
-    if (isGASAvailable()) {
-      return storageService.getNotifications ? storageService.getNotifications() : [];
-    }
     try {
-      const res = await fetch('http://localhost:3001/api/notifications');
+      const res = await fetch('/api/notifications');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -268,14 +219,8 @@ export const apiService = {
   },
   
   async getBudgetTransactions() {
-    if (isGASAvailable()) {
-      if (storageService.fetchBudgetTransactions) {
-        return await storageService.fetchBudgetTransactions();
-      }
-      return storageService.getBudgetTransactions();
-    }
     try {
-      const res = await fetch('http://localhost:3001/api/budget-transactions');
+      const res = await fetch('/api/budget-transactions');
       if (res.ok) {
         const data = await res.json();
         storageService.saveBudgetTransactions(data);
@@ -289,7 +234,7 @@ export const apiService = {
 
   async adjustBudget(params) {
     try {
-      const res = await fetch('http://localhost:3001/api/budgets/adjust', {
+      const res = await fetch('/api/budgets/adjust', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params)
@@ -388,7 +333,7 @@ export const apiService = {
 
     // 2. Direct Sync to Local API Backend File
     try {
-      const res = await fetch('http://localhost:3001/api/prs', {
+      const res = await fetch('/api/prs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPR)
@@ -406,7 +351,7 @@ export const apiService = {
   async updatePR(prId, prData, user, isDraft = false) {
     const updated = await workflowEngine.updatePR(prId, prData, user, isDraft);
     try {
-      await fetch(`http://localhost:3001/api/prs/${prId}`, {
+      await fetch(`/api/prs/${prId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
@@ -418,7 +363,7 @@ export const apiService = {
   async submitPR(prId, user, memoData = null) {
     const result = await workflowEngine.submitPR(prId, user, memoData);
     try {
-      await fetch(`http://localhost:3001/api/prs/${prId}`, {
+      await fetch(`/api/prs/${prId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(result)
@@ -431,7 +376,7 @@ export const apiService = {
     const result = await workflowEngine.updatePRStatus(prId, nextStatus, user, note);
     try {
       if (result?.pr) {
-        await fetch(`http://localhost:3001/api/prs/${prId}`, {
+        await fetch(`/api/prs/${prId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(result.pr)
@@ -440,7 +385,7 @@ export const apiService = {
       if (result?.po) {
         const poList = Array.isArray(result.po) ? result.po : [result.po];
         for (const singlePo of poList) {
-          await fetch('http://localhost:3001/api/pos', {
+          await fetch('/api/pos', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(singlePo)
@@ -454,7 +399,7 @@ export const apiService = {
   async rejectPR(prId, user, reason) {
     const updated = await workflowEngine.rejectPR(prId, user, reason);
     try {
-      await fetch(`http://localhost:3001/api/prs/${prId}`, {
+      await fetch(`/api/prs/${prId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
@@ -466,7 +411,7 @@ export const apiService = {
   async editPRItems(prId, items, user, reason = '') {
     const updated = await workflowEngine.editPRItems(prId, items, user, reason);
     try {
-      await fetch(`http://localhost:3001/api/prs/${prId}`, {
+      await fetch(`/api/prs/${prId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
@@ -478,7 +423,7 @@ export const apiService = {
   async cancelPR(prId, user, reason) {
     const cancelled = await workflowEngine.cancelPR(prId, user, reason);
     try {
-      await fetch(`http://localhost:3001/api/prs/${prId}`, {
+      await fetch(`/api/prs/${prId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cancelled)
@@ -490,7 +435,7 @@ export const apiService = {
   async cancelPO(poId, user, reason) {
     const cancelled = await workflowEngine.cancelPO(poId, user, reason);
     try {
-      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+      await fetch(`/api/pos/${poId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cancelled)
@@ -504,7 +449,7 @@ export const apiService = {
   async acknowledgeOnlineTask(poId, vendorName, user, updatedItems = null, varianceNote = '') {
     const updated = await workflowEngine.acknowledgeOnlineTask(poId, vendorName, user, updatedItems, varianceNote);
     try {
-      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+      await fetch(`/api/pos/${poId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
@@ -523,7 +468,7 @@ export const apiService = {
     const res = storageService.resetPOQC2026001();
     if (res) {
       try {
-        await fetch(`http://localhost:3001/api/pos/${res.id}`, {
+        await fetch(`/api/pos/${res.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(res)
@@ -547,7 +492,7 @@ export const apiService = {
   async assignVendor(poId, vendorId, customVendorName, user) {
     const updated = await workflowEngine.assignVendor(poId, vendorId, customVendorName, user);
     try {
-      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+      await fetch(`/api/pos/${poId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
@@ -562,7 +507,7 @@ export const apiService = {
   async fileClaim(poId, claimData, user) {
     const updated = await workflowEngine.fileClaim(poId, claimData, user);
     try {
-      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+      await fetch(`/api/pos/${poId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
@@ -580,7 +525,7 @@ export const apiService = {
   async resolveClaim(poId, resolution, user) {
     const resolved = await workflowEngine.resolveClaim(poId, resolution, user);
     try {
-      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+      await fetch(`/api/pos/${poId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(resolved)
@@ -597,7 +542,7 @@ export const apiService = {
   async updatePOStatus(poId, nextStatus, user, note = '') {
     const updated = await workflowEngine.updatePOStatus(poId, nextStatus, user, note);
     try {
-      await fetch(`http://localhost:3001/api/pos/${poId}`, {
+      await fetch(`/api/pos/${poId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
@@ -629,7 +574,7 @@ export const apiService = {
     };
 
     try {
-      const res = await fetch(`http://localhost:3001/api/pos/${poId}/receive`, {
+      const res = await fetch(`/api/pos/${poId}/receive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -690,7 +635,7 @@ export const apiService = {
     const updatedProduct = await workflowEngine.quickIssueStock(productId, issueQty, user, note, issueUnit);
     try {
       if (updatedProduct) {
-        await fetch(`http://localhost:3001/api/products/${productId}`, {
+        await fetch(`/api/products/${productId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedProduct)
@@ -698,7 +643,7 @@ export const apiService = {
       }
       const logs = storageService.getStockLogs();
       if (logs && logs.length > 0) {
-        await fetch('http://localhost:3001/api/stock-logs', {
+        await fetch('/api/stock-logs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(logs)
@@ -752,44 +697,10 @@ export const apiService = {
       product.id = `PROD-${cat}-${Date.now()}`;
     }
 
-    if (isGASAvailable()) {
-      const mode = isUpdate ? 'EDIT' : 'CREATE';
-      product._mode = mode;
-      product.isEdit = isUpdate;
-      const res = await callGAS('apiSaveProduct', product, mode);
-      if (!res || !res.success) {
-        throw new Error(res?.message || res?.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูลสินค้าลง Google Sheets');
-      }
-      const saved = res.data || product;
-      const targetId = String(saved.id || product.id || '').trim().toLowerCase();
-      const targetCode = String(saved.code || product.code || '').trim().toLowerCase();
-      const updatedList = isUpdate 
-        ? products.map(p => {
-            const pId = String(p.id || '').trim().toLowerCase();
-            const pCode = String(p.code || '').trim().toLowerCase();
-            return (pId === targetId || pCode === targetCode) ? saved : p;
-          }) 
-        : [saved, ...products.filter(p => {
-            const pId = String(p.id || '').trim().toLowerCase();
-            const pCode = String(p.code || '').trim().toLowerCase();
-            return pId !== targetId && pCode !== targetCode;
-          })];
-      storageService.saveProducts(updatedList);
-      
-      auditService.logAction({
-        action: isUpdate ? 'PRODUCT_UPDATED' : 'PRODUCT_CREATED',
-        actor: user || 'Admin / Master Manager',
-        department: product.category,
-        docNo: product.code || product.id,
-        docType: 'PRODUCT',
-        details: `${isUpdate ? 'แก้ไขข้อมูลสินค้า' : 'เพิ่มสินค้าใหม่'}: [${product.code || product.sku || product.id}] ${product.name}`
-      });
-
-      return saved;
-    }
+    
 
     try {
-      const url = isUpdate ? `http://localhost:3001/api/products/${encodeURIComponent(product.id)}` : 'http://localhost:3001/api/products';
+      const url = isUpdate ? `/api/products/${encodeURIComponent(product.id)}` : '/api/products';
       const method = isUpdate ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
@@ -854,7 +765,7 @@ export const apiService = {
   async deleteProduct(productId, user = null) {
     const targetStr = String(productId || '').trim().toLowerCase();
     try {
-      await fetch(`http://localhost:3001/api/products/${encodeURIComponent(productId)}`, { method: 'DELETE' });
+      await fetch(`/api/products/${encodeURIComponent(productId)}`, { method: 'DELETE' });
     } catch (e) {
       console.warn('[apiService] Backend deleteProduct offline or failed:', e);
     }
@@ -893,41 +804,10 @@ export const apiService = {
       vendor.id = `VEN-${Date.now()}`;
     }
 
-    if (isGASAvailable()) {
-      const res = await callGAS('apiSaveVendor', vendor);
-      if (!res || !res.success) {
-        throw new Error(res?.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูลผู้ขายลง Google Sheets');
-      }
-      const saved = res.data || vendor;
-      const targetId = String(saved.id || vendor.id || '').trim().toLowerCase();
-      const targetCode = String(saved.code || vendor.code || '').trim().toLowerCase();
-      const updatedList = isUpdate 
-        ? vendors.map(v => {
-            const vId = String(v.id || '').trim().toLowerCase();
-            const vCode = String(v.code || '').trim().toLowerCase();
-            return (vId === targetId || vCode === targetCode) ? saved : v;
-          }) 
-        : [saved, ...vendors.filter(v => {
-            const vId = String(v.id || '').trim().toLowerCase();
-            const vCode = String(v.code || '').trim().toLowerCase();
-            return vId !== targetId && vCode !== targetCode;
-          })];
-      storageService.saveVendors(updatedList);
-
-      auditService.logAction({
-        action: isUpdate ? 'VENDOR_UPDATED' : 'VENDOR_CREATED',
-        actor: user || 'Admin / Vendor Manager',
-        department: vendor.category || vendor.department || 'ALL',
-        docNo: vendor.code || vendor.id,
-        docType: 'VENDOR',
-        details: `${isUpdate ? 'ปรับปรุงข้อมูลผู้ขาย' : 'เพิ่มผู้ขายรายใหม่'} "${vendor.name}" (${vendor.code || vendor.id})`
-      });
-
-      return saved;
-    }
+    
 
     try {
-      const url = isUpdate ? `http://localhost:3001/api/vendors/${encodeURIComponent(vendor.id)}` : 'http://localhost:3001/api/vendors';
+      const url = isUpdate ? `/api/vendors/${encodeURIComponent(vendor.id)}` : '/api/vendors';
       const method = isUpdate ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
@@ -992,7 +872,7 @@ export const apiService = {
   async deleteVendor(vendorId, user = null) {
     const targetStr = String(vendorId || '').trim().toLowerCase();
     try {
-      await fetch(`http://localhost:3001/api/vendors/${encodeURIComponent(vendorId)}`, { method: 'DELETE' });
+      await fetch(`/api/vendors/${encodeURIComponent(vendorId)}`, { method: 'DELETE' });
     } catch (e) {
       console.warn('[apiService] Backend deleteVendor offline or failed:', e);
     }
@@ -1032,32 +912,10 @@ export const apiService = {
       location.id = `LOC-${dept}-${Date.now().toString().slice(-6)}`;
     }
 
-    if (isGASAvailable()) {
-      const res = await callGAS('apiSaveStorageLocation', location);
-      if (!res || !res.success) {
-        throw new Error(res?.error || 'เกิดข้อผิดพลาดในการบันทึกจุดจัดเก็บลง Google Sheets');
-      }
-      const saved = res.data || location;
-      const targetId = String(saved.id || location.id || '').trim().toLowerCase();
-      const updatedList = isUpdate
-        ? locations.map(l => String(l.id || '').trim().toLowerCase() === targetId ? saved : l)
-        : [saved, ...locations.filter(l => String(l.id || '').toLowerCase() !== targetId)];
-      storageService.saveStorageLocations(updatedList);
-
-      auditService.logAction({
-        action: isUpdate ? 'LOCATION_UPDATED' : 'LOCATION_CREATED',
-        actor: user || 'Admin / Warehouse Manager',
-        department: location.department || 'ALL',
-        docNo: saved.id,
-        docType: 'LOCATION',
-        details: `${isUpdate ? 'แก้ไขจุดจัดเก็บ' : 'เพิ่มจุดจัดเก็บใหม่'} "${saved.name}" (${saved.department || 'ALL'})`
-      });
-
-      return saved;
-    }
+    
 
     try {
-      const url = isUpdate ? `http://localhost:3001/api/storage-locations/${location.id}` : 'http://localhost:3001/api/storage-locations';
+      const url = isUpdate ? `/api/storage-locations/${location.id}` : '/api/storage-locations';
       const method = isUpdate ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
@@ -1100,7 +958,7 @@ export const apiService = {
 
   async deleteStorageLocation(locationId, options = {}, user = null) {
     try {
-      await fetch(`http://localhost:3001/api/storage-locations/${locationId}`, { method: 'DELETE' });
+      await fetch(`/api/storage-locations/${locationId}`, { method: 'DELETE' });
     } catch (e) {}
     const locations = storageService.getStorageLocations();
     const loc = locations.find(l => l.id === locationId);
@@ -1140,32 +998,10 @@ export const apiService = {
       unit.id = `UNIT-${dept}-${Date.now().toString().slice(-6)}`;
     }
 
-    if (isGASAvailable()) {
-      const res = await callGAS('apiSaveUsageUnit', unit);
-      if (!res || !res.success) {
-        throw new Error(res?.error || 'เกิดข้อผิดพลาดในการบันทึกหน่วยเบิกใช้งานลง Google Sheets');
-      }
-      const saved = res.data || unit;
-      const targetId = String(saved.id || unit.id || '').trim().toLowerCase();
-      const updatedList = isUpdate
-        ? units.map(u => String(u.id || '').trim().toLowerCase() === targetId ? saved : u)
-        : [...units.filter(u => String(u.id || '').toLowerCase() !== targetId), saved];
-      storageService.saveUsageUnits(updatedList);
-
-      auditService.logAction({
-        action: isUpdate ? 'USAGE_UNIT_UPDATED' : 'USAGE_UNIT_CREATED',
-        actor: user || 'Admin / Department Manager',
-        department: unit.department || 'PD',
-        docNo: saved.id,
-        docType: 'USAGE_UNIT',
-        details: `${isUpdate ? 'แก้ไขหน่วยเบิกใช้งาน' : 'เพิ่มหน่วยเบิกใช้งานใหม่'} "${saved.name}" (${saved.department})`
-      });
-
-      return saved;
-    }
+    
 
     try {
-      const url = isUpdate ? `http://localhost:3001/api/usage-units/${unit.id}` : 'http://localhost:3001/api/usage-units';
+      const url = isUpdate ? `/api/usage-units/${unit.id}` : '/api/usage-units';
       const method = isUpdate ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
@@ -1208,7 +1044,7 @@ export const apiService = {
 
   async deleteUsageUnit(unitId, user = null) {
     try {
-      await fetch(`http://localhost:3001/api/usage-units/${unitId}`, { method: 'DELETE' });
+      await fetch(`/api/usage-units/${unitId}`, { method: 'DELETE' });
     } catch (e) {}
     const units = storageService.getUsageUnits();
     const unit = units.find(u => u.id === unitId);
@@ -1256,7 +1092,7 @@ export const apiService = {
     };
 
     try {
-      const url = isUpdate ? `http://localhost:3001/api/users/${user.id}` : 'http://localhost:3001/api/users';
+      const url = isUpdate ? `/api/users/${user.id}` : '/api/users';
       const method = isUpdate ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
@@ -1299,7 +1135,7 @@ export const apiService = {
 
   async deleteUser(userId, actor = null) {
     try {
-      await fetch(`http://localhost:3001/api/users/${userId}`, { method: 'DELETE' });
+      await fetch(`/api/users/${userId}`, { method: 'DELETE' });
     } catch (e) {}
     const users = storageService.getUsers();
     const target = users.find(u => u.id === userId);
@@ -1322,7 +1158,7 @@ export const apiService = {
   async saveDepartments(departments) {
     storageService.saveDepartments(departments);
     try {
-      await fetch('http://localhost:3001/api/departments', {
+      await fetch('/api/departments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(departments)
@@ -1333,36 +1169,12 @@ export const apiService = {
   async saveDepartment(deptPayload, actor = null) {
     const isUpdate = Boolean(deptPayload.id);
 
-    if (isGASAvailable()) {
-      const res = await callGAS('apiSaveDepartment', deptPayload);
-      if (!res || !res.success) {
-        throw new Error(res?.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูลแผนกลง Google Sheets');
-      }
-      const saved = res.data || deptPayload;
-      const depts = storageService.getDepartments();
-      const targetId = String(saved.id || deptPayload.id || '').trim().toLowerCase();
-      const targetCode = String(saved.code || deptPayload.code || '').trim().toLowerCase();
-      const updated = isUpdate
-        ? depts.map(d => (String(d.id || '').toLowerCase() === targetId || String(d.code || '').toLowerCase() === targetCode) ? saved : d)
-        : [...depts.filter(d => String(d.id || '').toLowerCase() !== targetId && String(d.code || '').toLowerCase() !== targetCode), saved];
-      storageService.saveDepartments(updated);
-
-      auditService.logAction({
-        action: isUpdate ? 'DEPARTMENT_UPDATED' : 'DEPARTMENT_CREATED',
-        actor: actor || 'Admin',
-        department: saved.code,
-        docNo: saved.id,
-        docType: 'DEPARTMENT',
-        details: `${isUpdate ? 'แก้ไขข้อมูลแผนก' : 'เพิ่มแผนกใหม่'} "${saved.name}" (${saved.code}) สถานะ: ${saved.isActive ? 'เปิดใช้งาน' : 'ระงับการใช้งาน'}`
-      });
-
-      return saved;
-    }
+    
 
     try {
       const url = isUpdate 
-        ? `http://localhost:3001/api/departments/${deptPayload.id}` 
-        : 'http://localhost:3001/api/departments';
+        ? `/api/departments/${deptPayload.id}` 
+        : '/api/departments';
       const method = isUpdate ? 'PUT' : 'POST';
       const res = await fetch(url, {
         method,
@@ -1404,7 +1216,7 @@ export const apiService = {
 
   async deleteDepartment(deptId, actor = null) {
     try {
-      await fetch(`http://localhost:3001/api/departments/${deptId}`, { method: 'DELETE' });
+      await fetch(`/api/departments/${deptId}`, { method: 'DELETE' });
     } catch (e) {}
     const depts = storageService.getDepartments();
     const target = depts.find(d => d.id === deptId || d.code === deptId);

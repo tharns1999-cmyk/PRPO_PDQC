@@ -281,7 +281,7 @@ function MasterDataContent({
       storageService.saveProducts(dedupedStored);
       setProductsList(dedupedStored);
       try {
-        fetch('http://localhost:3001/api/products/batch', {
+        fetch('/api/products/batch', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(dedupedStored)

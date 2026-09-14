@@ -257,7 +257,7 @@ export const budgetService = {
     // Backend sync attempt
     try {
       if (typeof fetch === 'function') {
-        await fetch('http://localhost:3001/api/budgets/allocate', {
+        await fetch('/api/budgets/allocate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ period, allocations, actor, reason })
@@ -282,7 +282,7 @@ export const budgetService = {
     storageService.saveBudgets(cleanBudgets);
     try {
       if (typeof fetch === 'function') {
-        fetch('http://localhost:3001/api/budgets/reset', {
+        fetch('/api/budgets/reset', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(cleanBudgets)
@@ -455,7 +455,7 @@ export const budgetService = {
 
     try {
       if (typeof fetch === 'function') {
-        await fetch(`http://localhost:3001/api/budgets/${dept}`, {
+        await fetch(`/api/budgets/${dept}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(budgets[dept])

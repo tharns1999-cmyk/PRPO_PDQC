@@ -1,11 +1,8 @@
 import { STORAGE_KEYS, ROLES, INITIAL_USAGE_UNITS, INITIAL_DEPARTMENTS } from '../config/constants.js';
 import { initialProducts, initialVendors, initialStorageLocations, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
 import { DEFAULT_EMPLOYEE_ACCOUNTS } from './authService.js';
-import { isGASAvailable, callGAS } from './gasClient.js';
-export { isGASAvailable, callGAS };
-
 const DATA_VERSION = 'prpo_clean_v16_empty_state';
-const API_URL = 'http://localhost:3001/api/storage';
+const API_URL = '/api/storage';
 
 // ── Permanent Blacklist Guard against Test / Mock Artifacts ──
 export const DUMMY_BLACKLIST = new Set(['P01', 'P02', 'PROD-01', 'PROD-02']);
@@ -197,46 +194,7 @@ const _migrateLocalStorageCache = () => {
 // Immediately run migration if in browser environment
 _migrateLocalStorageCache();
 
-const GAS_SYNC_MAP = {
-  [STORAGE_KEYS.PRS]: 'apiSavePRs',
-  [STORAGE_KEYS.POS]: 'apiSavePOs',
-  [STORAGE_KEYS.PRODUCTS]: 'apiSaveProducts',
-  [STORAGE_KEYS.STOCK_LOGS]: 'apiSaveStockLogs',
-  [STORAGE_KEYS.BUDGETS]: 'apiSaveBudgets',
-  [STORAGE_KEYS.BUDGET_TRANSACTIONS]: 'apiSaveBudgetTransactions',
-  'prpo_budget_transactions': 'apiSaveBudgetTransactions',
-  [STORAGE_KEYS.VENDORS]: 'apiSaveVendors',
-  [STORAGE_KEYS.STORAGE_LOCATIONS]: 'apiSaveStorageLocations',
-  [STORAGE_KEYS.USAGE_UNITS]: 'apiSaveUsageUnits',
-  [STORAGE_KEYS.DEPARTMENTS]: 'apiSaveDepartments',
-  [STORAGE_KEYS.USERS]: 'apiSaveUsers',
-  [STORAGE_KEYS.AUDIT_LOGS]: 'apiSaveAuditLogs',
-  'prpo_audit_logs': 'apiSaveAuditLogs',
-  [STORAGE_KEYS.SIGNATURES]: 'apiSaveSignatures',
-  'prpo_notifications': 'apiSaveNotifications',
-  'prpo_in_app_notifications': 'apiSaveNotifications'
-};
 
-const _gasDebounceTimers = new Map();
-
-const _syncGAS = (key, value) => {
-  if (!isGASAvailable()) return;
-  const functionName = GAS_SYNC_MAP[key];
-  if (!functionName) return;
-
-  if (_gasDebounceTimers.has(key)) {
-    clearTimeout(_gasDebounceTimers.get(key));
-  }
-
-  const timer = setTimeout(() => {
-    _gasDebounceTimers.delete(key);
-    callGAS(functionName, value).catch(err => {
-      console.warn(`[StorageService] Failed to sync ${key} to GAS ${functionName}:`, err);
-    });
-  }, 250);
-
-  _gasDebounceTimers.set(key, timer);
-};
 
 const _getItem = (key) => {
   if (_apiReady && _cache[key] !== undefined) {
@@ -277,7 +235,6 @@ const _setItem = (key, value, syncWithBackend = false) => {
   if (syncWithBackend) {
     _syncApi();
   }
-  _syncGAS(key, value);
 };
 
 const isDataCleared = () => typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true';
@@ -317,94 +274,12 @@ export const storageService = {
     _apiReady = true;
   },
 
-  // Initialize storage from Google Apps Script (Live Web App) or Local Node.js Backend with fallback to LocalStorage
+  // Initialize storage from Local Node.js Backend with fallback to LocalStorage
   async init() {
     this.hydrateFromClientStorage();
     _migrateLocalStorageCache();
 
-    // 1. Live Google Apps Script Web App Hydration (Granular Master Data & Summary Stats)
-    if (isGASAvailable()) {
-      try {
-        const initial = await callGAS('apiGetInitialData');
-        if (initial && initial.success) {
-          // ── GAS Real-State Sync: always respect what the Sheet says, even if empty ──
-          // Always overwrite cache with what GAS returned (respects empty arrays too)
-          // Normalize identity fields (id, code, sku, name) to String to prevent raw Numbers from Google Sheets
-          const rawProds = Array.isArray(initial.products) ? initial.products : [];
-          _cache[STORAGE_KEYS.PRODUCTS] = rawProds.map(p => {
-            if (!p || typeof p !== 'object') return p;
-            const actual = p.product || p.item || p;
-            return {
-              ...p,
-              ...actual,
-              id: actual.id !== undefined && actual.id !== null ? String(actual.id) : '',
-              code: actual.code !== undefined && actual.code !== null ? String(actual.code) : '',
-              sku: actual.sku !== undefined && actual.sku !== null ? String(actual.sku) : '',
-              name: actual.name !== undefined && actual.name !== null ? String(actual.name) : (actual.itemName ? String(actual.itemName) : ''),
-              itemCode: actual.itemCode !== undefined && actual.itemCode !== null ? String(actual.itemCode) : ''
-            };
-          });
-          _cache[STORAGE_KEYS.VENDORS] = Array.isArray(initial.vendors) ? initial.vendors : [];
-          _cache[STORAGE_KEYS.STORAGE_LOCATIONS] = Array.isArray(initial.storageLocations) ? initial.storageLocations : [];
-          _cache[STORAGE_KEYS.USAGE_UNITS] = Array.isArray(initial.usageUnits) ? initial.usageUnits : [];
-          _cache[STORAGE_KEYS.DEPARTMENTS] = Array.isArray(initial.departments) ? initial.departments : [];
-          _cache[STORAGE_KEYS.USERS] = Array.isArray(initial.users) ? initial.users : [];
-          if (initial.budgets && typeof initial.budgets === 'object') {
-            _cache[STORAGE_KEYS.BUDGETS] = initial.budgets;
-          }
-          if (initial.signatures && typeof initial.signatures === 'object') {
-            _cache[STORAGE_KEYS.SIGNATURES] = initial.signatures;
-          }
-          _cache['prpo_notifications'] = Array.isArray(initial.notifications) ? initial.notifications : [];
-          _cache['prpo_in_app_notifications'] = Array.isArray(initial.notifications) ? initial.notifications : [];
-          if (initial.summaryStats) {
-            _cache['prpo_summary_stats'] = initial.summaryStats;
-          }
-
-          // Transactional data: only populate if GAS returned rows (lazy-loaded separately)
-          if (Array.isArray(initial.prs)) {
-            _cache[STORAGE_KEYS.PRS] = initial.prs;
-          }
-          if (Array.isArray(initial.pos)) {
-            _cache[STORAGE_KEYS.POS] = initial.pos;
-          }
-          if (Array.isArray(initial.stockLogs)) {
-            _cache[STORAGE_KEYS.STOCK_LOGS] = initial.stockLogs;
-          }
-
-          // Invalidate result-cache so getters re-run with fresh GAS data
-          _resultCache.clear();
-          _dirtyKeys.clear();
-
-          // Mirror into sessionStorage & localStorage as fast read cache (overwrite old stale data)
-          const MASTER_KEYS_TO_SYNC = [
-            STORAGE_KEYS.PRODUCTS, STORAGE_KEYS.VENDORS, STORAGE_KEYS.STORAGE_LOCATIONS,
-            STORAGE_KEYS.USAGE_UNITS, STORAGE_KEYS.DEPARTMENTS, STORAGE_KEYS.USERS,
-            STORAGE_KEYS.BUDGETS, STORAGE_KEYS.SIGNATURES, STORAGE_KEYS.PRS, STORAGE_KEYS.POS,
-            STORAGE_KEYS.STOCK_LOGS, 'prpo_notifications', 'prpo_in_app_notifications'
-          ];
-          MASTER_KEYS_TO_SYNC.forEach(k => {
-            const v = _cache[k];
-            if (v !== undefined) {
-              const str = JSON.stringify(v);
-              if (typeof sessionStorage !== 'undefined') {
-                try { sessionStorage.setItem(k, str); } catch (e) {}
-              }
-              if (typeof localStorage !== 'undefined') {
-                try { localStorage.setItem(k, str); } catch (e) {}
-              }
-            }
-          });
-
-          _apiReady = true;
-          return initial;
-        }
-      } catch (gasErr) {
-        console.warn('[StorageService] GAS Initial Data Hydration warning:', gasErr);
-      }
-    }
-
-    // 2. Local Node.js Backend API
+    // Local Node.js Backend API
     try {
       const res = await fetch(API_URL);
       if (res.ok) {
@@ -420,116 +295,26 @@ export const storageService = {
 
   // ── Lazy-Fetching for Heavy Transactional Records ──
   async fetchPRs(force = false) {
-    // On GAS: always fetch fresh regardless of local cache (respect real empty state)
-    if (!force && !isGASAvailable() && Array.isArray(_cache[STORAGE_KEYS.PRS]) && _cache[STORAGE_KEYS.PRS].length > 0) {
-      return this.getPRs();
-    }
-    if (isGASAvailable()) {
-      try {
-        const res = await callGAS('apiGetPRs');
-        if (res && res.success) {
-          const prs = Array.isArray(res.prs) ? res.prs : [];
-          _cache[STORAGE_KEYS.PRS] = prs;
-          _resultCache.delete(STORAGE_KEYS.PRS);
-          _dirtyKeys.add(STORAGE_KEYS.PRS);
-          if (typeof sessionStorage !== 'undefined') try { sessionStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify(prs)); } catch(e){}
-          if (typeof localStorage !== 'undefined') try { localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify(prs)); } catch(e){}
-          return this.getPRs();
-        }
-      } catch (err) {
-        console.warn('[StorageService] Lazy fetch PRs error:', err.message);
-      }
-    }
     return this.getPRs();
   },
 
   async fetchPOs(force = false) {
-    if (!force && !isGASAvailable() && Array.isArray(_cache[STORAGE_KEYS.POS]) && _cache[STORAGE_KEYS.POS].length > 0) {
-      return this.getPOs();
-    }
-    if (isGASAvailable()) {
-      try {
-        const res = await callGAS('apiGetPOs');
-        if (res && res.success) {
-          const pos = Array.isArray(res.pos) ? res.pos : [];
-          _cache[STORAGE_KEYS.POS] = pos;
-          _resultCache.delete(STORAGE_KEYS.POS);
-          _dirtyKeys.add(STORAGE_KEYS.POS);
-          if (typeof sessionStorage !== 'undefined') try { sessionStorage.setItem(STORAGE_KEYS.POS, JSON.stringify(pos)); } catch(e){}
-          if (typeof localStorage !== 'undefined') try { localStorage.setItem(STORAGE_KEYS.POS, JSON.stringify(pos)); } catch(e){}
-          return this.getPOs();
-        }
-      } catch (err) {
-        console.warn('[StorageService] Lazy fetch POs error:', err.message);
-      }
-    }
     return this.getPOs();
   },
 
   async fetchStockLogs(force = false) {
-    if (!force && !isGASAvailable() && Array.isArray(_cache[STORAGE_KEYS.STOCK_LOGS]) && _cache[STORAGE_KEYS.STOCK_LOGS].length > 0) {
-      return this.getStockLogs();
-    }
-    if (isGASAvailable()) {
-      try {
-        const res = await callGAS('apiGetStockLogs');
-        if (res && res.success) {
-          const logs = Array.isArray(res.stockLogs) ? res.stockLogs : [];
-          _cache[STORAGE_KEYS.STOCK_LOGS] = logs;
-          _resultCache.delete(STORAGE_KEYS.STOCK_LOGS);
-          _dirtyKeys.add(STORAGE_KEYS.STOCK_LOGS);
-          if (typeof sessionStorage !== 'undefined') try { sessionStorage.setItem(STORAGE_KEYS.STOCK_LOGS, JSON.stringify(logs)); } catch(e){}
-          if (typeof localStorage !== 'undefined') try { localStorage.setItem(STORAGE_KEYS.STOCK_LOGS, JSON.stringify(logs)); } catch(e){}
-          return this.getStockLogs();
-        }
-      } catch (err) {
-        console.warn('[StorageService] Lazy fetch StockLogs error:', err.message);
-      }
-    }
     return this.getStockLogs();
   },
 
   async fetchBudgetTransactions(force = false) {
-    if (!force && !isGASAvailable() && Array.isArray(_cache[STORAGE_KEYS.BUDGET_TRANSACTIONS]) && _cache[STORAGE_KEYS.BUDGET_TRANSACTIONS].length > 0) {
-      return this.getBudgetTransactions();
-    }
-    if (isGASAvailable()) {
-      try {
-        const res = await callGAS('apiGetBudgetTransactions');
-        if (res && res.success) {
-          const txs = Array.isArray(res.budgetTransactions) ? res.budgetTransactions : [];
-          _cache[STORAGE_KEYS.BUDGET_TRANSACTIONS] = txs;
-          if (typeof sessionStorage !== 'undefined') try { sessionStorage.setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, JSON.stringify(txs)); } catch(e){}
-          if (typeof localStorage !== 'undefined') try { localStorage.setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, JSON.stringify(txs)); } catch(e){}
-          return this.getBudgetTransactions();
-        }
-      } catch (err) {
-        console.warn('[StorageService] Lazy fetch BudgetTransactions error:', err.message);
-      }
-    }
     return this.getBudgetTransactions();
   },
 
   async fetchAuditLogs(force = false) {
-    if (!force && !isGASAvailable() && Array.isArray(_cache[STORAGE_KEYS.AUDIT_LOGS]) && _cache[STORAGE_KEYS.AUDIT_LOGS].length > 0) {
-      return this.getAuditLogs();
-    }
-    if (isGASAvailable()) {
-      try {
-        const res = await callGAS('apiGetAuditLogs');
-        if (res && res.success) {
-          const logs = Array.isArray(res.auditLogs) ? res.auditLogs : [];
-          _setItem(STORAGE_KEYS.AUDIT_LOGS, logs);
-          return this.getAuditLogs();
-        }
-      } catch (err) {
-        console.warn('[StorageService] Lazy fetch AuditLogs error:', err.message);
-      }
-    }
     return this.getAuditLogs();
   },
 
-  // Flush all in-memory and browser storage caches (call before re-fetching from GAS)
+  // Flush all in-memory and browser storage caches
   invalidateAllClientCache() {
     _cache = {};
     _resultCache.clear();
@@ -552,67 +337,36 @@ export const storageService = {
       localStorage.setItem('prpo_data_version', DATA_VERSION);
     }
     _setItem(STORAGE_KEYS.CURRENT_ROLE, ROLES.REQUESTER_PD, false);
-    // On GAS: do NOT seed mock data — data comes from Sheets
-    if (!isGASAvailable()) {
-      _setItem(STORAGE_KEYS.PRODUCTS, initialProducts, false);
-      _setItem(STORAGE_KEYS.VENDORS, initialVendors, false);
-      _setItem(STORAGE_KEYS.STORAGE_LOCATIONS, initialStorageLocations, false);
-      _setItem(STORAGE_KEYS.USAGE_UNITS, INITIAL_USAGE_UNITS, false);
-      _setItem(STORAGE_KEYS.USERS, DEFAULT_EMPLOYEE_ACCOUNTS, false);
-    }
-    _setItem(STORAGE_KEYS.PRS, [], false);
-    _setItem(STORAGE_KEYS.POS, [], false);
-    _setItem(STORAGE_KEYS.STOCK_LOGS, [], false);
-    _setItem(STORAGE_KEYS.BUDGETS, {
-      PD: { monthlyBudget: 1000000, spent: 0, pending: 0, variance: 1000000 },
-      QC: { monthlyBudget: 150000, spent: 0, pending: 0, variance: 150000 },
-      WH: { monthlyBudget: 120000, spent: 0, pending: 0, variance: 120000 },
-      PUR: { monthlyBudget: 100000, spent: 0, pending: 0, variance: 100000 },
-      ENG: { monthlyBudget: 205000, spent: 0, pending: 0, variance: 205000 }
-    }, false);
-    _setItem(STORAGE_KEYS.PR_COUNTERS, {
-      PD: { PR: 0, PO: 0 },
-      QC: { PR: 0, PO: 0 }
-    }, false);
-    _setItem('prpo_budget_transactions', [], false);
-    _setItem('prpo_audit_logs', [], false);
+    _setItem(STORAGE_KEYS.PRODUCTS, initialProducts, false);
+    _setItem(STORAGE_KEYS.VENDORS, initialVendors, false);
+    _setItem(STORAGE_KEYS.STORAGE_LOCATIONS, initialStorageLocations, false);
+    _setItem(STORAGE_KEYS.USAGE_UNITS, INITIAL_USAGE_UNITS, false);
+    _setItem(STORAGE_KEYS.DEPARTMENTS, INITIAL_DEPARTMENTS, false);
+    _setItem(STORAGE_KEYS.USERS, DEFAULT_EMPLOYEE_ACCOUNTS, false);
+    _setItem(STORAGE_KEYS.BUDGETS, initialBudgets, false);
+    _setItem(STORAGE_KEYS.PR_COUNTERS, initialCounters, false);
+    _setItem(STORAGE_KEYS.SIGNATURES, {}, false);
+    _setItem(STORAGE_KEYS.PRS, initialPRs, false);
+    _setItem(STORAGE_KEYS.POS, initialPOs, false);
+    _setItem(STORAGE_KEYS.STOCK_LOGS, initialStockLogs, false);
+    _setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, [], false);
+    _setItem(STORAGE_KEYS.AUDIT_LOGS, [], false);
     _setItem('prpo_notifications', [], false);
     _setItem('prpo_in_app_notifications', [], false);
+    _setItem('prpo_summary_stats', null, false);
   },
 
-  // Clear transactional data only (PRs, POs, Stock movement, Notifications, Audit logs) while preserving 100% of Master Data
-  clearTransactionalData(syncWithBackend = false) {
-    if (isGASAvailable()) {
-      callGAS('apiClearTransactionalData').catch(e => console.warn('[StorageService] GAS clear error:', e));
-    }
-    _setItem(STORAGE_KEYS.PRS, [], syncWithBackend);
-    _setItem(STORAGE_KEYS.POS, [], syncWithBackend);
-    _setItem(STORAGE_KEYS.STOCK_LOGS, [], syncWithBackend);
-    _setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, [], syncWithBackend);
-    _setItem(STORAGE_KEYS.AUDIT_LOGS, [], syncWithBackend);
-    _setItem('prpo_budget_transactions', [], syncWithBackend);
-    _setItem('prpo_audit_logs', [], syncWithBackend);
-    _setItem('prpo_notifications', [], syncWithBackend);
-    _setItem('prpo_in_app_notifications', [], false);
-    _setItem(STORAGE_KEYS.PR_COUNTERS, {
-      PD: { PR: 0, PO: 0 },
-      QC: { PR: 0, PO: 0 }
-    }, syncWithBackend);
-
-    // Reset budget spent / pending to 0
-    const currentBudgets = this.getBudgets();
-    const cleanBudgets = {};
-    for (const [dept, b] of Object.entries(currentBudgets)) {
-      cleanBudgets[dept] = {
-        ...b,
-        spent: 0,
-        pending: 0,
-        variance: b.monthlyBudget || 0,
-        historicalSpent: {}
-      };
-    }
-    this.saveBudgets(cleanBudgets);
-    return true;
+  clearTransactions() {
+    _setItem(STORAGE_KEYS.PRS, []);
+    _setItem(STORAGE_KEYS.POS, []);
+    _setItem(STORAGE_KEYS.STOCK_LOGS, []);
+    _setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, []);
+    _setItem(STORAGE_KEYS.AUDIT_LOGS, []);
+    _setItem('prpo_notifications', []);
+    _setItem('prpo_in_app_notifications', []);
+    _setItem('app_prs', []);
+    _setItem('app_pos', []);
+    _setItem('app_stock_logs', []);
   },
 
   // Role
@@ -665,14 +419,13 @@ export const storageService = {
       } catch (e) {}
     }
 
-    // On GAS: if GAS returned empty data, respect it — do NOT fall back to mock
-    const products = data && data.length > 0 ? data : (isGASAvailable() ? [] : initialProducts);
+    const products = data && data.length > 0 ? data : initialProducts;
     
     let needsSave = false;
     const migrated = products.map(p => {
       const actual = p.product || p.item || p;
       let item = { ...actual };
-      // Normalize identity fields to String to prevent raw Numbers from Google Sheets
+      // Normalize identity fields to String
       if (item.id !== undefined && item.id !== null) item.id = String(item.id);
       if (item.code !== undefined && item.code !== null) item.code = String(item.code);
       if (item.sku !== undefined && item.sku !== null) item.sku = String(item.sku);
@@ -851,7 +604,6 @@ export const storageService = {
   getStorageLocations() {
     const data = _getItem(STORAGE_KEYS.STORAGE_LOCATIONS);
     if (!data) {
-      if (isGASAvailable()) return []; // Respect real empty state from GAS
       this.saveStorageLocations(initialStorageLocations);
       return initialStorageLocations;
     }
@@ -866,12 +618,8 @@ export const storageService = {
     const data = _getItem(STORAGE_KEYS.USAGE_UNITS);
     let list;
     if (!data) {
-      if (isGASAvailable()) {
-        list = []; // Respect real empty state from GAS
-      } else {
-        this.saveUsageUnits(INITIAL_USAGE_UNITS);
-        list = INITIAL_USAGE_UNITS;
-      }
+      this.saveUsageUnits(INITIAL_USAGE_UNITS);
+      list = INITIAL_USAGE_UNITS;
     } else {
       list = data;
     }
@@ -914,7 +662,6 @@ export const storageService = {
   getDepartments() {
     const data = _getItem(STORAGE_KEYS.DEPARTMENTS);
     if (!data || !Array.isArray(data) || data.length === 0) {
-      if (isGASAvailable()) return []; // Respect real empty state from GAS
       this.saveDepartments(INITIAL_DEPARTMENTS);
       return INITIAL_DEPARTMENTS;
     }
@@ -958,7 +705,6 @@ export const storageService = {
   getUsers() {
     const data = _getItem(STORAGE_KEYS.USERS);
     if (!data) {
-      if (isGASAvailable()) return []; // Respect real empty state from GAS
       this.saveUsers(DEFAULT_EMPLOYEE_ACCOUNTS);
       return DEFAULT_EMPLOYEE_ACCOUNTS;
     }
@@ -1092,7 +838,6 @@ export const storageService = {
   // Vendors
   getVendors() {
     const data = _getItem(STORAGE_KEYS.VENDORS);
-    if (!data && isGASAvailable()) return []; // Respect real empty state from GAS
     return data || initialVendors;
   },
   saveVendors(vendors) {
@@ -1127,7 +872,6 @@ export const storageService = {
       return _resultCache.get(_cacheKey);
     }
     const data = _getItem(STORAGE_KEYS.PRS);
-    // On GAS: always return empty array if no data — never fall back to mock
     const prs = Array.isArray(data) ? data : [];
     const filtered = prs;
     
@@ -1185,8 +929,8 @@ export const storageService = {
           (po.prId && (po.prId === pr.id || po.prId === pr.prNo)) ||
           (po.prNo && (po.prNo === pr.prNo || po.prNo === pr.id)) ||
           (po.prNumber && (po.prNumber === pr.id || po.prNumber === pr.prNo)) ||
-          (pr.poNo && (po.poNo === pr.poNo || po.id === pr.poNo)) ||
-          (pr.poNumber && (po.poNo === pr.poNumber || po.poNumber === pr.poNumber))
+          (pr.poNo && (po.poNo === po.poNo || pr.id === po.poNo)) ||
+          (po.poNumber && (po.poNo === po.poNumber || po.poNumber === po.poNumber))
         );
         if (relatedPO) {
           const poIsDone = ['closed', 'cancelled', 'received', 'completed', 'fully_received'].includes(String(relatedPO.status).toLowerCase());
@@ -1227,7 +971,6 @@ export const storageService = {
       return _resultCache.get(_cacheKey);
     }
     const data = _getItem(STORAGE_KEYS.POS);
-    // On GAS: always return empty array if no data — never fall back to mock
     const pos = Array.isArray(data) ? data : [];
     const filtered = pos.filter(po => po.department === 'PD' || po.department === 'QC');
 
@@ -1756,7 +1499,7 @@ export const storageService = {
     const posList = _cache[STORAGE_KEYS.POS] || [];
     posList.forEach(po => {
       const isReceived = ['closed', 'completed', 'received'].includes(String(po.status || '').toLowerCase()) ||
-        Boolean(po.isClosed) || Boolean(po.isCompleted) || Array.isArray(po.grnHistory);
+        Boolean(po.isClosed) || Boolean(po.isCompleted);
       if (!isReceived) return;
 
       const actLogGR = Array.isArray(po.activityLog) ? po.activityLog.find(a => a.grNumber || a.grnNumber) : null;
@@ -2092,21 +1835,12 @@ export const storageService = {
 
       // Sync to local server if running
       try {
-        fetch('http://localhost:3001/api/stock-logs', {
+        fetch('/api/stock-logs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(currentLogs)
         }).catch(() => {});
       } catch {}
-
-      // Sync to GAS if available
-      if (isGASAvailable()) {
-        try {
-          callGAS('apiSaveStockLogs', currentLogs);
-        } catch (e) {
-          console.warn('[storageService] GAS apiSaveStockLogs warning:', e);
-        }
-      }
     }
 
     return newLogs;
@@ -2329,9 +2063,6 @@ export const storageService = {
     _setItem('prpo_in_app_notifications', notifications);
   },
   clearMockTransactions() {
-    if (isGASAvailable()) {
-      callGAS('apiClearTransactionalData').catch(e => console.warn('[StorageService] GAS clear error:', e));
-    }
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('app_data_cleared', 'true');
     }

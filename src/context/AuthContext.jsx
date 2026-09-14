@@ -2,11 +2,11 @@
  * Global Authentication & Role-Based Access Control (RBAC) Subsystem
  * 
  * Provides centralized session management, canonical role normalization,
- * permission guards, and GAS backend authentication.
+ * permission guards, and authentication.
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { callGAS, MOCK_GAS_USERS } from '../services/gasClient.js';
+import { authService, DEFAULT_EMPLOYEE_ACCOUNTS } from '../services/authService.js';
 import { storageService } from '../services/storageService.js';
 import { auditService } from '../services/auditService.js';
 
@@ -292,12 +292,11 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('prpo_original_admin_user');
 
     try {
-      const response = await callGAS('apiLogin', usernameOrId, password);
-      if (!response || !response.success || !response.user) {
-        throw new Error(response?.error || 'Username หรือ Password ไม่ถูกต้อง');
+      const verifiedUser = await authService.login(usernameOrId, password);
+      if (!verifiedUser) {
+        throw new Error('Username หรือ Password ไม่ถูกต้อง');
       }
 
-      const verifiedUser = response.user;
       const normalized = normalizeRole(verifiedUser);
       const userDepts = verifiedUser.departments || verifiedUser.allowedDepartments || (verifiedUser.department ? [verifiedUser.department] : ['PD']);
 
@@ -349,7 +348,7 @@ export function AuthProvider({ children }) {
    */
   const switchRoleDev = useCallback((roleOrUser) => {
     let target = null;
-    let userPool = MOCK_GAS_USERS;
+    let userPool = DEFAULT_EMPLOYEE_ACCOUNTS;
     try {
       const cached = localStorage.getItem('prpo_users_cache');
       if (cached) {

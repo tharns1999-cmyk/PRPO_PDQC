@@ -1728,6 +1728,44 @@ app.post('/api/storage', async (req, res) => {
   }
 });
 
+// File Upload Endpoint (Local Express Storage)
+const uploadsDir = path.join(dataDir, 'uploads');
+if (!fsSync.existsSync(uploadsDir)) {
+  fsSync.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/api/uploads', express.static(uploadsDir));
+
+app.post('/api/upload', async (req, res) => {
+  try {
+    const { base64Data, fileName, mimeType, category, poNumber, folderPath, description } = req.body || {};
+    if (!base64Data) {
+      return res.status(400).json({ error: 'Missing base64Data' });
+    }
+
+    const fileId = `FILE-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const safeName = (fileName || `${fileId}.bin`).replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storedFileName = `${Date.now()}_${safeName}`;
+    const filePath = path.join(uploadsDir, storedFileName);
+
+    const buffer = Buffer.from(base64Data, 'base64');
+    await fs.writeFile(filePath, buffer);
+
+    const fileUrl = `/api/uploads/${storedFileName}`;
+    res.json({
+      success: true,
+      fileId,
+      fileUrl,
+      fileName: fileName || safeName,
+      folderPath: folderPath || category || '',
+      description: description || '',
+      size: buffer.length
+    });
+  } catch (err) {
+    console.error('[server] File upload error:', err);
+    res.status(500).json({ error: 'Upload failed: ' + err.message });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`[Local API Backend] Server running on http://localhost:${PORT}`);

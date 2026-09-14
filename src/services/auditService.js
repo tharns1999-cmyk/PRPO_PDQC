@@ -1,6 +1,5 @@
 import { STORAGE_KEYS } from '../config/constants.js';
 import { logAuditEvent } from './auditLogger.js';
-import { isGASAvailable, callGAS } from './gasClient.js';
 
 /**
  * Format timestamp strictly in Thailand time (Asia/Bangkok UTC+7)
@@ -206,11 +205,6 @@ export const auditService = {
       const existing = this.getLogs();
       const updated = [logEntry, ...existing].slice(0, 1000); // Keep latest 1000 logs
       localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS || 'prpo_audit_logs', JSON.stringify(updated));
-
-      // Append directly to Google Apps Script backend
-      if (isGASAvailable()) {
-        callGAS('apiLogAudit', logEntry).catch(e => console.warn('[AuditService] GAS apiLogAudit error:', e));
-      }
 
       // Also forward to centralized auditLogger for app_audit_logs
       try {

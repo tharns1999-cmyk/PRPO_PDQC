@@ -9,7 +9,6 @@
     "backend": "node server/server.js",
     "start": "concurrently \"npm run backend\" \"vite\"",
     "build": "vite build",
-    "deploy": "npm run build && clasp push -f && clasp deploy",
     "test": "vitest run tests",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
@@ -26,7 +25,6 @@
     "recharts": "^3.10.1"
   },
   "devDependencies": {
-    "@google/clasp": "^3.4.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/react": "^19.2.17",
@@ -41,7 +39,6 @@
     "tailwindcss": "^3.4.19",
     "terser": "^5.51.2",
     "vite": "^8.2.0",
-    "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^4.1.10"
   }
 }

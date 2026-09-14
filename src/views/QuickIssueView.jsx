@@ -728,7 +728,7 @@ export default function QuickIssueView({
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-amber-50/80 border border-amber-200/80 rounded-2xl text-xs text-amber-900 shadow-2xs">
                   <div className="flex items-center gap-2.5">
                     <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                    <span>ยังไม่มีข้อมูลหน่วยเบิกใช้งาน/ห้องใน Google Sheets</span>
+                    <span>ยังไม่มีข้อมูลหน่วยเบิกใช้งาน/ห้องในระบบ</span>
                   </div>
                   <button
                     type="button"

@@ -1,15 +1,16 @@
 /**
- * Google Drive Document Routing & Upload Service
+ * Document Routing & Upload Service
  * 
- * Manages automated routing and file uploads into the structured ERP Google Drive hierarchy:
- * [ERP] PR-PO-Stock-System/
- *   ├── 01_PR_Attachments/{YYYY-MM}/
- *   ├── 02_PO_Documents/{YYYY-MM}/
- *   ├── 03_GRN_Evidence/{YYYY-MM}/{PO_NUMBER}/
- *   └── 04_Claim_Evidence/{YYYY-MM}/{PO_NUMBER}/
+ * Manages automated routing and file uploads into structured ERP categories:
+ * - 01_PR_Attachments/{YYYY-MM}/
+ * - 02_PO_Documents/{YYYY-MM}/
+ * - 03_GRN_Evidence/{YYYY-MM}/{PO_NUMBER}/
+ * - 04_Claim_Evidence/{YYYY-MM}/{PO_NUMBER}/
+ * 
+ * Uploads directly to Express backend (/api/upload) with local storage & Base64 fallback.
  */
 
-import { callGAS } from './gasClient.js';
+import { storageService } from './storageService.js';
 
 export const DRIVE_ROOT_FOLDER = '[ERP] PR-PO-Stock-System';
 
@@ -33,12 +34,12 @@ export const normalizeCategory = (category = '') => {
 };
 
 /**
- * Resolves the structured Drive folder hierarchy path string
+ * Resolves the structured folder hierarchy path string
  * 
  * @param {string} category 'PR' | 'PO' | 'GRN' | 'CLAIM'
  * @param {string} [poNumber] Optional PO number for GRN and Claim evidence
  * @param {Date|string} [date] Optional date for YYYY-MM stamping
- * @returns {string} Fully qualified folder path in Drive
+ * @returns {string} Fully qualified folder path
  */
 export const resolveDriveFolderPath = (category, poNumber = '', date = new Date()) => {
   const d = date instanceof Date ? date : new Date(date);
@@ -97,7 +98,7 @@ export const fileToBase64 = (file) => {
 };
 
 /**
- * Uploads a document or evidence image to Google Drive via the GAS Bridge
+ * Uploads a document or evidence image via Express /api/upload or Base64 fallback
  * 
  * @param {Object} options
  * @param {File|Blob} [options.file] Browser file instance
@@ -145,16 +146,41 @@ export const uploadFileToDrive = async ({
     description: description || ''
   };
 
-  const response = await callGAS('apiUploadFile', payload);
+  // 1. Try upload to Express backend
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        success: true,
+        fileId: data.fileId || `FILE-${Date.now()}`,
+        fileUrl: data.fileUrl || `data:${resolvedMime};base64,${resolvedBase64}`,
+        fileName: data.fileName || resolvedName,
+        mimeType: data.mimeType || resolvedMime,
+        folderPath: data.folderPath || folderPath,
+        uploadedAt: data.uploadedAt || new Date().toISOString()
+      };
+    }
+  } catch (err) {
+    console.warn('[driveService] Backend upload offline, using Base64 fallback:', err.message);
+  }
+
+  // 2. Fallback: Base64 data URL stored locally
+  const fileId = `FILE-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const dataUrl = `data:${resolvedMime};base64,${resolvedBase64}`;
 
   return {
     success: true,
-    fileId: response.fileId,
-    fileUrl: response.fileUrl,
-    fileName: response.fileName || resolvedName,
-    mimeType: response.mimeType || resolvedMime,
-    folderPath: response.folderPath || folderPath,
-    uploadedAt: response.uploadedAt || new Date().toISOString()
+    fileId,
+    fileUrl: dataUrl,
+    fileName: resolvedName,
+    mimeType: resolvedMime,
+    folderPath,
+    uploadedAt: new Date().toISOString()
   };
 };
 

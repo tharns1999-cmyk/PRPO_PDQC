@@ -1,1 +1,167 @@
-[]
+[
+  {
+    "id": "NOTI-1789375420207-911",
+    "type": "ONLINE_TASK",
+    "typeInfo": {
+      "id": "ONLINE_TASK",
+      "label": "งานสั่งซื้อออนไลน์ (Shopee/Lazada)",
+      "badgeColor": "bg-purple-100 text-purple-800 border-purple-200",
+      "icon": "ShoppingBag",
+      "colorHex": "#7C3AED",
+      "priority": "URGENT"
+    },
+    "title": "มีงานสั่งซื้อออนไลน์ใหม่ (Shopee / Lazada)",
+    "message": "ใบสั่งซื้อออนไลน์เลขที่ PO-PD-2026-001 อ้างอิง PR PD999/2026 ยอดประเมิน ฿1,000 รอคุณนัทดำเนินการสั่งซื้อ",
+    "docNo": "PO-PD-2026-001",
+    "refDocType": "PO",
+    "refDocId": "PO-1789375420206-1",
+    "department": "PD",
+    "targetRoles": [
+      "ONLINE_PURCHASER",
+      "ADMIN"
+    ],
+    "amount": 1000,
+    "actor": "คุณประเสริฐ ยิ่งยง",
+    "timestamp": "2026-09-14T08:43:40.207Z",
+    "timeFormatted": "14/9/69 15:43",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789375420082-928",
+    "type": "ONLINE_TASK",
+    "typeInfo": {
+      "id": "ONLINE_TASK",
+      "label": "งานสั่งซื้อออนไลน์ (Shopee/Lazada)",
+      "badgeColor": "bg-purple-100 text-purple-800 border-purple-200",
+      "icon": "ShoppingBag",
+      "colorHex": "#7C3AED",
+      "priority": "URGENT"
+    },
+    "title": "มีงานสั่งซื้อออนไลน์ใหม่ (Shopee / Lazada)",
+    "message": "ใบสั่งซื้อออนไลน์เลขที่ PO-PD-2026-001 อ้างอิง PR PD888/2026 ยอดประเมิน ฿1,300 รอคุณนัทดำเนินการสั่งซื้อ",
+    "docNo": "PO-PD-2026-001",
+    "refDocType": "PO",
+    "refDocId": "PO-1789375420069-1",
+    "department": "PD",
+    "targetRoles": [
+      "ONLINE_PURCHASER",
+      "ADMIN"
+    ],
+    "amount": 1300,
+    "actor": "คุณประเสริฐ ยิ่งยง",
+    "timestamp": "2026-09-14T08:43:40.082Z",
+    "timeFormatted": "14/9/69 15:43",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789375419860-80",
+    "type": "ONLINE_ORDERED",
+    "typeInfo": {
+      "id": "ONLINE_ORDERED",
+      "label": "สั่งซื้อออนไลน์แล้ว (รอตรวจรับของ)",
+      "badgeColor": "bg-purple-100 text-purple-800 border-purple-200",
+      "icon": "ShoppingBag",
+      "colorHex": "#9333EA",
+      "priority": "INFO"
+    },
+    "title": "📦 สินค้าออนไลน์สั่งซื้อแล้ว (รอจัดส่ง)",
+    "message": "ใบสั่งซื้อ PO-2026-999 (อ้างอิง PR undefined) สั่งซื้อจาก \"Shopee OnlineStore1\" แล้ว (ยอดรวม ฿480) มีการปรับปรุงราคา/จำนวนตามสต็อกจริง",
+    "docNo": "PO-2026-999",
+    "refDocType": "PO",
+    "refDocId": "PO-WORKFLOW-TEST",
+    "department": "QC",
+    "targetRoles": [
+      "REQUESTER_QC",
+      "ADMIN",
+      "ASST_MANAGER"
+    ],
+    "amount": 480,
+    "actor": "Tharn Online Purchaser",
+    "timestamp": "2026-09-14T08:43:39.861Z",
+    "timeFormatted": "14/9/69 15:43",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789375419692-629",
+    "type": "GOODS_RECEIVED",
+    "typeInfo": {
+      "id": "GOODS_RECEIVED",
+      "label": "รับสินค้าเข้าคลัง (+IN Stock Card)",
+      "badgeColor": "bg-teal-100 text-teal-800 border-teal-200",
+      "icon": "PackageCheck",
+      "colorHex": "#0D9488",
+      "priority": "INFO"
+    },
+    "title": "รับสินค้าเข้าคลังและปิด PO เรียบร้อย (+IN)",
+    "message": "ใบสั่งซื้อ PO-PD-2026-001 ได้รับสินค้าครบถ้วนเข้าคลัง สต๊อกการ์ดถูกอัปเดตเรียบร้อยแล้ว",
+    "docNo": "PO-PD-2026-001",
+    "refDocType": "PO",
+    "refDocId": "PO-1789375419680-1",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN",
+      "ASST_MANAGER"
+    ],
+    "amount": 10000,
+    "actor": "คุณวิชัย (PD)",
+    "timestamp": "2026-09-14T08:43:39.692Z",
+    "timeFormatted": "14/9/69 15:43",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789375419682-487",
+    "type": "PR_APPROVED",
+    "typeInfo": {
+      "id": "PR_APPROVED",
+      "label": "PR ได้รับการอนุมัติ (ออก PO อัตโนมัติ)",
+      "badgeColor": "bg-emerald-100 text-emerald-800 border-emerald-200",
+      "icon": "CheckCircle2",
+      "colorHex": "#059669",
+      "priority": "INFO"
+    },
+    "title": "PR ได้รับการอนุมัติ & ออก PO อัตโนมัติเรียบร้อย",
+    "message": "ใบสั่งซื้อ PO-PD-2026-001 ถูกสร้างจาก PD001/2026 (ผู้ขาย: Vendor 1) ยอดเงิน ฿10,000",
+    "docNo": "PO-PD-2026-001",
+    "refDocType": "PO",
+    "refDocId": "PO-1789375419680-1",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN",
+      "ASST_MANAGER"
+    ],
+    "amount": 10000,
+    "actor": "คุณประเสริฐ (Plant Mgr)",
+    "timestamp": "2026-09-14T08:43:39.682Z",
+    "timeFormatted": "14/9/69 15:43",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789375419545-260",
+    "type": "PR_REVIEWED",
+    "typeInfo": {
+      "id": "PR_REVIEWED",
+      "label": "PR ผ่านการตรวจ รออนุมัติ (Final Approve)",
+      "badgeColor": "bg-blue-100 text-blue-800 border-blue-200",
+      "icon": "ShieldCheck",
+      "colorHex": "#2563EB",
+      "priority": "URGENT"
+    },
+    "title": "PR ผ่านการตรวจสอบแล้ว รออนุมัติสั่งซื้อ (Final Approve)",
+    "message": "ใบขอซื้อเลขที่ PD001/2026 แผนก PD ยอดเงิน ฿10,000 ผ่านการตรวจ Level 1 แล้ว รอคุณประเสริฐ (Plant Manager) อนุมัติ",
+    "docNo": "PD001/2026",
+    "refDocType": "PR",
+    "refDocId": "PR-1789375419530-D2Y",
+    "department": "PD",
+    "targetRoles": [
+      "PLANT_MANAGER",
+      "ADMIN"
+    ],
+    "amount": 10000,
+    "actor": "คุณสมชาย (Asst. Mgr)",
+    "timestamp": "2026-09-14T08:43:39.545Z",
+    "timeFormatted": "14/9/69 15:43",
+    "isRead": false
+  }
+]

@@ -1,5 +1,4 @@
 // Notification Service (In-App Local Caching)
-import { isGASAvailable, callGAS } from './gasClient.js';
 
 const NOTIFICATIONS_STORAGE_KEY = 'prpo_in_app_notifications';
 
@@ -154,9 +153,6 @@ export const notificationService = {
 
   saveAll(notifications) {
     localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications));
-    if (isGASAvailable()) {
-      callGAS('apiSaveNotifications', notifications).catch(e => console.warn('[NotificationService] GAS sync error:', e));
-    }
     this.notify();
   },
 
@@ -235,7 +231,7 @@ export const notificationService = {
     const updated = all.map(n => (n.id === id || n._id === id) ? { ...n, isRead: true, read: true, status: 'read' } : n);
     this.saveAll(updated);
     try {
-      await fetch(`http://localhost:3001/api/notifications/${id}`, {
+      await fetch(`/api/notifications/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isRead: true, read: true, status: 'read' })
@@ -263,7 +259,7 @@ export const notificationService = {
     this.saveAll(updated);
 
     try {
-      await fetch('http://localhost:3001/api/notifications', {
+      await fetch('/api/notifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
@@ -277,7 +273,7 @@ export const notificationService = {
   clearAll() {
     this.saveAll([]);
     try {
-      fetch('http://localhost:3001/api/notifications', { method: 'DELETE' }).catch(() => {});
+      fetch('/api/notifications', { method: 'DELETE' }).catch(() => {});
     } catch (e) {}
   },
 
@@ -326,7 +322,7 @@ export const notificationService = {
     this.saveAll(trimmed);
 
     try {
-      fetch('http://localhost:3001/api/notifications', {
+      fetch('/api/notifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newNoti)

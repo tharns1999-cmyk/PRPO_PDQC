@@ -52,11 +52,10 @@ export default function Sidebar({
     auth = null;
   }
 
-  // Environment Detection: dev when in import.meta.env.DEV and not GAS
-  const isGas = typeof google !== 'undefined' && typeof google.script !== 'undefined' && typeof google.script.run !== 'undefined';
+  // Environment Detection: dev when in import.meta.env.DEV
   const isDevEnvironment = isDev !== undefined
     ? Boolean(isDev)
-    : Boolean(import.meta.env.DEV && !isGas);
+    : Boolean(import.meta.env.DEV);
 
   // Single-Click Instant Reactive Notification State (Role-scoped)
   const [notifications, setNotifications] = useState(() => {

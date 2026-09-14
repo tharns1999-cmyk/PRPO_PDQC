@@ -93,13 +93,12 @@ export function AppProvider({ children }) {
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Available registered users for Fast Account Switcher (GAS-only: from Sheets, no mock fallback)
+  // Available registered users for Fast Account Switcher
   const [users, setUsers] = useState([]);
   const availableUsers = useMemo(() => {
     if (users.length > 0) return users;
     const registered = authService.getRegisteredUsers() || [];
-    // On GAS: never show mock hardcoded accounts; on local dev: use DEFAULT_EMPLOYEE_ACCOUNTS as fallback
-    return registered.length > 0 ? registered : (typeof google !== 'undefined' ? [] : DEFAULT_EMPLOYEE_ACCOUNTS);
+    return registered.length > 0 ? registered : DEFAULT_EMPLOYEE_ACCOUNTS;
   }, [users]);
 
   // 2. Operational Data States
@@ -162,7 +161,7 @@ export function AppProvider({ children }) {
       console.warn('[AppContext] Instant cache hydration warning:', e);
     }
 
-    // 2. Fetch fresh Master Data from GAS / Backend (fast lightweight payload < 400ms)
+    // 2. Fetch fresh Master Data from Backend (fast lightweight payload < 400ms)
     try {
       setIsDataLoading(true);
       await storageService.init();
@@ -1173,12 +1172,12 @@ export function AppProvider({ children }) {
 
       try {
         await Promise.all([
-          fetch('http://localhost:3001/api/products/batch', {
+          fetch('/api/products/batch', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(prods)
           }),
-          fetch('http://localhost:3001/api/stock-logs', {
+          fetch('/api/stock-logs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(logs)

@@ -613,7 +613,7 @@ export async function generatePoPdf(po) {
   // Fetch users with signatures
   let users = [];
   try {
-    const res = await fetch('http://localhost:3001/api/users');
+    const res = await fetch('/api/users');
     if (res.ok) users = await res.json();
   } catch {
     // fallback
@@ -627,7 +627,7 @@ export async function generatePoPdf(po) {
   let prData = po?.prData || prs.find(p => p.id === po.prId || p.prNo === po.prNo || p.id === po.prNumber || p.prNo === po.prNumber) || null;
   if (!prData && (po?.prId || po?.prNo || po?.prNumber)) {
     try {
-      const res = await fetch('http://localhost:3001/api/storage');
+      const res = await fetch('/api/storage');
       if (res.ok) {
         const storageData = await res.json();
         const apiPrs = storageData?.prs || storageData?.PRS;

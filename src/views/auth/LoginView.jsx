@@ -2,7 +2,7 @@
  * LoginView Component
  * 
  * Minimalist, high-density authentication interface for desktop and warehouse mobile/tablet devices.
- * Integrates with Google Apps Script (GAS) `apiLogin` endpoint and supports local simulation fallback.
+ * Integrates with authentication service and session management.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -92,7 +92,7 @@ export default function LoginView() {
             PR-PO & Stock System
           </h1>
           <p className="text-xs text-slate-400 mt-1 font-mono">
-            Google Workspace Enterprise Integration
+            Production & Quality Control System
           </p>
         </div>
 
@@ -192,7 +192,7 @@ export default function LoginView() {
         {/* Security & System Info Footer */}
         <div className="mt-6 text-center text-xs text-slate-400 font-mono space-y-1">
           <p>🔒 เซสชันปลอดภัย อายุการใช้งาน 24 ชั่วโมง</p>
-          <p className="text-[11px] text-slate-400">Google Apps Script & Google Drive Document Layer</p>
+          <p className="text-[11px] text-slate-400">Enterprise Resource Planning System</p>
         </div>
       </div>
     </div>

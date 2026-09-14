@@ -648,7 +648,7 @@ export default function ReceivingModal({
       if (stockItemsToReceive.length > 0) {
         // Single SSOT Pipeline: logStockMovements is the canonical Dual-UOM stock intake path.
         // It updates stockBalance, enforces deduplication by (documentNo + productCode),
-        // and persists atomically to storage, local backend, and GAS.
+        // and persists atomically to storage and backend.
         const allProducts = storageService.getProducts() || [];
         const vendorName = targetPO.vendorName || targetPO.vendor?.name || 'ผู้จำหน่าย';
         const movementsToEmit = stockItemsToReceive.map(it => {

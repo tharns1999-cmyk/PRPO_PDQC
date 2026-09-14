@@ -54,7 +54,7 @@ export default function UserMasterView({ users: propUsers, departments: propDepa
     try {
       let data = [];
       try {
-        const res = await fetch('http://localhost:3001/api/users');
+        const res = await fetch('/api/users');
         if (res.ok) data = await res.json();
       } catch {
         // ignore

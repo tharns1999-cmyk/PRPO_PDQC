@@ -127,12 +127,12 @@ export async function receiveToStock(items, options = {}) {
     // Atomic backend sync for both products and stock logs
     try {
       await Promise.all([
-        fetch('http://localhost:3001/api/products/batch', {
+        fetch('/api/products/batch', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(products)
         }),
-        fetch('http://localhost:3001/api/stock-logs', {
+        fetch('/api/stock-logs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(stockLogs)

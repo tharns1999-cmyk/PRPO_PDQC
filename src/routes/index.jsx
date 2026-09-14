@@ -360,7 +360,7 @@ function AuditLogRoute() {
   );
 }
 
-// ── Router Definition with Semantic Paths (HashRouter for GAS Web App F5 Resilience) ──
+// ── Router Definition with Semantic Paths (HashRouter for SPA Refresh Resilience) ──
 export const router = createHashRouter([
   {
     element: <AppRootLayout />,

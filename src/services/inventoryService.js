@@ -1,5 +1,4 @@
 import { storageService } from './storageService.js';
-import { isGASAvailable, callGAS } from './gasClient.js';
 import warehouseService from './warehouseService.js';
 
 export { default as warehouseService } from './warehouseService.js';
@@ -49,7 +48,7 @@ export const inventoryService = {
   },
 
   /**
-   * Save a single movement record to storage, local backend, and Google Sheets
+   * Save a single movement record to storage and local backend
    */
   async recordStockMovement(movementRecord) {
     if (!movementRecord || typeof movementRecord !== 'object') return null;
@@ -72,18 +71,9 @@ export const inventoryService = {
 
     storageService.saveStockLogs(updatedLogs);
 
-    // Sync to GAS if available
-    if (isGASAvailable()) {
-      try {
-        await callGAS('apiLogStockMovement', movementRecord);
-      } catch (err) {
-        console.warn('[inventoryService] GAS apiLogStockMovement error:', err);
-      }
-    }
-
     // Sync to local server if running
     try {
-      fetch('http://localhost:3001/api/stock-logs', {
+      fetch('/api/stock-logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(movementRecord)
@@ -187,18 +177,9 @@ export const inventoryService = {
       const updatedLogs = [...movements, ...allLogs];
       storageService.saveStockLogs(updatedLogs);
 
-      // Sync to GAS
-      if (isGASAvailable()) {
-        try {
-          await callGAS('apiSaveStockLogs', updatedLogs);
-        } catch (err) {
-          console.warn('[inventoryService] GAS apiSaveStockLogs error:', err);
-        }
-      }
-
       // Sync to local server
       try {
-        fetch('http://localhost:3001/api/stock-logs', {
+        fetch('/api/stock-logs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedLogs)

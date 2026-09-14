@@ -143,7 +143,7 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
         const updated = [healedLog, ...allLogs];
         storageService.saveStockLogs(updated);
         try {
-          fetch('http://localhost:3001/api/stock-logs', {
+          fetch('/api/stock-logs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updated)
@@ -511,8 +511,8 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
                         {/* 3. Document Number */}
                         <td className="py-3.5 px-3 font-mono text-xs whitespace-nowrap">
                           {(() => {
-                            const normalizedDocNo = log.docNo || log.documentNo || log.grnNo || log.grnNumber || log.grNumber || normalizeDocNumber(log) || '-';
-                            const parentPo = log.poNo || log.poNumber || log.refPo || (purchase && purchase.poNumber !== '-' ? purchase.poNumber : null);
+                            const normalizedDocNo = normalizeDocNumber(log) || log.docNo || log.documentNo || log.grnNo || log.grnNumber || log.grNumber || '-';
+                            const parentPo = log.poNo || log.poNumber || log.refPo || (purchase && purchase.poNumber !== '-' ? purchase.poNumber : null) || (String(log.docNo || log.documentNo || '').startsWith('PO-') ? (log.docNo || log.documentNo) : null);
                             return (
                               <div>
                                 <span className="font-mono font-bold text-slate-800">{normalizedDocNo}</span>
