@@ -15,6 +15,7 @@ import {
 import Pagination from '../../components/common/Pagination';
 import { modalService } from '../../services/modalService';
 import { clearMockTransactions, resetMockTransactions } from '../../utils/dataResetHelper';
+import { formatLocalTimestamp } from '../../utils/timeUtils';
 
 // Module configuration with localized labels and badge styles
 const MODULE_CONFIG = {
@@ -165,7 +166,7 @@ export default function AuditLogView({ currentRole, currentUser, onRefresh }) {
         const matchSummary = (log.summary || '').toLowerCase().includes(q);
         const matchAction = (log.action || '').toLowerCase().includes(q);
         const matchModule = (log.module || '').toLowerCase().includes(q);
-        const matchTime = (log.timeFormatted || '').toLowerCase().includes(q);
+        const matchTime = (formatLocalTimestamp(log.timestamp || log.createdAt || log.timeFormatted)).toLowerCase().includes(q);
 
         if (!matchRef && !matchActor && !matchSummary && !matchAction && !matchModule && !matchTime) {
           return false;
@@ -537,7 +538,7 @@ export default function AuditLogView({ currentRole, currentUser, onRefresh }) {
                       <td className="py-3 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <span>{log.timeFormatted || new Date(log.timestamp).toLocaleString('th-TH')}</span>
+                          <span>{formatLocalTimestamp(log.timestamp || log.createdAt || log.timeFormatted)}</span>
                         </div>
                       </td>
 
@@ -693,7 +694,7 @@ export default function AuditLogView({ currentRole, currentUser, onRefresh }) {
                 <div>
                   <span className="text-[10px] uppercase font-bold text-slate-400">วันและเวลา</span>
                   <p className="font-mono font-medium text-slate-700 mt-0.5">
-                    {selectedDiffLog.timeFormatted || new Date(selectedDiffLog.timestamp).toLocaleString('th-TH')}
+                    {formatLocalTimestamp(selectedDiffLog.timestamp || selectedDiffLog.createdAt || selectedDiffLog.timeFormatted)}
                   </p>
                 </div>
                 <div>

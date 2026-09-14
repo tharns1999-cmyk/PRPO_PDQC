@@ -24,7 +24,10 @@ export function AccessDeniedCard({
     }
   };
 
-  const roleLabel = Array.isArray(requiredRole) ? requiredRole.join(' หรือ ') : requiredRole;
+  const cleanRoles = Array.isArray(requiredRole)
+    ? requiredRole.filter(r => String(r).toUpperCase() !== 'WAREHOUSE')
+    : (requiredRole && String(requiredRole).toUpperCase() !== 'WAREHOUSE' ? requiredRole : null);
+  const roleLabel = Array.isArray(cleanRoles) ? cleanRoles.join(' หรือ ') : (cleanRoles || requiredRole);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[65vh] p-6 text-center animate-fade-in">

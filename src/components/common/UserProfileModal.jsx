@@ -16,7 +16,6 @@ const getDeptBadgeStyle = (dept) => {
     case 'PD':
       return 'bg-blue-50 text-blue-700 border-blue-200';
     case 'WH':
-    case 'WAREHOUSE':
       return 'bg-emerald-50 text-emerald-700 border-emerald-200';
     case 'PUR':
       return 'bg-purple-50 text-purple-700 border-purple-200';
@@ -189,17 +188,9 @@ export default function UserProfileModal({
             data-testid="user-profile-card"
             className="p-4 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex items-start sm:items-center gap-3.5"
           >
-            {targetUser.pictureUrl ? (
-              <img
-                src={targetUser.pictureUrl}
-                alt={targetUser.name || 'User Profile'}
-                className="w-13 h-13 rounded-2xl object-cover border border-indigo-200 shadow-2xs shrink-0"
-              />
-            ) : (
-              <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-indigo-500 to-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-2xs shrink-0">
-                {targetUser.name?.charAt(0) || 'U'}
-              </div>
-            )}
+            <div className="w-13 h-13 rounded-2xl bg-gradient-to-tr from-indigo-500 to-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-2xs shrink-0">
+              {targetUser.name?.charAt(0) || <User className="w-6 h-6" />}
+            </div>
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
@@ -329,17 +320,9 @@ export default function UserProfileModal({
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="relative shrink-0">
-                          {userAcc.pictureUrl ? (
-                            <img
-                              src={userAcc.pictureUrl}
-                              alt=""
-                              className="w-8 h-8 rounded-full object-cover border border-slate-200"
-                            />
-                          ) : (
-                            <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs border border-slate-200">
-                              {userAcc.name?.charAt(0) || <User className="w-3.5 h-3.5" />}
-                            </div>
-                          )}
+                          <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-xs border border-slate-200">
+                            {userAcc.name?.charAt(0) || <User className="w-3.5 h-3.5" />}
+                          </div>
                           {isCurrent && (
                             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5" />
                           )}

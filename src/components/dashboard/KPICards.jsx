@@ -52,16 +52,7 @@ export default function KPICards({
       return deptMatch && item.rop > 0 && item.stock <= item.rop;
     });
 
-    if (normalized.length > 0) {
-      lowStockItems = normalized;
-    } else {
-      const seedData = [
-        { id: 'PROD-PD-003', sku: 'PD-BLT-380', code: 'PD-BLT-380', name: 'สายพานลำเลียงทนความร้อน (Timing Belt 380-5M-15)', stock: 6, currentStock: 6, rop: 8, reorderPoint: 8, unit: 'เส้น', department: 'PD', category: 'PD' },
-        { id: 'PROD-PD-008', sku: 'PD-STF-001', code: 'PD-STF-001', name: 'ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)', stock: 2, currentStock: 2, rop: 5, reorderPoint: 5, unit: 'ลัง', department: 'PD', category: 'PD' },
-        { id: 'PROD-PD-GLV', sku: 'PD-GLV-001', code: 'PD-GLV-001', name: 'ถุงมือยางไนไตรล์ป้องกันสารเคมี (Nitrile Chemical Gloves)', stock: 0, currentStock: 0, rop: 10, reorderPoint: 10, unit: 'ชิ้น', department: 'PD', category: 'PD' }
-      ];
-      lowStockItems = seedData.filter(p => currentRole?.canViewAllDepts || currentRole?.department === 'ALL' || !currentRole?.department || p.category === currentRole?.department || p.department === currentRole?.department);
-    }
+    lowStockItems = normalized;
   }
 
   const lowStockCount = propLowStockCount !== undefined ? propLowStockCount : lowStockItems.length;

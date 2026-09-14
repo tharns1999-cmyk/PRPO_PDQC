@@ -468,17 +468,9 @@ export default function Sidebar({
             className="relative shrink-0 cursor-pointer focus:outline-none"
             title="คลิกเพื่อดูข้อมูลผู้ใช้งาน"
           >
-            {currentRole?.pictureUrl ? (
-              <img
-                src={currentRole.pictureUrl}
-                alt=""
-                className="w-9 h-9 rounded-full ring-2 ring-white object-cover shadow-2xs"
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs ring-2 ring-white shadow-2xs">
-                {currentRole?.name?.charAt(0) || <User className="w-4 h-4" />}
-              </div>
-            )}
+            <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs ring-2 ring-white shadow-2xs">
+              {currentRole?.name?.charAt(0) || <User className="w-4 h-4" />}
+            </div>
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white absolute -bottom-0.5 -right-0.5" />
           </button>
 

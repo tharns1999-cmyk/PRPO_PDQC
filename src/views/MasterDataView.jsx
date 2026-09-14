@@ -117,8 +117,17 @@ function MasterDataContent({
   );
   const canSeeAll = Boolean(isAdmin || effectiveRole?.canViewAllDepts);
   const myDept = effectiveRole?.department;
+  const isReviewer = Boolean(
+    auth?.canonicalRole === 'REVIEWER' ||
+    effectiveRole?.canonicalRole === 'REVIEWER' ||
+    effectiveUser?.canonicalRole === 'REVIEWER' ||
+    effectiveRole?.roleId === 'ASST_MANAGER' ||
+    effectiveRole?.roleId === 'REVIEWER' ||
+    effectiveRole?.positionKey === 'REVIEWER'
+  );
   const canDeleteMaster = Boolean(
     isAdmin ||
+    isReviewer ||
     effectiveRole?.canDeleteMaster ||
     effectiveUser?.canDeleteMaster ||
     effectiveRole?.canManageMaster ||
@@ -2010,6 +2019,16 @@ function MasterDataContent({
           currentUser={effectiveUser}
           onClose={() => { setShowProdModal(false); setEditProd(null); }}
           onRefresh={onRefresh}
+          onSaved={(saved) => {
+            setProductsList(prev => prev.map(p => (p.id === saved.id || (saved.code && p.code === saved.code)) ? saved : p));
+            if (onSaveProduct) onSaveProduct(saved);
+            if (onRefresh) onRefresh();
+          }}
+          onCreated={(created) => {
+            setProductsList(prev => [created, ...prev.filter(p => p.id !== created.id && p.code !== created.code)]);
+            if (onSaveProduct) onSaveProduct(created);
+            if (onRefresh) onRefresh();
+          }}
         />
       )}
 
@@ -2023,6 +2042,16 @@ function MasterDataContent({
           currentUser={effectiveUser}
           onClose={() => { setShowVendorModal(false); setEditVendor(null); }}
           onRefresh={onRefresh}
+          onSaved={(saved) => {
+            setVendorsList(prev => prev.map(v => (v.id === saved.id || (saved.code && v.code === saved.code)) ? saved : v));
+            if (onSaveVendor) onSaveVendor(saved);
+            if (onRefresh) onRefresh();
+          }}
+          onCreated={(created) => {
+            setVendorsList(prev => [created, ...prev.filter(v => v.id !== created.id && v.code !== created.code)]);
+            if (onSaveVendor) onSaveVendor(created);
+            if (onRefresh) onRefresh();
+          }}
         />
       )}
 

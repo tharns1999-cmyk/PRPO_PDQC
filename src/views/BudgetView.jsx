@@ -10,9 +10,11 @@ import {
   Building2, BarChart3, History,
   Edit2, Save, X, ChevronLeft, ChevronRight, ChevronDown,
   ArrowUpRight, ArrowDownRight, Minus,
-  CheckCircle2, AlertTriangle, Layers, Calendar, Plus, RotateCw
+  CheckCircle2, AlertTriangle, Layers, Calendar, Plus, RotateCw,
+  Clock, AlertCircle
 } from 'lucide-react';
 import BudgetManagementModal from '../components/budget/BudgetManagementModal';
+import DepartmentAllocationModal from '../components/budget/DepartmentAllocationModal';
 import { useAppContext } from '../context/AppContext';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, 
@@ -45,6 +47,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'overview');
   const [timeRange, setTimeRange] = useState(6);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
+  const [deptAllocationTarget, setDeptAllocationTarget] = useState(null);
 
   const deptList = useMemo(() => {
     return (departments && departments.length > 0) ? departments : storageService.getDepartments();
@@ -60,7 +63,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   // Self-Healing Retroactive Sync Engine: backfill settled refund credits on load and reset bloated mock baseline
   useEffect(() => {
     const currentB = storageService.getBudgets();
-    if (!currentB?.PD || currentB.PD.monthlyBudget > 1000000 || !currentB.PD.historicalSpent || currentB.PD.historicalSpent['2026-08'] !== undefined || Object.keys(currentB.PD.history || {}).length > 1) {
+    if (!currentB?.PD || currentB.PD.monthlyBudget > 1000000 || !currentB.PD.historicalSpent || currentB.PD.historicalSpent['2026-08'] !== undefined) {
       budgetService.resetBudgetData();
     }
     budgetService.syncSettledRefundsToBudget(pos, deptList);
@@ -115,6 +118,34 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     if (assigned.includes('ALL') || assigned.includes('*') || allowed.includes('ALL') || allowed.includes('*')) return true;
     if ((u.department === 'ALL' || u.primaryDepartment === 'ALL') && (level >= 2 || u.canReview)) return true;
 
+    return false;
+  }, [currentUser, currentRole]);
+
+  // RBAC Permission: Strictly Asst. Manager and Admin can allocate/set monthly budget
+  const canAllocateBudget = useMemo(() => {
+    const u = currentUser || currentRole;
+    if (!u) return false;
+    const roleId = String(u.roleId || u.id || '').toUpperCase();
+    const positionKey = String(u.positionKey || '').toUpperCase();
+    const canonicalRole = String(u.canonicalRole || '').toUpperCase();
+    const roleStr = String(u.role || '').toUpperCase();
+    const username = String(u.username || '').toLowerCase();
+    const level = Number(u.level || 0);
+
+    if (
+      roleId === 'ASST_MANAGER' ||
+      roleId === 'ADMIN' ||
+      canonicalRole === 'ASST_MANAGER' ||
+      canonicalRole === 'ADMIN' ||
+      positionKey === 'ASST_MANAGER' ||
+      roleStr === 'ASST_MANAGER' ||
+      roleStr === 'ADMIN' ||
+      username === 'admin' ||
+      level >= 99 ||
+      u.canAllocateBudget === true
+    ) {
+      return true;
+    }
     return false;
   }, [currentUser, currentRole]);
 
@@ -232,7 +263,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
 
   // Recalculate dynamic budget summary based on selected month (Zero-Based Budgeting)
   const dynamicSummary = useMemo(() => {
-    return apiService.calculateBudgetSummary(selectedMonthKey);
+    return budgetService.calculatePeriodBudgetSummary(selectedMonthKey, prs, pos);
   }, [selectedMonthKey, budgetSummary, prs, pos]);
 
   // Thai month names
@@ -296,7 +327,8 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
 
     deptsToShow.forEach(dept => {
       const rawData = currentMonthSummary[dept] || {};
-      const base = Number(rawData.baseAllocated ?? rawData.allocated) || (deptMap[dept]?.monthlyBudget || DEPARTMENTS[dept]?.monthlyBudget || 200000);
+      const isAllocated = Boolean(rawData.isAllocated);
+      const base = isAllocated ? Number(rawData.baseAllocated ?? rawData.allocated ?? 0) : 0;
       const actual = Number(rawData.actualSpent) || 0;
       const committed = Number(rawData.committed) || 0;
 
@@ -306,7 +338,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     });
 
     const totalUsed = totalActual + totalCommitted;
-    const totalRemaining = totalBase - totalUsed;
+    const totalRemaining = totalBase > 0 ? (totalBase - totalUsed) : 0;
     const usedPercent = totalBase > 0 ? Math.round((totalUsed / totalBase) * 100) : 0;
 
     return {
@@ -344,7 +376,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     }
   };
 
-  const canEditBudget = currentRole?.id === 'ADMIN' || currentRole?.canFinalApprove || currentRole?.canReview;
+  const canEditBudget = canAllocateBudget;
 
   // Analytics Calculations (6-Month Comparative Dataset & Category Breakdown)
   const analyticsData = useMemo(() => {
@@ -729,7 +761,8 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
             </button>
           </div>
 
-          {/* Piece 4: Action Button: [+ ปรับยอด / เติมงบประมาณ] (RBAC restricted to Admin & Plant Manager / ALL) */}
+
+          {/* Piece 5: Action Button: [+ ปรับยอด / เติมงบประมาณ] (RBAC restricted to Admin & Plant Manager / ALL) */}
           {canManageBudget && (
             <div className="flex flex-col justify-end">
               <span className="text-[10px] font-bold text-transparent uppercase tracking-wider px-1 mb-1 hidden sm:block select-none pointer-events-none">
@@ -846,32 +879,33 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
             {deptsToShow.map(dept => {
             const rawData = currentMonthSummary[dept] || {};
-            const baseAllocated = Number(rawData.baseAllocated ?? rawData.allocated) || (deptMap[dept]?.monthlyBudget || DEPARTMENTS[dept]?.monthlyBudget || 200000);
+            const isAllocated = Boolean(rawData.isAllocated);
+            const baseAllocated = isAllocated ? Number(rawData.baseAllocated ?? rawData.allocated ?? 0) : 0;
             const actualSpent = Number(rawData.actualSpent) || 0;
             const committed = Number(rawData.committed) || 0;
             const totalSpent = actualSpent + committed;
-            const remaining = baseAllocated - totalSpent;
+            const remaining = isAllocated ? (baseAllocated - totalSpent) : 0;
 
-            const actualPercent = baseAllocated > 0 ? Math.round((actualSpent / baseAllocated) * 100) : 0;
-            const committedPercent = baseAllocated > 0 ? Math.round((committed / baseAllocated) * 100) : 0;
-            const totalPercent = actualPercent + committedPercent;
+            const actualPercent = (isAllocated && baseAllocated > 0) ? Math.round((actualSpent / baseAllocated) * 100) : 0;
+            const committedPercent = (isAllocated && baseAllocated > 0) ? Math.round((committed / baseAllocated) * 100) : 0;
+            const totalPercent = (isAllocated && baseAllocated > 0) ? (actualPercent + committedPercent) : 0;
 
             const isEditing = editingBudget === dept;
-            const isCritical = totalPercent >= 90 || remaining < 0;
-            const isWarning = totalPercent >= 70 && totalPercent < 90;
+            const isCritical = isAllocated && (totalPercent >= 90 || remaining < 0);
+            const isWarning = isAllocated && (totalPercent >= 70 && totalPercent < 90);
 
             const momDelta = rawData.momDelta;
 
             return (
               <div 
                 key={dept} 
-                className="rounded-3xl border border-slate-200/80 bg-white/90 p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden flex flex-col justify-between"
+                className={`rounded-3xl border ${isAllocated ? 'border-slate-200/80 bg-white/90' : 'border-dashed border-amber-200 bg-amber-50/20'} p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 relative overflow-hidden flex flex-col justify-between`}
               >
                 <div>
                   {/* 1. Header Zone: Clean Department Icon, Title, and Right Actions */}
                   <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-indigo-50/80 border border-indigo-100/70 flex items-center justify-center text-indigo-600 shadow-2xs">
+                      <div className={`w-10 h-10 rounded-2xl ${isAllocated ? 'bg-indigo-50/80 border-indigo-100/70 text-indigo-600' : 'bg-amber-50 border-amber-100 text-amber-600'} border flex items-center justify-center shadow-2xs`}>
                         <Building2 className="w-5 h-5" />
                       </div>
                       <div className="flex items-center gap-2">
@@ -883,8 +917,8 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {/* MoM Delta Capsule */}
-                      {momDelta && (
+                      {/* MoM Delta Capsule (if allocated) */}
+                      {isAllocated && momDelta && (
                         <div className="hidden sm:flex">
                           {momDelta.isHigher ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50/80 text-amber-700 border border-amber-200/70 shadow-2xs">
@@ -905,14 +939,16 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                         </div>
                       )}
 
-                      {canEditBudget && !isEditing && (
+                      {canAllocateBudget && (
                         <button 
-                          onClick={() => { 
-                            setEditingBudget(dept); 
-                            setEditBaseValue(baseAllocated);
-                          }}
+                          type="button"
+                          onClick={() => setDeptAllocationTarget({
+                            dept,
+                            deptName: deptMap[dept]?.name || DEPARTMENTS[dept]?.name || dept,
+                            currentAmount: baseAllocated
+                          })}
                           className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
-                          title="แก้ไขกรอบงบประมาณ"
+                          title={`จัดการงบประมาณ ${deptMap[dept]?.name || DEPARTMENTS[dept]?.name || dept}`}
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
@@ -920,110 +956,116 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                     </div>
                   </div>
 
-                  {isEditing ? (
-                    <div className="mt-4 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
+                  <div className="mt-5 space-y-4">
+                    {/* 2. Hero Metric & Dynamic Progress (Visual Hierarchy Anchor) */}
+                    <div className="flex items-end justify-between">
                       <div>
-                        <label className="text-xs font-semibold text-slate-600 block mb-1">
-                          งบประมาณฐานประจำเดือน (฿)
-                        </label>
-                        <input
-                          type="number"
-                          value={editBaseValue}
-                          onChange={(e) => setEditBaseValue(e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
-                        />
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                          งบประมาณคงเหลือ (Remaining)
+                        </span>
+                        <h3 className={`font-mono text-3xl font-extrabold mt-1 tracking-tight tabular-nums ${
+                          !isAllocated ? 'text-slate-400' : (remaining < (baseAllocated * 0.1) || remaining < 0 ? 'text-rose-600' : 'text-emerald-600')
+                        }`}>
+                          {isAllocated ? `${remaining < 0 ? '-' : ''}฿${Math.abs(remaining).toLocaleString()}` : '฿0'}
+                        </h3>
                       </div>
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          onClick={() => handleEditSave(dept)}
-                          className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                        >
-                          <Save className="w-3.5 h-3.5" />
-                          <span>บันทึกการจัดสรรงบ</span>
-                        </button>
-                        <button
-                          onClick={() => setEditingBudget(null)}
-                          className="py-2 px-3.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-5 space-y-4">
-                      {/* 2. Hero Metric & Dynamic Progress (Visual Hierarchy Anchor) */}
-                      <div className="flex items-end justify-between">
-                        <div>
-                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                            งบประมาณคงเหลือ (Remaining)
-                          </span>
-                          <h3 className={`font-mono text-3xl font-extrabold mt-1 tracking-tight tabular-nums ${
-                            remaining < (baseAllocated * 0.1) || remaining < 0 ? 'text-rose-600' : 'text-emerald-600'
-                          }`}>
-                            {remaining < 0 ? '-' : ''}฿{Math.abs(remaining).toLocaleString()}
-                          </h3>
-                        </div>
 
-                        <div className="text-right flex flex-col items-end">
-                          <span className={`font-mono text-xl font-bold tabular-nums ${
-                            isCritical ? 'text-rose-600' : isWarning ? 'text-amber-600' : 'text-slate-900'
-                          }`}>
-                            {totalPercent}%
-                          </span>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <span className={`w-1.5 h-1.5 rounded-full ${
-                              isCritical ? 'bg-rose-500 animate-pulse' : isWarning ? 'bg-amber-500' : 'bg-emerald-500'
-                            }`} />
-                            <span className={`text-[11px] font-medium ${
-                              isCritical ? 'text-rose-600 font-semibold' : isWarning ? 'text-amber-600' : 'text-slate-500'
+                      <div className="text-right flex flex-col items-end">
+                        {isAllocated ? (
+                          <>
+                            <span className={`font-mono text-xl font-bold tabular-nums ${
+                              isCritical ? 'text-rose-600' : isWarning ? 'text-amber-600' : 'text-slate-900'
                             }`}>
-                              {isCritical ? 'ใกล้เต็มงบ' : isWarning ? 'เฝ้าระวัง' : 'ปกติ'}
+                              {totalPercent}%
                             </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Modern Slim Progress Bar */}
-                      <div className="space-y-1.5 pt-1">
-                        <div className="h-2 rounded-full bg-slate-100 overflow-hidden flex">
-                          {/* Segment 1: Actual Spent */}
-                          <div 
-                            className="bg-indigo-600 h-full transition-all duration-300"
-                            style={{ width: `${Math.min(actualPercent, 100)}%` }}
-                            title={`ใช้จริง: ${actualPercent}%`}
-                          />
-                          {/* Segment 2: Committed */}
-                          <div 
-                            className="bg-amber-400 h-full transition-all duration-300"
-                            style={{ width: `${Math.min(committedPercent, Math.max(0, 100 - actualPercent))}%` }}
-                            title={`ผูกพัน: ${committedPercent}%`}
-                          />
-                        </div>
-                      </div>
-
-                      {/* 3. Bento Metric Strip (3 Columns) */}
-                      <div className="grid grid-cols-3 gap-2 mt-5 bg-slate-50/70 p-3 rounded-2xl border border-slate-100">
-                        <div>
-                          <span className="text-[11px] font-medium text-slate-500 block">งบตั้งต้น</span>
-                          <span className="font-mono text-sm font-bold text-slate-800 tracking-tight tabular-nums block mt-0.5">
-                            ฿{baseAllocated.toLocaleString()}
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className={`w-1.5 h-1.5 rounded-full ${
+                                isCritical ? 'bg-rose-500 animate-pulse' : isWarning ? 'bg-amber-500' : 'bg-emerald-500'
+                              }`} />
+                              <span className={`text-[11px] font-medium ${
+                                isCritical ? 'text-rose-600 font-semibold' : isWarning ? 'text-amber-600' : 'text-slate-500'
+                              }`}>
+                                {isCritical ? 'ใกล้เต็มงบ' : isWarning ? 'เฝ้าระวัง' : 'ปกติ'}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                            ยังไม่มีงบประมาณ
                           </span>
-                        </div>
-                        <div>
-                          <span className="text-[11px] font-medium text-slate-500 block">ใช้จริง</span>
-                          <span className="font-mono text-sm font-bold text-slate-800 tracking-tight tabular-nums block mt-0.5">
-                            ฿{actualSpent.toLocaleString()}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-[11px] font-medium text-slate-500 block">ผูกพันรอของ</span>
-                          <span className="font-mono text-sm font-bold text-slate-800 tracking-tight tabular-nums block mt-0.5">
-                            ฿{committed.toLocaleString()}
-                          </span>
-                        </div>
+                        )}
                       </div>
                     </div>
-                  )}
+
+                    {/* Modern Slim Progress Bar */}
+                    <div className="space-y-1.5 pt-1">
+                      <div className="h-2 rounded-full bg-slate-100 overflow-hidden flex">
+                        {isAllocated ? (
+                          <>
+                            {/* Segment 1: Actual Spent */}
+                            <div 
+                              className="bg-indigo-600 h-full transition-all duration-300"
+                              style={{ width: `${Math.min(actualPercent, 100)}%` }}
+                              title={`ใช้จริง: ${actualPercent}%`}
+                            />
+                            {/* Segment 2: Committed */}
+                            <div 
+                              className="bg-amber-400 h-full transition-all duration-300"
+                              style={{ width: `${Math.min(committedPercent, Math.max(0, 100 - actualPercent))}%` }}
+                              title={`ผูกพัน: ${committedPercent}%`}
+                            />
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* 3. Bento Metric Strip (3 Columns) */}
+                    <div className="grid grid-cols-3 gap-2 mt-5 bg-slate-50/70 p-3 rounded-2xl border border-slate-100">
+                      <div>
+                        <span className="text-[11px] font-medium text-slate-500 block">งบตั้งต้น</span>
+                        <span className="font-mono text-sm font-bold text-slate-800 tracking-tight tabular-nums block mt-0.5">
+                          ฿{baseAllocated.toLocaleString()}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-medium text-slate-500 block">ใช้จริง</span>
+                        <span className="font-mono text-sm font-bold text-slate-800 tracking-tight tabular-nums block mt-0.5">
+                          ฿{actualSpent.toLocaleString()}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-medium text-slate-500 block">ผูกพันรอของ</span>
+                        <span className="font-mono text-sm font-bold text-slate-800 tracking-tight tabular-nums block mt-0.5">
+                          ฿{committed.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 4. Action Area for Unallocated Month */}
+                    {!isAllocated && (
+                      <div className="pt-1">
+                        {canAllocateBudget ? (
+                          <button
+                            type="button"
+                            onClick={() => setDeptAllocationTarget({
+                              dept,
+                              deptName: deptMap[dept]?.name || DEPARTMENTS[dept]?.name || dept,
+                              currentAmount: 0
+                            })}
+                            className="w-full py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs hover:shadow-sm active:scale-98"
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>จัดสรรงบประมาณประจำเดือน ({dept})</span>
+                          </button>
+                        ) : (
+                          <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-center gap-2 text-slate-500 text-xs font-medium">
+                            <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>รอการจัดสรรงบประมาณจาก Asst. Manager</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -1408,6 +1450,23 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
           if (onRefresh) onRefresh();
         })}
         onRefresh={() => {
+          if (onRefresh) onRefresh();
+          if (context?.refreshData) context.refreshData();
+        }}
+      />
+
+      {/* ── Department-Level Budget Allocation Modal (Asst. Manager & Admin) ── */}
+      <DepartmentAllocationModal
+        isOpen={Boolean(deptAllocationTarget)}
+        onClose={() => setDeptAllocationTarget(null)}
+        department={deptAllocationTarget?.dept}
+        departmentName={deptAllocationTarget?.deptName}
+        targetPeriod={selectedMonthKey}
+        currentAmount={deptAllocationTarget?.currentAmount || 0}
+        currentUser={currentUser}
+        currentRole={currentRole}
+        onSuccess={() => {
+          setDeptAllocationTarget(null);
           if (onRefresh) onRefresh();
           if (context?.refreshData) context.refreshData();
         }}

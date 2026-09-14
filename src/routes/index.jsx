@@ -1,12 +1,11 @@
 import React from 'react';
-import { createBrowserRouter, Navigate, Outlet } from 'react-router-dom';
+import { createHashRouter, Navigate, Outlet } from 'react-router-dom';
 import { AppProvider, useAppContext } from '../context/AppContext';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ProcurementProvider } from '../context/ProcurementContext';
 import { BudgetProvider } from '../context/BudgetContext';
 import { InventoryProvider } from '../context/InventoryContext';
 import MainLayout from '../layouts/MainLayout';
-import NotFoundView from '../views/NotFoundView';
 import LoginView from '../views/auth/LoginView';
 import ProtectedRoute from '../components/common/ProtectedRoute';
 
@@ -58,17 +57,17 @@ function AppRootLayout() {
   );
 }
 
-// Direct Layout with session validation
+// Direct Layout with session validation (Non-blocking rendering)
 function DirectAppLayout() {
-  const { isAuthLoading, isLoading } = useAppContext() || {};
   const auth = useAuth();
 
-  if (isAuthLoading || isLoading || auth?.isLoading) {
+  // Only show full-screen spinner if auth is actively initializing and we have no cached session
+  if (auth?.isLoading && !auth?.currentUser) {
     return <AppLoadingScreen />;
   }
 
   // If user is not authenticated, redirect to /login
-  if (!auth?.isAuthenticated) {
+  if (!auth?.isAuthenticated && !auth?.currentUser) {
     return <Navigate to="/login" replace />;
   }
 
@@ -84,17 +83,30 @@ function RoleGuard({ allowed, children, fallback = '/dashboard' }) {
   return children;
 }
 
-// Root Index Redirect
+// Root Index Redirect: Always redirect root path / to /dashboard
 function RootIndexRedirect() {
-  const { currentRole } = useAppContext();
-  const isOnline = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER';
-  return <Navigate to={isOnline ? '/online-tasks' : '/dashboard'} replace />;
+  return <Navigate to="/dashboard" replace />;
+}
+
+// Safe Fallback Route: Redirects unauthenticated users to /login, authenticated users to /dashboard (preventing 404 freeze)
+function SafeFallbackRedirect() {
+  const auth = useAuth();
+
+  if (auth?.isLoading && !auth?.currentUser) {
+    return <AppLoadingScreen />;
+  }
+
+  if (!auth?.isAuthenticated && !auth?.currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Navigate to="/dashboard" replace />;
 }
 
 // ── View Wrapper Components (Inject exact props from Context) ──
 
 function DashboardRoute() {
-  const { prs, pos, products, budgetSummary, currentRole, onNavigate, handleQuickPR, handleOpenPRById, handleOpenPOById } = useAppContext();
+  const { prs, pos, products, budgetSummary, currentRole, onNavigate, handleQuickPR, handleOpenPRById, handleOpenPOById, isLoading, isDataLoading } = useAppContext();
   return (
     <DashboardView
       prs={prs}
@@ -106,6 +118,7 @@ function DashboardRoute() {
       onQuickPR={handleQuickPR}
       onOpenPR={handleOpenPRById}
       onOpenPO={handleOpenPOById}
+      isLoading={isLoading || isDataLoading}
     />
   );
 }
@@ -347,8 +360,8 @@ function AuditLogRoute() {
   );
 }
 
-// ── Router Definition with Semantic Paths (No Login Gate, Direct Entry) ──
-export const router = createBrowserRouter([
+// ── Router Definition with Semantic Paths (HashRouter for GAS Web App F5 Resilience) ──
+export const router = createHashRouter([
   {
     element: <AppRootLayout />,
     children: [
@@ -402,7 +415,7 @@ export const router = createBrowserRouter([
           { 
             path: 'master-data', 
             element: (
-              <ProtectedRoute allowedRoles={['REQUESTER', 'PURCHASER', 'WAREHOUSE', 'APPROVER', 'ADMIN']}>
+              <ProtectedRoute allowedRoles={['REQUESTER', 'REVIEWER', 'PURCHASER', 'APPROVER', 'ADMIN']}>
                 <MasterDataRoute />
               </ProtectedRoute>
             ) 
@@ -443,14 +456,14 @@ export const router = createBrowserRouter([
           { path: 'online-procurement', element: <Navigate to="/online-tasks" replace /> },
           { path: 'procurement/online', element: <Navigate to="/online-tasks" replace /> },
 
-          // 404 Inside Layout
-          { path: '*', element: <NotFoundView /> }
+          // Safe Fallback Inside Layout (Wildcard *)
+          { path: '*', element: <SafeFallbackRedirect /> }
         ]
       },
-      // Global 404 Catch-All
+      // Global Safe Fallback Catch-All (Wildcard *)
       {
         path: '*',
-        element: <NotFoundView />
+        element: <SafeFallbackRedirect />
       }
     ]
   }

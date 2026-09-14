@@ -36,6 +36,27 @@ const CONFIG = {
   SHEET_FILES: 'Files'
 };
 
+const USER_HEADERS = [
+  'id', 'employeeId', 'username', 'password', 'name', 
+  'department', 'primaryDepartment', 'allowedDepartments', 
+  'canonicalRole', 'roleId', 'level', 'status', 'isActive', 
+  'description', 'signature'
+];
+
+const AUDIT_HEADERS = [
+  'id',            // รหัส Log (AUD-...)
+  'timestamp',     // วันเวลา (ISO / Formatted)
+  'action',        // ประเภทกิจกรรม (LOGIN, LOGOUT, CREATE, UPDATE, DELETE, APPROVE, REJECT)
+  'docType',       // หมวดหมู่ (USER, PRODUCT, VENDOR, LOCATION, PR, PO, STOCK)
+  'docNo',         // เลขที่อ้างอิง (เช่น รหัสสินค้า, เลขที่ PR)
+  'details',       // คำอธิบายภาษาไทยที่ชัดเจน
+  'actorName',     // ชื่อ-นามสกุล ผู้ดำเนินการ
+  'department',    // แผนก
+  'actorRole',     // สิทธิ์/บทบาท
+  'clientIp',      // IP Address ของผู้ใช้
+  'clientEnv'      // เบราว์เซอร์/อุปกรณ์ (User Agent)
+];
+
 /**
  * Web App entrypoint: Serves the compiled React Single Page App
  */
@@ -126,9 +147,76 @@ function resolveTargetDriveFolder(category, poNumber) {
 }
 
 /**
- * Resolves or creates the ERP Google Sheets database automatically (Self-Provisioning)
+ * Execution Context Singletons & Caching Layer
+ */
+let _activeSpreadsheet = null;
+let _coreSheetsInitialized = false;
+
+const CACHE_TTL_SECONDS = 1800; // 30 minutes cache for Master Data
+
+const CACHE_KEYS = {
+  USERS: 'CACHE_USERS',
+  MASTER_DATA: 'CACHE_MASTER_DATA',
+  PRODUCTS: 'CACHE_PRODUCTS',
+  BUDGETS: 'CACHE_BUDGETS'
+};
+
+/**
+ * Reads parsed JSON from CacheService
+ */
+function getCachedData(key) {
+  try {
+    const cache = CacheService.getScriptCache();
+    const raw = cache.get(key);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    Logger.log('Cache read error [' + key + ']: ' + e.message);
+  }
+  return null;
+}
+
+/**
+ * Saves JSON serializable data to CacheService (safely checking < 95KB GAS limit)
+ */
+function setCachedData(key, data, ttl) {
+  try {
+    if (data === undefined || data === null) return;
+    const cache = CacheService.getScriptCache();
+    const serialized = JSON.stringify(data);
+    if (serialized.length <= 95000) {
+      cache.put(key, serialized, ttl || CACHE_TTL_SECONDS);
+    }
+  } catch (e) {
+    Logger.log('Cache write error [' + key + ']: ' + e.message);
+  }
+}
+
+/**
+ * Invalidates single or multiple keys from CacheService
+ */
+function invalidateCacheKeys(keys) {
+  try {
+    const cache = CacheService.getScriptCache();
+    if (Array.isArray(keys)) {
+      cache.removeAll(keys);
+    } else if (typeof keys === 'string') {
+      cache.remove(keys);
+    }
+  } catch (e) {
+    Logger.log('Cache invalidate error: ' + e.message);
+  }
+}
+
+/**
+ * Resolves or creates the ERP Google Sheets database automatically (Self-Provisioning with Singleton)
  */
 function getOrCreateSpreadsheet() {
+  if (_activeSpreadsheet) {
+    return _activeSpreadsheet;
+  }
+
   const props = PropertiesService.getScriptProperties();
   const explicitId = CONFIG.SPREADSHEET_ID;
   let ss = null;
@@ -165,10 +253,31 @@ function getOrCreateSpreadsheet() {
     } catch (driveErr) {
       Logger.log('Could not move spreadsheet to root folder: ' + driveErr.message);
     }
+
+    ensureCoreSheetsInitialized(ss);
+    props.setProperty('ERP_SHEETS_INITIALIZED', 'true');
+    _coreSheetsInitialized = true;
+  } else {
+    // Only verify core sheets once if not yet marked initialized in ScriptProperties
+    if (!_coreSheetsInitialized) {
+      const isInit = props.getProperty('ERP_SHEETS_INITIALIZED');
+      if (isInit !== 'true') {
+        ensureCoreSheetsInitialized(ss);
+        props.setProperty('ERP_SHEETS_INITIALIZED', 'true');
+      }
+      _coreSheetsInitialized = true;
+    }
   }
 
-  ensureCoreSheetsInitialized(ss);
-  return ss;
+  // Ensure Users schema is migrated to strict 15-column format and cleaned
+  const userCleanVer = props.getProperty('USERS_CLEAN_15_V2');
+  if (userCleanVer !== 'true') {
+    ensureUsersInitialized(ss);
+    props.setProperty('USERS_CLEAN_15_V2', 'true');
+  }
+
+  _activeSpreadsheet = ss;
+  return _activeSpreadsheet;
 }
 
 /**
@@ -188,23 +297,171 @@ function getOrCreateSheetWithHeaders(ss, sheetName, headers) {
 }
 
 /**
+ * Ensures Users sheet is strictly 15 columns, cleans misaligned rows, and populates fresh seed data
+ */
+function ensureUsersInitialized(ss) {
+  let userSheet = ss.getSheetByName(CONFIG.SHEET_USERS);
+  if (!userSheet) {
+    userSheet = ss.insertSheet(CONFIG.SHEET_USERS);
+  }
+
+  // 1. Ensure header row 1 is exactly 15 columns
+  userSheet.getRange(1, 1, 1, USER_HEADERS.length).setValues([USER_HEADERS])
+    .setFontWeight('bold')
+    .setBackground('#F3F4F6');
+  userSheet.setFrozenRows(1);
+
+  // Clear extra legacy columns beyond 15 if any
+  const maxCols = userSheet.getMaxColumns();
+  if (maxCols > USER_HEADERS.length) {
+    userSheet.getRange(1, USER_HEADERS.length + 1, userSheet.getMaxRows(), maxCols - USER_HEADERS.length).clearContent();
+  }
+
+  // 2. Clean all existing rows from row 2 downwards (Clean & Re-populate)
+  const lastRow = userSheet.getLastRow();
+  if (lastRow > 1) {
+    userSheet.getRange(2, 1, lastRow - 1, userSheet.getLastColumn()).clearContent();
+  }
+
+  // 3. Populate clean 15-column seed users
+  const seedUsers = [
+    [
+      'USR-0001',
+      'EMP-PD-001',
+      'siraphat.pd',
+      'password123',
+      'สิรภัทร แจ่มมิน',     // name (มีชื่อเดียว ห้ามส่ง employeeName หรือ displayName ซ้ำ)
+      'PD',                  // department
+      'PD',                  // primaryDepartment
+      '["PD"]',              // allowedDepartments
+      'REQUESTER',           // canonicalRole
+      'REQUESTER_PD',        // roleId
+      1,                     // level
+      'ACTIVE',              // status
+      true,                  // isActive
+      'สร้าง/ส่ง PR ฝ่ายผลิต, เบิกจ่ายสินค้า, ตรวจรับของเข้าสต็อก', // description
+      ''                     // signature
+    ],
+    [
+      'USR-0002',
+      'EMP-QC-001',
+      'natthinee.qc',
+      'password123',
+      'ณัฐธินีย์ สอนครบบุรี',
+      'QC',
+      'QC',
+      '["QC"]',
+      'REQUESTER',
+      'REQUESTER_QC',
+      1,
+      'ACTIVE',
+      true,
+      'สร้าง/ส่ง PR ฝ่าย QC/Lab, เบิกจ่ายสารเคมี, ตรวจรับของ',
+      ''
+    ],
+    [
+      'USR-0003',
+      'EMP-MGR-001',
+      'kallayani.mgr',
+      'password123',
+      'กัลยาณี พลไกร',
+      'PD',
+      'PD',
+      '["PD","QC"]',
+      'REVIEWER',
+      'ASST_MANAGER',
+      2,
+      'ACTIVE',
+      true,
+      'ตรวจทาน PR (Level 1 Reviewer)',
+      ''
+    ],
+    [
+      'USR-0004',
+      'EMP-PUR-001',
+      'nat.on',
+      'password123',
+      'คุณนัท จัดซื้อ',
+      'ALL',
+      'ALL',
+      '["PD","QC","ALL"]',
+      'PURCHASER',
+      'ONLINE_PURCHASER',
+      2,
+      'ACTIVE',
+      true,
+      'จัดการสั่งซื้อออนไลน์ Shopee/Lazada',
+      ''
+    ],
+    [
+      'USR-0005',
+      'EMP-MGR-002',
+      'prasert.pm',
+      'password123',
+      'คุณประเสริฐ ยิ่งยง',
+      'ALL',
+      'ALL',
+      '["PD","QC","ALL"]',
+      'APPROVER',
+      'PLANT_MANAGER',
+      3,
+      'ACTIVE',
+      true,
+      'อนุมัติสั่งซื้อ (Final Approver)',
+      ''
+    ],
+    [
+      'USR-0006',
+      'EMP-SYS-999',
+      'admin',
+      'password123',
+      'ผู้ดูแลระบบ',
+      'ALL',
+      'ALL',
+      '["*"]',
+      'ADMIN',
+      'ADMIN',
+      99,
+      'ACTIVE',
+      true,
+      'ผู้ดูแลระบบ สิทธิ์สูงสุด',
+      ''
+    ]
+  ];
+
+  userSheet.getRange(2, 1, seedUsers.length, USER_HEADERS.length).setValues(seedUsers);
+  
+  // Invalidate cache immediately so new clean data is read
+  invalidateCacheKeys(CACHE_KEYS.USERS);
+}
+
+/**
+ * Ensures Audit_Logs tab exists with strict 11 headers conforming to AUDIT_HEADERS
+ */
+function ensureAuditLogsInitialized(ss) {
+  let auditSheet = ss.getSheetByName(CONFIG.SHEET_AUDIT_LOGS);
+  if (!auditSheet) {
+    auditSheet = ss.insertSheet(CONFIG.SHEET_AUDIT_LOGS);
+  }
+
+  const lastCol = auditSheet.getLastColumn();
+  if (lastCol > AUDIT_HEADERS.length) {
+    auditSheet.getRange(1, AUDIT_HEADERS.length + 1, 1, lastCol - AUDIT_HEADERS.length).clearContent();
+  }
+  auditSheet.getRange(1, 1, 1, AUDIT_HEADERS.length).setValues([AUDIT_HEADERS])
+    .setFontWeight('bold')
+    .setBackground('#F3F4F6');
+  auditSheet.setFrozenRows(1);
+
+  return auditSheet;
+}
+
+/**
  * Ensures all 15 required core sheets exist with proper schemas and seeds initial data
  */
 function ensureCoreSheetsInitialized(ss) {
   // 1. Users
-  const userHeaders = ['id', 'employeeId', 'username', 'password', 'pin', 'name', 'employeeName', 'displayName', 'department', 'primaryDepartment', 'allowedDepartments', 'canonicalRole', 'roleId', 'level', 'status', 'isActive', 'pictureUrl', 'description', 'signature', 'createdAt', 'updatedAt'];
-  const userSheet = getOrCreateSheetWithHeaders(ss, CONFIG.SHEET_USERS, userHeaders);
-  if (userSheet.getLastRow() <= 1) {
-    const seedUsers = [
-      ['USR-0001', 'EMP-PD-001', 'wichai.pd', 'password123', '1234', 'คุณวิชัย (PD)', 'คุณวิชัย สุขใจ', 'Wichai (PD)', 'PD', 'PD', '["PD"]', 'REQUESTER', 'REQUESTER_PD', 1, 'ACTIVE', true, 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', 'สร้าง/ส่ง PR ฝ่ายผลิต, เบิกจ่ายสินค้า, ตรวจรับของเข้าสต็อก', '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'],
-      ['USR-0002', 'EMP-QC-001', 'somying.qc', 'password123', '1234', 'คุณสมหญิง (QC)', 'คุณสมหญิง รักดี', 'Somying (QC)', 'QC', 'QC', '["QC"]', 'REQUESTER', 'REQUESTER_QC', 1, 'ACTIVE', true, 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', 'สร้าง/ส่ง PR ฝ่าย QC/Lab, เบิกจ่ายสารเคมี, ตรวจรับของ', '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'],
-      ['USR-0003', 'EMP-MGR-001', 'somchai.am', 'password123', '1234', 'คุณสมชาย (Asst. Mgr)', 'คุณสมชาย มุ่งมั่น', 'Somchai (Asst Mgr)', 'PD', 'PD', '["PD","QC"]', 'REVIEWER', 'ASST_MANAGER', 2, 'ACTIVE', true, 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', 'ตรวจทาน PR (Level 1 Reviewer), ดูแลฝ่ายผลิต (PD) และฝ่ายควบคุมคุณภาพ (QC)', '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'],
-      ['USR-0004', 'EMP-PUR-001', 'nat.on', 'password123', '1234', 'คุณนัท (Online Purchaser)', 'คุณนัท จัดซื้อ', 'Nat (Online)', 'ALL', 'ALL', '["PD","QC","ALL"]', 'PURCHASER', 'ONLINE_PURCHASER', 2, 'ACTIVE', true, 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80', 'จัดการสั่งซื้อออนไลน์ Shopee/Lazada, บันทึกราคาจริง', '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'],
-      ['USR-0005', 'EMP-MGR-002', 'prasert.pm', 'password123', '1234', 'คุณประเสริฐ (Plant Mgr)', 'คุณประเสริฐ ยิ่งยง', 'Prasert (Plant Mgr)', 'ALL', 'ALL', '["PD","QC","ALL"]', 'APPROVER', 'PLANT_MANAGER', 3, 'ACTIVE', true, 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', 'อนุมัติสั่งซื้อ (Final Approver), ออก PO อัตโนมัติ, คุมงบประมาณ', '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'],
-      ['USR-0006', 'EMP-SYS-999', 'admin', 'password123', '9999', 'ผู้ดูแลระบบ (System Admin)', 'ผู้ดูแลระบบ', 'Admin System', 'ALL', 'ALL', '["*"]', 'ADMIN', 'ADMIN', 99, 'ACTIVE', true, 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80', 'ผู้ดูแลระบบ สิทธิ์สูงสุดในการจัดการข้อมูลทุกส่วน', '', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z']
-    ];
-    seedUsers.forEach(function(row) { userSheet.appendRow(row); });
-  }
+  ensureUsersInitialized(ss);
 
   // 2. Departments
   const deptHeaders = ['id', 'code', 'name', 'nameEn', 'prefix', 'description', 'monthlyBudget', 'isActive', 'color', 'managerName', 'createdAt', 'updatedAt'];
@@ -330,8 +587,7 @@ function ensureCoreSheetsInitialized(ss) {
   getOrCreateSheetWithHeaders(ss, CONFIG.SHEET_NOTIFICATIONS, notiHeaders);
 
   // 13. Audit_Logs
-  const auditHeaders = ['id', 'timestamp', 'timeFormatted', 'action', 'docNo', 'docType', 'department', 'actorName', 'actorRole', 'details', 'changes', 'clientEnv'];
-  getOrCreateSheetWithHeaders(ss, CONFIG.SHEET_AUDIT_LOGS, auditHeaders);
+  ensureAuditLogsInitialized(ss);
 
   // 14. Signatures
   const sigHeaders = ['roleId', 'name', 'signatureUrl', 'updatedAt', 'updatedBy'];
@@ -450,6 +706,63 @@ function writeObjectsToSheet(ss, sheetName, headers, objects, jsonCols) {
   return true;
 }
 
+/**
+ * Generic Upsert Helper for a single record in Google Sheets
+ * If record exists (matched by id or code), updates the row in-place; otherwise appends a new row.
+ */
+function upsertRecordInSheet(ss, sheetName, headers, record, idField, jsonCols) {
+  const sheet = getOrCreateSheetWithHeaders(ss, sheetName, headers);
+  const data = sheet.getDataRange().getValues();
+  const jsonSet = {};
+  if (Array.isArray(jsonCols)) {
+    jsonCols.forEach(function(c) { jsonSet[c] = true; });
+  }
+
+  const headerRow = data[0].map(function(h) { return String(h).trim(); });
+  let idColIdx = headerRow.indexOf(idField || 'id');
+  if (idColIdx === -1) idColIdx = 0;
+  const codeIdx = headerRow.indexOf('code');
+
+  const targetId = String(record[idField || 'id'] || record.id || '').trim();
+  const targetCode = String(record.code || '').trim().toUpperCase();
+
+  let targetRowIdx = -1;
+  if (data.length > 1 && targetId) {
+    for (let i = 1; i < data.length; i++) {
+      const rowId = String(data[i][idColIdx] || '').trim();
+      if (rowId === targetId) {
+        targetRowIdx = i + 1; // 1-based index in sheet
+        break;
+      }
+    }
+  }
+
+  const rowValues = headers.map(function(h) {
+    let val = record[h];
+    if (val === undefined || val === null) {
+      if (h === 'createdAt' && targetRowIdx === -1) return new Date().toISOString();
+      if (h === 'updatedAt') return new Date().toISOString();
+      return '';
+    }
+    if (jsonSet[h] || h.indexOf('Json') !== -1 || typeof val === 'object') {
+      try {
+        return JSON.stringify(val);
+      } catch (e) {
+        return String(val);
+      }
+    }
+    return val;
+  });
+
+  if (targetRowIdx !== -1) {
+    sheet.getRange(targetRowIdx, 1, 1, headers.length).setValues([rowValues]);
+  } else {
+    sheet.appendRow(rowValues);
+  }
+
+  return record;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UNIFIED API BRIDGE FUNCTIONS (Called via google.script.run from React Client)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -479,114 +792,217 @@ function getRowField(rowObj, fieldNames) {
 }
 
 /**
- * Single-Shot Initial Data Hydration: Returns all master and transactional data
+ * Single-Shot Initial Data Hydration: Returns essential master data & summary stats for instant startup
+ * Accelerated by Granular CacheService (CACHE_USERS, CACHE_PRODUCTS, CACHE_MASTER_DATA, CACHE_BUDGETS)
+ * Heavy historical data (PRs, POs, Stock Movements, Audit Logs) are lazy-loaded via separate APIs.
  */
 function apiGetInitialData() {
   try {
     const ss = getOrCreateSpreadsheet();
 
-    const users = readSheetToObjects(ss, CONFIG.SHEET_USERS, ['allowedDepartments']);
-    const sanitizedUsers = users.map(function(u, i) {
-      const empId = String(getRowField(u, ['employeeId', 'employee_id', 'empId', 'id']) || '').trim();
-      const username = String(getRowField(u, ['username', 'user']) || '').trim();
-      const nameVal = String(getRowField(u, ['name', 'employeeName']) || '').trim();
-      const empNameVal = String(getRowField(u, ['employeeName', 'name']) || '').trim();
-      const displayVal = String(getRowField(u, ['displayName']) || '').trim() || nameVal || empNameVal;
-      const deptVal = String(getRowField(u, ['department', 'primaryDepartment']) || 'PD').trim();
-      const roleIdVal = String(getRowField(u, ['roleId', 'role', 'positionKey']) || 'REQUESTER_PD').trim();
-      let canonicalRole = String(getRowField(u, ['canonicalRole']) || '').trim().toUpperCase();
-      if (!canonicalRole) {
-        const upperRole = roleIdVal.toUpperCase();
-        if (upperRole.indexOf('ADMIN') !== -1) canonicalRole = 'ADMIN';
-        else if (upperRole.indexOf('PURCHAS') !== -1) canonicalRole = 'PURCHASER';
-        else if (upperRole.indexOf('WAREHOUSE') !== -1) canonicalRole = 'WAREHOUSE';
-        else if (upperRole.indexOf('REVIEW') !== -1 || upperRole.indexOf('ASST') !== -1) canonicalRole = 'REVIEWER';
-        else if (upperRole.indexOf('APPROV') !== -1 || upperRole.indexOf('MGR') !== -1) canonicalRole = 'APPROVER';
-        else canonicalRole = 'REQUESTER';
-      }
+    // 1. Granular Cache: USERS
+    let sanitizedUsers = getCachedData(CACHE_KEYS.USERS);
+    if (!sanitizedUsers) {
+      const users = readSheetToObjects(ss, CONFIG.SHEET_USERS, ['allowedDepartments']);
+      sanitizedUsers = users.map(function(u, i) {
+        const empId = String(getRowField(u, ['employeeId', 'employee_id', 'empId', 'id']) || '').trim();
+        const username = String(getRowField(u, ['username', 'user']) || '').trim();
+        const nameVal = String(getRowField(u, ['name', 'employeeName']) || '').trim();
+        const empNameVal = String(getRowField(u, ['employeeName', 'name']) || '').trim();
+        const displayVal = String(getRowField(u, ['displayName']) || '').trim() || nameVal || empNameVal;
+        const deptVal = String(getRowField(u, ['department', 'primaryDepartment']) || 'PD').trim();
+        const roleIdVal = String(getRowField(u, ['roleId', 'role', 'positionKey']) || 'REQUESTER_PD').trim();
+        let canonicalRole = String(getRowField(u, ['canonicalRole']) || '').trim().toUpperCase();
+        if (!canonicalRole) {
+          const upperRole = roleIdVal.toUpperCase();
+          if (upperRole.indexOf('ADMIN') !== -1) canonicalRole = 'ADMIN';
+          else if (upperRole.indexOf('PURCHAS') !== -1) canonicalRole = 'PURCHASER';
+          else if (upperRole.indexOf('WAREHOUSE') !== -1) canonicalRole = 'WAREHOUSE';
+          else if (upperRole.indexOf('REVIEW') !== -1 || upperRole.indexOf('ASST') !== -1) canonicalRole = 'REVIEWER';
+          else if (upperRole.indexOf('APPROV') !== -1 || upperRole.indexOf('MGR') !== -1) canonicalRole = 'APPROVER';
+          else canonicalRole = 'REQUESTER';
+        }
 
-      return {
-        id: String(getRowField(u, ['id']) || ('USR-' + (i + 1))),
-        employeeId: empId.toUpperCase(),
-        username: username || empId,
-        name: nameVal || displayVal,
-        employeeName: empNameVal || nameVal || displayVal,
-        displayName: displayVal,
-        department: deptVal,
-        departments: u.allowedDepartments || [deptVal],
-        primaryDepartment: deptVal,
-        allowedDepartments: u.allowedDepartments || [deptVal],
-        canonicalRole: canonicalRole,
-        roleId: roleIdVal,
-        email: String(getRowField(u, ['email']) || ''),
-        level: Number(getRowField(u, ['level']) || 1),
-        status: String(getRowField(u, ['status']) || 'ACTIVE'),
-        isActive: true,
-        pictureUrl: String(getRowField(u, ['pictureUrl']) || ''),
-        description: String(getRowField(u, ['description']) || ''),
-        signature: String(getRowField(u, ['signature']) || '')
+        return {
+          id: String(getRowField(u, ['id']) || ('USR-' + (i + 1))),
+          employeeId: empId.toUpperCase(),
+          username: username || empId,
+          name: nameVal || displayVal,
+          employeeName: empNameVal || nameVal || displayVal,
+          displayName: displayVal,
+          department: deptVal,
+          departments: u.allowedDepartments || [deptVal],
+          primaryDepartment: deptVal,
+          allowedDepartments: u.allowedDepartments || [deptVal],
+          canonicalRole: canonicalRole,
+          roleId: roleIdVal,
+          email: String(getRowField(u, ['email']) || ''),
+          level: Number(getRowField(u, ['level']) || 1),
+          status: String(getRowField(u, ['status']) || 'ACTIVE'),
+          isActive: true,
+          pin: String(getRowField(u, ['pin', 'password', 'pwd']) || '1234'),
+          pictureUrl: String(getRowField(u, ['pictureUrl']) || ''),
+          description: String(getRowField(u, ['description']) || ''),
+          signature: String(getRowField(u, ['signature']) || '')
+        };
+      });
+      setCachedData(CACHE_KEYS.USERS, sanitizedUsers);
+    }
+
+    // 2. Granular Cache: PRODUCTS
+    let products = getCachedData(CACHE_KEYS.PRODUCTS);
+    if (!products) {
+      products = readSheetToObjects(ss, CONFIG.SHEET_PRODUCTS_MASTER);
+      setCachedData(CACHE_KEYS.PRODUCTS, products);
+    }
+
+    // 3. Granular Cache: MASTER DATA (Departments, Vendors, Locations, Usage Units, Signatures)
+    let masterData = getCachedData(CACHE_KEYS.MASTER_DATA);
+    if (!masterData) {
+      const departments = readSheetToObjects(ss, CONFIG.SHEET_DEPARTMENTS);
+      const vendors = readSheetToObjects(ss, CONFIG.SHEET_VENDORS);
+      const storageLocations = readSheetToObjects(ss, CONFIG.SHEET_STORAGE_LOCATIONS);
+      const usageUnits = readSheetToObjects(ss, CONFIG.SHEET_USAGE_UNITS);
+      const rawSigs = readSheetToObjects(ss, CONFIG.SHEET_SIGNATURES);
+      const signatures = {};
+      rawSigs.forEach(function(s) {
+        if (s.roleId) signatures[s.roleId] = s;
+      });
+      masterData = {
+        departments: departments,
+        vendors: vendors,
+        storageLocations: storageLocations,
+        usageUnits: usageUnits,
+        signatures: signatures
       };
-    });
+      setCachedData(CACHE_KEYS.MASTER_DATA, masterData);
+    }
 
-    const departments = readSheetToObjects(ss, CONFIG.SHEET_DEPARTMENTS);
-    const products = readSheetToObjects(ss, CONFIG.SHEET_PRODUCTS_MASTER);
-    const storageLocations = readSheetToObjects(ss, CONFIG.SHEET_STORAGE_LOCATIONS);
-    const usageUnits = readSheetToObjects(ss, CONFIG.SHEET_USAGE_UNITS);
-    const vendors = readSheetToObjects(ss, CONFIG.SHEET_VENDORS);
+    // 4. Granular Cache: BUDGETS
+    let budgets = getCachedData(CACHE_KEYS.BUDGETS);
+    if (!budgets) {
+      const rawBudgets = readSheetToObjects(ss, CONFIG.SHEET_BUDGETS, ['historyJson', 'historicalSpentJson']);
+      budgets = {};
+      rawBudgets.forEach(function(b) {
+        budgets[b.dept] = {
+          monthlyBudget: Number(b.monthlyBudget || 0),
+          spent: Number(b.spent || 0),
+          pending: Number(b.pending || 0),
+          variance: Number(b.variance || 0),
+          history: b.historyJson || {},
+          historicalSpent: b.historicalSpentJson || {}
+        };
+      });
+      setCachedData(CACHE_KEYS.BUDGETS, budgets);
+    }
 
-    // Budgets Map
-    const rawBudgets = readSheetToObjects(ss, CONFIG.SHEET_BUDGETS, ['historyJson', 'historicalSpentJson']);
-    const budgets = {};
-    rawBudgets.forEach(function(b) {
-      budgets[b.dept] = {
-        monthlyBudget: Number(b.monthlyBudget || 0),
-        spent: Number(b.spent || 0),
-        pending: Number(b.pending || 0),
-        variance: Number(b.variance || 0),
-        history: b.historyJson || {},
-        historicalSpent: b.historicalSpentJson || {}
-      };
-    });
-
-    const budgetTransactions = readSheetToObjects(ss, CONFIG.SHEET_BUDGET_TRANSACTIONS);
-    const prs = readSheetToObjects(ss, CONFIG.SHEET_PR_RECORDS, ['itemsJson', 'attachmentsJson', 'timelineJson']);
-    const pos = readSheetToObjects(ss, CONFIG.SHEET_PO_RECORDS, ['itemsJson', 'ngItemsJson', 'grnHistoryJson', 'deliveryInfoJson', 'receivingInfoJson']);
-    const stockLogs = readSheetToObjects(ss, CONFIG.SHEET_STOCK_MOVEMENTS);
+    // 5. Notifications
     const notifications = readSheetToObjects(ss, CONFIG.SHEET_NOTIFICATIONS);
-    const auditLogs = readSheetToObjects(ss, CONFIG.SHEET_AUDIT_LOGS, ['changes']);
 
-    // Signatures Map
-    const rawSigs = readSheetToObjects(ss, CONFIG.SHEET_SIGNATURES);
-    const signatures = {};
-    rawSigs.forEach(function(s) {
-      if (s.roleId) {
-        signatures[s.roleId] = s;
-      }
-    });
-
-    const files = readSheetToObjects(ss, CONFIG.SHEET_FILES);
+    // 6. Fast Summary Stats (Instant header-level row counting)
+    const prSheet = ss.getSheetByName(CONFIG.SHEET_PR_RECORDS);
+    const poSheet = ss.getSheetByName(CONFIG.SHEET_PO_RECORDS);
+    const stockSheet = ss.getSheetByName(CONFIG.SHEET_STOCK_MOVEMENTS);
+    const summaryStats = {
+      totalPRs: prSheet ? Math.max(0, prSheet.getLastRow() - 1) : 0,
+      totalPOs: poSheet ? Math.max(0, poSheet.getLastRow() - 1) : 0,
+      totalStockMovements: stockSheet ? Math.max(0, stockSheet.getLastRow() - 1) : 0
+    };
 
     return {
       success: true,
       users: sanitizedUsers,
-      departments: departments,
-      products: products,
-      storageLocations: storageLocations,
-      usageUnits: usageUnits,
-      vendors: vendors,
-      budgets: budgets,
-      budgetTransactions: budgetTransactions,
-      prs: prs,
-      pos: pos,
-      stockLogs: stockLogs,
-      notifications: notifications,
-      auditLogs: auditLogs,
-      signatures: signatures,
-      files: files
+      departments: masterData.departments || [],
+      products: products || [],
+      storageLocations: masterData.storageLocations || [],
+      usageUnits: masterData.usageUnits || [],
+      vendors: masterData.vendors || [],
+      budgets: budgets || {},
+      signatures: masterData.signatures || {},
+      notifications: notifications || [],
+      summaryStats: summaryStats
     };
   } catch (err) {
     Logger.log('apiGetInitialData error: ' + err.message);
     return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Lazy Fetching: PR Records
+ */
+function apiGetPRs() {
+  try {
+    const ss = getOrCreateSpreadsheet();
+    const prs = readSheetToObjects(ss, CONFIG.SHEET_PR_RECORDS, ['itemsJson', 'attachmentsJson', 'timelineJson']);
+    return { success: true, prs: prs };
+  } catch (err) {
+    return { success: false, error: err.message, prs: [] };
+  }
+}
+
+/**
+ * Lazy Fetching: PO Records
+ */
+function apiGetPOs() {
+  try {
+    const ss = getOrCreateSpreadsheet();
+    const pos = readSheetToObjects(ss, CONFIG.SHEET_PO_RECORDS, ['itemsJson', 'ngItemsJson', 'grnHistoryJson', 'deliveryInfoJson', 'receivingInfoJson']);
+    return { success: true, pos: pos };
+  } catch (err) {
+    return { success: false, error: err.message, pos: [] };
+  }
+}
+
+/**
+ * Lazy Fetching: Stock Movement Logs
+ */
+function apiGetStockLogs() {
+  try {
+    const ss = getOrCreateSpreadsheet();
+    const stockLogs = readSheetToObjects(ss, CONFIG.SHEET_STOCK_MOVEMENTS);
+    return { success: true, stockLogs: stockLogs };
+  } catch (err) {
+    return { success: false, error: err.message, stockLogs: [] };
+  }
+}
+
+/**
+ * Lazy Fetching: Budget Transactions
+ */
+function apiGetBudgetTransactions() {
+  try {
+    const ss = getOrCreateSpreadsheet();
+    const budgetTransactions = readSheetToObjects(ss, CONFIG.SHEET_BUDGET_TRANSACTIONS);
+    return { success: true, budgetTransactions: budgetTransactions };
+  } catch (err) {
+    return { success: false, error: err.message, budgetTransactions: [] };
+  }
+}
+
+/**
+ * Lazy Fetching: Audit Logs
+ */
+function apiGetAuditLogs() {
+  try {
+    const ss = getOrCreateSpreadsheet();
+    const auditLogs = readSheetToObjects(ss, CONFIG.SHEET_AUDIT_LOGS, ['changes']);
+    return { success: true, auditLogs: auditLogs };
+  } catch (err) {
+    return { success: false, error: err.message, auditLogs: [] };
+  }
+}
+
+/**
+ * Lazy Fetching: Uploaded Files
+ */
+function apiGetFiles() {
+  try {
+    const ss = getOrCreateSpreadsheet();
+    const files = readSheetToObjects(ss, CONFIG.SHEET_FILES);
+    return { success: true, files: files };
+  } catch (err) {
+    return { success: false, error: err.message, files: [] };
   }
 }
 
@@ -626,10 +1042,124 @@ function apiSaveProducts(products) {
     const ss = getOrCreateSpreadsheet();
     const headers = ['id', 'code', 'name', 'category', 'department', 'purchaseUnit', 'stockUnit', 'purchaseUom', 'baseUom', 'conversionRate', 'conversionRatio', 'price', 'stockBalance', 'reorderPoint', 'leadTimeDays', 'supplierId', 'locationId', 'locationName', 'createdAt', 'updatedAt'];
     writeObjectsToSheet(ss, CONFIG.SHEET_PRODUCTS_MASTER, headers, products);
+    invalidateCacheKeys(CACHE_KEYS.PRODUCTS);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
   }
+}
+
+/**
+ * Save Single Product Master Data (Insert or Update row in Products_Master)
+ * Strict SKU Uniqueness Validation:
+ * - In CREATE mode: verifies SKU/code is unique across all rows in Products_Master. Rejects if duplicate.
+ * - In EDIT mode: strictly updates only the row belonging to targetId.
+ */
+function apiSaveProduct(productData, mode) {
+  try {
+    if (!productData || typeof productData !== 'object') {
+      return { success: false, error: 'INVALID_DATA', message: 'ข้อมูลสินค้าไม่ถูกต้อง' };
+    }
+    const isEdit = String(mode || productData._mode || '').toUpperCase() === 'EDIT' || (Boolean(productData.isEdit) && Boolean(productData.id));
+    const ss = getOrCreateSpreadsheet();
+    const headers = ['id', 'code', 'name', 'category', 'department', 'purchaseUnit', 'stockUnit', 'purchaseUom', 'baseUom', 'conversionRate', 'conversionRatio', 'price', 'stockBalance', 'reorderPoint', 'leadTimeDays', 'supplierId', 'locationId', 'locationName', 'createdAt', 'updatedAt'];
+    const sheet = getOrCreateSheetWithHeaders(ss, CONFIG.SHEET_PRODUCTS_MASTER, headers);
+    const data = sheet.getDataRange().getValues();
+
+    const targetCode = String(productData.code || productData.sku || '').trim().toUpperCase();
+    const targetId = String(productData.id || '').trim();
+
+    if (!targetCode) {
+      return { success: false, error: 'EMPTY_SKU', message: 'กรุณาระบุรหัสสินค้า (SKU / Item Code)' };
+    }
+
+    const headerRow = data[0].map(function(h) { return String(h).trim(); });
+    const idColIdx = headerRow.indexOf('id') !== -1 ? headerRow.indexOf('id') : 0;
+    const codeColIdx = headerRow.indexOf('code') !== -1 ? headerRow.indexOf('code') : 1;
+
+    let existingRowIdx = -1; // 1-based index in sheet
+    let duplicateSkuFound = false;
+
+    if (data.length > 1) {
+      for (let i = 1; i < data.length; i++) {
+        const rowId = String(data[i][idColIdx] || '').trim();
+        const rowCode = String(data[i][codeColIdx] || '').trim().toUpperCase();
+
+        if (targetId && rowId === targetId) {
+          existingRowIdx = i + 1;
+        }
+
+        // Check if SKU already exists
+        if (rowCode && rowCode === targetCode) {
+          if (!isEdit || (targetId && rowId !== targetId)) {
+            duplicateSkuFound = true;
+          }
+        }
+      }
+    }
+
+    // Defensive Guardrail: In CREATE mode (or when SKU belongs to another record), reject duplicate
+    if (duplicateSkuFound) {
+      return { success: false, error: 'DUPLICATE_SKU', message: 'รหัสสินค้านี้ถูกใช้งานแล้วในระบบ' };
+    }
+
+    if (isEdit && existingRowIdx === -1 && targetId) {
+      return { success: false, error: 'NOT_FOUND', message: 'ไม่พบข้อมูลสินค้าที่ต้องการแก้ไขในระบบ' };
+    }
+
+    const dept = productData.category || productData.department || 'PD';
+    if (!productData.id) {
+      productData.id = 'PROD-' + dept + '-' + Date.now();
+    }
+    productData.department = dept;
+    productData.category = dept;
+    productData.code = targetCode;
+    productData.purchaseUom = productData.purchaseUom || productData.purchaseUnit || 'ชิ้น';
+    productData.purchaseUnit = productData.purchaseUom;
+    productData.baseUom = productData.baseUom || productData.stockUnit || 'ชิ้น';
+    productData.stockUnit = productData.baseUom;
+    const rate = Number(productData.conversionRatio !== undefined ? productData.conversionRatio : (productData.conversionRate !== undefined ? productData.conversionRate : 1));
+    productData.conversionRatio = rate > 0 ? rate : 1;
+    productData.conversionRate = productData.conversionRatio;
+    productData.updatedAt = new Date().toISOString();
+
+    const rowValues = headers.map(function(h) {
+      let val = productData[h];
+      if (val === undefined || val === null) {
+        if (h === 'createdAt') return productData.createdAt || new Date().toISOString();
+        if (h === 'updatedAt') return new Date().toISOString();
+        return '';
+      }
+      return val;
+    });
+
+    if (existingRowIdx !== -1) {
+      // EDIT mode: Update specific row in-place
+      sheet.getRange(existingRowIdx, 1, 1, headers.length).setValues([rowValues]);
+    } else {
+      // CREATE mode: Append new row
+      if (!productData.createdAt) productData.createdAt = new Date().toISOString();
+      sheet.appendRow(rowValues);
+    }
+
+    invalidateCacheKeys(CACHE_KEYS.PRODUCTS);
+
+    return { success: true, data: productData };
+  } catch (err) {
+    Logger.log('apiSaveProduct error: ' + err.message);
+    return { success: false, error: 'SERVER_ERROR', message: err.message };
+  }
+}
+
+/**
+ * Convenience aliases for Product CRUD
+ */
+function apiCreateProduct(productData) {
+  return apiSaveProduct(productData, 'CREATE');
+}
+
+function apiUpdateProduct(productData) {
+  return apiSaveProduct(productData, 'EDIT');
 }
 
 /**
@@ -687,6 +1217,7 @@ function apiSaveBudgets(budgets) {
       };
     });
     writeObjectsToSheet(ss, CONFIG.SHEET_BUDGETS, headers, rows, ['historyJson', 'historicalSpentJson']);
+    invalidateCacheKeys(CACHE_KEYS.BUDGETS);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -715,8 +1246,37 @@ function apiSaveVendors(vendors) {
     const ss = getOrCreateSpreadsheet();
     const headers = ['id', 'code', 'name', 'department', 'contactPerson', 'phone', 'email', 'taxId', 'address', 'createdAt', 'updatedAt'];
     writeObjectsToSheet(ss, CONFIG.SHEET_VENDORS, headers, vendors);
+    invalidateCacheKeys(CACHE_KEYS.MASTER_DATA);
     return { success: true };
   } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Save Single Vendor (Insert or Update row in Vendors)
+ */
+function apiSaveVendor(vendorData) {
+  try {
+    if (!vendorData || typeof vendorData !== 'object') {
+      return { success: false, error: 'ข้อมูลผู้ขายไม่ถูกต้อง' };
+    }
+    const ss = getOrCreateSpreadsheet();
+    const headers = ['id', 'code', 'name', 'department', 'contactPerson', 'phone', 'email', 'taxId', 'address', 'createdAt', 'updatedAt'];
+    
+    const dept = vendorData.department || 'BOTH';
+    if (!vendorData.id) {
+      vendorData.id = 'VEND-' + dept + '-' + String(Date.now()).slice(-6);
+    }
+    vendorData.updatedAt = new Date().toISOString();
+    if (!vendorData.createdAt) vendorData.createdAt = new Date().toISOString();
+
+    upsertRecordInSheet(ss, CONFIG.SHEET_VENDORS, headers, vendorData, 'id');
+    invalidateCacheKeys(CACHE_KEYS.MASTER_DATA);
+
+    return { success: true, data: vendorData };
+  } catch (err) {
+    Logger.log('apiSaveVendor error: ' + err.message);
     return { success: false, error: err.message };
   }
 }
@@ -729,8 +1289,37 @@ function apiSaveStorageLocations(locations) {
     const ss = getOrCreateSpreadsheet();
     const headers = ['id', 'name', 'department', 'createdAt', 'updatedAt'];
     writeObjectsToSheet(ss, CONFIG.SHEET_STORAGE_LOCATIONS, headers, locations);
+    invalidateCacheKeys(CACHE_KEYS.MASTER_DATA);
     return { success: true };
   } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Save Single Storage Location (Insert or Update row in Storage_Locations)
+ */
+function apiSaveStorageLocation(locationData) {
+  try {
+    if (!locationData || typeof locationData !== 'object') {
+      return { success: false, error: 'ข้อมูลจุดจัดเก็บไม่ถูกต้อง' };
+    }
+    const ss = getOrCreateSpreadsheet();
+    const headers = ['id', 'name', 'department', 'createdAt', 'updatedAt'];
+    
+    const dept = locationData.department || 'PD';
+    if (!locationData.id) {
+      locationData.id = 'LOC-' + dept + '-' + String(Date.now()).slice(-6);
+    }
+    locationData.updatedAt = new Date().toISOString();
+    if (!locationData.createdAt) locationData.createdAt = new Date().toISOString();
+
+    upsertRecordInSheet(ss, CONFIG.SHEET_STORAGE_LOCATIONS, headers, locationData, 'id');
+    invalidateCacheKeys(CACHE_KEYS.MASTER_DATA);
+
+    return { success: true, data: locationData };
+  } catch (err) {
+    Logger.log('apiSaveStorageLocation error: ' + err.message);
     return { success: false, error: err.message };
   }
 }
@@ -743,8 +1332,38 @@ function apiSaveUsageUnits(units) {
     const ss = getOrCreateSpreadsheet();
     const headers = ['id', 'name', 'department', 'dot', 'color', 'badgeBg', 'status', 'createdAt', 'updatedAt'];
     writeObjectsToSheet(ss, CONFIG.SHEET_USAGE_UNITS, headers, units);
+    invalidateCacheKeys(CACHE_KEYS.MASTER_DATA);
     return { success: true };
   } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Save Single Usage Unit (Insert or Update row in Usage_Units)
+ */
+function apiSaveUsageUnit(unitData) {
+  try {
+    if (!unitData || typeof unitData !== 'object') {
+      return { success: false, error: 'ข้อมูลหน่วยเบิกไม่ถูกต้อง' };
+    }
+    const ss = getOrCreateSpreadsheet();
+    const headers = ['id', 'name', 'department', 'dot', 'color', 'badgeBg', 'status', 'createdAt', 'updatedAt'];
+    
+    const dept = unitData.department || 'PD';
+    if (!unitData.id) {
+      unitData.id = 'UNIT-' + dept + '-' + String(Date.now()).slice(-6);
+    }
+    unitData.status = unitData.status || 'ACTIVE';
+    unitData.updatedAt = new Date().toISOString();
+    if (!unitData.createdAt) unitData.createdAt = new Date().toISOString();
+
+    upsertRecordInSheet(ss, CONFIG.SHEET_USAGE_UNITS, headers, unitData, 'id');
+    invalidateCacheKeys(CACHE_KEYS.MASTER_DATA);
+
+    return { success: true, data: unitData };
+  } catch (err) {
+    Logger.log('apiSaveUsageUnit error: ' + err.message);
     return { success: false, error: err.message };
   }
 }
@@ -757,8 +1376,36 @@ function apiSaveDepartments(departments) {
     const ss = getOrCreateSpreadsheet();
     const headers = ['id', 'code', 'name', 'nameEn', 'prefix', 'description', 'monthlyBudget', 'isActive', 'color', 'managerName', 'createdAt', 'updatedAt'];
     writeObjectsToSheet(ss, CONFIG.SHEET_DEPARTMENTS, headers, departments);
+    invalidateCacheKeys(CACHE_KEYS.MASTER_DATA);
     return { success: true };
   } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Save Single Department (Insert or Update row in Departments)
+ */
+function apiSaveDepartment(deptData) {
+  try {
+    if (!deptData || typeof deptData !== 'object') {
+      return { success: false, error: 'ข้อมูลแผนกไม่ถูกต้อง' };
+    }
+    const ss = getOrCreateSpreadsheet();
+    const headers = ['id', 'code', 'name', 'nameEn', 'prefix', 'description', 'monthlyBudget', 'isActive', 'color', 'managerName', 'createdAt', 'updatedAt'];
+    
+    if (!deptData.id) {
+      deptData.id = 'DEPT-' + (deptData.code || String(Date.now()).slice(-4));
+    }
+    deptData.updatedAt = new Date().toISOString();
+    if (!deptData.createdAt) deptData.createdAt = new Date().toISOString();
+
+    upsertRecordInSheet(ss, CONFIG.SHEET_DEPARTMENTS, headers, deptData, 'id');
+    invalidateCacheKeys(CACHE_KEYS.MASTER_DATA);
+
+    return { success: true, data: deptData };
+  } catch (err) {
+    Logger.log('apiSaveDepartment error: ' + err.message);
     return { success: false, error: err.message };
   }
 }
@@ -769,9 +1416,22 @@ function apiSaveDepartments(departments) {
 function apiSaveUsers(users) {
   try {
     const ss = getOrCreateSpreadsheet();
-    const headers = ['id', 'employeeId', 'username', 'password', 'pin', 'name', 'employeeName', 'displayName', 'department', 'primaryDepartment', 'allowedDepartments', 'canonicalRole', 'roleId', 'level', 'status', 'isActive', 'pictureUrl', 'description', 'signature', 'createdAt', 'updatedAt'];
-    writeObjectsToSheet(ss, CONFIG.SHEET_USERS, headers, users, ['allowedDepartments']);
+    writeObjectsToSheet(ss, CONFIG.SHEET_USERS, USER_HEADERS, users, ['allowedDepartments']);
+    invalidateCacheKeys(CACHE_KEYS.USERS);
     return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Clean and re-populate Users sheet with 15-column seed data
+ */
+function apiResetUsers() {
+  try {
+    const ss = getOrCreateSpreadsheet();
+    ensureUsersInitialized(ss);
+    return { success: true, message: 'Users sheet cleaned and re-populated with 15-column schema' };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -792,15 +1452,119 @@ function apiSaveNotifications(notifications) {
 }
 
 /**
- * Save Audit Logs
+ * Log a single audit record with strict 11-column mapping conforming to AUDIT_HEADERS
+ */
+function apiLogAudit(entry) {
+  try {
+    if (!entry || typeof entry !== 'object') {
+      return { success: false, error: 'Invalid audit entry' };
+    }
+
+    const cleanDetails = String(entry.details || '').trim();
+    const cleanAction = String(entry.action || '').trim().toUpperCase();
+    const cleanDocType = String(entry.docType || 'SYSTEM').trim().toUpperCase();
+    const cleanDocNo = String(entry.docNo || '').trim();
+
+    const isSystemEvent = cleanAction.includes('SYSTEM') || cleanAction.includes('INIT') || cleanAction.includes('CACHE') || cleanAction.includes('CLEAR') || cleanDocType === 'SYSTEM';
+    const isAuthEvent = cleanAction === 'LOGIN' || cleanAction === 'LOGOUT' || cleanDocType === 'AUTH' || cleanDocType === 'USER';
+    const hasDocRef = Boolean(cleanDocNo && cleanDocNo !== '-' && cleanDocType);
+
+    // Garbage Prevention: Must have details or valid doc ref, not empty
+    if (!cleanDetails && !hasDocRef && !isSystemEvent && !isAuthEvent) {
+      return { success: false, error: 'Skipped empty/garbage audit entry' };
+    }
+    if (!cleanDetails && !isSystemEvent && !isAuthEvent) {
+      return { success: false, error: 'Missing details description' };
+    }
+
+    const ss = getOrCreateSpreadsheet();
+    const sheet = ensureAuditLogsInitialized(ss);
+
+    const now = new Date();
+    const timestamp = entry.timestamp || now.toISOString();
+    const id = entry.id || ('AUD-' + now.getTime() + '-' + Math.random().toString(36).substring(2, 7).toUpperCase());
+
+    // Strict 11 columns in exact order
+    const row = [
+      id,                                                      // 0: id
+      timestamp,                                               // 1: timestamp
+      cleanAction || 'SYSTEM',                                 // 2: action
+      cleanDocType || 'SYSTEM',                                // 3: docType
+      cleanDocNo || '-',                                       // 4: docNo
+      cleanDetails || (cleanAction + ' ' + (cleanDocNo || '-')), // 5: details
+      entry.actorName || entry.actor || 'ระบบอัตโนมัติ (System)', // 6: actorName
+      entry.department || 'GENERAL',                           // 7: department
+      entry.actorRole || entry.role || 'Staff',                // 8: actorRole
+      entry.clientIp || 'CLIENT_DIRECT',                       // 9: clientIp
+      entry.clientEnv || 'React Web App'                       // 10: clientEnv
+    ];
+
+    sheet.appendRow(row);
+    return { success: true, id: id };
+  } catch (err) {
+    Logger.log('[apiLogAudit] Error: ' + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Save Audit Logs (Bulk sync with strict 11-column mapping & garbage filter)
  */
 function apiSaveAuditLogs(logs) {
   try {
     const ss = getOrCreateSpreadsheet();
-    const headers = ['id', 'timestamp', 'timeFormatted', 'action', 'docNo', 'docType', 'department', 'actorName', 'actorRole', 'details', 'changes', 'clientEnv'];
-    writeObjectsToSheet(ss, CONFIG.SHEET_AUDIT_LOGS, headers, logs, ['changes']);
+    const sheet = ensureAuditLogsInitialized(ss);
+    if (!Array.isArray(logs) || logs.length === 0) {
+      return { success: true };
+    }
+
+    const validLogs = logs.filter(function(entry) {
+      if (!entry || typeof entry !== 'object') return false;
+      const d = String(entry.details || '').trim();
+      const a = String(entry.action || '').trim().toUpperCase();
+      const doc = String(entry.docNo || '').trim();
+      const dt = String(entry.docType || '').trim().toUpperCase();
+      const sys = a.includes('SYSTEM') || a.includes('INIT') || a.includes('CACHE') || a.includes('CLEAR') || dt === 'SYSTEM';
+      const auth = a === 'LOGIN' || a === 'LOGOUT' || dt === 'AUTH' || dt === 'USER';
+      const ref = Boolean(doc && doc !== '-' && dt);
+      return Boolean(d && (ref || sys || auth));
+    });
+
+    const rows = validLogs.map(function(entry) {
+      const now = new Date();
+      const timestamp = entry.timestamp || now.toISOString();
+      const id = entry.id || ('AUD-' + now.getTime() + '-' + Math.random().toString(36).substring(2, 7).toUpperCase());
+      const act = String(entry.action || 'SYSTEM').trim().toUpperCase();
+      const dt = String(entry.docType || 'SYSTEM').trim().toUpperCase();
+      const doc = String(entry.docNo || '-').trim();
+      const d = String(entry.details || (act + ' ' + (doc || '-'))).trim();
+
+      return [
+        id,
+        timestamp,
+        act,
+        dt,
+        doc,
+        d,
+        entry.actorName || entry.actor || 'ระบบอัตโนมัติ (System)',
+        entry.department || 'GENERAL',
+        entry.actorRole || entry.role || 'Staff',
+        entry.clientIp || 'CLIENT_DIRECT',
+        entry.clientEnv || 'React Web App'
+      ];
+    });
+
+    if (rows.length > 0) {
+      const lastRow = sheet.getLastRow();
+      const lastCol = sheet.getLastColumn();
+      if (lastRow > 1 && lastCol > 0) {
+        sheet.getRange(2, 1, lastRow - 1, lastCol).clearContent();
+      }
+      sheet.getRange(2, 1, rows.length, AUDIT_HEADERS.length).setValues(rows);
+    }
     return { success: true };
   } catch (err) {
+    Logger.log('[apiSaveAuditLogs] Error: ' + err.message);
     return { success: false, error: err.message };
   }
 }
@@ -816,6 +1580,7 @@ function apiSaveSignatures(signatures) {
       return signatures[key];
     });
     writeObjectsToSheet(ss, CONFIG.SHEET_SIGNATURES, headers, rows);
+    invalidateCacheKeys(CACHE_KEYS.MASTER_DATA);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -851,6 +1616,22 @@ function apiClearTransactionalData() {
     apiSaveBudgets(resetBudgets);
 
     return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Clear all CacheService keys — forces GAS to re-read directly from Sheets next request.
+ * Call this from the browser console or Admin panel to flush stale cache after sheet edits.
+ */
+function apiClearAllCache() {
+  try {
+    const cache = CacheService.getScriptCache();
+    const allKeys = Object.values(CACHE_KEYS);
+    cache.removeAll(allKeys);
+    Logger.log('All GAS CacheService keys cleared: ' + allKeys.join(', '));
+    return { success: true, message: 'Cache cleared: ' + allKeys.join(', ') };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -997,19 +1778,17 @@ function apiGetUsers() {
         employeeId: empId.toUpperCase(),
         username: username || empId,
         name: nameVal || displayVal,
-        employeeName: empNameVal || nameVal || displayVal,
-        displayName: displayVal,
+        employeeName: nameVal || displayVal,
+        displayName: nameVal || displayVal,
         department: deptVal,
         departments: u.allowedDepartments || [deptVal],
         primaryDepartment: deptVal,
         allowedDepartments: u.allowedDepartments || [deptVal],
         canonicalRole: canonicalRole,
         roleId: roleIdVal,
-        email: String(getRowField(u, ['email']) || ''),
         level: Number(getRowField(u, ['level']) || 1),
         status: String(getRowField(u, ['status']) || 'ACTIVE'),
         isActive: true,
-        pictureUrl: String(getRowField(u, ['pictureUrl']) || ''),
         description: String(getRowField(u, ['description']) || ''),
         signature: String(getRowField(u, ['signature']) || '')
       };

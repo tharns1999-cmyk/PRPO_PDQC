@@ -382,7 +382,8 @@ export const warehouseService = {
 
     if (hasLog) return null;
 
-    const unitPrice = Number(product.price) || 0;
+    const conversionRate = Number(product.conversionRate || product.conversionRatio) || 1;
+    const unitPrice = (Number(product.price) || 0) / conversionRate;
     const initialLog = {
       id: `INIT-${product.id || product.code || Date.now()}`,
       date: new Date().toISOString(),
@@ -400,6 +401,7 @@ export const warehouseService = {
       unit: product.stockUnit || product.unit || 'ชิ้น',
       unitPrice: unitPrice,
       totalPrice: unitPrice * stockVal,
+      conversionRate: conversionRate,
       user: 'System Initial Balance',
       locationId: product.locationId || '',
       locationName: product.locationName || '',

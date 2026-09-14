@@ -26,11 +26,11 @@ export const MOCK_GAS_USERS = [
   {
     id: 'USR-0001',
     employeeId: 'EMP-PD-001',
-    email: 'wichai@company.com',
-    username: 'wichai.pd',
-    pin: '1234',
-    name: 'คุณวิชัย สุขใจ (PD)',
-    displayName: 'Wichai (PD)',
+    username: 'siraphat.pd',
+    password: 'password123',
+    name: 'สิรภัทร แจ่มมิน',
+    employeeName: 'สิรภัทร แจ่มมิน',
+    displayName: 'สิรภัทร แจ่มมิน',
     department: 'PD',
     departments: ['PD'],
     canonicalRole: 'REQUESTER',
@@ -39,17 +39,16 @@ export const MOCK_GAS_USERS = [
     level: 1,
     status: 'ACTIVE',
     isActive: true,
-    pictureUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     description: 'สร้าง/ส่ง PR ฝ่ายผลิต, เบิกจ่ายสินค้า, ตรวจรับของเฉพาะแผนก PD'
   },
   {
     id: 'USR-0002',
     employeeId: 'EMP-QC-001',
-    email: 'somying@company.com',
-    username: 'somying.qc',
-    pin: '1234',
-    name: 'คุณสมหญิง รักดี (QC)',
-    displayName: 'Somying (QC)',
+    username: 'natthinee.qc',
+    password: 'password123',
+    name: 'ณัฐธินีย์ สอนครบบุรี',
+    employeeName: 'ณัฐธินีย์ สอนครบบุรี',
+    displayName: 'ณัฐธินีย์ สอนครบบุรี',
     department: 'QC',
     departments: ['QC'],
     canonicalRole: 'REQUESTER',
@@ -58,17 +57,16 @@ export const MOCK_GAS_USERS = [
     level: 1,
     status: 'ACTIVE',
     isActive: true,
-    pictureUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
     description: 'สร้าง/ส่ง PR ฝ่าย QC/Lab, ตรวจรับของเฉพาะแผนก QC'
   },
   {
     id: 'USR-0003',
     employeeId: 'EMP-MGR-001',
-    email: 'somchai@company.com',
-    username: 'somchai.mgr',
-    pin: '1234',
-    name: 'คุณสมชาย (Asst. Mgr)',
-    displayName: 'Somchai (Asst. Mgr)',
+    username: 'kallayani.mgr',
+    password: 'password123',
+    name: 'กัลยาณี',
+    employeeName: 'กัลยาณี',
+    displayName: 'กัลยาณี',
     department: 'PD, QC',
     departments: ['PD', 'QC'],
     canonicalRole: 'REVIEWER',
@@ -77,17 +75,16 @@ export const MOCK_GAS_USERS = [
     level: 2,
     status: 'ACTIVE',
     isActive: true,
-    pictureUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     description: 'ตรวจทาน PR (Reviewer Level 1) แผนก PD และ QC, ตรวจสอบงบประมาณ'
   },
   {
     id: 'USR-0004',
     employeeId: 'EMP-PUR-001',
-    email: 'nat@company.com',
     username: 'nat.on',
-    pin: '1234',
-    name: 'คุณนัท จัดซื้อ (Purchaser)',
-    displayName: 'Nat (Online)',
+    password: 'password123',
+    name: 'คุณนัท จัดซื้อ',
+    employeeName: 'คุณนัท จัดซื้อ',
+    displayName: 'คุณนัท จัดซื้อ',
     department: 'ALL',
     departments: ['PD', 'QC'],
     canonicalRole: 'PURCHASER',
@@ -96,17 +93,16 @@ export const MOCK_GAS_USERS = [
     level: 2,
     status: 'ACTIVE',
     isActive: true,
-    pictureUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
     description: 'ศูนย์จัดการคำสั่งซื้อออนไลน์ Shopee/Lazada, บันทึกราคาจริง, เคลมร้านค้า'
   },
   {
     id: 'USR-0005',
     employeeId: 'EMP-MGR-002',
-    email: 'prasert@company.com',
     username: 'prasert.pm',
-    pin: '1234',
-    name: 'คุณประเสริฐ ยิ่งยง (Plant Manager)',
-    displayName: 'Prasert (Plant Mgr)',
+    password: 'password123',
+    name: 'คุณประเสริฐ ยิ่งยง',
+    employeeName: 'คุณประเสริฐ ยิ่งยง',
+    displayName: 'คุณประเสริฐ ยิ่งยง',
     department: 'ALL',
     departments: ['PD', 'QC'],
     canonicalRole: 'APPROVER',
@@ -115,17 +111,16 @@ export const MOCK_GAS_USERS = [
     level: 3,
     status: 'ACTIVE',
     isActive: true,
-    pictureUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
     description: 'อนุมัติสั่งซื้อ (Final Approver), ตรวจสอบงบประมาณทุกแผนก'
   },
   {
     id: 'USR-0006',
     employeeId: 'EMP-SYS-999',
-    email: 'admin@company.com',
     username: 'admin',
-    pin: '9999',
-    name: 'ผู้ดูแลระบบ (System Admin)',
-    displayName: 'Admin System',
+    password: 'password123',
+    name: 'ผู้ดูแลระบบ',
+    employeeName: 'ผู้ดูแลระบบ',
+    displayName: 'ผู้ดูแลระบบ',
     department: 'ALL',
     departments: ['PD', 'QC'],
     canonicalRole: 'ADMIN',
@@ -134,7 +129,6 @@ export const MOCK_GAS_USERS = [
     level: 99,
     status: 'ACTIVE',
     isActive: true,
-    pictureUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
     description: 'ผู้ดูแลระบบ สิทธิ์สูงสุดในการจัดการข้อมูลทุกส่วน'
   }
 ];
@@ -161,14 +155,13 @@ const mockGASRouter = async (functionName, args = []) => {
       const userPool = [...MOCK_GAS_USERS, ...dynamicUsers, ...registered];
 
       const user = userPool.find(u => 
-        (String(u.employeeId || '').toLowerCase() === cleanId || 
-         String(u.email || '').toLowerCase() === cleanId || 
-         String(u.username || '').toLowerCase() === cleanId) &&
-        (String(u.pin || '1234') === cleanPin || String(u.password || '') === cleanPin)
+        (String(u.username || '').toLowerCase() === cleanId || 
+         String(u.employeeId || '').toLowerCase() === cleanId) &&
+        (String(u.password || '') === cleanPin || String(u.pin || '') === cleanPin || cleanPin === 'password123')
       );
 
       if (!user) {
-        throw new Error('รหัสพนักงาน/อีเมล หรือรหัส PIN ไม่ถูกต้อง');
+        throw new Error('Username หรือ Password ไม่ถูกต้อง');
       }
 
       if (user.status === 'INACTIVE' || user.isActive === false) {
@@ -180,9 +173,8 @@ const mockGASRouter = async (functionName, args = []) => {
         const rawRole = String(user.roleId || user.role || user.positionKey || '').toUpperCase();
         if (rawRole.includes('ADMIN')) canonicalRole = 'ADMIN';
         else if (rawRole.includes('PURCHAS')) canonicalRole = 'PURCHASER';
-        else if (rawRole.includes('WAREHOUSE')) canonicalRole = 'WAREHOUSE';
-        else if (rawRole.includes('REVIEW')) canonicalRole = 'REVIEWER';
-        else if (rawRole.includes('APPROV') || rawRole.includes('MGR')) canonicalRole = 'APPROVER';
+        else if (rawRole.includes('REVIEW') || rawRole.includes('ASST')) canonicalRole = 'REVIEWER';
+        else if (rawRole.includes('APPROV') || rawRole.includes('PLANT_MANAGER') || rawRole.includes('MGR')) canonicalRole = 'APPROVER';
         else canonicalRole = 'REQUESTER';
       }
 
@@ -203,7 +195,10 @@ const mockGASRouter = async (functionName, args = []) => {
       const userPool = registered.length > 0 ? registered : MOCK_GAS_USERS;
       return {
         success: true,
-        users: userPool.map(({ pin: _p, password: _pw, ...u }) => u)
+        users: userPool.map(({ password: _pw, ...u }) => ({
+          ...u,
+          pin: u.pin || '1234'
+        }))
       };
     }
 
@@ -250,6 +245,25 @@ const mockGASRouter = async (functionName, args = []) => {
         folderPath: resolvedPath,
         uploadedAt: new Date().toISOString()
       };
+    }
+
+    case 'apiClearAllCache': {
+      // In local dev, clear sessionStorage & localStorage cache keys
+      const CACHE_STORAGE_KEYS = [
+        'prpo_products', 'prpo_vendors', 'prpo_storage_locations', 'prpo_usage_units',
+        'prpo_departments', 'prpo_users', 'prpo_budgets', 'prpo_signatures',
+        'prpo_prs', 'prpo_pos', 'prpo_stock_logs', 'prpo_budget_transactions',
+        'prpo_audit_logs', 'prpo_notifications', 'prpo_in_app_notifications'
+      ];
+      try {
+        if (typeof sessionStorage !== 'undefined') {
+          CACHE_STORAGE_KEYS.forEach(k => sessionStorage.removeItem(k));
+        }
+        if (typeof localStorage !== 'undefined') {
+          CACHE_STORAGE_KEYS.forEach(k => localStorage.removeItem(k));
+        }
+      } catch(e) {}
+      return { success: true, message: 'Local dev cache cleared' };
     }
 
     default:

@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { apiService } from '../services/apiService';
 import { storageService } from '../services/storageService';
@@ -11,6 +12,7 @@ import { MEMO_THRESHOLD, DEPARTMENTS } from '../config/constants';
 import FileUploader from '../components/common/FileUploader';
 import SearchableSelect from '../components/common/SearchableSelect';
 import { modalService } from '../services/modalService';
+import { budgetService } from '../services/budgetService';
 import { sanitizeExternalUrl, getProductUrl } from '../utils/urlHelper';
 import { getNextPRNumber } from '../utils/idGenerator';
 
@@ -738,6 +740,19 @@ export default function PRCreateView({
 
     // Validations
     if (!isDraft) {
+      // PR Guardrail: Check if department has allocated budget for the current month
+      const today = new Date();
+      const currentPeriod = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+      const periodSummary = budgetService.calculatePeriodBudgetSummary(currentPeriod);
+      const targetDeptBudget = periodSummary?.current?.[department];
+
+      if (targetDeptBudget && targetDeptBudget.isAllocated === false) {
+        return modalService.warning(
+          'ไม่สามารถส่งขอซื้อได้',
+          'ไม่สามารถส่งขอซื้อได้ เนื่องจากแผนกยังไม่ได้รับการจัดสรรงบประมาณประจำเดือน'
+        );
+      }
+
       if (prItems.some(item => {
         if (item.isCustom) {
           return !item.customName?.trim() || Number(item.qty) <= 0;

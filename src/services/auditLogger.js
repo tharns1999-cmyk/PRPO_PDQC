@@ -9,6 +9,8 @@
  * Stores entries in localStorage under key 'app_audit_logs' (capped at 500 records).
  */
 
+import { formatLocalTimestamp } from '../utils/timeUtils.js';
+
 export const AUDIT_STORAGE_KEY = 'app_audit_logs';
 const MAX_LOG_ENTRIES = 500;
 
@@ -109,16 +111,8 @@ export function logAuditEvent({ action, module = 'SYSTEM', targetRef = '-', summ
 
     const logEntry = {
       id: `AUD-${now.getTime()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-      timestamp: now.toISOString(),
-      timeFormatted: now.toLocaleString('th-TH', { 
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit', 
-        hour: '2-digit', 
-        minute: '2-digit', 
-        second: '2-digit',
-        hour12: false
-      }),
+      timestamp: formatLocalTimestamp(now),
+      timeFormatted: formatLocalTimestamp(now),
       action: (action || 'UPDATE').toUpperCase(),
       module: (module || 'SYSTEM').toUpperCase(),
       targetRef: targetRef || '-',
@@ -278,8 +272,8 @@ export function exportAuditLogsToCSV(logsToExport = null) {
 
     return [
       escapeCSV(log.id),
-      escapeCSV(log.timestamp),
-      escapeCSV(log.timeFormatted),
+      escapeCSV(formatLocalTimestamp(log.timestamp || log.createdAt || log.timeFormatted)),
+      escapeCSV(formatLocalTimestamp(log.timeFormatted || log.timestamp || log.createdAt)),
       escapeCSV(log.module),
       escapeCSV(log.action),
       escapeCSV(log.targetRef),
@@ -317,8 +311,8 @@ export function seedInitialAuditLogs() {
   return [
     {
       id: `AUD-${now - 5 * minute}-A101`,
-      timestamp: new Date(now - 5 * minute).toISOString(),
-      timeFormatted: new Date(now - 5 * minute).toLocaleString('th-TH'),
+      timestamp: formatLocalTimestamp(new Date(now - 5 * minute)),
+      timeFormatted: formatLocalTimestamp(new Date(now - 5 * minute)),
       action: 'APPROVE',
       module: 'PURCHASE',
       targetRef: 'PR-PD-2603-001',
@@ -332,8 +326,8 @@ export function seedInitialAuditLogs() {
     },
     {
       id: `AUD-${now - 25 * minute}-B202`,
-      timestamp: new Date(now - 25 * minute).toISOString(),
-      timeFormatted: new Date(now - 25 * minute).toLocaleString('th-TH'),
+      timestamp: formatLocalTimestamp(new Date(now - 25 * minute)),
+      timeFormatted: formatLocalTimestamp(new Date(now - 25 * minute)),
       action: 'RECEIVE',
       module: 'INVENTORY',
       targetRef: 'PO-2603-002',
@@ -348,8 +342,8 @@ export function seedInitialAuditLogs() {
     },
     {
       id: `AUD-${now - 45 * minute}-C303`,
-      timestamp: new Date(now - 45 * minute).toISOString(),
-      timeFormatted: new Date(now - 45 * minute).toLocaleString('th-TH'),
+      timestamp: formatLocalTimestamp(new Date(now - 45 * minute)),
+      timeFormatted: formatLocalTimestamp(new Date(now - 45 * minute)),
       action: 'UPDATE',
       module: 'MASTER',
       targetRef: 'SKU-CHOC-02',
@@ -363,8 +357,8 @@ export function seedInitialAuditLogs() {
     },
     {
       id: `AUD-${now - 2 * hour}-D404`,
-      timestamp: new Date(now - 2 * hour).toISOString(),
-      timeFormatted: new Date(now - 2 * hour).toLocaleString('th-TH'),
+      timestamp: formatLocalTimestamp(new Date(now - 2 * hour)),
+      timeFormatted: formatLocalTimestamp(new Date(now - 2 * hour)),
       action: 'CREATE',
       module: 'PURCHASE',
       targetRef: 'PO-2603-005',
@@ -379,8 +373,8 @@ export function seedInitialAuditLogs() {
     },
     {
       id: `AUD-${now - 3 * hour}-E505`,
-      timestamp: new Date(now - 3 * hour).toISOString(),
-      timeFormatted: new Date(now - 3 * hour).toLocaleString('th-TH'),
+      timestamp: formatLocalTimestamp(new Date(now - 3 * hour)),
+      timeFormatted: formatLocalTimestamp(new Date(now - 3 * hour)),
       action: 'UPDATE',
       module: 'RBAC',
       targetRef: 'USER-QC-002',
@@ -395,8 +389,8 @@ export function seedInitialAuditLogs() {
     },
     {
       id: `AUD-${now - 5 * hour}-F606`,
-      timestamp: new Date(now - 5 * hour).toISOString(),
-      timeFormatted: new Date(now - 5 * hour).toLocaleString('th-TH'),
+      timestamp: formatLocalTimestamp(new Date(now - 5 * hour)),
+      timeFormatted: formatLocalTimestamp(new Date(now - 5 * hour)),
       action: 'REJECT',
       module: 'PURCHASE',
       targetRef: 'PR-PD-2603-004',
@@ -410,8 +404,8 @@ export function seedInitialAuditLogs() {
     },
     {
       id: `AUD-${now - 1 * day}-G707`,
-      timestamp: new Date(now - 1 * day).toISOString(),
-      timeFormatted: new Date(now - 1 * day).toLocaleString('th-TH'),
+      timestamp: formatLocalTimestamp(new Date(now - 1 * day)),
+      timeFormatted: formatLocalTimestamp(new Date(now - 1 * day)),
       action: 'CREATE',
       module: 'MASTER',
       targetRef: 'VN-SUP-888',
@@ -426,8 +420,8 @@ export function seedInitialAuditLogs() {
     },
     {
       id: `AUD-${now - 2 * day}-H808`,
-      timestamp: new Date(now - 2 * day).toISOString(),
-      timeFormatted: new Date(now - 2 * day).toLocaleString('th-TH'),
+      timestamp: formatLocalTimestamp(new Date(now - 2 * day)),
+      timeFormatted: formatLocalTimestamp(new Date(now - 2 * day)),
       action: 'RECEIVE',
       module: 'INVENTORY',
       targetRef: 'RM-SUGAR-05',

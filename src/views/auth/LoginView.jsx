@@ -8,7 +8,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth, CANONICAL_ROLES } from '../../context/AuthContext';
-import { MOCK_GAS_USERS } from '../../services/gasClient';
 import { useAppContext } from '../../context/AppContext';
 
 export default function LoginView() {
@@ -17,13 +16,13 @@ export default function LoginView() {
   const { login, isAuthenticated, isLoading: authLoading, authError } = useAuth();
   const appContext = useAppContext?.();
 
-  const [identifier, setIdentifier] = useState('EMP-PD-001');
-  const [pin, setPin] = useState('1234');
-  const [showPin, setShowPin] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const pinInputRef = useRef(null);
+  const passwordInputRef = useRef(null);
 
   // If already authenticated, redirect to destination or dashboard
   useEffect(() => {
@@ -37,24 +36,24 @@ export default function LoginView() {
     if (e) e.preventDefault();
     setLocalError('');
 
-    const cleanId = identifier.trim();
-    const cleanPin = pin.trim();
+    const cleanUser = username.trim();
+    const cleanPass = password.trim();
 
-    if (!cleanId) {
-      setLocalError('กรุณาระบุรหัสพนักงาน หรืออีเมล');
+    if (!cleanUser) {
+      setLocalError('กรุณาระบุ Username หรือ Employee ID');
       return;
     }
 
-    if (!cleanPin) {
-      setLocalError('กรุณาระบุรหัส PIN 4-6 หลัก');
-      if (pinInputRef.current) pinInputRef.current.focus();
+    if (!cleanPass) {
+      setLocalError('กรุณาระบุ Password');
+      if (passwordInputRef.current) passwordInputRef.current.focus();
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const session = await login(cleanId, cleanPin);
+      const session = await login(cleanUser, cleanPass);
 
       // Synchronize legacy AppContext state if present
       if (appContext?.handleSwitchUser && session?.id) {
@@ -66,19 +65,10 @@ export default function LoginView() {
       
       navigate(destination, { replace: true });
     } catch (err) {
-      setLocalError(err.message || 'รหัสพนักงานหรือรหัส PIN ไม่ถูกต้อง');
-      if (pinInputRef.current) pinInputRef.current.select();
+      setLocalError(err.message || 'Username หรือ Password ไม่ถูกต้อง');
+      if (passwordInputRef.current) passwordInputRef.current.select();
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleQuickFill = (user) => {
-    setIdentifier(user.employeeId);
-    setPin(user.pin);
-    setLocalError('');
-    if (pinInputRef.current) {
-      pinInputRef.current.focus();
     }
   };
 
@@ -113,7 +103,7 @@ export default function LoginView() {
               เข้าสู่ระบบ (Sign In)
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              กรอกรหัสพนักงานและรหัส PIN เพื่อยืนยันตัวตน
+              กรอก Username และ Password เพื่อยืนยันตัวตน
             </p>
           </div>
 
@@ -126,18 +116,18 @@ export default function LoginView() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Employee ID / Identifier Input */}
+            {/* Username Input */}
             <div>
-              <label htmlFor="identifier-input" className="block text-xs font-semibold text-slate-700 mb-1.5 font-mono uppercase tracking-wider">
-                รหัสพนักงาน / อีเมล
+              <label htmlFor="username-input" className="block text-xs font-semibold text-slate-700 mb-1.5 font-mono uppercase tracking-wider">
+                Username
               </label>
               <div className="relative">
                 <input
-                  id="identifier-input"
+                  id="username-input"
                   type="text"
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="เช่น EMP-PD-001 หรือ email"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Username หรือ Employee ID"
                   autoComplete="username"
                   className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-mono"
                   required
@@ -148,32 +138,30 @@ export default function LoginView() {
               </div>
             </div>
 
-            {/* PIN Input */}
+            {/* Password Input */}
             <div>
               <div className="flex justify-between items-center mb-1.5">
-                <label htmlFor="pin-input" className="block text-xs font-semibold text-slate-700 font-mono uppercase tracking-wider">
-                  รหัสความปลอดภัย PIN
+                <label htmlFor="password-input" className="block text-xs font-semibold text-slate-700 font-mono uppercase tracking-wider">
+                  Password
                 </label>
                 <button
                   type="button"
-                  onClick={() => setShowPin(!showPin)}
-                  className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="text-[11px] text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
                 >
-                  {showPin ? 'ซ่อน PIN' : 'แสดง PIN'}
+                  {showPassword ? 'ซ่อน Password' : 'แสดง Password'}
                 </button>
               </div>
               <div className="relative">
                 <input
-                  id="pin-input"
-                  ref={pinInputRef}
-                  type={showPin ? 'text' : 'password'}
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  placeholder="รหัส PIN 4-6 หลัก"
+                  id="password-input"
+                  ref={passwordInputRef}
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
                   autoComplete="current-password"
-                  className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-mono tracking-widest"
+                  className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-mono tracking-wide"
                   required
                 />
                 <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400 text-sm">
@@ -187,7 +175,7 @@ export default function LoginView() {
               type="submit"
               id="login-submit-btn"
               disabled={isSubmitting || authLoading}
-              className="w-full mt-2 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white text-sm font-semibold shadow-lg shadow-indigo-600/30 transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full mt-2 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white text-sm font-semibold shadow-lg shadow-indigo-600/30 transition-all duration-150 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               {isSubmitting || authLoading ? (
                 <>
@@ -199,36 +187,6 @@ export default function LoginView() {
               )}
             </button>
           </form>
-
-          {/* Quick Role Fill Pills for Fast Testing */}
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-2.5">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider font-mono">
-                สลับผู้ใช้ด่วน (Dev / Sandbox)
-              </span>
-              <span className="text-[10px] text-slate-400 font-mono">1-Click Login</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-              {MOCK_GAS_USERS.map((user) => (
-                <button
-                  key={user.id}
-                  type="button"
-                  onClick={() => handleQuickFill(user)}
-                  className={`text-left p-1.5 rounded-lg border text-[11px] transition-all flex items-center gap-2 ${
-                    identifier === user.employeeId
-                      ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-semibold'
-                      : 'bg-slate-50 border-slate-200/80 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" />
-                  <div className="truncate min-w-0">
-                    <div className="truncate font-medium">{user.displayName}</div>
-                    <div className="text-[9px] text-slate-400 font-mono">{user.canonicalRole}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Security & System Info Footer */}

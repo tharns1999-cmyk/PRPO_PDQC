@@ -1,12 +1,12 @@
 {
   "PD": {
-    "monthlyBudget": 1000000,
+    "monthlyBudget": 25412,
     "spent": 9250,
     "actualExpense": 0,
     "pending": 0,
-    "variance": 990750,
+    "variance": 16162,
     "history": {
-      "2026-09": 1000000
+      "2026-09": 25412
     },
     "historicalSpent": {
       "2026-09": 9250
@@ -14,13 +14,13 @@
     "refundCredits": {}
   },
   "QC": {
-    "monthlyBudget": 150000,
+    "monthlyBudget": 74155,
     "spent": 0,
     "actualExpense": 0,
     "pending": 0,
-    "variance": 150000,
+    "variance": 74155,
     "history": {
-      "2026-09": 150000
+      "2026-09": 74155
     },
     "historicalSpent": {
       "2026-09": 0

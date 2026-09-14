@@ -1,5 +1,6 @@
 import { storageService } from './storageService';
 import { apiService } from './apiService';
+import { auditService } from './auditService';
 
 /**
  * Clean baseline generator matching current fiscal period (September 2026 / 2569)
@@ -47,11 +48,231 @@ export const generateCleanBudgetBaseline = () => {
 export const CLEAN_BUDGET_BASELINE = generateCleanBudgetBaseline();
 
 /**
+ * Calculate dynamic budget summary for a specific period (YYYY-MM).
+ * Strict Zero-Based Budgeting:
+ * If a department has no explicit allocation in targetPeriod,
+ * totalBudget = 0, spentBudget = actualSpent, remainingBudget = 0, isAllocated = false.
+ * NO fallback to DEFAULT_MONTHLY_BUDGET or simulated hash factors!
+ */
+export const calculatePeriodBudgetSummary = (targetPeriodStr, prs = [], pos = [], rawBudgets = null) => {
+  const today = new Date();
+  const targetPeriod = (targetPeriodStr && /^\d{4}-\d{2}$/.test(targetPeriodStr))
+    ? targetPeriodStr
+    : `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+  const budgets = rawBudgets || storageService.getBudgets() || {};
+  const currentPRs = (Array.isArray(prs) && prs.length > 0) ? prs : (storageService.getPRs() || []);
+  const currentPOs = (Array.isArray(pos) && pos.length > 0) ? pos : (storageService.getPOs() || []);
+
+  const depts = ['PD', 'QC', 'WH', 'PUR', 'ENG'];
+  try {
+    const masterDepts = storageService.getDepartments() || [];
+    masterDepts.forEach(d => {
+      const c = d.code || d.id;
+      if (c && !depts.includes(c)) depts.push(c);
+    });
+  } catch {}
+
+  const currentSummary = {};
+  const trends = {};
+
+  const calculateForMonth = (m) => {
+    const summaryForM = {};
+    depts.forEach(dept => {
+      let allocated = 0;
+      let isAllocated = false;
+
+      if (Array.isArray(budgets)) {
+        const found = budgets.find(b => (b.department === dept || b.dept === dept) && (b.period === m || b.month === m));
+        if (found && (found.totalBudget !== undefined || found.monthlyBudget !== undefined)) {
+          allocated = Number(found.totalBudget ?? found.monthlyBudget ?? 0);
+          isAllocated = Boolean(found.isAllocated ?? (allocated > 0));
+        }
+      } else if (budgets && typeof budgets === 'object' && budgets[dept]) {
+        const deptObj = budgets[dept];
+        if (deptObj.history && deptObj.history[m] !== undefined && deptObj.history[m] !== null) {
+          allocated = Number(deptObj.history[m]) || 0;
+          isAllocated = allocated > 0;
+        } else {
+          allocated = 0;
+          isAllocated = false;
+        }
+      }
+
+      // Calculate real actual spent from POs in month m
+      let actualSpent = 0;
+      currentPOs.forEach(po => {
+        if (po && !['CANCELLED'].includes(po.status)) {
+          const poDept = String(po.department || po.dept || '').replace(/^ฝ่าย\s*/i, '').trim().toUpperCase();
+          if (poDept === dept) {
+            const dateStr = String(po.issueDate || po.createdAt || po.date || '').substring(0, 7);
+            if (dateStr === m) {
+              actualSpent += Number(po.grandTotal ?? po.totalAmount ?? po.total ?? 0);
+            }
+          }
+        }
+      });
+      actualSpent = Math.round(actualSpent * 100) / 100;
+
+      // Calculate real committed from PRs in month m
+      let committed = 0;
+      currentPRs.forEach(pr => {
+        if (pr && !['REJECTED', 'CANCELLED', 'DRAFT', 'CLOSED', 'COMPLETED'].includes(pr.status)) {
+          const prDept = String(pr.department || pr.dept || '').replace(/^ฝ่าย\s*/i, '').trim().toUpperCase();
+          if (prDept === dept) {
+            const dateStr = String(pr.requestedDate || pr.createdAt || '').substring(0, 7);
+            if (dateStr === m) {
+              committed += Number(pr.totalAmount || 0);
+            }
+          }
+        }
+      });
+      committed = Math.round(committed * 100) / 100;
+
+      const totalSpent = actualSpent + committed;
+      const remaining = isAllocated ? Math.round((allocated - totalSpent) * 100) / 100 : 0;
+      const percentage = (isAllocated && allocated > 0) ? Math.min(100, Math.round((totalSpent / allocated) * 100)) : 0;
+
+      summaryForM[dept] = {
+        dept,
+        department: dept,
+        period: m,
+        baseAllocated: allocated,
+        allocated,
+        totalBudget: allocated,
+        spentBudget: actualSpent,
+        actualSpent,
+        committed,
+        totalSpent,
+        remaining,
+        remainingBudget: remaining,
+        percentage,
+        isAllocated
+      };
+    });
+    return summaryForM;
+  };
+
+  // 1. Calculate active targetPeriod
+  const targetMonthSummary = calculateForMonth(targetPeriod);
+  currentSummary[targetPeriod] = targetMonthSummary;
+
+  // 2. Pre-populate 24-month trend window without fake hash simulation
+  const [tYear, tMonthNum] = targetPeriod.split('-').map(Number);
+  for (let i = 23; i >= 0; i--) {
+    const d = new Date(tYear, tMonthNum - 1 - i, 1);
+    const mStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    trends[mStr] = calculateForMonth(mStr);
+  }
+  trends[targetPeriod] = targetMonthSummary;
+
+  return {
+    current: targetMonthSummary,
+    trends,
+    period: targetPeriod
+  };
+};
+
+/**
  * BudgetService (Enterprise Department Budget & Settlement Engine)
  * Authoritative single source of truth for budget crediting, reconciliations,
  * and duplicate-refund protection.
  */
 export const budgetService = {
+  calculatePeriodBudgetSummary,
+  calculateBudgetSummary: calculatePeriodBudgetSummary,
+
+  /**
+   * Allocate monthly budget for specified period (YYYY-MM)
+   * Enforces persistence in storageService & localStorage
+   */
+  async allocateMonthlyBudget({ period, allocations = {}, actor = 'Asst. Manager', reason = '' }) {
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      throw new Error('รูปแบบรอบเดือนไม่ถูกต้อง ต้องเป็น YYYY-MM (ค.ศ.)');
+    }
+
+    const budgets = storageService.getBudgets() || {};
+    const today = new Date();
+    const currentPeriodStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    for (const [dept, amount] of Object.entries(allocations)) {
+      const numAmount = Math.max(0, Number(amount) || 0);
+      if (!budgets[dept]) {
+        budgets[dept] = { monthlyBudget: 0, spent: 0, actualExpense: 0, pending: 0, variance: 0, history: {}, historicalSpent: {}, refundCredits: {} };
+      }
+      if (!budgets[dept].history) budgets[dept].history = {};
+      budgets[dept].history[period] = numAmount;
+
+      // If active current month, update base monthlyBudget
+      if (period === currentPeriodStr || period === '2026-09') {
+        budgets[dept].monthlyBudget = numAmount;
+        budgets[dept].variance = numAmount - (budgets[dept].spent || 0);
+        budgets[dept].remainingBudget = budgets[dept].variance;
+      }
+
+      // Append budget transaction
+      const tx = {
+        id: `BTX-ALLOC-${dept}-${period}-${Date.now()}`,
+        date: today.toISOString().replace('T', ' ').substring(0, 19),
+        createdAt: today.toISOString(),
+        type: 'SET_BUDGET',
+        actionType: 'ALLOCATE_BUDGET',
+        typeLabel: 'จัดสรรงบประมาณประจำเดือน',
+        dept,
+        department: dept,
+        departmentName: `ฝ่าย ${dept}`,
+        amount: numAmount,
+        delta: numAmount,
+        newAmount: numAmount,
+        actor: actor || 'Asst. Manager',
+        note: reason || `จัดสรรงบประมาณรอบเดือน ${period}`,
+        targetMonth: period
+      };
+      storageService.appendBudgetTransaction(tx);
+    }
+
+    // Explicit Persistence on localStorage & storageService
+    storageService.saveBudgets(budgets);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('prpo_budgets', JSON.stringify(budgets));
+    }
+
+    // Audit Log
+    try {
+      const summaryText = Object.entries(allocations)
+        .map(([d, a]) => `${d}: ฿${Number(a).toLocaleString()}`)
+        .join(', ');
+      auditService.logAction({
+        action: 'BUDGET_ALLOCATED',
+        docType: 'BUDGET',
+        docNo: period,
+        details: `จัดสรรงบประมาณประจำเดือน (${period}): ${summaryText}`,
+        actor,
+        department: 'ALL'
+      });
+    } catch (e) {
+      console.warn('[budgetService] Audit log error:', e);
+    }
+
+    // Backend sync attempt
+    try {
+      if (typeof fetch === 'function') {
+        await fetch('http://localhost:3001/api/budgets/allocate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ period, allocations, actor, reason })
+        }).catch(() => {});
+      }
+    } catch {}
+
+    return {
+      success: true,
+      period,
+      allocations,
+      budgets
+    };
+  },
+
   /**
    * Reset Budget Data to clean minimal baseline matching current fiscal period (2026-09)
    * Writes to storageService and syncs with backend server if available.

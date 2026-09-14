@@ -351,15 +351,12 @@ export default function UserMasterView({ users: propUsers, departments: propDepa
                       {/* 2. Full Name & Profile */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2.5">
-                          <img 
-                            src={user.pictureUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'} 
-                            alt={user.name}
-                            className="w-9 h-9 rounded-full object-cover border border-slate-200 shrink-0"
-                            onError={e => { e.target.src = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'; }}
-                          />
+                          <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs shrink-0">
+                            {user.name ? user.name.charAt(0) : <User className="w-4 h-4 text-slate-400" />}
+                          </div>
                           <div className="min-w-0">
                             <p className="font-bold text-slate-900 text-xs sm:text-sm truncate">
-                              {user.employeeName || user.name}
+                              {user.name || user.employeeName}
                             </p>
                             <p className="text-[11px] text-slate-400 font-mono mt-0.5">
                               @{user.username}

@@ -3,6 +3,7 @@ import KPICards from '../components/dashboard/KPICards';
 import RecentPRsTable from '../components/dashboard/RecentPRsTable';
 import RecentPOsTable from '../components/dashboard/RecentPOsTable';
 import LowStockAlertCard from '../components/dashboard/LowStockAlertCard';
+import DashboardSkeleton from '../components/dashboard/DashboardSkeleton';
 
 export default function DashboardView({
   prs = [],
@@ -13,8 +14,13 @@ export default function DashboardView({
   onNavigate,
   onQuickPR,
   onOpenPR,
-  onOpenPO
+  onOpenPO,
+  isLoading = false
 }) {
+  // If loading and no products or documents loaded yet, show non-blocking skeleton immediately
+  if (isLoading && products.length === 0 && prs.length === 0 && pos.length === 0) {
+    return <DashboardSkeleton />;
+  }
   // 1. Data Normalization & Master Lookup สำหรับ Low Stock Items (Directive 1 & 2)
   const lowStockItems = useMemo(() => {
     // Flatten any nested arrays or wrapper structures
@@ -83,7 +89,7 @@ export default function DashboardView({
     });
 
     // Directive 2: กรองสินค้าแตะ ROP ที่รัดกุม (ห้าม 0 <= 0 หลุดมาเด็ดขาด ต้อง rop > 0 และมีชื่อสินค้าจริง)
-    let filtered = normalized.filter(
+    const filtered = normalized.filter(
       (item) =>
         item &&
         !item.isInactive &&
@@ -91,54 +97,6 @@ export default function DashboardView({
         item.rop > 0 &&
         item.stock <= item.rop
     );
-
-    // Directive 3: Fallback Seed Data ที่สมบูรณ์ 100% มีชื่อและ rop > 0 เสมอ
-    if (!filtered || filtered.length === 0) {
-      filtered = [
-        {
-          id: 'PROD-PD-003',
-          sku: 'PD-BLT-380',
-          code: 'PD-BLT-380',
-          name: 'สายพานลำเลียงทนความร้อน (Timing Belt 380-5M-15)',
-          stock: 6,
-          currentStock: 6,
-          rop: 8,
-          reorderPoint: 8,
-          unit: 'เส้น',
-          department: 'PD',
-          category: 'PD',
-          price: 620
-        },
-        {
-          id: 'PROD-PD-008',
-          sku: 'PD-STF-001',
-          code: 'PD-STF-001',
-          name: 'ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)',
-          stock: 2,
-          currentStock: 2,
-          rop: 5,
-          reorderPoint: 5,
-          unit: 'ลัง',
-          department: 'PD',
-          category: 'PD',
-          price: 1100
-        },
-        {
-          id: 'PROD-PD-GLV',
-          sku: 'PD-GLV-001',
-          code: 'PD-GLV-001',
-          name: 'ถุงมือยางไนไตรล์ป้องกันสารเคมี (Nitrile Chemical Gloves)',
-          stock: 0,
-          currentStock: 0,
-          rop: 10,
-          reorderPoint: 10,
-          unit: 'ชิ้น',
-          department: 'PD',
-          category: 'PD',
-          price: 15
-        }
-      ];
-    }
 
     return filtered;
   }, [products]);

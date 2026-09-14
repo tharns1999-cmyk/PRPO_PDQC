@@ -144,7 +144,6 @@ export default function UserCRUDModal({
         title: selectedRole.title,
         level: selectedRole.level,
         status,
-        pictureUrl: user?.pictureUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
         description: user?.description || `${selectedRole.title} ประจำแผนก ${assignedDepartments.join(', ')}`
       };
 

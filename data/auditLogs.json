@@ -1,1 +1,459 @@
-[]
+[
+  {
+    "id": "AUD-1789371438324-75Y9Z",
+    "timestamp": "2026-09-14 14:37:18",
+    "timeFormatted": "2026-09-14 14:37:18",
+    "action": "APPROVE",
+    "module": "PURCHASE",
+    "targetRef": "PO-PD-2026-003",
+    "summary": "อนุมัติ PR PD003/2026 ออกใบสั่งซื้อ PO-PD-2026-003 (ผู้ขาย: บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด) ยอดเงิน ฿1,070",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager (PD, QC, ALL)",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371432843-AZ1IV",
+    "timestamp": "2026-09-14 14:37:12",
+    "timeFormatted": "2026-09-14 14:37:12",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "prasert.pm",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: prasert.pm)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371426570-0U9N3",
+    "timestamp": "2026-09-14 14:37:06",
+    "timeFormatted": "2026-09-14 14:37:06",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "ออกจากระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี",
+      "role": "Assistant Manager",
+      "department": "PD, QC"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371417416-X1LBK",
+    "timestamp": "2026-09-14 14:36:57",
+    "timeFormatted": "2026-09-14 14:36:57",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี",
+      "role": "Assistant Manager",
+      "department": "PD, QC"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371408767-WJNCM",
+    "timestamp": "2026-09-14 14:36:48",
+    "timeFormatted": "2026-09-14 14:36:48",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "siraphat.pd",
+    "summary": "ออกจากระบบสำเร็จ (Username: siraphat.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371406284-G6MAM",
+    "timestamp": "2026-09-14 14:36:46",
+    "timeFormatted": "2026-09-14 14:36:46",
+    "action": "CREATE",
+    "module": "PURCHASE",
+    "targetRef": "PD003/2026",
+    "summary": "สร้างและยื่นส่งใบขอซื้อ เลขที่ PD003/2026 ยอดรวม ฿1,070",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371377971-460LQ",
+    "timestamp": "2026-09-14 14:36:17",
+    "timeFormatted": "2026-09-14 14:36:17",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "siraphat.pd",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: siraphat.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371370156-XQX2P",
+    "timestamp": "2026-09-14 14:36:10",
+    "timeFormatted": "2026-09-14 14:36:10",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "prasert.pm",
+    "summary": "ออกจากระบบสำเร็จ (Username: prasert.pm)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371365733-OBN98",
+    "timestamp": "2026-09-14 14:36:05",
+    "timeFormatted": "2026-09-14 14:36:05",
+    "action": "APPROVE",
+    "module": "PURCHASE",
+    "targetRef": "PO-PD-2026-002",
+    "summary": "อนุมัติ PR PD002/2026 ออกใบสั่งซื้อ PO-PD-2026-002 (ผู้ขาย: บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด) ยอดเงิน ฿1,070",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager (PD, QC, ALL)",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371355365-FNGOI",
+    "timestamp": "2026-09-14 14:35:55",
+    "timeFormatted": "2026-09-14 14:35:55",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "prasert.pm",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: prasert.pm)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371342255-GP3M5",
+    "timestamp": "2026-09-14 14:35:42",
+    "timeFormatted": "2026-09-14 14:35:42",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "ออกจากระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี",
+      "role": "Assistant Manager",
+      "department": "PD, QC"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371332493-0FIFU",
+    "timestamp": "2026-09-14 14:35:32",
+    "timeFormatted": "2026-09-14 14:35:32",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี",
+      "role": "Assistant Manager",
+      "department": "PD, QC"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371322091-PO5O4",
+    "timestamp": "2026-09-14 14:35:22",
+    "timeFormatted": "2026-09-14 14:35:22",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "siraphat.pd",
+    "summary": "ออกจากระบบสำเร็จ (Username: siraphat.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789371319350-ZPH8E",
+    "timestamp": "2026-09-14 14:35:19",
+    "timeFormatted": "2026-09-14 14:35:19",
+    "action": "CREATE",
+    "module": "PURCHASE",
+    "targetRef": "PD002/2026",
+    "summary": "สร้างและยื่นส่งใบขอซื้อ เลขที่ PD002/2026 ยอดรวม ฿1,070",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789370422184-ZSL75",
+    "timestamp": "2026-09-14 14:20:22",
+    "timeFormatted": "2026-09-14 14:20:22",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "siraphat.pd",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: siraphat.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789370408660-S0BC8",
+    "timestamp": "2026-09-14 14:20:08",
+    "timeFormatted": "2026-09-14 14:20:08",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "prasert.pm",
+    "summary": "ออกจากระบบสำเร็จ (Username: prasert.pm)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789370404380-7OICJ",
+    "timestamp": "2026-09-14 14:20:04",
+    "timeFormatted": "2026-09-14 14:20:04",
+    "action": "APPROVE",
+    "module": "PURCHASE",
+    "targetRef": "PO-PD-2026-001",
+    "summary": "อนุมัติ PR PD001/2026 ออกใบสั่งซื้อ PO-PD-2026-001 (ผู้ขาย: ห้างหุ้นส่วนจำกัด เซฟตี้เฟิร์สท์ โปรดักส์) ยอดเงิน ฿856",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager (PD, QC, ALL)",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789370397762-1RX7P",
+    "timestamp": "2026-09-14 14:19:57",
+    "timeFormatted": "2026-09-14 14:19:57",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "prasert.pm",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: prasert.pm)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789370376198-YJ6HC",
+    "timestamp": "2026-09-14 14:19:36",
+    "timeFormatted": "2026-09-14 14:19:36",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "ออกจากระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี พลไกร",
+      "role": "Asst. Manager (PD, QC)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789370050600-YSPBX",
+    "timestamp": "2026-09-14 14:14:10",
+    "timeFormatted": "2026-09-14 14:14:10",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี",
+      "role": "Assistant Manager",
+      "department": "PD, QC"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789370039101-5EH0T",
+    "timestamp": "2026-09-14 14:13:59",
+    "timeFormatted": "2026-09-14 14:13:59",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "siraphat.pd",
+    "summary": "ออกจากระบบสำเร็จ (Username: siraphat.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789370011006-LRYQY",
+    "timestamp": "2026-09-14 14:13:31",
+    "timeFormatted": "2026-09-14 14:13:31",
+    "action": "CREATE",
+    "module": "PURCHASE",
+    "targetRef": "PD001/2026",
+    "summary": "สร้างและยื่นส่งใบขอซื้อ เลขที่ PD001/2026 ยอดรวม ฿856",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789369981542-O748W",
+    "timestamp": "2026-09-14 14:13:01",
+    "timeFormatted": "2026-09-14 14:13:01",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "siraphat.pd",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: siraphat.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789369940044-HKPP7",
+    "timestamp": "2026-09-14 14:12:20",
+    "timeFormatted": "2026-09-14 14:12:20",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "ออกจากระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี พลไกร",
+      "role": "Asst. Manager (PD, QC)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789368250467-XCRFT",
+    "timestamp": "2026-09-14T06:44:10.467Z",
+    "timeFormatted": "14/09/2569 13:44:10",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี",
+      "role": "Assistant Manager",
+      "department": "PD, QC"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789368211704-4OFH7",
+    "timestamp": "2026-09-14T06:43:31.704Z",
+    "timeFormatted": "14/09/2569 13:43:31",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "wichai.pd",
+    "summary": "ออกจากระบบสำเร็จ (Username: wichai.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณวิชัย (PD)",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789368211692-O8MYP",
+    "timestamp": "2026-09-14T06:43:31.692Z",
+    "timeFormatted": "14/9/2569 13:43:31",
+    "action": "LOGOUT",
+    "docType": "USER",
+    "docNo": "wichai.pd",
+    "details": "ออกจากระบบสำเร็จ (Username: wichai.pd)",
+    "actorName": "คุณวิชัย (PD)",
+    "department": "PD",
+    "actorRole": "Requester (PD)",
+    "clientIp": "CLIENT_DIRECT",
+    "clientEnv": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+    "changes": ""
+  }
+]

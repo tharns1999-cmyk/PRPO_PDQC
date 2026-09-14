@@ -241,9 +241,15 @@ const _getItem = (key) => {
   if (_apiReady && _cache[key] !== undefined) {
     return _cache[key];
   }
-  // Reading raw from localStorage means the result cache is stale for this key
+  // Reading raw from sessionStorage / localStorage means the result cache is stale for this key
   _dirtyKeys.add(key);
-  const local = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+  let local = null;
+  if (typeof sessionStorage !== 'undefined') {
+    local = sessionStorage.getItem(key);
+  }
+  if (!local && typeof localStorage !== 'undefined') {
+    local = localStorage.getItem(key);
+  }
   return local ? JSON.parse(local) : null;
 };
 
@@ -252,11 +258,19 @@ const _setItem = (key, value, syncWithBackend = false) => {
   // Invalidate the post-migration result cache for this key
   _resultCache.delete(key);
   _dirtyKeys.add(key);
+  const serialized = JSON.stringify(value);
+  if (typeof sessionStorage !== 'undefined') {
+    try {
+      sessionStorage.setItem(key, serialized);
+    } catch (e) {
+      // ignore quota error
+    }
+  }
   if (typeof localStorage !== 'undefined') {
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      localStorage.setItem(key, serialized);
     } catch (e) {
-      // ignore storage quota error
+      // ignore quota error
     }
   }
   if (syncWithBackend) {
@@ -268,32 +282,85 @@ const _setItem = (key, value, syncWithBackend = false) => {
 const isDataCleared = () => typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true';
 
 export const storageService = {
+  // Fast hydration from sessionStorage / localStorage (instant 0ms client startup)
+  hydrateFromClientStorage() {
+    if (typeof sessionStorage === 'undefined' && typeof localStorage === 'undefined') return;
+    const keys = [
+      STORAGE_KEYS.PRODUCTS,
+      STORAGE_KEYS.VENDORS,
+      STORAGE_KEYS.STORAGE_LOCATIONS,
+      STORAGE_KEYS.USAGE_UNITS,
+      STORAGE_KEYS.DEPARTMENTS,
+      STORAGE_KEYS.USERS,
+      STORAGE_KEYS.BUDGETS,
+      STORAGE_KEYS.SIGNATURES,
+      STORAGE_KEYS.PRS,
+      STORAGE_KEYS.POS,
+      STORAGE_KEYS.STOCK_LOGS,
+      STORAGE_KEYS.BUDGET_TRANSACTIONS,
+      STORAGE_KEYS.AUDIT_LOGS,
+      'prpo_notifications',
+      'prpo_summary_stats'
+    ];
+    keys.forEach(k => {
+      try {
+        let raw = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(k) : null;
+        if (!raw && typeof localStorage !== 'undefined') {
+          raw = localStorage.getItem(k);
+        }
+        if (raw) {
+          _cache[k] = JSON.parse(raw);
+        }
+      } catch (e) {}
+    });
+    _apiReady = true;
+  },
+
   // Initialize storage from Google Apps Script (Live Web App) or Local Node.js Backend with fallback to LocalStorage
   async init() {
+    this.hydrateFromClientStorage();
     _migrateLocalStorageCache();
-    // 1. Live Google Apps Script Web App Hydration
+
+    // 1. Live Google Apps Script Web App Hydration (Granular Master Data & Summary Stats)
     if (isGASAvailable()) {
       try {
         const initial = await callGAS('apiGetInitialData');
         if (initial && initial.success) {
-          if (Array.isArray(initial.products) && initial.products.length > 0) {
-            _cache[STORAGE_KEYS.PRODUCTS] = initial.products;
+          // ── GAS Real-State Sync: always respect what the Sheet says, even if empty ──
+          // Always overwrite cache with what GAS returned (respects empty arrays too)
+          // Normalize identity fields (id, code, sku, name) to String to prevent raw Numbers from Google Sheets
+          const rawProds = Array.isArray(initial.products) ? initial.products : [];
+          _cache[STORAGE_KEYS.PRODUCTS] = rawProds.map(p => {
+            if (!p || typeof p !== 'object') return p;
+            const actual = p.product || p.item || p;
+            return {
+              ...p,
+              ...actual,
+              id: actual.id !== undefined && actual.id !== null ? String(actual.id) : '',
+              code: actual.code !== undefined && actual.code !== null ? String(actual.code) : '',
+              sku: actual.sku !== undefined && actual.sku !== null ? String(actual.sku) : '',
+              name: actual.name !== undefined && actual.name !== null ? String(actual.name) : (actual.itemName ? String(actual.itemName) : ''),
+              itemCode: actual.itemCode !== undefined && actual.itemCode !== null ? String(actual.itemCode) : ''
+            };
+          });
+          _cache[STORAGE_KEYS.VENDORS] = Array.isArray(initial.vendors) ? initial.vendors : [];
+          _cache[STORAGE_KEYS.STORAGE_LOCATIONS] = Array.isArray(initial.storageLocations) ? initial.storageLocations : [];
+          _cache[STORAGE_KEYS.USAGE_UNITS] = Array.isArray(initial.usageUnits) ? initial.usageUnits : [];
+          _cache[STORAGE_KEYS.DEPARTMENTS] = Array.isArray(initial.departments) ? initial.departments : [];
+          _cache[STORAGE_KEYS.USERS] = Array.isArray(initial.users) ? initial.users : [];
+          if (initial.budgets && typeof initial.budgets === 'object') {
+            _cache[STORAGE_KEYS.BUDGETS] = initial.budgets;
           }
-          if (Array.isArray(initial.vendors) && initial.vendors.length > 0) {
-            _cache[STORAGE_KEYS.VENDORS] = initial.vendors;
+          if (initial.signatures && typeof initial.signatures === 'object') {
+            _cache[STORAGE_KEYS.SIGNATURES] = initial.signatures;
           }
-          if (Array.isArray(initial.storageLocations) && initial.storageLocations.length > 0) {
-            _cache[STORAGE_KEYS.STORAGE_LOCATIONS] = initial.storageLocations;
+          _cache['prpo_notifications'] = Array.isArray(initial.notifications) ? initial.notifications : [];
+          _cache['prpo_in_app_notifications'] = Array.isArray(initial.notifications) ? initial.notifications : [];
+          if (initial.summaryStats) {
+            _cache['prpo_summary_stats'] = initial.summaryStats;
           }
-          if (Array.isArray(initial.usageUnits) && initial.usageUnits.length > 0) {
-            _cache[STORAGE_KEYS.USAGE_UNITS] = initial.usageUnits;
-          }
-          if (Array.isArray(initial.departments) && initial.departments.length > 0) {
-            _cache[STORAGE_KEYS.DEPARTMENTS] = initial.departments;
-          }
-          if (Array.isArray(initial.users) && initial.users.length > 0) {
-            _cache[STORAGE_KEYS.USERS] = initial.users;
-          }
+
+          // Transactional data: only populate if GAS returned rows (lazy-loaded separately)
           if (Array.isArray(initial.prs)) {
             _cache[STORAGE_KEYS.PRS] = initial.prs;
           }
@@ -303,36 +370,33 @@ export const storageService = {
           if (Array.isArray(initial.stockLogs)) {
             _cache[STORAGE_KEYS.STOCK_LOGS] = initial.stockLogs;
           }
-          if (initial.budgets && typeof initial.budgets === 'object') {
-            _cache[STORAGE_KEYS.BUDGETS] = initial.budgets;
-          }
-          if (Array.isArray(initial.budgetTransactions)) {
-            _cache[STORAGE_KEYS.BUDGET_TRANSACTIONS] = initial.budgetTransactions;
-            _cache['prpo_budget_transactions'] = initial.budgetTransactions;
-          }
-          if (Array.isArray(initial.auditLogs)) {
-            _cache[STORAGE_KEYS.AUDIT_LOGS] = initial.auditLogs;
-            _cache['prpo_audit_logs'] = initial.auditLogs;
-          }
-          if (Array.isArray(initial.notifications)) {
-            _cache['prpo_notifications'] = initial.notifications;
-            _cache['prpo_in_app_notifications'] = initial.notifications;
-          }
-          if (initial.signatures && typeof initial.signatures === 'object') {
-            _cache[STORAGE_KEYS.SIGNATURES] = initial.signatures;
-          }
 
-          // Mirror into localStorage as immediate read cache
-          if (typeof localStorage !== 'undefined') {
-            try {
-              Object.entries(_cache).forEach(([k, v]) => {
-                if (v !== undefined) localStorage.setItem(k, JSON.stringify(v));
-              });
-            } catch (e) {}
-          }
+          // Invalidate result-cache so getters re-run with fresh GAS data
+          _resultCache.clear();
+          _dirtyKeys.clear();
+
+          // Mirror into sessionStorage & localStorage as fast read cache (overwrite old stale data)
+          const MASTER_KEYS_TO_SYNC = [
+            STORAGE_KEYS.PRODUCTS, STORAGE_KEYS.VENDORS, STORAGE_KEYS.STORAGE_LOCATIONS,
+            STORAGE_KEYS.USAGE_UNITS, STORAGE_KEYS.DEPARTMENTS, STORAGE_KEYS.USERS,
+            STORAGE_KEYS.BUDGETS, STORAGE_KEYS.SIGNATURES, STORAGE_KEYS.PRS, STORAGE_KEYS.POS,
+            STORAGE_KEYS.STOCK_LOGS, 'prpo_notifications', 'prpo_in_app_notifications'
+          ];
+          MASTER_KEYS_TO_SYNC.forEach(k => {
+            const v = _cache[k];
+            if (v !== undefined) {
+              const str = JSON.stringify(v);
+              if (typeof sessionStorage !== 'undefined') {
+                try { sessionStorage.setItem(k, str); } catch (e) {}
+              }
+              if (typeof localStorage !== 'undefined') {
+                try { localStorage.setItem(k, str); } catch (e) {}
+              }
+            }
+          });
 
           _apiReady = true;
-          return;
+          return initial;
         }
       } catch (gasErr) {
         console.warn('[StorageService] GAS Initial Data Hydration warning:', gasErr);
@@ -349,8 +413,136 @@ export const storageService = {
         return;
       }
     } catch (e) {
-      console.warn('[StorageService] Local API not reachable. Using in-memory / LocalStorage fallback.');
+      console.warn('[StorageService] Local API not reachable. Using in-memory / ClientStorage fallback.');
     }
+  },
+
+  // ── Lazy-Fetching for Heavy Transactional Records ──
+  async fetchPRs(force = false) {
+    // On GAS: always fetch fresh regardless of local cache (respect real empty state)
+    if (!force && !isGASAvailable() && Array.isArray(_cache[STORAGE_KEYS.PRS]) && _cache[STORAGE_KEYS.PRS].length > 0) {
+      return this.getPRs();
+    }
+    if (isGASAvailable()) {
+      try {
+        const res = await callGAS('apiGetPRs');
+        if (res && res.success) {
+          const prs = Array.isArray(res.prs) ? res.prs : [];
+          _cache[STORAGE_KEYS.PRS] = prs;
+          _resultCache.delete(STORAGE_KEYS.PRS);
+          _dirtyKeys.add(STORAGE_KEYS.PRS);
+          if (typeof sessionStorage !== 'undefined') try { sessionStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify(prs)); } catch(e){}
+          if (typeof localStorage !== 'undefined') try { localStorage.setItem(STORAGE_KEYS.PRS, JSON.stringify(prs)); } catch(e){}
+          return this.getPRs();
+        }
+      } catch (err) {
+        console.warn('[StorageService] Lazy fetch PRs error:', err.message);
+      }
+    }
+    return this.getPRs();
+  },
+
+  async fetchPOs(force = false) {
+    if (!force && !isGASAvailable() && Array.isArray(_cache[STORAGE_KEYS.POS]) && _cache[STORAGE_KEYS.POS].length > 0) {
+      return this.getPOs();
+    }
+    if (isGASAvailable()) {
+      try {
+        const res = await callGAS('apiGetPOs');
+        if (res && res.success) {
+          const pos = Array.isArray(res.pos) ? res.pos : [];
+          _cache[STORAGE_KEYS.POS] = pos;
+          _resultCache.delete(STORAGE_KEYS.POS);
+          _dirtyKeys.add(STORAGE_KEYS.POS);
+          if (typeof sessionStorage !== 'undefined') try { sessionStorage.setItem(STORAGE_KEYS.POS, JSON.stringify(pos)); } catch(e){}
+          if (typeof localStorage !== 'undefined') try { localStorage.setItem(STORAGE_KEYS.POS, JSON.stringify(pos)); } catch(e){}
+          return this.getPOs();
+        }
+      } catch (err) {
+        console.warn('[StorageService] Lazy fetch POs error:', err.message);
+      }
+    }
+    return this.getPOs();
+  },
+
+  async fetchStockLogs(force = false) {
+    if (!force && !isGASAvailable() && Array.isArray(_cache[STORAGE_KEYS.STOCK_LOGS]) && _cache[STORAGE_KEYS.STOCK_LOGS].length > 0) {
+      return this.getStockLogs();
+    }
+    if (isGASAvailable()) {
+      try {
+        const res = await callGAS('apiGetStockLogs');
+        if (res && res.success) {
+          const logs = Array.isArray(res.stockLogs) ? res.stockLogs : [];
+          _cache[STORAGE_KEYS.STOCK_LOGS] = logs;
+          _resultCache.delete(STORAGE_KEYS.STOCK_LOGS);
+          _dirtyKeys.add(STORAGE_KEYS.STOCK_LOGS);
+          if (typeof sessionStorage !== 'undefined') try { sessionStorage.setItem(STORAGE_KEYS.STOCK_LOGS, JSON.stringify(logs)); } catch(e){}
+          if (typeof localStorage !== 'undefined') try { localStorage.setItem(STORAGE_KEYS.STOCK_LOGS, JSON.stringify(logs)); } catch(e){}
+          return this.getStockLogs();
+        }
+      } catch (err) {
+        console.warn('[StorageService] Lazy fetch StockLogs error:', err.message);
+      }
+    }
+    return this.getStockLogs();
+  },
+
+  async fetchBudgetTransactions(force = false) {
+    if (!force && !isGASAvailable() && Array.isArray(_cache[STORAGE_KEYS.BUDGET_TRANSACTIONS]) && _cache[STORAGE_KEYS.BUDGET_TRANSACTIONS].length > 0) {
+      return this.getBudgetTransactions();
+    }
+    if (isGASAvailable()) {
+      try {
+        const res = await callGAS('apiGetBudgetTransactions');
+        if (res && res.success) {
+          const txs = Array.isArray(res.budgetTransactions) ? res.budgetTransactions : [];
+          _cache[STORAGE_KEYS.BUDGET_TRANSACTIONS] = txs;
+          if (typeof sessionStorage !== 'undefined') try { sessionStorage.setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, JSON.stringify(txs)); } catch(e){}
+          if (typeof localStorage !== 'undefined') try { localStorage.setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, JSON.stringify(txs)); } catch(e){}
+          return this.getBudgetTransactions();
+        }
+      } catch (err) {
+        console.warn('[StorageService] Lazy fetch BudgetTransactions error:', err.message);
+      }
+    }
+    return this.getBudgetTransactions();
+  },
+
+  async fetchAuditLogs(force = false) {
+    if (!force && !isGASAvailable() && Array.isArray(_cache[STORAGE_KEYS.AUDIT_LOGS]) && _cache[STORAGE_KEYS.AUDIT_LOGS].length > 0) {
+      return this.getAuditLogs();
+    }
+    if (isGASAvailable()) {
+      try {
+        const res = await callGAS('apiGetAuditLogs');
+        if (res && res.success) {
+          const logs = Array.isArray(res.auditLogs) ? res.auditLogs : [];
+          _setItem(STORAGE_KEYS.AUDIT_LOGS, logs);
+          return this.getAuditLogs();
+        }
+      } catch (err) {
+        console.warn('[StorageService] Lazy fetch AuditLogs error:', err.message);
+      }
+    }
+    return this.getAuditLogs();
+  },
+
+  // Flush all in-memory and browser storage caches (call before re-fetching from GAS)
+  invalidateAllClientCache() {
+    _cache = {};
+    _resultCache.clear();
+    _dirtyKeys.clear();
+    _apiReady = false;
+    const ALL_KEYS = Object.values(STORAGE_KEYS).concat([
+      'prpo_notifications', 'prpo_in_app_notifications',
+      'prpo_audit_logs', 'prpo_budget_transactions', 'prpo_summary_stats',
+      'prpo_registered_users', 'prpo_users_cache'
+    ]);
+    ALL_KEYS.forEach(k => {
+      try { if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(k); } catch(e){}
+      try { if (typeof localStorage !== 'undefined') localStorage.removeItem(k); } catch(e){}
+    });
   },
 
   // Reset local browser cache only (Strictly NEVER overwrites server SSOT files)
@@ -359,11 +551,14 @@ export const storageService = {
       localStorage.setItem('prpo_data_version', DATA_VERSION);
     }
     _setItem(STORAGE_KEYS.CURRENT_ROLE, ROLES.REQUESTER_PD, false);
-    _setItem(STORAGE_KEYS.PRODUCTS, initialProducts, false);
-    _setItem(STORAGE_KEYS.VENDORS, initialVendors, false);
-    _setItem(STORAGE_KEYS.STORAGE_LOCATIONS, initialStorageLocations, false);
-    _setItem(STORAGE_KEYS.USAGE_UNITS, INITIAL_USAGE_UNITS, false);
-    _setItem(STORAGE_KEYS.USERS, DEFAULT_EMPLOYEE_ACCOUNTS, false);
+    // On GAS: do NOT seed mock data — data comes from Sheets
+    if (!isGASAvailable()) {
+      _setItem(STORAGE_KEYS.PRODUCTS, initialProducts, false);
+      _setItem(STORAGE_KEYS.VENDORS, initialVendors, false);
+      _setItem(STORAGE_KEYS.STORAGE_LOCATIONS, initialStorageLocations, false);
+      _setItem(STORAGE_KEYS.USAGE_UNITS, INITIAL_USAGE_UNITS, false);
+      _setItem(STORAGE_KEYS.USERS, DEFAULT_EMPLOYEE_ACCOUNTS, false);
+    }
     _setItem(STORAGE_KEYS.PRS, [], false);
     _setItem(STORAGE_KEYS.POS, [], false);
     _setItem(STORAGE_KEYS.STOCK_LOGS, [], false);
@@ -469,12 +664,20 @@ export const storageService = {
       } catch (e) {}
     }
 
-    const products = data && data.length > 0 ? data : initialProducts;
+    // On GAS: if GAS returned empty data, respect it — do NOT fall back to mock
+    const products = data && data.length > 0 ? data : (isGASAvailable() ? [] : initialProducts);
     
     let needsSave = false;
     const migrated = products.map(p => {
       const actual = p.product || p.item || p;
       let item = { ...actual };
+      // Normalize identity fields to String to prevent raw Numbers from Google Sheets
+      if (item.id !== undefined && item.id !== null) item.id = String(item.id);
+      if (item.code !== undefined && item.code !== null) item.code = String(item.code);
+      if (item.sku !== undefined && item.sku !== null) item.sku = String(item.sku);
+      if (item.name !== undefined && item.name !== null) item.name = String(item.name);
+      if (item.itemCode !== undefined && item.itemCode !== null) item.itemCode = String(item.itemCode);
+
       const cat = item.category || item.department || 'PD';
       if (!item.category || !item.department || item.category !== cat || item.department !== cat) {
         needsSave = true;
@@ -570,6 +773,11 @@ export const storageService = {
         const convRatio = Number(actual.conversionRatio ?? actual.conversionRate ?? 1) > 0 ? Number(actual.conversionRatio ?? actual.conversionRate ?? 1) : 1;
         map.set(key, {
           ...actual,
+          id: actual.id !== undefined && actual.id !== null ? String(actual.id) : '',
+          code: actual.code !== undefined && actual.code !== null ? String(actual.code) : '',
+          sku: actual.sku !== undefined && actual.sku !== null ? String(actual.sku) : '',
+          name: actual.name !== undefined && actual.name !== null ? String(actual.name) : (actual.itemName ? String(actual.itemName) : ''),
+          itemCode: actual.itemCode !== undefined && actual.itemCode !== null ? String(actual.itemCode) : '',
           purchaseUom: pUom,
           baseUom: bUom,
           conversionRatio: convRatio,
@@ -581,6 +789,40 @@ export const storageService = {
       }
     });
     _setItem(STORAGE_KEYS.PRODUCTS, Array.from(map.values()), true);
+  },
+  saveProduct(prodObj, mode = null) {
+    if (!prodObj || typeof prodObj !== 'object') return null;
+    const products = this.getProducts();
+    const isEdit = mode === 'EDIT' || prodObj._mode === 'EDIT' || (Boolean(prodObj.isEdit) && Boolean(prodObj.id));
+    const targetId = String(prodObj.id || '').trim().toLowerCase();
+    const targetCode = String(prodObj.code || prodObj.sku || '').trim().toLowerCase();
+
+    // In CREATE mode, check if code already exists
+    if (!isEdit && targetCode) {
+      const duplicate = products.find(p => String(p.code || p.sku || '').trim().toLowerCase() === targetCode);
+      if (duplicate) {
+        throw new Error(`รหัสสินค้านี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น (${targetCode})`);
+      }
+    }
+
+    const idx = products.findIndex(p => {
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || p.sku || '').trim().toLowerCase();
+      if (isEdit) {
+        return (targetId && pId === targetId) || (targetCode && pCode === targetCode);
+      }
+      return targetId && pId === targetId;
+    });
+
+    let updated;
+    if (idx !== -1 && isEdit) {
+      updated = [...products];
+      updated[idx] = { ...updated[idx], ...prodObj };
+    } else {
+      updated = [prodObj, ...products];
+    }
+    this.saveProducts(updated);
+    return prodObj;
   },
   deleteProduct(productId) {
     const targetStr = String(productId || '').trim().toLowerCase();
@@ -608,21 +850,29 @@ export const storageService = {
   getStorageLocations() {
     const data = _getItem(STORAGE_KEYS.STORAGE_LOCATIONS);
     if (!data) {
+      if (isGASAvailable()) return []; // Respect real empty state from GAS
       this.saveStorageLocations(initialStorageLocations);
       return initialStorageLocations;
     }
     return data;
   },
   saveStorageLocations(locations) {
-    _setItem(STORAGE_KEYS.STORAGE_LOCATIONS, locations);
+    _setItem(STORAGE_KEYS.STORAGE_LOCATIONS, locations, true);
   },
 
   // Usage Units (Department-Scoped Rooms / Units)
   getUsageUnits(department) {
     const data = _getItem(STORAGE_KEYS.USAGE_UNITS);
-    const list = data || INITIAL_USAGE_UNITS;
+    let list;
     if (!data) {
-      this.saveUsageUnits(INITIAL_USAGE_UNITS);
+      if (isGASAvailable()) {
+        list = []; // Respect real empty state from GAS
+      } else {
+        this.saveUsageUnits(INITIAL_USAGE_UNITS);
+        list = INITIAL_USAGE_UNITS;
+      }
+    } else {
+      list = data;
     }
     if (department && department !== 'ALL') {
       return list.filter(u => u.department === department);
@@ -630,7 +880,7 @@ export const storageService = {
     return list;
   },
   saveUsageUnits(units) {
-    _setItem(STORAGE_KEYS.USAGE_UNITS, units);
+    _setItem(STORAGE_KEYS.USAGE_UNITS, units, true);
   },
   saveUsageUnit(unitObj) {
     const units = [...this.getUsageUnits()];
@@ -663,13 +913,14 @@ export const storageService = {
   getDepartments() {
     const data = _getItem(STORAGE_KEYS.DEPARTMENTS);
     if (!data || !Array.isArray(data) || data.length === 0) {
+      if (isGASAvailable()) return []; // Respect real empty state from GAS
       this.saveDepartments(INITIAL_DEPARTMENTS);
       return INITIAL_DEPARTMENTS;
     }
     return data;
   },
   saveDepartments(departments) {
-    _setItem(STORAGE_KEYS.DEPARTMENTS, departments);
+    _setItem(STORAGE_KEYS.DEPARTMENTS, departments, true);
   },
   saveDepartment(deptObj) {
     const depts = [...this.getDepartments()];
@@ -706,6 +957,7 @@ export const storageService = {
   getUsers() {
     const data = _getItem(STORAGE_KEYS.USERS);
     if (!data) {
+      if (isGASAvailable()) return []; // Respect real empty state from GAS
       this.saveUsers(DEFAULT_EMPLOYEE_ACCOUNTS);
       return DEFAULT_EMPLOYEE_ACCOUNTS;
     }
@@ -839,10 +1091,31 @@ export const storageService = {
   // Vendors
   getVendors() {
     const data = _getItem(STORAGE_KEYS.VENDORS);
+    if (!data && isGASAvailable()) return []; // Respect real empty state from GAS
     return data || initialVendors;
   },
   saveVendors(vendors) {
-    _setItem(STORAGE_KEYS.VENDORS, vendors);
+    _setItem(STORAGE_KEYS.VENDORS, vendors, true);
+  },
+  saveVendor(vendorObj) {
+    if (!vendorObj || typeof vendorObj !== 'object') return null;
+    const vendors = this.getVendors();
+    const targetId = String(vendorObj.id || '').trim().toLowerCase();
+    const targetCode = String(vendorObj.code || '').trim().toLowerCase();
+    const idx = vendors.findIndex(v => {
+      const vId = String(v.id || '').trim().toLowerCase();
+      const vCode = String(v.code || '').trim().toLowerCase();
+      return (targetId && vId === targetId) || (targetCode && vCode === targetCode);
+    });
+    let updated;
+    if (idx !== -1) {
+      updated = [...vendors];
+      updated[idx] = { ...updated[idx], ...vendorObj };
+    } else {
+      updated = [vendorObj, ...vendors];
+    }
+    this.saveVendors(updated);
+    return vendorObj;
   },
 
   // PRs (with Lazy Migration)
@@ -853,7 +1126,8 @@ export const storageService = {
       return _resultCache.get(_cacheKey);
     }
     const data = _getItem(STORAGE_KEYS.PRS);
-    const prs = Array.isArray(data) ? data : (isDataCleared() ? [] : (initialPRs || []));
+    // On GAS: always return empty array if no data — never fall back to mock
+    const prs = Array.isArray(data) ? data : [];
     const filtered = prs;
     
     let needsSave = false;
@@ -952,7 +1226,8 @@ export const storageService = {
       return _resultCache.get(_cacheKey);
     }
     const data = _getItem(STORAGE_KEYS.POS);
-    const pos = Array.isArray(data) ? data : (isDataCleared() ? [] : (initialPOs || []));
+    // On GAS: always return empty array if no data — never fall back to mock
+    const pos = Array.isArray(data) ? data : [];
     const filtered = pos.filter(po => po.department === 'PD' || po.department === 'QC');
 
     // Deduplicate POs by unique identifier
@@ -1439,6 +1714,37 @@ export const storageService = {
               totalPrice: 174000,
               totalValue: 174000
             };
+          }
+        }
+
+        // General Dual-UOM Self-Healing for INITIAL-BALANCE logs (e.g. Heat-resistant gloves 100 THB/pair -> 50 THB/piece)
+        const isInitDoc = String(item.documentNo || item.docNo || '').toUpperCase().includes('INITIAL');
+        if (isInitDoc && (item.productId || item.productCode)) {
+          const prods = _cache[STORAGE_KEYS.PRODUCTS] || [];
+          const matchedProd = prods.find(p =>
+            (item.productId && p.id === item.productId) ||
+            (item.productCode && p.code === item.productCode)
+          );
+          if (matchedProd) {
+            const conv = Number(matchedProd.conversionRate || matchedProd.conversionRatio || item.conversionRate) || 1;
+            if (conv > 1) {
+              const pPrice = Number(matchedProd.price) || 0;
+              const curUnitPrice = Number(item.unitPrice) || 0;
+              // If unitPrice equals full purchase price, or totalPrice was calculated as qty * pPrice
+              if (curUnitPrice === pPrice || (item.totalPrice && Math.abs(item.totalPrice - (Number(item.qty) * pPrice)) < 0.01)) {
+                needsHeal = true;
+                const stockUnitPrice = pPrice / conv;
+                const qtyVal = Number(item.qty ?? item.quantity) || 0;
+                item = {
+                  ...item,
+                  conversionRate: conv,
+                  unitPrice: stockUnitPrice,
+                  baseUnitCost: stockUnitPrice,
+                  totalPrice: stockUnitPrice * qtyVal,
+                  totalAmount: stockUnitPrice * qtyVal
+                };
+              }
+            }
           }
         }
 

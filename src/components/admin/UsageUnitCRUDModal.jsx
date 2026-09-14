@@ -95,11 +95,11 @@ export default function UsageUnitCRUDModal({
 
   // Duplicate check within department
   const isNameDuplicate = Boolean(
-    name.trim() &&
+    String(name || '').trim() &&
     usageUnits.some(
-      u => u.id !== unit?.id &&
+      u => String(u.id || '') !== String(unit?.id || '') &&
            u.department === department &&
-           u.name.trim().toLowerCase() === name.trim().toLowerCase()
+           String(u.name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase()
     )
   );
 

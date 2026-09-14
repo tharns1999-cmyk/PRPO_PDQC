@@ -27,7 +27,9 @@ export default function ProductCRUDModal({
   currentRole,
   currentUser,
   onClose,
-  onRefresh
+  onRefresh,
+  onSaved,
+  onCreated
 }) {
   const context = useAppContext();
   const rawDepartments = propDepartments || context?.departments;
@@ -37,6 +39,7 @@ export default function ProductCRUDModal({
   }, [rawDepartments]);
 
   const editProd = propEditProd || product;
+  const isEditMode = Boolean(editProd && (editProd.id || editProd.code));
   const effectiveUser = currentUser || context?.currentUser;
   const userDepts = getUserDepartments(currentRole || effectiveUser);
   const canSelectAll = Boolean(
@@ -67,7 +70,12 @@ export default function ProductCRUDModal({
   const lockedCategory = isSingleLockedDept ? selectableDepts[0]?.code : null;
 
   const skuInputRef = useRef(null);
-  const [itemCode, setItemCode] = useState(editProd?.code || '');
+  const [itemCode, setItemCode] = useState(() => {
+    if (editProd?.code !== undefined && editProd?.code !== null) return String(editProd.code);
+    if (editProd?.sku !== undefined && editProd?.sku !== null) return String(editProd.sku);
+    if (editProd?.id !== undefined && editProd?.id !== null) return String(editProd.id);
+    return '';
+  });
   const [category, setCategory] = useState(() => {
     if (editProd?.category) return editProd.category;
     if (editProd?.department) return editProd.department;
@@ -109,20 +117,44 @@ export default function ProductCRUDModal({
     return Array.from(map.values());
   }, [products, context?.products]);
 
-  // Duplicate SKU / Item Code Check with Duplicate Item Name Resolution
-  const duplicateItem = useMemo(() => {
-    const cleanSku = itemCode.trim().toUpperCase();
-    if (!cleanSku) return null;
-    return allProducts.find(item => {
-      if (editProd && (item.id === editProd.id || (item.code && item.code.toUpperCase() === editProd.code?.toUpperCase()))) {
-        return false;
-      }
-      const existingSku = (item.sku || item.itemCode || item.code || item.id || '').trim().toUpperCase();
-      return existingSku === cleanSku;
-    }) || null;
-  }, [itemCode, allProducts, editProd]);
+  // Real-time Frontend SKU Duplicate Validation
+  const isSkuDuplicate = useMemo(() => {
+    const inputCode = String(itemCode || '').trim().toLowerCase();
+    if (!inputCode) return false;
+    if (!isEditMode) {
+      return allProducts.some(p => {
+        if (!p) return false;
+        return String(p.code || p.sku || p.id || '').trim().toLowerCase() === inputCode;
+      });
+    } else {
+      const editProdId = String(editProd?.id || '').trim().toLowerCase();
+      const editProdCode = String(editProd?.code || editProd?.sku || '').trim().toLowerCase();
+      return allProducts.some(p => {
+        if (!p) return false;
+        const pId = String(p.id || '').trim().toLowerCase();
+        const pCode = String(p.code || p.sku || p.id || '').trim().toLowerCase();
+        if ((editProdId && pId === editProdId) || (editProdCode && pCode === editProdCode)) return false;
+        return pCode === inputCode;
+      });
+    }
+  }, [itemCode, isEditMode, allProducts, editProd]);
 
-  const isSkuDuplicate = Boolean(duplicateItem);
+  const duplicateItem = useMemo(() => {
+    if (!isSkuDuplicate) return null;
+    const inputCode = String(itemCode || '').trim().toLowerCase();
+    return allProducts.find(p => {
+      if (!p) return false;
+      const pId = String(p.id || '').trim().toLowerCase();
+      const pCode = String(p.code || p.sku || p.id || '').trim().toLowerCase();
+      if (isEditMode) {
+        const editProdId = String(editProd?.id || '').trim().toLowerCase();
+        const editProdCode = String(editProd?.code || editProd?.sku || '').trim().toLowerCase();
+        if ((editProdId && pId === editProdId) || (editProdCode && pCode === editProdCode)) return false;
+      }
+      return pCode === inputCode;
+    }) || null;
+  }, [isSkuDuplicate, itemCode, isEditMode, allProducts, editProd]);
+
   const isCodeDuplicate = isSkuDuplicate;
 
   // Filter vendors visible to this user
@@ -166,7 +198,7 @@ export default function ProductCRUDModal({
 
   const handleSaveProduct = async (e) => {
     e.preventDefault();
-    const cleanSku = itemCode.trim().toUpperCase();
+    const cleanSku = String(itemCode || '').trim().toUpperCase();
     if (!cleanSku) {
       modalService.error('กรุณาระบุรหัสสินค้า', 'กรุณาระบุรหัสสินค้า (SKU / Item Code)');
       skuInputRef.current?.focus();
@@ -175,10 +207,10 @@ export default function ProductCRUDModal({
 
     if (isSkuDuplicate) {
       modalService.error(
-        'รหัสสินค้านี้ถูกใช้งานแล้วในระบบ',
+        'รหัสสินค้านี้มีอยู่ในระบบแล้ว',
         duplicateItem 
-          ? `รหัส "${cleanSku}" ซ้ำกับสินค้า: ${duplicateItem.name}`
-          : 'กรุณาระบุรหัสสินค้าใหม่ที่ไม่ซ้ำกับสินค้าอื่น'
+          ? `รหัส "${cleanSku}" ซ้ำกับสินค้า: ${duplicateItem.name} กรุณาใช้รหัสอื่น`
+          : '⚠️ รหัสสินค้านี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น'
       );
       skuInputRef.current?.focus();
       return;
@@ -187,15 +219,15 @@ export default function ProductCRUDModal({
     setIsSaving(true);
     try {
       const formData = new FormData(e.target);
-      const pUnit = formData.get('purchaseUnit')?.trim() || purchaseUnit || 'ชิ้น';
-      const sUnit = formData.get('stockUnit')?.trim() || stockUnit || 'ชิ้น';
+      const pUnit = String(formData.get('purchaseUnit') || purchaseUnit || 'ชิ้น').trim();
+      const sUnit = String(formData.get('stockUnit') || stockUnit || 'ชิ้น').trim();
       const convRate = Number(formData.get('conversionRate')) || Number(conversionRate) || 1;
       const selectedLoc = locsList.find(l => l.id === selectedLocationId);
 
       const prodObj = {
-        id: editProd?.id || '',
-        code: (formData.get('code') || itemCode)?.trim().toUpperCase(),
-        name: formData.get('name')?.trim(),
+        id: editProd?.id ? String(editProd.id) : '',
+        code: String(formData.get('code') || itemCode || '').trim().toUpperCase(),
+        name: String(formData.get('name') || '').trim(),
         category: lockedCategory || category || formData.get('category'),
         purchaseUnit: pUnit,
         stockUnit: sUnit,
@@ -209,15 +241,22 @@ export default function ProductCRUDModal({
         locationId: selectedLocationId || null,
         locationName: selectedLoc ? selectedLoc.name : (selectedLocationId ? selectedLocationId : null),
         isActive: editProd?.isActive !== undefined ? editProd.isActive : true,
-        status: editProd?.status || (editProd?.isActive === false ? 'INACTIVE' : 'ACTIVE')
+        status: editProd?.status || (editProd?.isActive === false ? 'INACTIVE' : 'ACTIVE'),
+        isEdit: isEditMode,
+        _mode: isEditMode ? 'EDIT' : 'CREATE'
       };
 
-      await apiService.saveProduct(prodObj);
+      const saved = await apiService.saveProduct(prodObj);
       modalService.success('บันทึกสินค้าเรียบร้อย', `บันทึกข้อมูลสินค้า "${prodObj.name}" สำเร็จ`);
+      if (editProd) {
+        if (onSaved) onSaved(saved || prodObj);
+      } else {
+        if (onCreated) onCreated(saved || prodObj);
+      }
       onClose();
       if (onRefresh) onRefresh();
     } catch (err) {
-      modalService.error('เกิดข้อผิดพลาดในการบันทึกข้อมูล', err.message);
+      modalService.error('รหัสสินค้านี้ถูกใช้งานแล้วในระบบ', err.message || 'รหัสสินค้านี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น');
     } finally {
       setIsSaving(false);
     }
@@ -312,7 +351,7 @@ export default function ProductCRUDModal({
                         ref={skuInputRef}
                         name="code"
                         value={itemCode}
-                        onChange={e => setItemCode(e.target.value)}
+                        onChange={e => setItemCode(String(e.target.value ?? ''))}
                         placeholder="เช่น PD-OIL-068"
                         required
                         className={`w-full h-10 px-3.5 border rounded-r-xl text-xs sm:text-sm font-mono font-bold uppercase tracking-wide placeholder:font-normal placeholder:text-slate-400 focus:outline-none transition-all ${
@@ -324,7 +363,8 @@ export default function ProductCRUDModal({
                     </div>
                     {isSkuDuplicate && (
                       <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1 font-medium">
-                        <span>⚠️</span> รหัสนี้ถูกใช้งานแล้วในระบบ {duplicateItem ? `(${duplicateItem.name})` : ''}
+                        <span>⚠️ รหัสสินค้านี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น</span>
+                        {duplicateItem && <span className="text-[11px] text-rose-500 font-normal">({duplicateItem.name})</span>}
                       </p>
                     )}
                   </div>
@@ -673,11 +713,11 @@ export default function ProductCRUDModal({
               <button
                 type="submit"
                 form="product-form"
-                disabled={isSaving || isSkuDuplicate || !itemCode.trim()}
+                disabled={isSaving || isSkuDuplicate || !String(itemCode || '').trim()}
                 className="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs rounded-xl flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Check className="w-4 h-4" />
-                <span>{isSaving ? 'กำลังบันทึก...' : (editProd ? 'บันทึกการแก้ไข' : 'บันทึกสินค้าใหม่')}</span>
+                <span>{isSaving ? 'กำลังบันทึก...' : (isEditMode ? 'บันทึกการแก้ไข' : 'บันทึกสินค้าใหม่')}</span>
               </button>
             </div>
           </div>

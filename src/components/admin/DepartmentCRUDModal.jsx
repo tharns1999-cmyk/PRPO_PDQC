@@ -34,10 +34,10 @@ export default function DepartmentCRUDModal({
   const [error, setError] = useState('');
 
   const isCodeDuplicate = Boolean(
-    code.trim() &&
+    String(code || '').trim() &&
     departments.some(
-      d => d.id !== department?.id &&
-           d.code.trim().toUpperCase() === code.trim().toUpperCase()
+      d => String(d.id || '') !== String(department?.id || '') &&
+           String(d.code || '').trim().toUpperCase() === String(code || '').trim().toUpperCase()
     )
   );
 

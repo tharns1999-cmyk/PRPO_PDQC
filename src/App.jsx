@@ -4,7 +4,7 @@ import { router } from './routes';
 
 /**
  * Root Application Component
- * Delegates all client-side navigation, layouts, and route guards to React Router DOM.
+ * Delegates all client-side navigation, layouts, and route guards to React Router DOM (HashRouter).
  */
 export default function App() {
   return <RouterProvider router={router} />;

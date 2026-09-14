@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { apiService } from '../services/apiService';
-import { ISSUE_LOCATIONS, ISSUE_LOCATION_CONFIG, INITIAL_USAGE_UNITS } from '../config/constants';
+import { ISSUE_LOCATIONS, ISSUE_LOCATION_CONFIG } from '../config/constants';
 import { hasDepartmentAccess, getUserAccessibleDepartments } from '../utils/permissions';
 import { 
   SendToBack, CheckCircle2, AlertCircle, AlertTriangle, 
@@ -56,11 +56,7 @@ const getLogUnit = (log) => {
   if (log.note) {
     const match = log.note.match(/\[(.*?)\]/);
     if (match && match[1]) {
-      const parsed = match[1].trim();
-      if (parsed.includes('1') || parsed.includes('Mixing')) return 'ห้อง K1';
-      if (parsed.includes('2') || parsed.includes('Filling')) return 'ห้อง K2';
-      if (parsed.includes('3') || parsed.includes('Packing')) return 'ห้องแพ็ค';
-      return parsed;
+      return match[1].trim();
     }
   }
   return 'ไม่ระบุหน่วย';
@@ -92,8 +88,8 @@ export default function QuickIssueView({
   const [activeTab, setActiveTab] = useState('ISSUE'); // 'ISSUE' | 'STATS'
 
   const allUsageUnits = useMemo(() => {
-    if (propUsageUnits && propUsageUnits.length > 0) return propUsageUnits;
-    return INITIAL_USAGE_UNITS;
+    if (propUsageUnits && Array.isArray(propUsageUnits)) return propUsageUnits;
+    return [];
   }, [propUsageUnits]);
 
   // Usage units strictly filtered by user's permitted departments
@@ -107,7 +103,7 @@ export default function QuickIssueView({
   const [issueQty, setIssueQty] = useState(1);
   const [reason, setReason] = useState(ISSUE_REASONS[0]);
   const [note, setNote] = useState('');
-  const [productionUnit, setProductionUnit] = useState('ห้อง K1');
+  const [productionUnit, setProductionUnit] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -727,27 +723,50 @@ export default function QuickIssueView({
                 <span className="text-[11px] text-slate-400 font-normal">เลือกห้องหรือพื้นที่ที่นำสินค้าไปใช้</span>
               </div>
 
-              {/* Clean Segmented Switcher Capsule Bar */}
-              <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/80 rounded-2xl border border-slate-200/60">
-                {formUsageUnits.map(unit => {
-                  const isSelected = productionUnit === unit.name;
-                  return (
-                    <button
-                      key={unit.id || unit.name}
-                      type="button"
-                      onClick={() => setProductionUnit(unit.name)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
-                        isSelected
-                          ? 'bg-slate-950 text-white font-semibold shadow-sm'
-                          : 'px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 transition-all'
-                      }`}
-                    >
-                      {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
-                      <span>{unit.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {/* Clean Segmented Switcher Capsule Bar or Empty State Alert */}
+              {formUsageUnits.length === 0 ? (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-amber-50/80 border border-amber-200/80 rounded-2xl text-xs text-amber-900 shadow-2xs">
+                  <div className="flex items-center gap-2.5">
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                    <span>ยังไม่มีข้อมูลหน่วยเบิกใช้งาน/ห้องใน Google Sheets</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onNavigate) {
+                        onNavigate('master-data', { tab: 'rooms' });
+                      } else {
+                        window.location.hash = '#/master-data?tab=rooms';
+                      }
+                    }}
+                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl text-xs shadow-2xs transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>เพิ่มหน่วยเบิกใน Master Data</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100/80 rounded-2xl border border-slate-200/60">
+                  {formUsageUnits.map(unit => {
+                    const isSelected = productionUnit === unit.name;
+                    return (
+                      <button
+                        key={unit.id || unit.name}
+                        type="button"
+                        onClick={() => setProductionUnit(unit.name)}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-slate-950 text-white font-semibold shadow-sm'
+                            : 'px-3.5 py-1.5 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 transition-all'
+                        }`}
+                      >
+                        {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />}
+                        <span>{unit.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* 1. Product Selector */}
@@ -925,11 +944,11 @@ export default function QuickIssueView({
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={isSubmitting || isOutOfStock}
+                disabled={isSubmitting || isOutOfStock || !productionUnit}
                 className="w-full bg-slate-950 hover:bg-slate-900 text-white py-3.5 rounded-2xl font-semibold text-xs shadow-lg shadow-slate-950/20 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <PackageCheck className="w-4 h-4 text-emerald-400" />
-                <span>{isSubmitting ? 'กำลังบันทึกตัดยอด...' : `ยืนยันการเบิกจ่ายสินค้า (-OUT) สู่ ${productionUnit}`}</span>
+                <span>{isSubmitting ? 'กำลังบันทึกตัดยอด...' : (!productionUnit ? 'กรุณาเลือกหน่วยเบิกใช้งาน' : `ยืนยันการเบิกจ่ายสินค้า (-OUT) สู่ ${productionUnit}`)}</span>
               </button>
             </div>
           </form>

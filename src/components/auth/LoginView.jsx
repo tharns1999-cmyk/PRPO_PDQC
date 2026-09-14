@@ -142,11 +142,9 @@ export default function LoginView({ onLoginSuccess }) {
                     className="p-3.5 rounded-sm bg-slate-950/60 hover:bg-indigo-950/40 border border-slate-800 hover:border-indigo-600/60 transition-all text-left group flex items-start justify-between relative overflow-hidden cursor-pointer hover:shadow-sm hover:shadow-indigo-950/50 active:scale-[0.98] disabled:opacity-50"
                   >
                     <div className="flex items-start gap-1.5 min-w-0">
-                      <img
-                        src={acc.pictureUrl}
-                        alt={acc.name}
-                        className="w-10 h-10 rounded-full object-cover border border-slate-700 group-hover:border-indigo-500 shrink-0 mt-0.5"
-                      />
+                      <div className="w-10 h-10 rounded-full bg-slate-800 text-slate-200 border border-slate-700 flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">
+                        {acc.name ? acc.name.charAt(0) : <User className="w-4 h-4" />}
+                      </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="font-bold text-sm text-slate-100 group-hover:text-white truncate">
@@ -191,7 +189,7 @@ export default function LoginView({ onLoginSuccess }) {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="เช่น wichai.pd, somying.qc, somchai.am, nat.on, prasert.pm, admin"
+                  placeholder="เช่น siraphat.pd, natthinee.qc, kallayani.mgr, nat.on, prasert.pm, admin"
                   className="w-full bg-slate-950/80 border border-slate-700 text-slate-100 text-sm rounded-sm pl-10 pr-4 py-3 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium placeholder:text-slate-600"
                   autoComplete="username"
                   autoFocus

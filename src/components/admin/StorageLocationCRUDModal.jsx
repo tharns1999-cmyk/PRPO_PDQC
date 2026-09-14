@@ -69,9 +69,10 @@ export default function StorageLocationCRUDModal({
 
   // Duplicate name check (case-insensitive)
   const isNameDuplicate = Boolean(
-    name.trim() &&
+    String(name || '').trim() &&
     storageLocations.some(
-      l => l.id !== location?.id && l.name.trim().toLowerCase() === name.trim().toLowerCase()
+      l => String(l.id || '') !== String(location?.id || '') && 
+           String(l.name || '').trim().toLowerCase() === String(name || '').trim().toLowerCase()
     )
   );
 

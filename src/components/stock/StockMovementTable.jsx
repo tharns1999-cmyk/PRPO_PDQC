@@ -60,7 +60,8 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
     const stockVal = Number(selectedProduct.stockBalance ?? selectedProduct.stock ?? selectedProduct.qty) || 0;
 
     if (rawProductLogs.length === 0 && stockVal > 0) {
-      const unitPrice = Number(selectedProduct.price) || 0;
+      const conversionRate = Number(selectedProduct.conversionRate || selectedProduct.conversionRatio) || 1;
+      const unitCostInStock = (Number(selectedProduct.price) || 0) / conversionRate;
       const initialSyntheticLog = {
         id: `INIT-${selectedProduct.id || selectedProduct.code || 'SYS'}`,
         date: selectedProduct.createdAt ? new Date(selectedProduct.createdAt).toLocaleString('th-TH') : new Date().toLocaleString('th-TH'),
@@ -76,8 +77,9 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
         qty: stockVal,
         balance: stockVal,
         unit: selectedProduct.stockUnit || selectedProduct.unit || 'ชิ้น',
-        unitPrice: unitPrice,
-        totalPrice: unitPrice * stockVal,
+        unitPrice: unitCostInStock,
+        totalPrice: unitCostInStock * stockVal,
+        conversionRate: conversionRate,
         user: 'System Initial Balance',
         locationId: selectedProduct.locationId || '',
         locationName: selectedProduct.locationName || '',
@@ -105,7 +107,8 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
       });
 
       if (!hasAny) {
-        const unitPrice = Number(selectedProduct.price) || 0;
+        const conversionRate = Number(selectedProduct.conversionRate || selectedProduct.conversionRatio) || 1;
+        const unitCostInStock = (Number(selectedProduct.price) || 0) / conversionRate;
         const healedLog = {
           id: `INIT-${selectedProduct.id || selectedProduct.code || Date.now()}`,
           date: new Date().toLocaleString('th-TH'),
@@ -120,8 +123,9 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
           qty: stockVal,
           balance: stockVal,
           unit: selectedProduct.stockUnit || selectedProduct.unit || 'ชิ้น',
-          unitPrice: unitPrice,
-          totalPrice: unitPrice * stockVal,
+          unitPrice: unitCostInStock,
+          totalPrice: unitCostInStock * stockVal,
+          conversionRate: conversionRate,
           user: 'System Initial Balance',
           locationId: selectedProduct.locationId || '',
           locationName: selectedProduct.locationName || '',
@@ -216,10 +220,22 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
         return { poNumber: '-', totalPurchaseAmount: '-', avgUnitPrice: '-' };
       }
 
+      const conversionRate = Number(
+        selectedProduct?.conversionRate ||
+        selectedProduct?.conversionRatio ||
+        log.conversionRate ||
+        log.conversionRatio ||
+        1
+      ) || 1;
+
       // 1. Direct fields already attached to the stock log
       let poNumber = log.poNo || log.poNumber || (log.docNo && String(log.docNo).startsWith('PO-') ? log.docNo : null);
-      let totalAmount = log.totalPrice !== undefined && log.totalPrice !== null ? Number(log.totalPrice) : null;
-      let unitPrice = log.unitPrice !== undefined && log.unitPrice !== null ? Number(log.unitPrice) : null;
+      let totalAmount = log.totalAmount !== undefined && log.totalAmount !== null
+        ? Number(log.totalAmount)
+        : (log.totalPrice !== undefined && log.totalPrice !== null ? Number(log.totalPrice) : null);
+      let unitPrice = log.baseUnitCost !== undefined && log.baseUnitCost !== null
+        ? Number(log.baseUnitCost)
+        : (log.unitPrice !== undefined && log.unitPrice !== null ? Number(log.unitPrice) : null);
 
       // 2. If PO number not directly found, try to extract from note (e.g. "...จาก PO PO-PD-2026-001")
       if (!poNumber && log.note) {
@@ -254,15 +270,17 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
               ? Number(matchedItem.total)
               : Math.max(0, (itemPrice * (Number(matchedItem.purchaseQty ?? matchedItem.qty) || 1)) - discountAmt);
 
-            const convRate = Number(matchedItem.conversionRate) > 0 ? Number(matchedItem.conversionRate) : 1;
+            const convRate = Number(matchedItem.conversionRate || conversionRate) > 0
+              ? Number(matchedItem.conversionRate || conversionRate)
+              : 1;
 
-            // Price per stock unit (เช่น ราคากิโลกรัมละ / แผ่นละ)
-            if (unitPrice === null || unitPrice === 0) {
+            // Price per stock unit (Base Unit Cost = Purchase Price / conversionRate)
+            if (unitPrice === null || unitPrice === 0 || (unitPrice === itemPrice && convRate > 1)) {
               unitPrice = itemPrice / convRate;
             }
 
             // Total amount for this received log:
-            if (totalAmount === null || totalAmount === 0) {
+            if (totalAmount === null || totalAmount === 0 || (totalAmount === (Number(log.qty) * itemPrice) && convRate > 1)) {
               if (Number(log.qty) > 0 && unitPrice > 0) {
                 totalAmount = unitPrice * Number(log.qty);
               } else {
@@ -278,16 +296,33 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
         }
       }
 
-      // 4. Fallback calculation for avgUnitPrice with guard against division by zero
+      // 4. Initial balance / Unmatched log Dual-UOM normalization
+      // If unitPrice equals purchase price (selectedProduct.price) and conversionRate > 1, convert to stock unit cost
+      if (conversionRate > 1) {
+        const prodPrice = Number(selectedProduct?.price) || 0;
+        const isDocInit = String(log.documentNo || log.docNo || '').toUpperCase().includes('INITIAL');
+        if (unitPrice === prodPrice || isDocInit || (totalAmount && Math.abs(totalAmount - (Number(log.qty) * prodPrice)) < 0.01)) {
+          unitPrice = (unitPrice && unitPrice !== prodPrice ? unitPrice : prodPrice) / conversionRate;
+          totalAmount = Number(log.qty) * unitPrice;
+        }
+      }
+
+      // 5. Fallback calculation for unitPrice with guard against division by zero
       const qtyNum = Number(log.qty) || 0;
       if ((unitPrice === null || unitPrice === 0) && totalAmount !== null && qtyNum > 0) {
         unitPrice = totalAmount / qtyNum;
+      } else if ((totalAmount === null || totalAmount === 0) && unitPrice !== null && qtyNum > 0) {
+        totalAmount = unitPrice * qtyNum;
       }
+
+      const stockUnitName = selectedProduct?.stockUnit || selectedProduct?.unit || log.unit || 'ชิ้น';
 
       return {
         poNumber: poNumber || log.poNo || log.poNumber || '-',
         totalPurchaseAmount: totalAmount !== null && totalAmount > 0 ? `${formatCurrency(totalAmount)} ฿` : '-',
-        avgUnitPrice: unitPrice !== null && unitPrice > 0 ? `${formatCurrency(unitPrice)} ฿` : '-'
+        avgUnitPrice: unitPrice !== null && unitPrice > 0 ? `฿${formatCurrency(unitPrice)} / ${stockUnitName}` : '-',
+        rawTotalAmount: totalAmount,
+        rawUnitPrice: unitPrice
       };
     };
 
@@ -505,9 +540,13 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
 
                         {/* 7. [NEW] Total Purchase Amount */}
                         <td className="py-3.5 px-3 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-                          {isIncoming && (purchase.totalPurchaseAmount !== '-' || (log.totalPrice !== undefined && Number(log.totalPrice) > 0)) ? (
+                          {isIncoming && purchase.totalPurchaseAmount !== '-' ? (
                             <span className="font-semibold text-slate-900">
-                              {purchase.totalPurchaseAmount !== '-' ? purchase.totalPurchaseAmount : `${formatCurrency(log.totalPrice)} ฿`}
+                              {purchase.totalPurchaseAmount}
+                            </span>
+                          ) : isIncoming && log.totalPrice !== undefined && Number(log.totalPrice) > 0 ? (
+                            <span className="font-semibold text-slate-900">
+                              {formatCurrency(log.totalPrice)} ฿
                             </span>
                           ) : (
                             <span className="text-slate-400 font-normal">-</span>
@@ -516,9 +555,13 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
 
                         {/* 8. [NEW] Average Unit Price */}
                         <td className="py-3.5 px-3 text-right font-mono text-xs whitespace-nowrap tabular-nums">
-                          {isIncoming && (purchase.avgUnitPrice !== '-' || (log.unitPrice !== undefined && Number(log.unitPrice) > 0)) ? (
+                          {isIncoming && purchase.avgUnitPrice !== '-' ? (
                             <span className="font-semibold text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100">
-                              {purchase.avgUnitPrice !== '-' ? purchase.avgUnitPrice : `${formatCurrency(log.unitPrice)} ฿`}
+                              {purchase.avgUnitPrice}
+                            </span>
+                          ) : isIncoming && log.unitPrice !== undefined && Number(log.unitPrice) > 0 ? (
+                            <span className="font-semibold text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100">
+                              ฿{formatCurrency(log.unitPrice)} / {selectedProduct?.stockUnit || selectedProduct?.unit || log.unit || 'ชิ้น'}
                             </span>
                           ) : (
                             <span className="text-slate-400 font-normal">-</span>

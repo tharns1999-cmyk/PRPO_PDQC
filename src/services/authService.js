@@ -9,59 +9,56 @@ export const DEFAULT_EMPLOYEE_ACCOUNTS = [
   {
     id: 'USR-0001',
     employeeId: 'EMP-PD-001',
-    username: 'wichai.pd',
+    username: 'siraphat.pd',
     password: 'password123',
-    name: 'คุณวิชัย (PD)',
-    employeeName: 'คุณวิชัย สุขใจ',
-    email: 'wichai.pd@company.com',
-    displayName: 'Wichai (PD)',
+    name: 'สิรภัทร แจ่มมิน',
+    employeeName: 'สิรภัทร แจ่มมิน',
+    displayName: 'สิรภัทร แจ่มมิน',
     department: 'PD',
     roleId: 'REQUESTER_PD',
+    canonicalRole: 'REQUESTER',
     positionKey: 'REQUESTER_PD',
     title: 'Requester (PD)',
     level: 1,
     status: 'ACTIVE',
-    pictureUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
     description: 'สร้าง/ส่ง PR ฝ่ายผลิต, เบิกจ่ายสินค้า, ตรวจรับของเข้าสต็อก'
   },
   {
     id: 'USR-0002',
     employeeId: 'EMP-QC-001',
-    username: 'somying.qc',
+    username: 'natthinee.qc',
     password: 'password123',
-    name: 'คุณสมหญิง (QC)',
-    employeeName: 'คุณสมหญิง รักดี',
-    email: 'somying.qc@company.com',
-    displayName: 'Somying (QC)',
+    name: 'ณัฐธินีย์ สอนครบบุรี',
+    employeeName: 'ณัฐธินีย์ สอนครบบุรี',
+    displayName: 'ณัฐธินีย์ สอนครบบุรี',
     department: 'QC',
     roleId: 'REQUESTER_QC',
+    canonicalRole: 'REQUESTER',
     positionKey: 'REQUESTER_QC',
     title: 'Requester (QC)',
     level: 1,
     status: 'ACTIVE',
-    pictureUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
     description: 'สร้าง/ส่ง PR ฝ่าย QC/Lab, เบิกจ่ายสารเคมี, ตรวจรับของ'
   },
   {
     id: 'USR-0003',
     employeeId: 'EMP-MGR-001',
-    username: 'somchai.am',
+    username: 'kallayani.mgr',
     password: 'password123',
-    name: 'คุณสมชาย (Asst. Mgr)',
-    employeeName: 'คุณสมชาย มุ่งมั่น',
-    email: 'somchai.am@company.com',
-    displayName: 'Somchai (Asst Mgr)',
+    name: 'กัลยาณี',
+    employeeName: 'กัลยาณี',
+    displayName: 'กัลยาณี',
     department: 'PD',
     primaryDepartment: 'PD',
     departments: ['PD', 'QC'],
     assignedDepartments: ['PD', 'QC'],
     allowedDepartments: ['PD', 'QC'],
     roleId: 'ASST_MANAGER',
+    canonicalRole: 'REVIEWER',
     positionKey: 'REVIEWER',
     title: 'Assistant Manager',
     level: 2,
     status: 'ACTIVE',
-    pictureUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
     description: 'ตรวจทาน PR (Level 1 Reviewer), ดูแลฝ่ายผลิต (PD) และฝ่ายควบคุมคุณภาพ (QC)'
   },
   {
@@ -69,17 +66,16 @@ export const DEFAULT_EMPLOYEE_ACCOUNTS = [
     employeeId: 'EMP-PUR-001',
     username: 'nat.on',
     password: 'password123',
-    name: 'คุณนัท (Online Purchaser)',
+    name: 'คุณนัท จัดซื้อ',
     employeeName: 'คุณนัท จัดซื้อ',
-    email: 'nat.on@company.com',
-    displayName: 'Nat (Online)',
+    displayName: 'คุณนัท จัดซื้อ',
     department: 'ALL',
     roleId: 'ONLINE_PURCHASER',
+    canonicalRole: 'PURCHASER',
     positionKey: 'ONLINE_PURCHASER',
     title: 'Online Purchaser (คุณนัท)',
     level: 2,
     status: 'ACTIVE',
-    pictureUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
     description: 'จัดการสั่งซื้อออนไลน์ Shopee/Lazada, บันทึกราคาจริง'
   },
   {
@@ -87,34 +83,33 @@ export const DEFAULT_EMPLOYEE_ACCOUNTS = [
     employeeId: 'EMP-MGR-002',
     username: 'prasert.pm',
     password: 'password123',
-    name: 'คุณประเสริฐ (Plant Mgr)',
+    name: 'คุณประเสริฐ ยิ่งยง',
     employeeName: 'คุณประเสริฐ ยิ่งยง',
-    email: 'prasert.pm@company.com',
-    displayName: 'Prasert (Plant Mgr)',
+    displayName: 'คุณประเสริฐ ยิ่งยง',
     department: 'ALL',
     roleId: 'PLANT_MANAGER',
+    canonicalRole: 'APPROVER',
     positionKey: 'APPROVER',
     title: 'Plant Manager',
     level: 3,
     status: 'ACTIVE',
-    pictureUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
     description: 'อนุมัติสั่งซื้อ (Final Approver), ออก PO อัตโนมัติ, คุมงบประมาณ'
   },
   {
     id: 'USR-0006',
     employeeId: 'EMP-SYS-999',
     username: 'admin',
-    password: 'admin123',
-    name: 'Admin System',
-    displayName: 'Admin',
-    email: 'admin@company.com',
+    password: 'password123',
+    name: 'ผู้ดูแลระบบ',
+    employeeName: 'ผู้ดูแลระบบ',
+    displayName: 'ผู้ดูแลระบบ',
     department: 'ALL',
     roleId: 'ADMIN',
+    canonicalRole: 'ADMIN',
     positionKey: 'ADMIN',
     title: 'System Administrator',
     level: 99,
     status: 'ACTIVE',
-    pictureUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80',
     description: 'ผู้ดูแลระบบ สิทธิ์สูงสุดในการจัดการข้อมูลทุกส่วน'
   }
 ];
@@ -135,7 +130,7 @@ export const getRolePermissionsChecklist = (userOrRole) => {
   const isAdmin = userOrRole.isAdmin === true || roleStr.includes('ADMIN') || Number(userOrRole.level) >= 99 || userOrRole.username === 'admin';
   const isApprover = isAdmin || roleStr.includes('APPROV') || roleStr.includes('PLANT_MANAGER');
   const isPurchaser = isAdmin || roleStr.includes('PURCHAS') || roleStr.includes('BUYER');
-  const isWarehouseOrRequester = isAdmin || roleStr.includes('WAREHOUSE') || roleStr.includes('REQUEST') || roleStr.includes('STOCK') || roleStr.includes('PD') || roleStr.includes('QC');
+  const isRequesterOrStaff = isAdmin || roleStr.includes('REQUEST') || roleStr.includes('REVIEW') || roleStr.includes('STOCK') || roleStr.includes('PD') || roleStr.includes('QC');
   const isRequester = isAdmin || roleStr.includes('REQUEST') || roleStr.includes('PD') || roleStr.includes('QC');
 
   return [
@@ -161,7 +156,7 @@ export const getRolePermissionsChecklist = (userOrRole) => {
       key: 'INVENTORY',
       label: 'ตรวจรับและจัดการคลัง (Inventory)',
       description: 'ตรวจรับพัสดุ (GRN) เบิกจ่าย และตัดสต็อกสินค้า',
-      allowed: Boolean(isAdmin || isWarehouseOrRequester || userOrRole.canReceiveGRN || userOrRole.canReceiveGoods)
+      allowed: Boolean(isAdmin || isRequesterOrStaff || userOrRole.canReceiveGRN || userOrRole.canReceiveGoods)
     }
   ];
 };
@@ -248,8 +243,8 @@ export const authService = {
         username: verified.username || verified.employeeId,
         employeeId: verified.employeeId,
         name: verified.name || verified.employeeName || verified.displayName,
-        employeeName: verified.employeeName || verified.name,
-        displayName: verified.displayName || verified.name,
+        employeeName: verified.name || verified.employeeName || verified.displayName,
+        displayName: verified.name || verified.employeeName || verified.displayName,
         primaryDepartment: verified.primaryDepartment || verified.department || 'PD',
         department: verified.department || 'PD',
         departments: userDepts,
@@ -261,8 +256,6 @@ export const authService = {
         title: verified.title || verified.canonicalRole,
         level: verified.level || 1,
         status: verified.status || 'ACTIVE',
-        pictureUrl: verified.pictureUrl || '',
-        email: verified.email || '',
         lastLogin: verified.lastLoginAt || new Date().toISOString(),
         ...rolePermissions,
         role: rolePermissions,
@@ -284,7 +277,7 @@ export const authService = {
     );
 
     if (!matched) {
-      throw new Error('ชื่อผู้ใช้งาน (Username) หรือรหัสผ่าน (Password) ไม่ถูกต้อง');
+      throw new Error('Username หรือ Password ไม่ถูกต้อง');
     }
 
     matched.lastLogin = new Date().toISOString();
@@ -297,8 +290,8 @@ export const authService = {
       username: matched.username,
       employeeId: matched.employeeId,
       name: matched.name,
-      employeeName: matched.employeeName,
-      displayName: matched.displayName,
+      employeeName: matched.name,
+      displayName: matched.name,
       primaryDepartment: matched.primaryDepartment || matched.department,
       department: matched.department,
       departments: userDepts,
@@ -308,7 +301,6 @@ export const authService = {
       positionKey: matched.positionKey,
       title: matched.title,
       level: matched.level,
-      pictureUrl: matched.pictureUrl,
       lastLogin: matched.lastLogin,
       ...rolePermissions,
       role: rolePermissions,

@@ -8,27 +8,76 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { callGAS, MOCK_GAS_USERS } from '../services/gasClient.js';
 import { storageService } from '../services/storageService.js';
+import { auditService } from '../services/auditService.js';
+
+let _cachedClientIp = null;
+
+/**
+ * Non-blocking client IP detection via CORS-enabled endpoint
+ * Caches IP in memory and sessionStorage
+ */
+export const fetchClientIp = async () => {
+  if (_cachedClientIp && _cachedClientIp !== 'CLIENT_DIRECT' && _cachedClientIp !== 'UNKNOWN_IP') {
+    return _cachedClientIp;
+  }
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const stored = sessionStorage.getItem('client_ip');
+      if (stored) {
+        _cachedClientIp = stored;
+        return stored;
+      }
+    }
+    const res = await fetch('https://api.ipify.org?format=json');
+    const data = await res.json();
+    const ip = data.ip || 'UNKNOWN_IP';
+    _cachedClientIp = ip;
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('client_ip', ip);
+    }
+    return ip;
+  } catch (e) {
+    const fallback = (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('client_ip')) || 'CLIENT_DIRECT';
+    _cachedClientIp = fallback;
+    return fallback;
+  }
+};
+
+/**
+ * Synchronous getter for cached client IP
+ */
+export const getClientIp = () => {
+  if (_cachedClientIp && _cachedClientIp !== 'UNKNOWN_IP') return _cachedClientIp;
+  if (typeof sessionStorage !== 'undefined') {
+    const stored = sessionStorage.getItem('client_ip');
+    if (stored) {
+      _cachedClientIp = stored;
+      return stored;
+    }
+  }
+  return 'CLIENT_DIRECT';
+};
 
 export const AUTH_STORAGE_KEY = 'prpo_auth_session';
 export const SESSION_EXPIRATION_MS = 24 * 60 * 60 * 1000; // 24 Hours
 
 export const CANONICAL_ROLES = {
   REQUESTER: 'REQUESTER',
-  PURCHASER: 'PURCHASER',
   REVIEWER: 'REVIEWER',
-  WAREHOUSE: 'WAREHOUSE',
+  PURCHASER: 'PURCHASER',
   APPROVER: 'APPROVER',
   ADMIN: 'ADMIN'
 };
 
 export const PERMISSIONS = {
   PR_CREATE: ['REQUESTER', 'ADMIN'],
-  PR_APPROVE: ['APPROVER', 'ADMIN'],
+  PR_APPROVE: ['APPROVER', 'ADMIN', 'REVIEWER'],
   ONLINE_PROCURE: ['PURCHASER', 'ADMIN'],
   CLAIM_RESOLVE: ['PURCHASER', 'ADMIN'],
-  GRN_RECEIVE: ['WAREHOUSE', 'REQUESTER', 'ADMIN'],
-  BUDGET_MANAGE: ['APPROVER', 'ADMIN'],
-  SYSTEM_ADMIN: ['ADMIN']
+  GRN_RECEIVE: ['REQUESTER', 'REVIEWER', 'ADMIN'],
+  BUDGET_MANAGE: ['APPROVER', 'ADMIN', 'REVIEWER'],
+  SYSTEM_ADMIN: ['ADMIN'],
+  MASTER_DATA: ['REQUESTER', 'REVIEWER', 'PURCHASER', 'APPROVER', 'ADMIN']
 };
 
 /**
@@ -44,10 +93,9 @@ export const normalizeRole = (roleOrUser) => {
   const val = String(rawRole).toUpperCase().trim();
   if (val.includes('ADMIN') || val.includes('SYS')) return CANONICAL_ROLES.ADMIN;
   if (val.includes('PURCHAS') || val.includes('BUYER') || val.includes('ONLINE')) return CANONICAL_ROLES.PURCHASER;
-  if (val.includes('WAREHOUSE') || val.includes('STOCK') || val.includes('INVENTORY') || val.includes('WH')) return CANONICAL_ROLES.WAREHOUSE;
-  if (val.includes('REVIEW')) return CANONICAL_ROLES.REVIEWER;
-  if (val.includes('APPROV') || val.includes('MANAGER') || val.includes('MGR')) return CANONICAL_ROLES.APPROVER;
-  if (val.includes('REQUEST') || val.includes('USER') || val.includes('PD') || val.includes('QC')) return CANONICAL_ROLES.REQUESTER;
+  if (val.includes('REVIEW') || val.includes('ASST')) return CANONICAL_ROLES.REVIEWER;
+  if (val.includes('APPROV') || val.includes('PLANT_MANAGER') || val.includes('MANAGER') || val.includes('MGR')) return CANONICAL_ROLES.APPROVER;
+  if (val.includes('REQUEST') || val.includes('USER') || val.includes('PD') || val.includes('QC') || val.includes('STOCK') || val.includes('WH') || val.includes('WAREHOUSE')) return CANONICAL_ROLES.REQUESTER;
 
   return CANONICAL_ROLES.REQUESTER;
 };
@@ -126,11 +174,30 @@ export function AuthProvider({ children }) {
 
   const isAuthenticated = Boolean(currentUser && isSessionValid(currentUser));
 
+  // Background client IP fetch without blocking page load
+  useEffect(() => {
+    fetchClientIp().catch(() => {});
+  }, []);
+
   /**
    * Clear active session and reset credentials
    */
   const logout = useCallback(() => {
     try {
+      if (currentUser) {
+        try {
+          auditService.logAction({
+            action: 'LOGOUT',
+            docType: 'USER',
+            docNo: currentUser.username || currentUser.employeeId || 'USER',
+            details: `ออกจากระบบสำเร็จ (Username: ${currentUser.username || currentUser.employeeId || 'USER'})`,
+            actor: currentUser,
+            department: currentUser.department || currentUser.primaryDepartment || 'PD'
+          });
+        } catch (auditErr) {
+          console.warn('[AuthContext] Logout audit error:', auditErr);
+        }
+      }
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem('prpo_current_user');
       localStorage.removeItem('currentUser');
@@ -146,7 +213,7 @@ export function AuthProvider({ children }) {
     setCurrentUser(null);
     setOriginalUser(null);
     setAuthError(null);
-  }, []);
+  }, [currentUser]);
 
   // Periodic expiration verification
   useEffect(() => {
@@ -176,7 +243,7 @@ export function AuthProvider({ children }) {
     if (!isAuthenticated) return false;
     if (canonicalRole === CANONICAL_ROLES.ADMIN) return true; // Admin always permitted
     if (canonicalRole === CANONICAL_ROLES.REVIEWER) {
-      if (permissionKey === 'PR_REVIEW' || permissionKey === 'PR_APPROVE' || permissionKey === 'BUDGET_MANAGE') {
+      if (permissionKey === 'PR_REVIEW' || permissionKey === 'PR_APPROVE' || permissionKey === 'BUDGET_MANAGE' || permissionKey === 'MASTER_DATA') {
         return true;
       }
     }
@@ -187,7 +254,7 @@ export function AuthProvider({ children }) {
 
   /**
    * Helper Guard: Department scoping rule
-   * - ADMIN, PURCHASER, WAREHOUSE, APPROVER can access all departments
+   * - ADMIN, PURCHASER, APPROVER can access all departments
    * - REVIEWER is scoped to their assigned departments (e.g. 'PD, QC')
    * - REQUESTER is strictly scoped to their own department (e.g. 'PD' or 'QC')
    */
@@ -195,7 +262,6 @@ export function AuthProvider({ children }) {
     if (!isAuthenticated) return false;
     if (canonicalRole === CANONICAL_ROLES.ADMIN ||
         canonicalRole === CANONICAL_ROLES.PURCHASER ||
-        canonicalRole === CANONICAL_ROLES.WAREHOUSE ||
         canonicalRole === CANONICAL_ROLES.APPROVER) {
       return true;
     }
@@ -213,7 +279,7 @@ export function AuthProvider({ children }) {
   /**
    * Authenticate user with Identifier (Employee ID / Email) and PIN
    */
-  const login = useCallback(async (identifier, pin) => {
+  const login = useCallback(async (usernameOrId, password) => {
     setIsLoading(true);
     setAuthError(null);
 
@@ -226,9 +292,9 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('prpo_original_admin_user');
 
     try {
-      const response = await callGAS('apiLogin', identifier, pin);
+      const response = await callGAS('apiLogin', usernameOrId, password);
       if (!response || !response.success || !response.user) {
-        throw new Error(response?.error || 'รหัสพนักงานหรือรหัส PIN ไม่ถูกต้อง');
+        throw new Error(response?.error || 'Username หรือ Password ไม่ถูกต้อง');
       }
 
       const verifiedUser = response.user;
@@ -238,10 +304,10 @@ export function AuthProvider({ children }) {
       const sessionPayload = {
         ...verifiedUser,
         name: verifiedUser.name || verifiedUser.employeeName || verifiedUser.displayName,
-        employeeName: verifiedUser.employeeName || verifiedUser.name,
-        displayName: verifiedUser.displayName || verifiedUser.name,
-        department: verifiedUser.department || 'PD',
+        employeeName: verifiedUser.name || verifiedUser.employeeName || verifiedUser.displayName,
+        displayName: verifiedUser.name || verifiedUser.employeeName || verifiedUser.displayName,
         primaryDepartment: verifiedUser.primaryDepartment || verifiedUser.department || 'PD',
+        department: verifiedUser.department || 'PD',
         departments: userDepts,
         assignedDepartments: userDepts,
         allowedDepartments: userDepts,
@@ -254,6 +320,21 @@ export function AuthProvider({ children }) {
       storageService.setCurrentRole?.(sessionPayload);
       setCurrentUser(sessionPayload);
       setIsLoading(false);
+
+      // Audit log successful login with client IP and Thai description
+      try {
+        auditService.logAction({
+          action: 'LOGIN',
+          docType: 'USER',
+          docNo: verifiedUser.username || verifiedUser.employeeId || 'USER',
+          details: `เข้าสู่ระบบสำเร็จ (Username: ${verifiedUser.username || verifiedUser.employeeId})`,
+          actor: sessionPayload,
+          department: sessionPayload.department || 'PD'
+        });
+      } catch (auditErr) {
+        console.warn('[AuthContext] Login audit error:', auditErr);
+      }
+
       return sessionPayload;
     } catch (err) {
       const msg = err?.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ';
@@ -268,9 +349,18 @@ export function AuthProvider({ children }) {
    */
   const switchRoleDev = useCallback((roleOrUser) => {
     let target = null;
+    let userPool = MOCK_GAS_USERS;
+    try {
+      const cached = localStorage.getItem('prpo_users_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) userPool = parsed;
+      }
+    } catch (e) {}
+
     if (typeof roleOrUser === 'string') {
       const targetCanonical = normalizeRole(roleOrUser);
-      target = MOCK_GAS_USERS.find(u => u.canonicalRole === targetCanonical) || MOCK_GAS_USERS[0];
+      target = userPool.find(u => u.canonicalRole === targetCanonical) || userPool[0];
     } else if (roleOrUser && typeof roleOrUser === 'object') {
       target = roleOrUser;
     }

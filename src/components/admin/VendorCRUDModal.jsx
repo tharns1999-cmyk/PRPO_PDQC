@@ -18,7 +18,9 @@ export default function VendorCRUDModal({
   currentRole, 
   currentUser,
   onClose, 
-  onRefresh 
+  onRefresh,
+  onSaved,
+  onCreated 
 }) {
   const context = useAppContext();
   const rawDepartments = propDepartments || context?.departments;
@@ -56,7 +58,12 @@ export default function VendorCRUDModal({
   const isSingleLockedDept = !canSelectAll && selectableDepts.length === 1;
   const lockedDept = isSingleLockedDept ? selectableDepts[0]?.code : null;
   const vendorCodeInputRef = useRef(null);
-  const [vendorCode, setVendorCode] = useState(editVendor?.code || '');
+  const [vendorCode, setVendorCode] = useState(() => {
+    if (editVendor?.code !== undefined && editVendor?.code !== null) return String(editVendor.code);
+    if (editVendor?.vendorCode !== undefined && editVendor?.vendorCode !== null) return String(editVendor.vendorCode);
+    if (editVendor?.id !== undefined && editVendor?.id !== null) return String(editVendor.id);
+    return '';
+  });
   const [isSaving, setIsSaving] = useState(false);
 
   // Combined master vendors from props, context, and storageService/localStorage for complete duplicate guard
@@ -74,15 +81,21 @@ export default function VendorCRUDModal({
     return Array.from(map.values());
   }, [vendors, context?.vendors]);
 
-  // Duplicate Vendor Code Check with Duplicate Vendor Name Resolution
+  // Duplicate Vendor Code Check with Duplicate Vendor Name Resolution (Safe String Casting Guard)
   const duplicateVendor = useMemo(() => {
-    const cleanVendorCode = vendorCode.trim().toUpperCase();
+    const cleanVendorCode = String(vendorCode || '').trim().toUpperCase();
     if (!cleanVendorCode) return null;
     return allVendors.find(v => {
-      if (editVendor && (v.id === editVendor.id || (v.code && v.code.toUpperCase() === editVendor.code?.toUpperCase()))) {
+      if (!v) return false;
+      const vId = String(v.id || '').trim();
+      const vCode = String(v.code || '').trim().toUpperCase();
+      const editVendorId = editVendor ? String(editVendor.id || '').trim() : '';
+      const editVendorCode = editVendor ? String(editVendor.code || '').trim().toUpperCase() : '';
+
+      if (editVendor && ((editVendorId && vId === editVendorId) || (editVendorCode && vCode === editVendorCode))) {
         return false;
       }
-      const existingCode = (v.code || v.vendorCode || v.id || '').trim().toUpperCase();
+      const existingCode = String(v.code || v.vendorCode || v.id || '').trim().toUpperCase();
       return existingCode === cleanVendorCode;
     }) || null;
   }, [vendorCode, allVendors, editVendor]);
@@ -92,7 +105,7 @@ export default function VendorCRUDModal({
 
   const handleSaveVendor = async (e) => {
     e.preventDefault();
-    const cleanVendorCode = vendorCode.trim().toUpperCase();
+    const cleanVendorCode = String(vendorCode || '').trim().toUpperCase();
     if (!cleanVendorCode) {
       modalService.error('กรุณาระบุรหัสผู้ขาย', 'กรุณาระบุรหัสผู้ขาย (Vendor Code)');
       vendorCodeInputRef.current?.focus();
@@ -128,10 +141,15 @@ export default function VendorCRUDModal({
         address: formData.get('address')?.trim()
       };
 
-      await apiService.saveVendor(vendorObj);
+      const saved = await apiService.saveVendor(vendorObj);
       modalService.success('บันทึกผู้ขายเรียบร้อย', `บันทึกข้อมูลผู้ขาย "${vendorObj.name}" สำเร็จ`);
+      if (editVendor) {
+        if (onSaved) onSaved(saved || vendorObj);
+      } else {
+        if (onCreated) onCreated(saved || vendorObj);
+      }
       onClose();
-      onRefresh();
+      if (onRefresh) onRefresh();
     } catch (err) {
       modalService.error('เกิดข้อผิดพลาดในการบันทึกข้อมูล', err.message);
     } finally {
@@ -211,7 +229,7 @@ export default function VendorCRUDModal({
                       ref={vendorCodeInputRef}
                       name="code"
                       value={vendorCode}
-                      onChange={e => setVendorCode(e.target.value)}
+                      onChange={e => setVendorCode(String(e.target.value ?? ''))}
                       placeholder="เช่น VND-TH-001"
                       required
                       className={`w-full h-11 pl-10 pr-3 border rounded-xl text-xs font-mono font-bold uppercase tracking-wide placeholder:font-normal placeholder:text-slate-400 focus:outline-none transition-all ${
@@ -364,7 +382,7 @@ export default function VendorCRUDModal({
             <button
               type="submit"
               form="vendor-form"
-              disabled={isSaving || isVendorCodeDuplicate || !vendorCode.trim()}
+              disabled={isSaving || isVendorCodeDuplicate || !String(vendorCode || '').trim()}
               className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check className="w-4 h-4" />

@@ -45,6 +45,21 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   const context = useAppContext();
   const allPRs = context?.prs || storageService.getPRs() || [];
   const selectedPR = allPRs.find(p => p.id === initialPR?.id || p.prNo === initialPR?.prNo) || initialPR;
+  const allPOs = context?.pos || storageService.getPOs() || [];
+
+  // Safe Guard: Declare relatedPOs at the top of the component before any hook or JSX uses it
+  const relatedPOs = React.useMemo(() => {
+    if (!selectedPR || !Array.isArray(allPOs)) return [];
+    return allPOs.filter(po => 
+      (po.prId && (String(po.prId) === String(selectedPR.id) || String(po.prId) === String(selectedPR.prNo || selectedPR.docNo))) ||
+      (po.prNo && (String(po.prNo) === String(selectedPR.prNo || selectedPR.docNo) || String(po.prNo) === String(selectedPR.id))) ||
+      (po.prNumber && (String(po.prNumber) === String(selectedPR.id) || String(po.prNumber) === String(selectedPR.prNo || selectedPR.docNo))) ||
+      (selectedPR.poId && (String(po.id) === String(selectedPR.poId) || String(po.poNo) === String(selectedPR.poId))) ||
+      (selectedPR.poNumber && (String(po.poNo) === String(selectedPR.poNumber) || String(po.poNumber) === String(selectedPR.poNumber))) ||
+      (selectedPR.poNo && (String(po.poNo) === String(selectedPR.poNo) || String(po.id) === String(selectedPR.poNo)))
+    );
+  }, [allPOs, selectedPR]);
+
   const [actionNote, setActionNote] = useState('');
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -254,7 +269,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
     if (PR_STATUS[rawStatusUpper]) {
       // If status is still WAITING_REVIEW / SUBMITTED but timeline confirms final approval, self-heal to PO_ISSUED or APPROVED
       if (['WAITING_REVIEW', 'SUBMITTED', 'DRAFT'].includes(rawStatusUpper) && hasPlantMgrApproval) {
-        return (selectedPR.poNo || selectedPR.poNumber || relatedPOs.length > 0) ? 'PO_ISSUED' : 'APPROVED';
+        return (selectedPR.poNo || selectedPR.poNumber || (relatedPOs || []).length > 0) ? 'PO_ISSUED' : 'APPROVED';
       }
       return rawStatusUpper;
     }
@@ -273,25 +288,14 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
     if (lower === 'rejected') return 'REJECTED';
 
     if (hasPlantMgrApproval) {
-      return (selectedPR.poNo || selectedPR.poNumber || relatedPOs.length > 0) ? 'PO_ISSUED' : 'APPROVED';
+      return (selectedPR.poNo || selectedPR.poNumber || (relatedPOs || []).length > 0) ? 'PO_ISSUED' : 'APPROVED';
     }
 
     return rawStatusUpper || 'SUBMITTED';
-  }, [rawStatus, rawStatusUpper, hasPlantMgrApproval, selectedPR.poNo, selectedPR.poNumber, relatedPOs.length]);
+  }, [rawStatus, rawStatusUpper, hasPlantMgrApproval, selectedPR.poNo, selectedPR.poNumber, relatedPOs]);
 
   // State Guard: PR must be approved or in PO-linked state to consider related POs
   const isPRApproved = ['approved', 'ordered', 'completed', 'closed', 'po_issued', 'in_progress_online'].includes(resolvedStatusKey.toLowerCase());
-
-  const relatedPOs = React.useMemo(() => {
-    if (!isPRApproved) return [];
-    return (storageService.getPOs() || []).filter(po => 
-      (po.prId && (po.prId === selectedPR.id || po.prId === selectedPR.prNo)) ||
-      (po.prNo && (po.prNo === selectedPR.prNo || po.prNo === selectedPR.id)) ||
-      (po.prNumber && (po.prNumber === selectedPR.id || po.prNumber === selectedPR.prNo)) ||
-      (selectedPR.poId && (po.id === selectedPR.poId || po.poNo === selectedPR.poId)) ||
-      (selectedPR.poNumber && (po.poNo === selectedPR.poNumber || po.poNumber === selectedPR.poNumber))
-    );
-  }, [selectedPR, isPRApproved]);
 
   const isPRCancellable = workflowEngine.canCancelPR(currentRole, selectedPR);
   const statusInfo = PR_STATUS[resolvedStatusKey] || { 
@@ -370,7 +374,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
           )}
 
           {/* Linked PO Banner - แสดงเฉพาะเมื่อ PR ผ่านการอนุมัติแล้วเท่านั้น */}
-          {relatedPOs.length > 0 && (
+          {(relatedPOs || []).length > 0 && (
             <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs mb-4">
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 mt-0.5">
@@ -378,15 +382,15 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                 </div>
                 <div>
                   <h4 className="text-xs sm:text-sm font-semibold text-indigo-950">
-                    ออกใบสั่งซื้อ (PO) เรียบร้อยแล้ว {relatedPOs.length} ฉบับ: {relatedPOs.map(p => `${p.poNo || p.id} (${p.vendorName || 'ไม่ระบุผู้ขาย'})`).join(', ')}
+                    ออกใบสั่งซื้อ (PO) เรียบร้อยแล้ว {(relatedPOs || []).length} ฉบับ: {(relatedPOs || []).map(p => `${p.poNo || p.id} (${p.vendorName || 'ไม่ระบุผู้ขาย'})`).join(', ')}
                   </h4>
-                  {relatedPOs.length > 1 && (
+                  {(relatedPOs || []).length > 1 && (
                     <p className="text-xs text-indigo-700/80 mt-0.5">
                       รายการสินค้าถูกแยกตาม Supplier ของแต่ละรายการโดยอัตโนมัติ
                     </p>
                   )}
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    {relatedPOs.map(po => (
+                    {(relatedPOs || []).map(po => (
                       <button
                         key={po.id || po.poNo}
                         type="button"
@@ -410,7 +414,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                 onClick={() => setShowSplitModal(true)}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3.5 py-2 rounded-xl font-medium shadow-xs transition-all cursor-pointer whitespace-nowrap self-end sm:self-center flex items-center gap-1.5"
               >
-                <span>ดูรายละเอียด PO {relatedPOs.length > 1 ? `(${relatedPOs.length} ใบ)` : ''}</span>
+                <span>ดูรายละเอียด PO {(relatedPOs || []).length > 1 ? `(${(relatedPOs || []).length} ใบ)` : ''}</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -1024,7 +1028,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
       {showSplitModal && (
         <POSplitModal 
           pr={selectedPR}
-          pos={relatedPOs}
+          pos={relatedPOs || []}
           onClose={() => setShowSplitModal(false)}
           onSelectPO={onSelectPO}
         />

@@ -3,13 +3,16 @@ import { workflowEngine } from './workflowEngine';
 import { auditService } from './auditService';
 import { PO_STATUS } from '../config/constants';
 import { clearMockTransactions, resetMockTransactions } from '../utils/dataResetHelper';
-import { isGASAvailable } from './gasClient';
+import { isGASAvailable, callGAS } from './gasClient';
 
 // API Service Layer for Data & Operations
 export const apiService = {
   // --- Audit Trail Operations ---
   async getAuditLogs(filters) {
     if (isGASAvailable()) {
+      if (storageService.fetchAuditLogs) {
+        await storageService.fetchAuditLogs();
+      }
       return storageService.getAuditLogs ? storageService.getAuditLogs() : auditService.getLogs(filters);
     }
     return auditService.getLogs(filters);
@@ -133,6 +136,9 @@ export const apiService = {
   },
   async getPRs() {
     if (isGASAvailable()) {
+      if (storageService.fetchPRs) {
+        return await storageService.fetchPRs();
+      }
       return storageService.getPRs();
     }
     if (typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true') {
@@ -168,6 +174,9 @@ export const apiService = {
   },
   async getPOs() {
     if (isGASAvailable()) {
+      if (storageService.fetchPOs) {
+        return await storageService.fetchPOs();
+      }
       return storageService.getPOs();
     }
     if (typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true') {
@@ -203,6 +212,9 @@ export const apiService = {
   },
   async getStockLogs() {
     if (isGASAvailable()) {
+      if (storageService.fetchStockLogs) {
+        return await storageService.fetchStockLogs();
+      }
       return storageService.getStockLogs();
     }
     try {
@@ -257,6 +269,9 @@ export const apiService = {
   
   async getBudgetTransactions() {
     if (isGASAvailable()) {
+      if (storageService.fetchBudgetTransactions) {
+        return await storageService.fetchBudgetTransactions();
+      }
       return storageService.getBudgetTransactions();
     }
     try {
@@ -692,19 +707,40 @@ export const apiService = {
     } catch (e) {
       console.warn('[apiService] quickIssueStock backend sync warning:', e.message);
     }
+
+    try {
+      const pName = updatedProduct?.name || productId;
+      const pUnit = updatedProduct?.stockUnit || updatedProduct?.unit || 'ชิ้น';
+      const uUnit = issueUnit ? ` ให้${issueUnit}` : '';
+      auditService.logAction({
+        action: 'STOCK_ISSUE',
+        actor: user,
+        department: updatedProduct?.category || 'PD',
+        docNo: updatedProduct?.code || productId,
+        docType: 'STOCK',
+        details: `เบิกจ่ายพัสดุ: ${pName} จำนวน ${issueQty} ${pUnit}${uUnit}`
+      });
+    } catch (auditErr) {
+      console.warn('[apiService] quickIssueStock audit error:', auditErr);
+    }
     return updatedProduct;
   },
 
   // --- Master Data CRUD ---
   async saveProduct(product, user = null) {
     const products = await this.getProducts();
-    const isUpdate = Boolean(product.id);
-    const targetCode = (product.code || '').trim().toUpperCase();
+    const isUpdate = Boolean(product.id && product._mode !== 'CREATE');
+    const targetCode = String(product.code || product.sku || '').trim().toUpperCase();
 
     if (targetCode) {
-      const isDuplicate = products.some(p => p.id !== product.id && (p.code || '').trim().toUpperCase() === targetCode);
+      const isDuplicate = products.some(p => {
+        const pId = String(p.id || '').trim();
+        const pCode = String(p.code || p.sku || '').trim().toUpperCase();
+        if (isUpdate && product.id && pId === String(product.id).trim()) return false;
+        return pCode === targetCode;
+      });
       if (isDuplicate) {
-        throw new Error(`รหัสสินค้า "${targetCode}" มีอยู่ในระบบแล้ว กรุณาระบุรหัสสินค้าอื่น`);
+        throw new Error(`รหัสสินค้านี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น (${targetCode})`);
       }
     }
 
@@ -714,6 +750,42 @@ export const apiService = {
 
     if (!product.id) {
       product.id = `PROD-${cat}-${Date.now()}`;
+    }
+
+    if (isGASAvailable()) {
+      const mode = isUpdate ? 'EDIT' : 'CREATE';
+      product._mode = mode;
+      product.isEdit = isUpdate;
+      const res = await callGAS('apiSaveProduct', product, mode);
+      if (!res || !res.success) {
+        throw new Error(res?.message || res?.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูลสินค้าลง Google Sheets');
+      }
+      const saved = res.data || product;
+      const targetId = String(saved.id || product.id || '').trim().toLowerCase();
+      const targetCode = String(saved.code || product.code || '').trim().toLowerCase();
+      const updatedList = isUpdate 
+        ? products.map(p => {
+            const pId = String(p.id || '').trim().toLowerCase();
+            const pCode = String(p.code || '').trim().toLowerCase();
+            return (pId === targetId || pCode === targetCode) ? saved : p;
+          }) 
+        : [saved, ...products.filter(p => {
+            const pId = String(p.id || '').trim().toLowerCase();
+            const pCode = String(p.code || '').trim().toLowerCase();
+            return pId !== targetId && pCode !== targetCode;
+          })];
+      storageService.saveProducts(updatedList);
+      
+      auditService.logAction({
+        action: isUpdate ? 'PRODUCT_UPDATED' : 'PRODUCT_CREATED',
+        actor: user || 'Admin / Master Manager',
+        department: product.category,
+        docNo: product.code || product.id,
+        docType: 'PRODUCT',
+        details: `${isUpdate ? 'แก้ไขข้อมูลสินค้า' : 'เพิ่มสินค้าใหม่'}: [${product.code || product.sku || product.id}] ${product.name}`
+      });
+
+      return saved;
     }
 
     try {
@@ -743,7 +815,7 @@ export const apiService = {
           department: product.category,
           docNo: product.code || product.id,
           docType: 'PRODUCT',
-          details: `${isUpdate ? 'ปรับปรุงข้อมูลสินค้า' : 'สร้างรายการสินค้าใหม่'} "${product.name}" (${product.code}) แผนก ${product.category}`
+          details: `${isUpdate ? 'แก้ไขข้อมูลสินค้า' : 'เพิ่มสินค้าใหม่'}: [${product.code || product.sku || product.id}] ${product.name}`
         });
 
         return saved;
@@ -773,7 +845,7 @@ export const apiService = {
       department: product.category,
       docNo: product.code || product.id,
       docType: 'PRODUCT',
-      details: `${isUpdate ? 'ปรับปรุงข้อมูลสินค้า' : 'สร้างรายการสินค้าใหม่'} "${product.name}" (${product.code}) แผนก ${product.category}`
+      details: `${isUpdate ? 'แก้ไขข้อมูลสินค้า' : 'เพิ่มสินค้าใหม่'}: [${product.code || product.sku || product.id}] ${product.name}`
     });
 
     return product;
@@ -799,7 +871,7 @@ export const apiService = {
       actor: typeof user === 'object' ? (user?.name || user?.username || 'Admin') : (user || 'Admin / Master Manager'),
       docNo: productId,
       docType: 'PRODUCT',
-      details: `ลบรายการสินค้า "${productId}" ออกจากระบบ`
+      details: `ลบรายการสินค้า: [${productId}] ออกจากระบบ`
     });
 
     return true;
@@ -808,10 +880,10 @@ export const apiService = {
   async saveVendor(vendor, user = null) {
     const vendors = await this.getVendors();
     const isUpdate = Boolean(vendor.id);
-    const targetCode = (vendor.code || '').trim().toUpperCase();
+    const targetCode = String(vendor.code || vendor.vendorCode || vendor.id || '').trim().toUpperCase();
 
     if (targetCode) {
-      const isDuplicate = vendors.some(v => v.id !== vendor.id && (v.code || '').trim().toUpperCase() === targetCode);
+      const isDuplicate = vendors.some(v => String(v.id || '') !== String(vendor.id || '') && String(v.code || v.vendorCode || v.id || '').trim().toUpperCase() === targetCode);
       if (isDuplicate) {
         throw new Error(`รหัสผู้ขาย "${targetCode}" มีอยู่ในระบบแล้ว กรุณาระบุรหัสผู้ขายอื่น`);
       }
@@ -819,6 +891,39 @@ export const apiService = {
 
     if (!vendor.id) {
       vendor.id = `VEN-${Date.now()}`;
+    }
+
+    if (isGASAvailable()) {
+      const res = await callGAS('apiSaveVendor', vendor);
+      if (!res || !res.success) {
+        throw new Error(res?.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูลผู้ขายลง Google Sheets');
+      }
+      const saved = res.data || vendor;
+      const targetId = String(saved.id || vendor.id || '').trim().toLowerCase();
+      const targetCode = String(saved.code || vendor.code || '').trim().toLowerCase();
+      const updatedList = isUpdate 
+        ? vendors.map(v => {
+            const vId = String(v.id || '').trim().toLowerCase();
+            const vCode = String(v.code || '').trim().toLowerCase();
+            return (vId === targetId || vCode === targetCode) ? saved : v;
+          }) 
+        : [saved, ...vendors.filter(v => {
+            const vId = String(v.id || '').trim().toLowerCase();
+            const vCode = String(v.code || '').trim().toLowerCase();
+            return vId !== targetId && vCode !== targetCode;
+          })];
+      storageService.saveVendors(updatedList);
+
+      auditService.logAction({
+        action: isUpdate ? 'VENDOR_UPDATED' : 'VENDOR_CREATED',
+        actor: user || 'Admin / Vendor Manager',
+        department: vendor.category || vendor.department || 'ALL',
+        docNo: vendor.code || vendor.id,
+        docType: 'VENDOR',
+        details: `${isUpdate ? 'ปรับปรุงข้อมูลผู้ขาย' : 'เพิ่มผู้ขายรายใหม่'} "${vendor.name}" (${vendor.code || vendor.id})`
+      });
+
+      return saved;
     }
 
     try {
@@ -927,6 +1032,30 @@ export const apiService = {
       location.id = `LOC-${dept}-${Date.now().toString().slice(-6)}`;
     }
 
+    if (isGASAvailable()) {
+      const res = await callGAS('apiSaveStorageLocation', location);
+      if (!res || !res.success) {
+        throw new Error(res?.error || 'เกิดข้อผิดพลาดในการบันทึกจุดจัดเก็บลง Google Sheets');
+      }
+      const saved = res.data || location;
+      const targetId = String(saved.id || location.id || '').trim().toLowerCase();
+      const updatedList = isUpdate
+        ? locations.map(l => String(l.id || '').trim().toLowerCase() === targetId ? saved : l)
+        : [saved, ...locations.filter(l => String(l.id || '').toLowerCase() !== targetId)];
+      storageService.saveStorageLocations(updatedList);
+
+      auditService.logAction({
+        action: isUpdate ? 'LOCATION_UPDATED' : 'LOCATION_CREATED',
+        actor: user || 'Admin / Warehouse Manager',
+        department: location.department || 'ALL',
+        docNo: saved.id,
+        docType: 'LOCATION',
+        details: `${isUpdate ? 'แก้ไขจุดจัดเก็บ' : 'เพิ่มจุดจัดเก็บใหม่'} "${saved.name}" (${saved.department || 'ALL'})`
+      });
+
+      return saved;
+    }
+
     try {
       const url = isUpdate ? `http://localhost:3001/api/storage-locations/${location.id}` : 'http://localhost:3001/api/storage-locations';
       const method = isUpdate ? 'PUT' : 'POST';
@@ -1009,6 +1138,30 @@ export const apiService = {
     if (!unit.id) {
       const dept = unit.department || 'PD';
       unit.id = `UNIT-${dept}-${Date.now().toString().slice(-6)}`;
+    }
+
+    if (isGASAvailable()) {
+      const res = await callGAS('apiSaveUsageUnit', unit);
+      if (!res || !res.success) {
+        throw new Error(res?.error || 'เกิดข้อผิดพลาดในการบันทึกหน่วยเบิกใช้งานลง Google Sheets');
+      }
+      const saved = res.data || unit;
+      const targetId = String(saved.id || unit.id || '').trim().toLowerCase();
+      const updatedList = isUpdate
+        ? units.map(u => String(u.id || '').trim().toLowerCase() === targetId ? saved : u)
+        : [...units.filter(u => String(u.id || '').toLowerCase() !== targetId), saved];
+      storageService.saveUsageUnits(updatedList);
+
+      auditService.logAction({
+        action: isUpdate ? 'USAGE_UNIT_UPDATED' : 'USAGE_UNIT_CREATED',
+        actor: user || 'Admin / Department Manager',
+        department: unit.department || 'PD',
+        docNo: saved.id,
+        docType: 'USAGE_UNIT',
+        details: `${isUpdate ? 'แก้ไขหน่วยเบิกใช้งาน' : 'เพิ่มหน่วยเบิกใช้งานใหม่'} "${saved.name}" (${saved.department})`
+      });
+
+      return saved;
     }
 
     try {
@@ -1179,6 +1332,33 @@ export const apiService = {
 
   async saveDepartment(deptPayload, actor = null) {
     const isUpdate = Boolean(deptPayload.id);
+
+    if (isGASAvailable()) {
+      const res = await callGAS('apiSaveDepartment', deptPayload);
+      if (!res || !res.success) {
+        throw new Error(res?.error || 'เกิดข้อผิดพลาดในการบันทึกข้อมูลแผนกลง Google Sheets');
+      }
+      const saved = res.data || deptPayload;
+      const depts = storageService.getDepartments();
+      const targetId = String(saved.id || deptPayload.id || '').trim().toLowerCase();
+      const targetCode = String(saved.code || deptPayload.code || '').trim().toLowerCase();
+      const updated = isUpdate
+        ? depts.map(d => (String(d.id || '').toLowerCase() === targetId || String(d.code || '').toLowerCase() === targetCode) ? saved : d)
+        : [...depts.filter(d => String(d.id || '').toLowerCase() !== targetId && String(d.code || '').toLowerCase() !== targetCode), saved];
+      storageService.saveDepartments(updated);
+
+      auditService.logAction({
+        action: isUpdate ? 'DEPARTMENT_UPDATED' : 'DEPARTMENT_CREATED',
+        actor: actor || 'Admin',
+        department: saved.code,
+        docNo: saved.id,
+        docType: 'DEPARTMENT',
+        details: `${isUpdate ? 'แก้ไขข้อมูลแผนก' : 'เพิ่มแผนกใหม่'} "${saved.name}" (${saved.code}) สถานะ: ${saved.isActive ? 'เปิดใช้งาน' : 'ระงับการใช้งาน'}`
+      });
+
+      return saved;
+    }
+
     try {
       const url = isUpdate 
         ? `http://localhost:3001/api/departments/${deptPayload.id}` 

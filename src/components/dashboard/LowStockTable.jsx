@@ -63,16 +63,7 @@ export default function LowStockTable({ products = [], onQuickPR }) {
           item.currentStock <= item.rop
       );
 
-    // 2. Seed Data สำรองในกรณีที่ State ใน LocalStorage ว่างเปล่า
-    if (!items || items.length === 0) {
-      items = [
-        { id: 'PROD-PD-003', sku: 'PD-BLT-380', name: 'สายพานลำเลียงทนความร้อน (Timing Belt 380-5M-15)', currentStock: 6, stock: 6, rop: 8, reorderPoint: 8, unit: 'เส้น', department: 'PD' },
-        { id: 'PROD-PD-008', sku: 'PD-STF-001', name: 'ฟิล์มยืดพันพาเลท (Stretch Film 15 Micron 500mm x 300m)', currentStock: 2, stock: 2, rop: 5, reorderPoint: 5, unit: 'ลัง', department: 'PD' },
-        { id: 'PROD-PD-GLV', sku: 'PD-GLV-001', name: 'ถุงมือยางไนไตรล์ป้องกันสารเคมี (Nitrile Chemical Gloves)', currentStock: 0, stock: 0, rop: 10, reorderPoint: 10, unit: 'ชิ้น', department: 'PD' }
-      ];
-    }
-
-    return items;
+    return items || [];
   }, [products]);
 
   return (
