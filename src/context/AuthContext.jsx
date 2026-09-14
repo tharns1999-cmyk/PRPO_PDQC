@@ -133,6 +133,8 @@ export function AuthProvider({ children }) {
     try {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem('prpo_current_user');
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('prpo_user');
       localStorage.removeItem('prpo_auth_session');
       localStorage.removeItem('prpo_original_admin_user');
       if (typeof sessionStorage !== 'undefined') {
@@ -215,6 +217,14 @@ export function AuthProvider({ children }) {
     setIsLoading(true);
     setAuthError(null);
 
+    // Clear stale cached keys from previous sessions
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem('prpo_current_user');
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('prpo_user');
+    localStorage.removeItem('prpo_auth_session');
+    localStorage.removeItem('prpo_original_admin_user');
+
     try {
       const response = await callGAS('apiLogin', identifier, pin);
       if (!response || !response.success || !response.user) {
@@ -223,13 +233,24 @@ export function AuthProvider({ children }) {
 
       const verifiedUser = response.user;
       const normalized = normalizeRole(verifiedUser);
+      const userDepts = verifiedUser.departments || verifiedUser.allowedDepartments || (verifiedUser.department ? [verifiedUser.department] : ['PD']);
+
       const sessionPayload = {
         ...verifiedUser,
+        name: verifiedUser.name || verifiedUser.employeeName || verifiedUser.displayName,
+        employeeName: verifiedUser.employeeName || verifiedUser.name,
+        displayName: verifiedUser.displayName || verifiedUser.name,
+        department: verifiedUser.department || 'PD',
+        primaryDepartment: verifiedUser.primaryDepartment || verifiedUser.department || 'PD',
+        departments: userDepts,
+        assignedDepartments: userDepts,
+        allowedDepartments: userDepts,
         canonicalRole: normalized,
         expiresAt: Date.now() + SESSION_EXPIRATION_MS
       };
 
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionPayload));
+      localStorage.setItem('prpo_auth_session', JSON.stringify(sessionPayload));
       storageService.setCurrentRole?.(sessionPayload);
       setCurrentUser(sessionPayload);
       setIsLoading(false);

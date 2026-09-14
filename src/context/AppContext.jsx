@@ -123,6 +123,7 @@ export function AppProvider({ children }) {
   const loadAllData = useCallback(async () => {
     try {
       setIsDataLoading(true);
+      await storageService.init();
       
       const [
         prodsData,

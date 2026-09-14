@@ -1,4 +1,5 @@
 // Notification Service (In-App Local Caching)
+import { isGASAvailable, callGAS } from './gasClient.js';
 
 const NOTIFICATIONS_STORAGE_KEY = 'prpo_in_app_notifications';
 
@@ -153,6 +154,9 @@ export const notificationService = {
 
   saveAll(notifications) {
     localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(notifications));
+    if (isGASAvailable()) {
+      callGAS('apiSaveNotifications', notifications).catch(e => console.warn('[NotificationService] GAS sync error:', e));
+    }
     this.notify();
   },
 

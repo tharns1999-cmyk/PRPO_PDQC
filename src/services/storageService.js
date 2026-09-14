@@ -1,6 +1,7 @@
 import { STORAGE_KEYS, ROLES, INITIAL_USAGE_UNITS, INITIAL_DEPARTMENTS } from '../config/constants.js';
 import { initialProducts, initialVendors, initialStorageLocations, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
 import { DEFAULT_EMPLOYEE_ACCOUNTS } from './authService.js';
+import { isGASAvailable, callGAS } from './gasClient.js';
 
 const DATA_VERSION = 'prpo_clean_v16_empty_state';
 const API_URL = 'http://localhost:3001/api/storage';
@@ -195,6 +196,47 @@ const _migrateLocalStorageCache = () => {
 // Immediately run migration if in browser environment
 _migrateLocalStorageCache();
 
+const GAS_SYNC_MAP = {
+  [STORAGE_KEYS.PRS]: 'apiSavePRs',
+  [STORAGE_KEYS.POS]: 'apiSavePOs',
+  [STORAGE_KEYS.PRODUCTS]: 'apiSaveProducts',
+  [STORAGE_KEYS.STOCK_LOGS]: 'apiSaveStockLogs',
+  [STORAGE_KEYS.BUDGETS]: 'apiSaveBudgets',
+  [STORAGE_KEYS.BUDGET_TRANSACTIONS]: 'apiSaveBudgetTransactions',
+  'prpo_budget_transactions': 'apiSaveBudgetTransactions',
+  [STORAGE_KEYS.VENDORS]: 'apiSaveVendors',
+  [STORAGE_KEYS.STORAGE_LOCATIONS]: 'apiSaveStorageLocations',
+  [STORAGE_KEYS.USAGE_UNITS]: 'apiSaveUsageUnits',
+  [STORAGE_KEYS.DEPARTMENTS]: 'apiSaveDepartments',
+  [STORAGE_KEYS.USERS]: 'apiSaveUsers',
+  [STORAGE_KEYS.AUDIT_LOGS]: 'apiSaveAuditLogs',
+  'prpo_audit_logs': 'apiSaveAuditLogs',
+  [STORAGE_KEYS.SIGNATURES]: 'apiSaveSignatures',
+  'prpo_notifications': 'apiSaveNotifications',
+  'prpo_in_app_notifications': 'apiSaveNotifications'
+};
+
+const _gasDebounceTimers = new Map();
+
+const _syncGAS = (key, value) => {
+  if (!isGASAvailable()) return;
+  const functionName = GAS_SYNC_MAP[key];
+  if (!functionName) return;
+
+  if (_gasDebounceTimers.has(key)) {
+    clearTimeout(_gasDebounceTimers.get(key));
+  }
+
+  const timer = setTimeout(() => {
+    _gasDebounceTimers.delete(key);
+    callGAS(functionName, value).catch(err => {
+      console.warn(`[StorageService] Failed to sync ${key} to GAS ${functionName}:`, err);
+    });
+  }, 250);
+
+  _gasDebounceTimers.set(key, timer);
+};
+
 const _getItem = (key) => {
   if (_apiReady && _cache[key] !== undefined) {
     return _cache[key];
@@ -220,14 +262,84 @@ const _setItem = (key, value, syncWithBackend = false) => {
   if (syncWithBackend) {
     _syncApi();
   }
+  _syncGAS(key, value);
 };
 
 const isDataCleared = () => typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true';
 
 export const storageService = {
-  // Initialize storage from Local Node.js Backend with fallback to LocalStorage
+  // Initialize storage from Google Apps Script (Live Web App) or Local Node.js Backend with fallback to LocalStorage
   async init() {
     _migrateLocalStorageCache();
+    // 1. Live Google Apps Script Web App Hydration
+    if (isGASAvailable()) {
+      try {
+        const initial = await callGAS('apiGetInitialData');
+        if (initial && initial.success) {
+          if (Array.isArray(initial.products) && initial.products.length > 0) {
+            _cache[STORAGE_KEYS.PRODUCTS] = initial.products;
+          }
+          if (Array.isArray(initial.vendors) && initial.vendors.length > 0) {
+            _cache[STORAGE_KEYS.VENDORS] = initial.vendors;
+          }
+          if (Array.isArray(initial.storageLocations) && initial.storageLocations.length > 0) {
+            _cache[STORAGE_KEYS.STORAGE_LOCATIONS] = initial.storageLocations;
+          }
+          if (Array.isArray(initial.usageUnits) && initial.usageUnits.length > 0) {
+            _cache[STORAGE_KEYS.USAGE_UNITS] = initial.usageUnits;
+          }
+          if (Array.isArray(initial.departments) && initial.departments.length > 0) {
+            _cache[STORAGE_KEYS.DEPARTMENTS] = initial.departments;
+          }
+          if (Array.isArray(initial.users) && initial.users.length > 0) {
+            _cache[STORAGE_KEYS.USERS] = initial.users;
+          }
+          if (Array.isArray(initial.prs)) {
+            _cache[STORAGE_KEYS.PRS] = initial.prs;
+          }
+          if (Array.isArray(initial.pos)) {
+            _cache[STORAGE_KEYS.POS] = initial.pos;
+          }
+          if (Array.isArray(initial.stockLogs)) {
+            _cache[STORAGE_KEYS.STOCK_LOGS] = initial.stockLogs;
+          }
+          if (initial.budgets && typeof initial.budgets === 'object') {
+            _cache[STORAGE_KEYS.BUDGETS] = initial.budgets;
+          }
+          if (Array.isArray(initial.budgetTransactions)) {
+            _cache[STORAGE_KEYS.BUDGET_TRANSACTIONS] = initial.budgetTransactions;
+            _cache['prpo_budget_transactions'] = initial.budgetTransactions;
+          }
+          if (Array.isArray(initial.auditLogs)) {
+            _cache[STORAGE_KEYS.AUDIT_LOGS] = initial.auditLogs;
+            _cache['prpo_audit_logs'] = initial.auditLogs;
+          }
+          if (Array.isArray(initial.notifications)) {
+            _cache['prpo_notifications'] = initial.notifications;
+            _cache['prpo_in_app_notifications'] = initial.notifications;
+          }
+          if (initial.signatures && typeof initial.signatures === 'object') {
+            _cache[STORAGE_KEYS.SIGNATURES] = initial.signatures;
+          }
+
+          // Mirror into localStorage as immediate read cache
+          if (typeof localStorage !== 'undefined') {
+            try {
+              Object.entries(_cache).forEach(([k, v]) => {
+                if (v !== undefined) localStorage.setItem(k, JSON.stringify(v));
+              });
+            } catch (e) {}
+          }
+
+          _apiReady = true;
+          return;
+        }
+      } catch (gasErr) {
+        console.warn('[StorageService] GAS Initial Data Hydration warning:', gasErr);
+      }
+    }
+
+    // 2. Local Node.js Backend API
     try {
       const res = await fetch(API_URL);
       if (res.ok) {
@@ -274,6 +386,9 @@ export const storageService = {
 
   // Clear transactional data only (PRs, POs, Stock movement, Notifications, Audit logs) while preserving 100% of Master Data
   clearTransactionalData(syncWithBackend = false) {
+    if (isGASAvailable()) {
+      callGAS('apiClearTransactionalData').catch(e => console.warn('[StorageService] GAS clear error:', e));
+    }
     _setItem(STORAGE_KEYS.PRS, [], syncWithBackend);
     _setItem(STORAGE_KEYS.POS, [], syncWithBackend);
     _setItem(STORAGE_KEYS.STOCK_LOGS, [], syncWithBackend);
@@ -1769,7 +1884,26 @@ export const storageService = {
     if (roleId === 'APPROVER') delete sigs['PLANT_MANAGER'];
     this.saveSignatures(sigs);
   },
+  getAuditLogs() {
+    const data = _getItem(STORAGE_KEYS.AUDIT_LOGS) || _getItem('prpo_audit_logs');
+    return Array.isArray(data) ? data : [];
+  },
+  saveAuditLogs(logs) {
+    _setItem(STORAGE_KEYS.AUDIT_LOGS, logs);
+    _setItem('prpo_audit_logs', logs);
+  },
+  getNotifications() {
+    const data = _getItem('prpo_notifications') || _getItem('prpo_in_app_notifications');
+    return Array.isArray(data) ? data : [];
+  },
+  saveNotifications(notifications) {
+    _setItem('prpo_notifications', notifications);
+    _setItem('prpo_in_app_notifications', notifications);
+  },
   clearMockTransactions() {
+    if (isGASAvailable()) {
+      callGAS('apiClearTransactionalData').catch(e => console.warn('[StorageService] GAS clear error:', e));
+    }
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem('app_data_cleared', 'true');
     }

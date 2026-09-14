@@ -1,5 +1,6 @@
 import { STORAGE_KEYS } from '../config/constants.js';
 import { logAuditEvent } from './auditLogger.js';
+import { isGASAvailable, callGAS } from './gasClient.js';
 
 /**
  * Audit Service for tracking all system actions, document status changes, 
@@ -47,6 +48,10 @@ export const auditService = {
       const existing = this.getLogs();
       const updated = [logEntry, ...existing].slice(0, 1000); // Keep latest 1000 logs
       localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS || 'prpo_audit_logs', JSON.stringify(updated));
+
+      if (isGASAvailable()) {
+        callGAS('apiSaveAuditLogs', updated).catch(e => console.warn('[AuditService] GAS log sync error:', e));
+      }
 
       // Also forward to centralized auditLogger for app_audit_logs
       try {

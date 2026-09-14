@@ -3,11 +3,15 @@ import { workflowEngine } from './workflowEngine';
 import { auditService } from './auditService';
 import { PO_STATUS } from '../config/constants';
 import { clearMockTransactions, resetMockTransactions } from '../utils/dataResetHelper';
+import { isGASAvailable } from './gasClient';
 
 // API Service Layer for Data & Operations
 export const apiService = {
   // --- Audit Trail Operations ---
   async getAuditLogs(filters) {
+    if (isGASAvailable()) {
+      return storageService.getAuditLogs ? storageService.getAuditLogs() : auditService.getLogs(filters);
+    }
     return auditService.getLogs(filters);
   },
   async clearAuditLogs() {
@@ -15,6 +19,9 @@ export const apiService = {
   },
   // --- Data Getters ---
   async getProducts() {
+    if (isGASAvailable()) {
+      return storageService.getProducts();
+    }
     try {
       const res = await fetch('http://localhost:3001/api/products');
       if (res.ok) {
@@ -30,6 +37,9 @@ export const apiService = {
     return storageService.getProducts();
   },
   async getVendors() {
+    if (isGASAvailable()) {
+      return storageService.getVendors();
+    }
     try {
       const res = await fetch('http://localhost:3001/api/vendors');
       if (res.ok) {
@@ -45,6 +55,9 @@ export const apiService = {
     return storageService.getVendors();
   },
   async getStorageLocations() {
+    if (isGASAvailable()) {
+      return storageService.getStorageLocations();
+    }
     try {
       const res = await fetch('http://localhost:3001/api/storage-locations');
       if (res.ok) {
@@ -60,6 +73,9 @@ export const apiService = {
     return storageService.getStorageLocations();
   },
   async getUsageUnits(department) {
+    if (isGASAvailable()) {
+      return storageService.getUsageUnits(department);
+    }
     try {
       const url = department && department !== 'ALL' 
         ? `http://localhost:3001/api/usage-units?department=${encodeURIComponent(department)}`
@@ -80,6 +96,9 @@ export const apiService = {
     return storageService.getUsageUnits(department);
   },
   async getUsers() {
+    if (isGASAvailable()) {
+      return storageService.getUsers();
+    }
     try {
       const res = await fetch('http://localhost:3001/api/users');
       if (res.ok) {
@@ -95,6 +114,9 @@ export const apiService = {
     return storageService.getUsers();
   },
   async getDepartments() {
+    if (isGASAvailable()) {
+      return storageService.getDepartments();
+    }
     try {
       const res = await fetch('http://localhost:3001/api/departments');
       if (res.ok) {
@@ -110,6 +132,9 @@ export const apiService = {
     return storageService.getDepartments();
   },
   async getPRs() {
+    if (isGASAvailable()) {
+      return storageService.getPRs();
+    }
     if (typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true') {
       return storageService.getPRs();
     }
@@ -142,6 +167,9 @@ export const apiService = {
     });
   },
   async getPOs() {
+    if (isGASAvailable()) {
+      return storageService.getPOs();
+    }
     if (typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true') {
       return storageService.getPOs();
     }
@@ -174,6 +202,9 @@ export const apiService = {
     });
   },
   async getStockLogs() {
+    if (isGASAvailable()) {
+      return storageService.getStockLogs();
+    }
     try {
       const res = await fetch('http://localhost:3001/api/stock-logs');
       if (res.ok) {
@@ -189,6 +220,9 @@ export const apiService = {
     return storageService.getStockLogs();
   },
   async getBudgets() {
+    if (isGASAvailable()) {
+      return storageService.getBudgets();
+    }
     try {
       const res = await fetch('http://localhost:3001/api/budgets');
       if (res.ok) {
@@ -204,6 +238,9 @@ export const apiService = {
     return storageService.getBudgets();
   },
   async getNotifications() {
+    if (isGASAvailable()) {
+      return storageService.getNotifications ? storageService.getNotifications() : [];
+    }
     try {
       const res = await fetch('http://localhost:3001/api/notifications');
       if (res.ok) {
@@ -219,6 +256,9 @@ export const apiService = {
   },
   
   async getBudgetTransactions() {
+    if (isGASAvailable()) {
+      return storageService.getBudgetTransactions();
+    }
     try {
       const res = await fetch('http://localhost:3001/api/budget-transactions');
       if (res.ok) {

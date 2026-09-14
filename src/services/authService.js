@@ -1,4 +1,5 @@
 import { resolveUserPermissions, ROLES } from '../config/constants';
+import { isGASAvailable, callGAS } from './gasClient';
 
 const AUTH_SESSION_KEY = 'prpo_auth_session';
 const REGISTERED_USERS_KEY = 'prpo_registered_users';
@@ -199,10 +200,9 @@ export const authService = {
       const data = localStorage.getItem(AUTH_SESSION_KEY);
       if (data) {
         const session = JSON.parse(data);
-        const def = DEFAULT_EMPLOYEE_ACCOUNTS.find(d => d.id === session.id || d.username === session.username);
-        const departments = (Array.isArray(session.departments) && session.departments.length > 1)
+        const departments = (Array.isArray(session.departments) && session.departments.length > 0)
           ? session.departments
-          : (def?.departments || (session.department ? [session.department] : ['PD']));
+          : (session.department ? [session.department] : ['PD']);
         // Enrich with fresh role permissions dynamically based on role/level
         const rolePermissions = resolveUserPermissions({ ...session, departments });
         return {
@@ -220,14 +220,67 @@ export const authService = {
     }
   },
 
-  // Authenticate user with Username / Password
+  // Authenticate user with Employee ID / Username / Email and PIN / Password
   async login(username, password, _optionalLegacyUid = null) {
+    // 1. Purge any stale cached user sessions first
+    localStorage.removeItem(AUTH_SESSION_KEY);
+    localStorage.removeItem('prpo_current_user');
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('prpo_user');
+    localStorage.removeItem('prpo_original_admin_user');
+
+    const cleanUser = String(username || '').trim();
+    const cleanPass = String(password || '').trim();
+
+    // 2. Production: Google Apps Script Live Environment (Read direct from Google Sheets)
+    if (isGASAvailable()) {
+      const response = await callGAS('apiLogin', cleanUser, cleanPass);
+      if (!response || !response.success || !response.user) {
+        throw new Error(response?.error || 'รหัสพนักงานหรือรหัส PIN ไม่ถูกต้อง');
+      }
+
+      const verified = response.user;
+      const rolePermissions = resolveUserPermissions(verified);
+      const userDepts = verified.departments || verified.allowedDepartments || (verified.department ? [verified.department] : ['PD']);
+
+      const sessionData = {
+        id: verified.id,
+        username: verified.username || verified.employeeId,
+        employeeId: verified.employeeId,
+        name: verified.name || verified.employeeName || verified.displayName,
+        employeeName: verified.employeeName || verified.name,
+        displayName: verified.displayName || verified.name,
+        primaryDepartment: verified.primaryDepartment || verified.department || 'PD',
+        department: verified.department || 'PD',
+        departments: userDepts,
+        assignedDepartments: userDepts,
+        allowedDepartments: userDepts,
+        canonicalRole: verified.canonicalRole,
+        roleId: verified.roleId,
+        positionKey: verified.roleId,
+        title: verified.title || verified.canonicalRole,
+        level: verified.level || 1,
+        status: verified.status || 'ACTIVE',
+        pictureUrl: verified.pictureUrl || '',
+        email: verified.email || '',
+        lastLogin: verified.lastLoginAt || new Date().toISOString(),
+        ...rolePermissions,
+        role: rolePermissions,
+        rolePermissions: rolePermissions,
+        expiresAt: Date.now() + (24 * 60 * 60 * 1000)
+      };
+
+      localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(sessionData));
+      return sessionData;
+    }
+
+    // 3. Fallback for Localhost Testing when GAS is not present
     const users = this.getRegisteredUsers();
-    const cleanUser = (username || '').trim().toLowerCase();
+    const cleanUserLower = cleanUser.toLowerCase();
     
     const matched = users.find(u => 
-      (u.username.toLowerCase() === cleanUser || u.employeeId?.toLowerCase() === cleanUser) && 
-      u.password === password
+      (u.username?.toLowerCase() === cleanUserLower || u.employeeId?.toLowerCase() === cleanUserLower) && 
+      (u.password === cleanPass || u.pin === cleanPass)
     );
 
     if (!matched) {
@@ -256,16 +309,16 @@ export const authService = {
       title: matched.title,
       level: matched.level,
       pictureUrl: matched.pictureUrl,
-      lastLogin: matched.lastLogin
+      lastLogin: matched.lastLogin,
+      ...rolePermissions,
+      role: rolePermissions,
+      rolePermissions: rolePermissions,
+      expiresAt: Date.now() + (24 * 60 * 60 * 1000)
     };
 
     localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(sessionData));
 
-    return {
-      ...rolePermissions,
-      ...sessionData,
-      role: rolePermissions
-    };
+    return sessionData;
   },
 
   // Instant login by Position for Localhost Testing
@@ -289,5 +342,12 @@ export const authService = {
   // Log out current session
   logout() {
     localStorage.removeItem(AUTH_SESSION_KEY);
+    localStorage.removeItem('prpo_current_user');
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('prpo_user');
+    localStorage.removeItem('prpo_original_admin_user');
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.clear();
+    }
   }
 };
