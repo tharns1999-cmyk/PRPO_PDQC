@@ -1,0 +1,38 @@
+[
+  {
+    "id": "PROD-T01",
+    "code": "PT01",
+    "name": "Part A",
+    "stockBalance": 16,
+    "unit": "ชิ้น",
+    "sku": "",
+    "itemCode": "",
+    "purchaseUom": "ชิ้น",
+    "baseUom": "ชิ้น",
+    "conversionRatio": 1,
+    "purchaseUnit": "ชิ้น",
+    "stockUnit": "ชิ้น",
+    "conversionRate": 1,
+    "category": "PD",
+    "department": "PD",
+    "isActive": false,
+    "status": "INACTIVE"
+  },
+  {
+    "id": "PROD-T02",
+    "code": "PT02",
+    "name": "Part B",
+    "stockBalance": 5,
+    "unit": "กล่อง",
+    "sku": "",
+    "itemCode": "",
+    "purchaseUom": "กล่อง",
+    "baseUom": "กล่อง",
+    "conversionRatio": 1,
+    "purchaseUnit": "กล่อง",
+    "stockUnit": "กล่อง",
+    "conversionRate": 1,
+    "category": "PD",
+    "department": "PD"
+  }
+]

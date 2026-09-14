@@ -1,0 +1,40 @@
+[
+  {
+    "productId": "PROD-PD-001",
+    "productCode": "PD-OIL-068",
+    "itemCode": "PD-OIL-068",
+    "name": "น้ำมันไฮดรอลิกอุตสาหกรรม (Hydraulic Oil ISO VG 68)",
+    "category": "PD",
+    "department": "PD",
+    "purchaseUom": "ถัง (200L)",
+    "baseUom": "ลิตร",
+    "conversionRatio": 200,
+    "purchasePrice": 14500,
+    "baseUnitCost": 72.5,
+    "stockBalance": 3400,
+    "totalValuation": 246500,
+    "initialBalance": 2400,
+    "initialValuation": 174000,
+    "locationId": "LOC-PD-001",
+    "locationName": "ชั้นวาง A-01 (สารหล่อลื่น & น้ำมัน)"
+  },
+  {
+    "productId": "PROD-PD-002",
+    "productCode": "PD-BOX-002",
+    "itemCode": "PD-BOX-002",
+    "name": "กล่องลูกฟูกมาตรฐาน",
+    "category": "PD",
+    "department": "PD",
+    "purchaseUom": "ใบ",
+    "baseUom": "ใบ",
+    "conversionRatio": 1,
+    "purchasePrice": 15,
+    "baseUnitCost": 15,
+    "stockBalance": 104,
+    "totalValuation": 1560,
+    "initialBalance": 100,
+    "initialValuation": 1500,
+    "locationId": "",
+    "locationName": ""
+  }
+]

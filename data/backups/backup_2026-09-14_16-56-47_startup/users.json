@@ -1,0 +1,168 @@
+[
+  {
+    "employeeName": "สิรภัทร แจ่มมิน",
+    "level": 1,
+    "signature": "",
+    "roleId": "REQUESTER_PD",
+    "displayName": "สิรภัทร แจ่มมิน",
+    "pictureUrl": "",
+    "canonicalRole": "REQUESTER",
+    "description": "สร้าง/ส่ง PR ฝ่ายผลิต, เบิกจ่ายสินค้า, ตรวจรับของเข้าสต็อก",
+    "employeeId": "EMP-PD-001",
+    "isActive": true,
+    "pin": "password123",
+    "allowedDepartments": [
+      "PD"
+    ],
+    "name": "สิรภัทร แจ่มมิน",
+    "primaryDepartment": "PD",
+    "id": "USR-0001",
+    "departments": [
+      "PD"
+    ],
+    "department": "PD",
+    "email": "",
+    "username": "siraphat.pd",
+    "status": "ACTIVE"
+  },
+  {
+    "employeeName": "ณัฐธินีย์ สอนครบบุรี",
+    "signature": "",
+    "level": 1,
+    "roleId": "REQUESTER_QC",
+    "displayName": "ณัฐธินีย์ สอนครบบุรี",
+    "pictureUrl": "",
+    "canonicalRole": "REQUESTER",
+    "description": "สร้าง/ส่ง PR ฝ่าย QC/Lab, เบิกจ่ายสารเคมี, ตรวจรับของ",
+    "employeeId": "EMP-QC-001",
+    "isActive": true,
+    "pin": "password123",
+    "allowedDepartments": [
+      "QC"
+    ],
+    "name": "ณัฐธินีย์ สอนครบบุรี",
+    "primaryDepartment": "QC",
+    "departments": [
+      "QC"
+    ],
+    "id": "USR-0002",
+    "department": "QC",
+    "email": "",
+    "username": "natthinee.qc",
+    "status": "ACTIVE"
+  },
+  {
+    "employeeName": "กัลยาณี พลไกร",
+    "signature": "",
+    "level": 2,
+    "displayName": "กัลยาณี พลไกร",
+    "roleId": "ASST_MANAGER",
+    "pictureUrl": "",
+    "canonicalRole": "REVIEWER",
+    "description": "ตรวจทาน PR (Level 1 Reviewer)",
+    "employeeId": "EMP-MGR-001",
+    "isActive": true,
+    "pin": "password123",
+    "allowedDepartments": [
+      "PD",
+      "QC"
+    ],
+    "name": "กัลยาณี พลไกร",
+    "primaryDepartment": "PD",
+    "id": "USR-0003",
+    "departments": [
+      "PD",
+      "QC"
+    ],
+    "department": "PD",
+    "email": "",
+    "status": "ACTIVE",
+    "username": "kallayani.mgr"
+  },
+  {
+    "employeeName": "คุณนัท จัดซื้อ",
+    "signature": "",
+    "level": 2,
+    "roleId": "ONLINE_PURCHASER",
+    "displayName": "คุณนัท จัดซื้อ",
+    "pictureUrl": "",
+    "canonicalRole": "PURCHASER",
+    "description": "จัดการสั่งซื้อออนไลน์ Shopee/Lazada",
+    "employeeId": "EMP-PUR-001",
+    "isActive": true,
+    "pin": "password123",
+    "allowedDepartments": [
+      "PD",
+      "QC",
+      "ALL"
+    ],
+    "name": "คุณนัท จัดซื้อ",
+    "primaryDepartment": "ALL",
+    "id": "USR-0004",
+    "departments": [
+      "PD",
+      "QC",
+      "ALL"
+    ],
+    "department": "ALL",
+    "email": "",
+    "username": "nat.on",
+    "status": "ACTIVE"
+  },
+  {
+    "employeeName": "คุณประเสริฐ ยิ่งยง",
+    "level": 3,
+    "signature": "",
+    "displayName": "คุณประเสริฐ ยิ่งยง",
+    "roleId": "PLANT_MANAGER",
+    "pictureUrl": "",
+    "canonicalRole": "APPROVER",
+    "description": "อนุมัติสั่งซื้อ (Final Approver)",
+    "employeeId": "EMP-MGR-002",
+    "isActive": true,
+    "pin": "password123",
+    "allowedDepartments": [
+      "PD",
+      "QC",
+      "ALL"
+    ],
+    "name": "คุณประเสริฐ ยิ่งยง",
+    "primaryDepartment": "ALL",
+    "id": "USR-0005",
+    "departments": [
+      "PD",
+      "QC",
+      "ALL"
+    ],
+    "department": "ALL",
+    "email": "",
+    "status": "ACTIVE",
+    "username": "prasert.pm"
+  },
+  {
+    "employeeName": "ผู้ดูแลระบบ",
+    "signature": "",
+    "level": 99,
+    "roleId": "ADMIN",
+    "displayName": "ผู้ดูแลระบบ",
+    "pictureUrl": "",
+    "canonicalRole": "ADMIN",
+    "description": "ผู้ดูแลระบบ สิทธิ์สูงสุด",
+    "employeeId": "EMP-SYS-999",
+    "isActive": true,
+    "pin": "password123",
+    "allowedDepartments": [
+      "*"
+    ],
+    "name": "ผู้ดูแลระบบ",
+    "primaryDepartment": "ALL",
+    "id": "USR-0006",
+    "departments": [
+      "*"
+    ],
+    "department": "ALL",
+    "email": "",
+    "username": "admin",
+    "status": "ACTIVE"
+  }
+]
