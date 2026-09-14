@@ -31,7 +31,16 @@ export const poService = {
    * Receive goods for a PO with guaranteed stock movement records creation
    */
   async receiveGoods(poId, receivingItems, user, note = '', options = {}) {
-    const res = await apiService.receiveGoods(poId, receivingItems, user, note, options);
+    const activeUser = (user && typeof user === 'object') ? user : {};
+    const actorName = activeUser.name || activeUser.employeeName || activeUser.username || (typeof user === 'string' && user ? user : 'ผู้ตรวจรับพัสดุ');
+    const actorRole = activeUser.canonicalRole || activeUser.role || activeUser.title || 'REQUESTER';
+    const safeUser = { ...activeUser, name: actorName, title: actorRole, canonicalRole: actorRole };
+
+    const res = await apiService.receiveGoods(poId, receivingItems, safeUser, note, {
+      ...options,
+      actorName,
+      actorRole
+    });
     const pos = storageService.getPOs() || [];
     const targetPO = pos.find(p => p.id === poId || p.poNo === poId);
     if (targetPO) {
@@ -39,7 +48,7 @@ export const poService = {
         po: targetPO,
         grnNumber: options.grNumber || options.grnNumber,
         receivingItems,
-        currentUser: user
+        currentUser: safeUser
       });
     }
     return res;

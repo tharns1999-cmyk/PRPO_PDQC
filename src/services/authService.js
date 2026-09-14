@@ -220,6 +220,11 @@ export const authService = {
     localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(users));
   },
 
+  // Get current authenticated user (alias to getCurrentSession for resilient fallback)
+  getCurrentUser() {
+    return this.getCurrentSession();
+  },
+
   // Get active session
   getCurrentSession() {
     try {

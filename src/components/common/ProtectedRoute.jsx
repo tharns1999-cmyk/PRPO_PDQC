@@ -7,7 +7,8 @@
 
 import React from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth, CANONICAL_ROLES } from '../../context/AuthContext';
+import { useAuth, CANONICAL_ROLES, normalizeRole, PERMISSIONS } from '../../context/AuthContext';
+import { authService } from '../../services/authService';
 
 export function AccessDeniedCard({ 
   requiredRole, 
@@ -105,17 +106,28 @@ export default function ProtectedRoute({
   const auth = useAuth();
 
   const {
-    isAuthenticated,
-    canonicalRole,
-    currentRole,
+    isAuthenticated: authIsAuthenticated,
+    canonicalRole: authCanonicalRole,
+    currentRole: authCurrentRole,
+    currentUser: authCurrentUser,
     hasRole,
     canAccess,
     canAccessDepartment,
     isLoading
   } = auth;
 
+  // Real-time user resolution with fresh fallback to authService.getCurrentUser()
+  const fallbackUser = typeof authService?.getCurrentUser === 'function' ? authService.getCurrentUser() : null;
+  const activeUser = authCurrentUser || authCurrentRole || fallbackUser;
+  const isAuthenticated = authIsAuthenticated || Boolean(activeUser);
+
+  const effectiveCanonical = activeUser?.canonicalRole || 
+    (activeUser ? normalizeRole(activeUser) : null) || 
+    authCanonicalRole || 
+    CANONICAL_ROLES.REQUESTER;
+
   // 1. Loading state
-  if (isLoading) {
+  if (isLoading && !activeUser) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center p-8">
         <div className="flex flex-col items-center gap-3">
@@ -132,46 +144,102 @@ export default function ProtectedRoute({
   }
 
   // 3. Admin bypasses all role/permission restrictions
-  if (canonicalRole === CANONICAL_ROLES.ADMIN) {
+  const isAdmin = effectiveCanonical === CANONICAL_ROLES.ADMIN ||
+    activeUser?.isAdmin === true ||
+    activeUser?.roleId === 'ADMIN' ||
+    String(activeUser?.role || '').toLowerCase() === 'admin' ||
+    Number(activeUser?.level || 0) >= 99;
+
+  if (isAdmin) {
     return children;
   }
 
   // 4. Role Requirement check (supports single role or array via requiredRole or allowedRoles)
   const effectiveRoles = allowedRoles || requiredRole;
-  if (effectiveRoles && !hasRole(effectiveRoles)) {
-    if (fallback) {
-      return <Navigate to={fallback} replace />;
+  if (effectiveRoles) {
+    const targetRoles = (Array.isArray(effectiveRoles) ? effectiveRoles : [effectiveRoles]).map(r => String(r).toUpperCase());
+    const roleMatches = targetRoles.includes(effectiveCanonical) || 
+      (activeUser?.roleId && targetRoles.includes(String(activeUser.roleId).toUpperCase())) ||
+      (typeof hasRole === 'function' && hasRole(effectiveRoles));
+
+    if (!roleMatches) {
+      if (fallback) {
+        return <Navigate to={fallback} replace />;
+      }
+      return (
+        <AccessDeniedCard
+          requiredRole={effectiveRoles}
+          currentRole={activeUser}
+        />
+      );
     }
-    return (
-      <AccessDeniedCard
-        requiredRole={effectiveRoles}
-        currentRole={currentRole}
-      />
-    );
   }
 
   // 5. Permission Requirement check
-  if (requiredPermission && !canAccess(requiredPermission)) {
-    if (fallback) {
-      return <Navigate to={fallback} replace />;
+  if (requiredPermission) {
+    let hasPermission = typeof canAccess === 'function' ? canAccess(requiredPermission) : false;
+
+    // Resilient Real-Time Fallbacks during State Transitions
+    if (!hasPermission && activeUser) {
+      if (requiredPermission === 'BUDGET_MANAGE') {
+        hasPermission = Boolean(
+          isAdmin ||
+          activeUser.canViewBudget === true ||
+          activeUser.canViewBudgetMenu === true ||
+          ['APPROVER', 'ADMIN', 'REVIEWER'].includes(effectiveCanonical) ||
+          ['ASST_MANAGER', 'PLANT_MANAGER', 'ADMIN'].includes(activeUser.roleId)
+        );
+      } else if (requiredPermission === 'PR_CREATE') {
+        hasPermission = Boolean(
+          isAdmin ||
+          activeUser.canCreatePR === true ||
+          ['REQUESTER', 'ADMIN'].includes(effectiveCanonical)
+        );
+      } else if (requiredPermission === 'PR_APPROVE') {
+        hasPermission = Boolean(
+          isAdmin ||
+          activeUser.canReview === true ||
+          activeUser.canFinalApprove === true ||
+          ['APPROVER', 'REVIEWER', 'ADMIN'].includes(effectiveCanonical)
+        );
+      } else if (requiredPermission === 'ONLINE_PROCURE') {
+        hasPermission = Boolean(
+          isAdmin ||
+          activeUser.canOnlinePurchase === true ||
+          ['PURCHASER', 'ADMIN'].includes(effectiveCanonical)
+        );
+      } else if (requiredPermission === 'SYSTEM_ADMIN') {
+        hasPermission = isAdmin;
+      } else {
+        const allowed = PERMISSIONS?.[requiredPermission];
+        if (allowed && allowed.includes(effectiveCanonical)) {
+          hasPermission = true;
+        }
+      }
     }
-    return (
-      <AccessDeniedCard
-        requiredPermission={requiredPermission}
-        currentRole={currentRole}
-      />
-    );
+
+    if (!hasPermission) {
+      if (fallback) {
+        return <Navigate to={fallback} replace />;
+      }
+      return (
+        <AccessDeniedCard
+          requiredPermission={requiredPermission}
+          currentRole={activeUser}
+        />
+      );
+    }
   }
 
   // 6. Department Scoping check
-  if (requiredDepartment && !canAccessDepartment(requiredDepartment)) {
+  if (requiredDepartment && typeof canAccessDepartment === 'function' && !canAccessDepartment(requiredDepartment)) {
     if (fallback) {
       return <Navigate to={fallback} replace />;
     }
     return (
       <AccessDeniedCard
         requiredPermission={`DEPARTMENT_${requiredDepartment}`}
-        currentRole={currentRole}
+        currentRole={activeUser}
       />
     );
   }

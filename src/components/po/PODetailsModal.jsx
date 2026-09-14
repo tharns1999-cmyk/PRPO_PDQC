@@ -1369,6 +1369,51 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                           ฿{grandTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
+
+                      {/* Financial Reconciliation Breakdown (3-Way Balance) */}
+                      {(() => {
+                        let totalRefundVal = 0;
+                        if (selectedPO.totalRefunded !== undefined && selectedPO.totalRefunded !== null) {
+                          totalRefundVal = Number(selectedPO.totalRefunded);
+                        } else if (selectedPO.refundAmount !== undefined && selectedPO.refundAmount !== null) {
+                          totalRefundVal = Number(selectedPO.refundAmount);
+                        } else if (selectedPO.storeClaims && typeof selectedPO.storeClaims === 'object') {
+                          Object.values(selectedPO.storeClaims).forEach(c => {
+                            if (c?.isResolved && (c.type === 'REFUND' || c.resolutionType === 'REFUND' || c.actionType === 'REFUND' || String(c.note || '').includes('คืนเงิน'))) {
+                              totalRefundVal += Number(c.refundAmount || 0);
+                            }
+                          });
+                        }
+                        if (totalRefundVal === 0 && Array.isArray(selectedPO.items)) {
+                          selectedPO.items.forEach(it => {
+                            if (it.refundAmount) totalRefundVal += Number(it.refundAmount);
+                            else if (it.claimResolution === 'REFUND') {
+                              const q = Number(it.refundedQty || it.damagedQty || it.shortageQty || 0);
+                              const p = Number(it.actualPrice || it.unitPrice || it.price || 0);
+                              totalRefundVal += (q * p);
+                            }
+                          });
+                        }
+
+                        if (totalRefundVal <= 0) return null;
+                        const originalBudgetVal = grandTotalAmount;
+                        const actualSpentVal = Math.max(0, originalBudgetVal - totalRefundVal);
+
+                        return (
+                          <div className="bg-slate-100/90 border border-slate-200 rounded-lg p-2.5 mt-2 space-y-1 text-xs">
+                            <div className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                              <span>กระทบยอดงบประมาณ (Reconciliation):</span>
+                              <span className="text-emerald-700 font-bold font-mono">+คืนงบ ฿{totalRefundVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-600 flex items-center justify-between gap-1 flex-wrap pt-0.5 border-t border-slate-200/60">
+                              <span>งบเดิม ฿{originalBudgetVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span className="text-slate-400">→</span>
+                              <span className="font-bold text-slate-800">จ่ายจริง ฿{actualSpentVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span className="text-emerald-600 font-bold">(+คืนงบ ฿{totalRefundVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

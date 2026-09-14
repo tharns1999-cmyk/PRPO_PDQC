@@ -50,7 +50,7 @@ export default function UserProfileModal({
   // Environment Detection: dev when in import.meta.env.DEV and not GAS
   const isDevEnvironment = isDev !== undefined ? Boolean(isDev) : Boolean(import.meta.env.DEV);
 
-  const targetUser = currentRole || currentUser || auth?.currentUser || auth?.currentRole;
+  const targetUser = auth?.currentUser || currentRole || currentUser || auth?.currentRole;
   if (!targetUser) return null;
 
   const currentDepts = getUserDepartments(targetUser);
@@ -60,9 +60,41 @@ export default function UserProfileModal({
     'REQUESTER';
 
   const handleSelectUser = (userAcc) => {
+    let newSession = null;
+    if (auth?.switchRoleDev) {
+      newSession = auth.switchRoleDev(userAcc);
+    }
     if (handleSwitchUser) {
       handleSwitchUser(userAcc);
     }
+
+    // Safety check on active route/tab:
+    // If the target persona lacks permission for the current screen, redirect immediately
+    try {
+      const activePath = (typeof window !== 'undefined' ? (window.location.hash || window.location.pathname) : '') || '';
+      const newUser = newSession || userAcc;
+      const roleId = String(newUser?.roleId || newUser?.id || '').toUpperCase();
+      const canonical = String(newUser?.canonicalRole || (newUser ? normalizeRole(newUser) : '') || '').toUpperCase();
+      const isAdminUser = roleId === 'ADMIN' || canonical === 'ADMIN' || Number(newUser?.level || 0) >= 99;
+      const isOnlinePurchaserUser = roleId === 'ONLINE_PURCHASER' || canonical === 'PURCHASER';
+      const hasBudgetPermission = isAdminUser || newUser?.canViewBudget === true || ['APPROVER', 'REVIEWER', 'ADMIN'].includes(canonical);
+
+      if (!isAdminUser) {
+        if (activePath.includes('budget') && !hasBudgetPermission) {
+          if (appContext?.onNavigate) appContext.onNavigate('dashboard');
+          else if (typeof window !== 'undefined') window.location.hash = '#/dashboard';
+        } else if (activePath.includes('online-tasks') && !isOnlinePurchaserUser && !newUser?.canOnlinePurchase) {
+          if (appContext?.onNavigate) appContext.onNavigate('dashboard');
+          else if (typeof window !== 'undefined') window.location.hash = '#/dashboard';
+        } else if (activePath.includes('master-data') && isOnlinePurchaserUser) {
+          if (appContext?.onNavigate) appContext.onNavigate('online-tasks');
+          else if (typeof window !== 'undefined') window.location.hash = '#/online-tasks';
+        }
+      }
+    } catch (routeErr) {
+      console.warn('[UserProfileModal] Route permission guard error:', routeErr);
+    }
+
     onClose();
   };
 

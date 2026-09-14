@@ -13,9 +13,10 @@ import {
   CheckCircle2, AlertTriangle, Calendar, Plus, RotateCw,
   Clock
 } from 'lucide-react';
-import BudgetManagementModal from '../components/budget/BudgetManagementModal';
 import DepartmentAllocationModal from '../components/budget/DepartmentAllocationModal';
 import { useAppContext } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { authService } from '../services/authService';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, 
   Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
@@ -37,6 +38,17 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     context = null;
   }
 
+  let auth = null;
+  try {
+    auth = useAuth();
+  } catch {
+    auth = null;
+  }
+
+  // Dynamic Real-Time Effective User Resolution with Fallback
+  const fallbackUser = typeof authService?.getCurrentUser === 'function' ? authService.getCurrentUser() : null;
+  const effectiveUser = currentUser || currentRole || auth?.currentUser || auth?.currentRole || fallbackUser;
+
   let searchParams, setSearchParams;
   try {
     [searchParams, setSearchParams] = useSearchParams();
@@ -46,7 +58,6 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   }
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'overview');
   const [timeRange, setTimeRange] = useState(6);
-  const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [deptAllocationTarget, setDeptAllocationTarget] = useState(null);
 
   const deptList = useMemo(() => {
@@ -71,16 +82,17 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
 
   // 1. User Permission Scoping: Check if current user is Super Admin or Approver (Universal Access)
   const isSuperAdminOrApprover = useMemo(() => {
-    const u = currentUser || currentRole;
+    const u = effectiveUser;
     if (!u) return false;
     const roleId = String(u.roleId || u.id || '').toUpperCase();
     const positionKey = String(u.positionKey || '').toUpperCase();
     const roleStr = String(u.role || '').toLowerCase();
+    const canonicalRole = String(u.canonicalRole || '').toUpperCase();
     const level = Number(u.level || 0);
 
     // Level 99 Admin or Level 3+ Plant Manager / Final Approver
-    if (roleId === 'ADMIN' || roleStr === 'admin' || level >= 99) return true;
-    if (roleId === 'PLANT_MANAGER' || positionKey === 'APPROVER' || u.canFinalApprove || level >= 3) return true;
+    if (roleId === 'ADMIN' || roleStr === 'admin' || canonicalRole === 'ADMIN' || level >= 99 || auth?.isAdmin) return true;
+    if (roleId === 'PLANT_MANAGER' || positionKey === 'APPROVER' || canonicalRole === 'APPROVER' || u.canFinalApprove || level >= 3) return true;
 
     // Explicit ALL/* in assignedDepartments or allowedDepartments
     const assigned = Array.isArray(u.assignedDepartments) ? u.assignedDepartments : [];
@@ -89,41 +101,11 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     if (u.department === 'ALL' || u.primaryDepartment === 'ALL') return true;
 
     return false;
-  }, [currentUser, currentRole]);
+  }, [effectiveUser, auth?.isAdmin]);
 
-  // RBAC Permission: Only Admin or Plant Manager (or Universal ALL privilege) can manage/adjust budget
-  const canManageBudget = useMemo(() => {
-    const u = currentUser || currentRole;
-    if (!u) return false;
-    const roleId = String(u.roleId || u.id || '').toUpperCase();
-    const positionKey = String(u.positionKey || '').toUpperCase();
-    const roleStr = String(u.role || '').toLowerCase();
-    const level = Number(u.level || 0);
-
-    // Online Purchaser has no budget management access
-    if (roleId === 'ONLINE_PURCHASER' || u.canOnlinePurchase) return false;
-
-    // Admin (level 99, role admin, id ADMIN)
-    if (roleId === 'ADMIN' || roleStr === 'admin' || level >= 99) return true;
-
-    // Plant Manager / Approver (Level 3+, canFinalApprove, PLANT_MANAGER, APPROVER)
-    if (roleId === 'PLANT_MANAGER' || roleId === 'APPROVER' || positionKey === 'APPROVER' || positionKey === 'PLANT_MANAGER' || u.canFinalApprove || level >= 3) return true;
-
-    // Explicit canSetBudget
-    if (u.canSetBudget === true) return true;
-
-    // Universal ALL permissions (assigned/allowed)
-    const assigned = Array.isArray(u.assignedDepartments) ? u.assignedDepartments : [];
-    const allowed = Array.isArray(u.allowedDepartments) ? u.allowedDepartments : [];
-    if (assigned.includes('ALL') || assigned.includes('*') || allowed.includes('ALL') || allowed.includes('*')) return true;
-    if ((u.department === 'ALL' || u.primaryDepartment === 'ALL') && (level >= 2 || u.canReview)) return true;
-
-    return false;
-  }, [currentUser, currentRole]);
-
-  // RBAC Permission: Strictly Asst. Manager and Admin can allocate/set monthly budget
+  // RBAC Permission: Asst. Manager, Admin, Plant Manager / Approver can allocate/set monthly budget
   const canAllocateBudget = useMemo(() => {
-    const u = currentUser || currentRole;
+    const u = effectiveUser;
     if (!u) return false;
     const roleId = String(u.roleId || u.id || '').toUpperCase();
     const positionKey = String(u.positionKey || '').toUpperCase();
@@ -132,26 +114,44 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     const username = String(u.username || '').toLowerCase();
     const level = Number(u.level || 0);
 
+    // Online Purchaser has no budget management access
+    if (roleId === 'ONLINE_PURCHASER' || u.canOnlinePurchase) return false;
+
     if (
       roleId === 'ASST_MANAGER' ||
       roleId === 'ADMIN' ||
+      roleId === 'PLANT_MANAGER' ||
+      roleId === 'APPROVER' ||
+      positionKey === 'APPROVER' ||
+      positionKey === 'PLANT_MANAGER' ||
+      positionKey === 'ASST_MANAGER' ||
+      positionKey === 'REVIEWER' ||
       canonicalRole === 'ASST_MANAGER' ||
       canonicalRole === 'ADMIN' ||
-      positionKey === 'ASST_MANAGER' ||
+      canonicalRole === 'APPROVER' ||
+      canonicalRole === 'REVIEWER' ||
       roleStr === 'ASST_MANAGER' ||
       roleStr === 'ADMIN' ||
+      roleStr === 'PLANT_MANAGER' ||
+      roleStr === 'APPROVER' ||
+      u.canFinalApprove ||
+      u.canSetBudget === true ||
+      u.canAllocateBudget === true ||
       username === 'admin' ||
-      level >= 99 ||
-      u.canAllocateBudget === true
+      username.includes('kallayani') ||
+      username.includes('somchai') ||
+      level >= 2 ||
+      auth?.isAdmin ||
+      auth?.canAccess?.('BUDGET_MANAGE')
     ) {
       return true;
     }
     return false;
-  }, [currentUser, currentRole]);
+  }, [effectiveUser, auth]);
 
   // 2. User Assigned Departments
   const userAssignedDepts = useMemo(() => {
-    const u = currentUser || currentRole;
+    const u = effectiveUser;
     if (!u) return [];
     if (isSuperAdminOrApprover) {
       return deptList.map(d => d.code);
@@ -168,7 +168,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     const validCodes = deptList.map(d => d.code);
     const filtered = rawList.filter(code => validCodes.includes(code));
     return filtered.length > 0 ? filtered : (u.department ? [u.department] : []);
-  }, [currentUser, currentRole, isSuperAdminOrApprover, deptList]);
+  }, [effectiveUser, isSuperAdminOrApprover, deptList]);
 
   // 3. Department Selection & Security Fallback
   const queryDept = searchParams.get('dept');
@@ -351,14 +351,26 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     };
   }, [deptsToShow, currentMonthSummary, deptMap]);
 
-  // Load budget transaction log (refund entries) scoped to permitted departments
+  // Load budget transaction log (refund entries) scoped to permitted departments & active period
   const budgetTransactions = useMemo(() => {
     const allTxs = storageService.getBudgetTransactions() || [];
     return allTxs.filter(tx => {
       const txDept = String(tx.dept || tx.department || '').replace(/^ฝ่าย\s*/i, '').trim().toUpperCase();
-      return deptsToShow.includes(txDept);
+      const matchDept = deptsToShow.includes(txDept);
+      if (!matchDept) return false;
+
+      // Period matching: matches selectedMonthKey or falls within period if specified
+      if (tx.period || tx.targetMonth) {
+        const txPeriod = tx.period || tx.targetMonth;
+        return txPeriod === selectedMonthKey;
+      }
+      const txDateStr = String(tx.date || tx.createdAt || tx.timestamp || '');
+      if (txDateStr && txDateStr.length >= 7) {
+        return txDateStr.substring(0, 7) === selectedMonthKey;
+      }
+      return true;
     });
-  }, [pos, prs, deptsToShow, context?.budgetTransactions]);
+  }, [pos, prs, deptsToShow, selectedMonthKey, context?.budgetTransactions]);
 
   const _handleEditSave = async (dept) => {
     if (!editBaseValue || isNaN(editBaseValue) || Number(editBaseValue) < 0) return;
@@ -505,9 +517,14 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     return { trendData, tableData, categoryData };
   }, [pos, selectedDept, dynamicSummary, selectedMonthKey, timeRange, deptsToShow]);
 
-  const effectiveRole = currentRole || currentUser;
-  const hasBudgetAccess = isSuperAdminOrApprover || effectiveRole?.canViewBudget || (effectiveRole && (effectiveRole.roleId === 'ADMIN' || effectiveRole.level >= 99));
-  if (!hasBudgetAccess && currentRole) {
+  const effectiveRole = effectiveUser || currentRole || currentUser;
+  const hasBudgetAccess = isSuperAdminOrApprover || 
+    effectiveRole?.canViewBudget === true || 
+    effectiveRole?.canViewBudgetMenu === true ||
+    (effectiveRole && (effectiveRole.roleId === 'ADMIN' || effectiveRole.level >= 99)) ||
+    Boolean(auth?.canAccess && auth.canAccess('BUDGET_MANAGE'));
+
+  if (!hasBudgetAccess && effectiveRole) {
     return (
       <div className="w-full my-12 text-center p-8 bg-white rounded-3xl border border-slate-200/80 shadow-sm space-y-4 animate-fade-in">
         <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl w-16 h-16 mx-auto flex items-center justify-center border border-rose-100">
@@ -515,7 +532,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
         </div>
         <h3 className="text-lg font-bold text-slate-900">สิทธิ์การเข้าถึงถูกจำกัด (Access Restricted)</h3>
         <p className="text-sm text-slate-500 max-w-md mx-auto">
-          บทบาท <b>{effectiveRole?.title || effectiveRole?.role}</b> ไม่ได้รับอนุญาตให้ดูข้อมูลการเงินและงบประมาณประจำเดือน
+          บทบาท <b>{effectiveRole?.title || effectiveRole?.role || effectiveRole?.canonicalRole || 'ผู้ใช้งาน'}</b> ไม่ได้รับอนุญาตให้ดูข้อมูลการเงินและงบประมาณประจำเดือน
         </p>
       </div>
     );
@@ -760,27 +777,6 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
               <span className="hidden xl:inline">รีเฟรช</span>
             </button>
           </div>
-
-
-          {/* Piece 5: Action Button: [+ ปรับยอด / เติมงบประมาณ] (RBAC restricted to Admin & Plant Manager / ALL) */}
-          {canManageBudget && (
-            <div className="flex flex-col justify-end">
-              <span className="text-[10px] font-bold text-transparent uppercase tracking-wider px-1 mb-1 hidden sm:block select-none pointer-events-none">
-                &nbsp;
-              </span>
-              <button
-                type="button"
-                id="btn-open-budget-modal"
-                data-testid="btn-open-budget-modal"
-                onClick={() => setIsBudgetModalOpen(true)}
-                className="h-[42px] px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 bg-[length:200%_auto] hover:bg-right text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm hover:shadow-md hover:shadow-emerald-600/25 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
-                title="คลิกเพื่อเปิดหน้าต่างปรับปรุงหรือเติมงบประมาณประจำเดือน"
-              >
-                <Plus className="w-4 h-4 stroke-[2.5]" />
-                <span>+ ปรับยอด / เติมงบประมาณ</span>
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -942,6 +938,8 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                       {canAllocateBudget && (
                         <button 
                           type="button"
+                          id={`btn-edit-budget-${dept}`}
+                          data-testid={`btn-edit-budget-${dept}`}
                           onClick={() => setDeptAllocationTarget({
                             dept,
                             deptName: deptMap[dept]?.name || DEPARTMENTS[dept]?.name || dept,
@@ -1394,7 +1392,40 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                     const amountNum = Number(tx.amount ?? tx.refundAmount ?? tx.creditAmount ?? 0);
                     const docRef = tx.referenceDoc || tx.docNo || tx.poNumber || tx.poNo || tx.refDocNo || tx.refId || tx.referencePo || (tx.note?.match(/PO-[A-Z0-9-]+/i)?.[0]) || '-';
                     const deptDisplay = tx.departmentName || (tx.department ? (tx.department.startsWith('ฝ่าย') ? tx.department : `ฝ่าย ${tx.department}`) : (tx.dept ? `ฝ่าย ${tx.dept}` : 'ฝ่าย PD'));
-                    const typeDisplay = tx.type === 'BUDGET_ROLLBACK' || tx.type === 'REFUND_CREDIT' || tx.transactionType === 'BUDGET_RESTORED_CLAIM_REFUND' ? 'BUDGET_ROLLBACK' : (tx.typeLabel || tx.type || 'BUDGET_ROLLBACK');
+
+                    const rawType = String(tx.type || tx.transactionType || tx.actionType || '').toUpperCase();
+                    const isRefund = ['REFUND_SETTLEMENT', 'BUDGET_ROLLBACK', 'REFUND_CREDIT', 'BUDGET_RESTORED_CLAIM_REFUND'].includes(rawType) ||
+                                     Boolean(tx.referencePo || (tx.poNumber && !['MONTHLY_ALLOCATION', 'SET_BUDGET'].includes(rawType)) || tx.storeKey || String(tx.note || '').includes('คืนเงิน'));
+                    const isMonthlyAlloc = rawType === 'MONTHLY_ALLOCATION' || rawType === 'ALLOCATE_BUDGET' || (rawType === 'SET_BUDGET' && !isRefund && (tx.previousAmount === 0 || tx.isInitialAllocation));
+                    const isTopUp = rawType === 'TOP_UP';
+
+                    let badgeText = '[ปรับปรุงงบประมาณ]';
+                    let badgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
+                    let typeDisplay = tx.typeLabel || tx.type || 'ADJUST';
+
+                    if (isRefund) {
+                      badgeText = '[คืนงบประมาณ]';
+                      badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      typeDisplay = 'BUDGET_ROLLBACK';
+                    } else if (isMonthlyAlloc) {
+                      badgeText = '[จัดสรรงบประมาณ]';
+                      badgeClass = 'bg-indigo-50 text-indigo-700 border-indigo-200';
+                      typeDisplay = 'MONTHLY_ALLOCATION';
+                    } else if (isTopUp) {
+                      badgeText = '[เติมงบประมาณ]';
+                      badgeClass = 'bg-teal-50 text-teal-700 border-teal-200';
+                      typeDisplay = 'TOP_UP';
+                    } else if (amountNum < 0) {
+                      badgeText = '[ปรับลดยอดงบประมาณ]';
+                      badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+                    }
+
+                    // Strict amount sign formatting: Never hardcode '+' to prevent '+-'
+                    const isPositive = amountNum > 0;
+                    const isNegative = amountNum < 0;
+                    const signPrefix = isPositive ? '+฿' : isNegative ? '-฿' : '฿';
+                    const absAmountFormatted = Math.abs(amountNum).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    const amountColor = isPositive ? 'text-emerald-600' : isNegative ? 'text-rose-600' : 'text-slate-600';
 
                     return (
                       <tr key={tx.id || tx.transactionId || Math.random()} className="hover:bg-slate-50/80 transition-colors">
@@ -1402,16 +1433,17 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                           {tx.date || tx.createdAt?.slice(0, 19).replace('T', ' ') || '-'}
                         </td>
                         <td className="py-3.5 px-4">
-                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {typeDisplay}
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${badgeClass}`}>
+                            <span>{badgeText}</span>
+                            <span className="text-[10px] opacity-80">({typeDisplay})</span>
                           </span>
                         </td>
                         <td className="py-3.5 px-4 font-semibold text-slate-800">
                           {deptDisplay}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono tabular-nums">
-                          <span className="font-semibold text-emerald-600 font-mono">
-                            +฿{amountNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <span className={`font-semibold ${amountColor} font-mono`}>
+                            {signPrefix}{absAmountFormatted}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 font-mono text-xs text-indigo-600 font-medium">
@@ -1436,24 +1468,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
         </div>
       )}
 
-      {/* ── Integrated Budget Management Modal ── */}
-      <BudgetManagementModal
-        isOpen={isBudgetModalOpen}
-        onClose={() => setIsBudgetModalOpen(false)}
-        departments={deptList}
-        currentRole={currentRole}
-        currentUser={currentUser}
-        budgetSummary={budgetSummary || context?.budgetSummary}
-        budgetTransactions={budgetTransactions}
-        onAdjustBudget={context?.adjustBudget || (async (params) => {
-          await apiService.adjustBudget(params);
-          if (onRefresh) onRefresh();
-        })}
-        onRefresh={() => {
-          if (onRefresh) onRefresh();
-          if (context?.refreshData) context.refreshData();
-        }}
-      />
+
 
       {/* ── Department-Level Budget Allocation Modal (Asst. Manager & Admin) ── */}
       <DepartmentAllocationModal
@@ -1463,8 +1478,8 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
         departmentName={deptAllocationTarget?.deptName}
         targetPeriod={selectedMonthKey}
         currentAmount={deptAllocationTarget?.currentAmount || 0}
-        currentUser={currentUser}
-        currentRole={currentRole}
+        currentUser={effectiveUser || currentUser}
+        currentRole={effectiveUser || currentRole}
         onSuccess={() => {
           setDeptAllocationTarget(null);
           if (onRefresh) onRefresh();

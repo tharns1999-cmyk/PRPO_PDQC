@@ -9,6 +9,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { authService, DEFAULT_EMPLOYEE_ACCOUNTS } from '../services/authService.js';
 import { storageService } from '../services/storageService.js';
 import { auditService } from '../services/auditService.js';
+import { resolveUserPermissions } from '../config/constants.js';
 
 let _cachedClientIp = null;
 
@@ -177,6 +178,42 @@ export function AuthProvider({ children }) {
   // Background client IP fetch without blocking page load
   useEffect(() => {
     fetchClientIp().catch(() => {});
+  }, []);
+
+  // Synchronize state when persona or session changes from outside (storage or custom event)
+  useEffect(() => {
+    const handleSync = (event) => {
+      try {
+        let session = event?.detail;
+        if (!session && typeof localStorage !== 'undefined') {
+          const stored = localStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem('prpo_auth_session');
+          if (stored) session = JSON.parse(stored);
+        }
+        if (session && isSessionValid(session)) {
+          const normalized = normalizeRole(session);
+          setCurrentUser(prev => {
+            if (!prev || prev.id !== session.id || prev.username !== session.username || prev.canonicalRole !== normalized) {
+              return {
+                ...session,
+                canonicalRole: normalized
+              };
+            }
+            return prev;
+          });
+        }
+      } catch (e) {
+        console.warn('[AuthContext] sync event error:', e);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', handleSync);
+      window.addEventListener('prpo_user_switched', handleSync);
+      return () => {
+        window.removeEventListener('storage', handleSync);
+        window.removeEventListener('prpo_user_switched', handleSync);
+      };
+    }
   }, []);
 
   /**
@@ -350,7 +387,7 @@ export function AuthProvider({ children }) {
     let target = null;
     let userPool = DEFAULT_EMPLOYEE_ACCOUNTS;
     try {
-      const cached = localStorage.getItem('prpo_users_cache');
+      const cached = localStorage.getItem('prpo_users_cache') || localStorage.getItem('prpo_registered_users');
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) userPool = parsed;
@@ -358,8 +395,18 @@ export function AuthProvider({ children }) {
     } catch (e) {}
 
     if (typeof roleOrUser === 'string') {
-      const targetCanonical = normalizeRole(roleOrUser);
-      target = userPool.find(u => u.canonicalRole === targetCanonical) || userPool[0];
+      const cleanKey = roleOrUser.trim().toLowerCase();
+      target = userPool.find(u => 
+        (u.id && u.id.toLowerCase() === cleanKey) ||
+        (u.username && u.username.toLowerCase() === cleanKey) ||
+        (u.roleId && u.roleId.toLowerCase() === cleanKey) ||
+        (u.positionKey && u.positionKey.toLowerCase() === cleanKey) ||
+        (u.canonicalRole && u.canonicalRole.toLowerCase() === cleanKey)
+      );
+      if (!target) {
+        const targetCanonical = normalizeRole(roleOrUser);
+        target = userPool.find(u => u.canonicalRole === targetCanonical) || userPool[0];
+      }
     } else if (roleOrUser && typeof roleOrUser === 'object') {
       target = roleOrUser;
     }
@@ -377,15 +424,34 @@ export function AuthProvider({ children }) {
     }
 
     const normalized = normalizeRole(target);
+    const rolePermissions = resolveUserPermissions({ ...target, canonicalRole: normalized });
+    const userDepts = target.departments || target.assignedDepartments || target.allowedDepartments || (target.department ? [target.department] : ['PD']);
     const sessionPayload = {
       ...target,
+      ...rolePermissions,
+      role: rolePermissions,
+      rolePermissions: rolePermissions,
+      departments: userDepts,
+      assignedDepartments: target.assignedDepartments || userDepts,
+      allowedDepartments: target.allowedDepartments || userDepts,
+      primaryDepartment: target.primaryDepartment || userDepts[0] || 'PD',
+      department: target.department || userDepts[0] || 'PD',
       canonicalRole: normalized,
       expiresAt: Date.now() + SESSION_EXPIRATION_MS
     };
 
     localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionPayload));
+    localStorage.setItem('prpo_auth_session', JSON.stringify(sessionPayload));
+    localStorage.setItem('prpo_current_user', JSON.stringify(sessionPayload));
     storageService.setCurrentRole?.(sessionPayload);
     setCurrentUser(sessionPayload);
+
+    if (typeof window !== 'undefined') {
+      try {
+        window.dispatchEvent(new CustomEvent('prpo_user_switched', { detail: sessionPayload }));
+      } catch (e) {}
+    }
+
     return sessionPayload;
   }, [currentUser, originalUser]);
 

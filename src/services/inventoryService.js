@@ -22,7 +22,11 @@ import { getValidConversionRate, toStockQuantity, toStockUnitCost } from '../uti
 export function calculateStockMovementValue(movement, product = {}) {
   const conversionRate = getValidConversionRate(product.conversionRate || product.conversionRatio || movement.conversionRate);
   const rawPrice = movement.baseUnitCost ?? movement.stockUnitPrice ?? (movement.unitPrice || product.price || 0);
-  const unitCostInStock = movement.baseUnitCost ? Number(movement.baseUnitCost) : toStockUnitCost(rawPrice, conversionRate);
+  const unitCostInStock = movement.baseUnitCost 
+    ? Number(movement.baseUnitCost) 
+    : (typeof toStockUnitCost === 'function' 
+        ? toStockUnitCost(rawPrice, conversionRate) 
+        : Number(rawPrice || 0) / (Number(conversionRate) > 0 ? Number(conversionRate) : 1));
   const totalAmount = movement.totalAmount !== undefined && movement.totalAmount !== null
     ? Number(movement.totalAmount)
     : (movement.totalPrice !== undefined && movement.totalPrice !== null && !movement.unitPrice
@@ -97,6 +101,10 @@ export const inventoryService = {
     const vendorName = po.vendorName || po.vendor?.name || 'ผู้จำหน่าย';
     const movements = [];
 
+    const activeUser = (currentUser && typeof currentUser === 'object') ? currentUser : {};
+    const actorName = activeUser.name || activeUser.employeeName || activeUser.username || (typeof currentUser === 'string' && currentUser ? currentUser : 'สิรภัทร แจ่มมิน');
+    const actorRole = activeUser.canonicalRole || activeUser.role || activeUser.title || 'REQUESTER';
+
     receivingItems.forEach(item => {
       const goodQty = Number(item.goodQty ?? item.acceptedQty ?? item.receivedThisTime ?? item.receivedQty ?? item.qty ?? 0);
       if (goodQty <= 0) return;
@@ -116,13 +124,17 @@ export const inventoryService = {
       }) || {};
 
       const conversionRate = getValidConversionRate(item.conversionRate || item.conversionRatio || prod.conversionRate || prod.conversionRatio || 1);
-      const receivedStockQty = toStockQuantity(goodQty, conversionRate);
+      const receivedStockQty = typeof toStockQuantity === 'function'
+        ? toStockQuantity(goodQty, conversionRate)
+        : Number(goodQty || 0) * (Number(conversionRate) > 0 ? Number(conversionRate) : 1);
       const currentBalance = Number(prod.stockBalance ?? 0);
       const newBalance = currentBalance + receivedStockQty;
 
       // Calculate unit cost in stock unit
       const purchasePrice = Number(item.actUnitPrice ?? item.actualPrice ?? item.price ?? prod.price ?? 0);
-      const unitCostInStock = toStockUnitCost(purchasePrice, conversionRate);
+      const unitCostInStock = typeof toStockUnitCost === 'function'
+        ? toStockUnitCost(purchasePrice, conversionRate)
+        : Number(purchasePrice || 0) / (Number(conversionRate) > 0 ? Number(conversionRate) : 1);
       const receivedPoItemTotal = item.total !== undefined && item.total !== null
         ? Number(item.total)
         : (receivedStockQty * unitCostInStock);
@@ -161,9 +173,9 @@ export const inventoryService = {
         totalAmount: Number(receivedPoItemTotal), // มูลค่าเงินตาม PO จริง (เช่น 1,000.00 ฿)
         totalPrice: Number(receivedPoItemTotal),
         totalValue: Number(receivedPoItemTotal),
-        actorName: currentUser?.name || currentUser?.employeeName || 'สิรภัทร แจ่มมิน',
-        user: currentUser?.name || currentUser?.employeeName || 'สิรภัทร แจ่มมิน',
-        actorRole: currentUser?.canonicalRole || currentUser?.role || 'REQUESTER',
+        actorName,
+        user: actorName,
+        actorRole,
         department: po.department || prod.department || 'PD',
         location: prod.locationName || prod.storageLocationName || 'ออฟฟิศ PD',
         locationName: prod.locationName || prod.storageLocationName || 'ออฟฟิศ PD',

@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { modalService } from '../../services/modalService';
 import { budgetService } from '../../services/budgetService';
-import { apiService } from '../../services/apiService';
 
 /**
  * Compact Single-Department Budget Allocation Modal
@@ -91,13 +90,13 @@ function DepartmentAllocationModalContent({
 
   // Department metadata
   const isPD = department === 'PD';
-  const deptLabel = isPD ? 'ฝ่ายผลิต (PD)' : 'ฝ่ายควบคุมคุณภาพ (QC)';
+  const deptLabel = departmentName ? `${departmentName} (${department})` : (isPD ? 'ฝ่ายผลิต (PD)' : (department === 'QC' ? 'ฝ่ายควบคุมคุณภาพ (QC)' : department));
   const themeGradient = isPD 
     ? 'from-indigo-600 to-violet-600' 
-    : 'from-cyan-600 to-blue-600';
+    : (department === 'QC' ? 'from-cyan-600 to-blue-600' : 'from-slate-700 to-slate-900');
   const themeBadge = isPD 
     ? 'bg-indigo-50 text-indigo-700 border-indigo-200' 
-    : 'bg-cyan-50 text-cyan-700 border-cyan-200';
+    : (department === 'QC' ? 'bg-cyan-50 text-cyan-700 border-cyan-200' : 'bg-slate-100 text-slate-700 border-slate-200');
 
   const handleQuickAdd = (inc) => {
     setAmountStr(prev => String((Number(prev) || 0) + inc));
@@ -128,7 +127,7 @@ function DepartmentAllocationModalContent({
     try {
       const actorName = currentUser?.name || currentUser?.displayName || currentRole?.name || 'Asst. Manager';
       
-      // 1. Allocate via budgetService for target period
+      // 1. Allocate via budgetService for target period (Single source of truth)
       await budgetService.allocateMonthlyBudget({
         period: targetPeriod,
         allocations: {
@@ -137,19 +136,6 @@ function DepartmentAllocationModalContent({
         actor: actorName,
         reason: reason.trim() || `จัดสรรงบประมาณ ${department} ประจำเดือน ${targetPeriod}`
       });
-
-      // 2. Also sync to apiService
-      try {
-        await apiService.updateBudget(
-          department, 
-          numericAmount, 
-          targetPeriod, 
-          actorName, 
-          reason.trim() || `จัดสรรงบประมาณ ${department} ประจำเดือน ${targetPeriod}`
-        );
-      } catch (err) {
-        console.warn('[DepartmentAllocationModal] apiService.updateBudget notice:', err);
-      }
 
       modalService.success(
         'บันทึกงบประมาณสำเร็จ', 

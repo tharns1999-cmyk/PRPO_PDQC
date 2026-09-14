@@ -14,6 +14,7 @@ import { notificationService } from '../../services/notificationService';
 import UserProfileModal from './UserProfileModal';
 import { useAppContext } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { authService } from '../../services/authService';
 import { getUserDepartments } from '../../utils/permissions';
 import { calculateActiveClaimCount, calculatePendingActionCount, calculateUrgentTaskCount } from '../../context/ProcurementContext';
 
@@ -157,13 +158,45 @@ export default function Sidebar({
     setShowNotiDrawer(false);
   };
 
-  const isOnlinePurchaser = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER';
-  const isAdmin = currentUser?.role === 'admin' || 
-                  currentUser?.roleId === 'ADMIN' || 
-                  currentRole?.role === 'admin' || 
-                  currentRole?.roleId === 'ADMIN' || 
-                  currentRole?.id === 'ADMIN' || 
-                  (currentRole?.level && currentRole.level >= 99);
+  const fallbackUser = typeof authService?.getCurrentUser === 'function' ? authService.getCurrentUser() : null;
+  const effectiveUser = currentRole || currentUser || auth?.currentUser || auth?.currentRole || fallbackUser;
+
+  const isAdmin = Boolean(
+    currentUser?.role === 'admin' || 
+    currentUser?.roleId === 'ADMIN' || 
+    currentRole?.role === 'admin' || 
+    currentRole?.roleId === 'ADMIN' || 
+    currentRole?.id === 'ADMIN' || 
+    (currentRole?.level && currentRole.level >= 99) ||
+    effectiveUser?.role === 'admin' ||
+    effectiveUser?.roleId === 'ADMIN' ||
+    effectiveUser?.canonicalRole === 'ADMIN' ||
+    effectiveUser?.id === 'ADMIN' ||
+    (effectiveUser?.level && effectiveUser.level >= 99) ||
+    auth?.isAdmin
+  );
+
+  const isOnlinePurchaser = !isAdmin && Boolean(
+    effectiveUser?.roleId === 'ONLINE_PURCHASER' ||
+    effectiveUser?.id === 'ONLINE_PURCHASER' ||
+    effectiveUser?.canonicalRole === 'PURCHASER' ||
+    (effectiveUser?.canOnlinePurchase && !effectiveUser?.canReview && !effectiveUser?.canFinalApprove)
+  );
+
+  // Dynamic UX Filtering: Check if current user has permission to view/manage budget
+  // True for Admin, Plant Manager / Approver, Asst Manager / Reviewer
+  // Strictly false for Requester and Purchaser
+  const canViewBudget = Boolean(
+    isAdmin || (
+      !isOnlinePurchaser && (
+        effectiveUser?.canViewBudget === true ||
+        effectiveUser?.canViewBudgetMenu === true ||
+        auth?.canAccess?.('BUDGET_MANAGE') ||
+        ['APPROVER', 'REVIEWER'].includes(effectiveUser?.canonicalRole) ||
+        ['ASST_MANAGER', 'PLANT_MANAGER'].includes(effectiveUser?.roleId)
+      )
+    )
+  );
 
   // Helper: ตรวจสอบสถานะ Order ที่ปิดงานแล้ว
   const isOrderClosed = (status) => {
@@ -198,9 +231,9 @@ export default function Sidebar({
 
   // Calculate Task Counts for Badges (using unified workflowEngine task aggregator)
   const taskCounts = React.useMemo(() => {
-    const userTasks = workflowEngine.getUserTasks(currentRole, prs, pos);
+    const userTasks = workflowEngine.getUserTasks(effectiveUser || currentRole, prs, pos);
     return userTasks.counts;
-  }, [prs, pos, currentRole]);
+  }, [prs, pos, currentRole, effectiveUser]);
 
   const menuCategories = [
     {
@@ -229,7 +262,7 @@ export default function Sidebar({
           label: 'งานจัดซื้อ',
           ariaLabel: 'งานจัดซื้อ',
           icon: ShoppingBag, 
-          visible: currentRole?.canOnlinePurchase, 
+          visible: Boolean(effectiveUser?.canOnlinePurchase || isOnlinePurchaser), 
           badge: urgentTaskCount > 0 ? urgentTaskCount : null 
         },
       ]
@@ -261,7 +294,7 @@ export default function Sidebar({
           label: 'งบประมาณ',
           ariaLabel: 'งบประมาณ',
           icon: WalletCards, 
-          visible: !isAdmin && !isOnlinePurchaser && currentRole?.canViewBudget 
+          visible: !isAdmin && canViewBudget 
         },
       ]
     },

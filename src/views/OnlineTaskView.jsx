@@ -21,6 +21,8 @@ import {
 } from './procurement/OnlineProcurementHub';
 import { formatCurrency } from '../utils/formatters.js';
 
+const formatMoney = (n) => formatCurrency(n);
+
 // 🛡️ Helper: Check if PO has Goods Receipt Note (GRN) from warehouse inspection
 export function checkPOHasGRN(po) {
   if (!po) return false;

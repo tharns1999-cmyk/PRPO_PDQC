@@ -1,1 +1,31 @@
-[]
+[
+  {
+    "id": "BTX-1789383795699",
+    "date": "2026-09-14 11:03:15",
+    "createdAt": "2026-09-14T11:03:15.696Z",
+    "dept": "PD",
+    "type": "BUDGET_ROLLBACK",
+    "typeLabel": "คืนงบประมาณ (Budget Reversal)",
+    "previousAmount": 0,
+    "newAmount": 25000,
+    "amount": 432,
+    "actor": "คุณนัท จัดซื้อ",
+    "note": "คืนงบประมาณส่วนต่างจากการสั่งซื้อออนไลน์ได้ราคา/จำนวนถูกลง (PO: PO-PD-2026-001)",
+    "targetMonth": "2026-09"
+  },
+  {
+    "id": "BTX-1789383404284",
+    "date": "2026-09-14 10:56:44",
+    "createdAt": "2026-09-14T10:56:44.280Z",
+    "dept": "PD",
+    "type": "MONTHLY_ALLOCATION",
+    "typeLabel": "จัดสรรงบประมาณประจำเดือน",
+    "previousAmount": 0,
+    "newAmount": 25000,
+    "amount": 25000,
+    "actor": "กัลยาณี พลไกร",
+    "note": "จัดสรรงบประมาณประจำเดือน ตุลาคม 2569",
+    "targetMonth": "2026-10",
+    "period": "2026-10"
+  }
+]

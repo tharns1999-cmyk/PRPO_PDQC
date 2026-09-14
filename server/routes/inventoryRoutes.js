@@ -12,7 +12,16 @@ const router = Router();
 router.post(['/pos/:id/receive', '/receive-goods', '/receive', '/grn'], async (req, res) => {
   try {
     const poId = req.params.id || req.body.poId;
-    const { receivingItems = [], user = {}, note = '', options = {}, grNumber: bodyGrNo } = req.body;
+    const { receivingItems = [], note = '', options = {}, grNumber: bodyGrNo } = req.body;
+    const rawUser = req.body.user || req.body.currentUser || options?.user || options?.currentUser || {};
+    const actorName = req.body.actorName || options?.actorName || rawUser.name || rawUser.username || rawUser.employeeName || (typeof rawUser === 'string' ? rawUser : 'System');
+    const actorRole = req.body.actorRole || options?.actorRole || rawUser.title || rawUser.canonicalRole || rawUser.role || 'Requester';
+    const user = {
+      ...(typeof rawUser === 'object' ? rawUser : {}),
+      name: actorName,
+      title: actorRole,
+      canonicalRole: actorRole
+    };
     const timestamp = new Date().toLocaleString('th-TH');
 
     const [pos, products, stockLogs, budgets] = await Promise.all([
@@ -170,7 +179,9 @@ router.post(['/pos/:id/receive', '/receive-goods', '/receive', '/grn'], async (r
               unitPrice: stockUnitPrice,
               totalPrice: stockUnitPrice * stockReceive,
               actualPrice: itemUnitPrice,
-              user: `${user.name || 'System'} (${user.title || 'Requester'})`,
+              user: `${actorName} (${actorRole})`,
+              actorName,
+              actorRole,
               locationId: prod.locationId || '',
               locationName: prod.locationName || '',
               note: note || logNote
@@ -194,7 +205,9 @@ router.post(['/pos/:id/receive', '/receive-goods', '/receive', '/grn'], async (r
               qty: stockReceive,
               unit: sUnit,
               balance: currentBal,
-              user: `${user.name || 'System'} (${user.title || 'Requester'})`,
+              user: `${actorName} (${actorRole})`,
+              actorName,
+              actorRole,
               locationId: prod.locationId || '',
               locationName: prod.locationName || '',
               note: `[สินค้าชำรุด/NG] ${defectNote || reasonLabel}`
@@ -240,7 +253,9 @@ router.post(['/pos/:id/receive', '/receive-goods', '/receive', '/grn'], async (r
           qty: claimedStockQty,
           unit: sUnit,
           balance: prod ? prod.stockBalance : 0,
-          user: `${user.name || 'System'} (${user.title || 'Requester'})`,
+          user: `${actorName} (${actorRole})`,
+          actorName,
+          actorRole,
           note: `[สินค้ามีปัญหา/เคลม (${reasonLabel})] ${defectNote || '-'} (PO ${po.poNo})`
         });
 
@@ -286,8 +301,8 @@ router.post(['/pos/:id/receive', '/receive-goods', '/receive', '/grn'], async (r
     po.activityLog = po.activityLog || [];
     po.activityLog.push({
       action: allFullyReceived ? 'รับสินค้าครบและปิด PO (Goods Received – Closed)' : (hasAnyClaim ? 'ตรวจรับสินค้าพร้อมแจ้งเคลม' : 'รับสินค้าบางส่วน (Partial Receiving)'),
-      user: user.name || 'System',
-      role: user.title || 'Requester',
+      user: actorName,
+      role: actorRole,
       timestamp,
       note: summaryNote,
       grNumber
@@ -382,6 +397,7 @@ router.post('/quick-issue', async (req, res) => {
     const currentBal = Number(prod.stockBalance) || 0;
     const newBal = Math.max(0, currentBal - issueQty);
     prod.stockBalance = newBal;
+    const issueActor = (typeof user === 'object' && user ? (user.name || user.username || user.employeeName) : user) || 'Requester';
 
     const logEntry = {
       id: `LOG-ISSUE-${Date.now()}`,
@@ -394,7 +410,8 @@ router.post('/quick-issue', async (req, res) => {
       qty: issueQty,
       unit: unit || prod.stockUnit || prod.unit || 'ชิ้น',
       balance: newBal,
-      user: user || 'Requester',
+      user: issueActor,
+      actorName: issueActor,
       department: department || prod.department || 'PD',
       usageUnit: usageUnit || '',
       note: note || 'เบิกใช้วัสดุ/อุปกรณ์ด่วน (Quick Issue)'

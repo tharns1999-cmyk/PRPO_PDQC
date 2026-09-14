@@ -137,6 +137,89 @@ router.put(['/pos/:id', '/po/:id'], async (req, res) => {
       pos.push(updated);
     }
     await writeFile('pos.json', pos);
+
+    // ── Claim Settlement & PO Finalization: Budget Ledger Auto-Sync ──
+    try {
+      const targetPO = idx !== -1 ? pos[idx] : updated;
+      const refPo = targetPO.poNo || targetPO.poNumber || targetPO.id;
+      const dept = String(targetPO.department || targetPO.dept || 'PD').replace(/^ฝ่าย\s*/i, '').trim().toUpperCase() || 'PD';
+      const period = targetPO.period || (targetPO.issueDate ? String(targetPO.issueDate).slice(0, 7) : '2026-09');
+
+      // Calculate total refund from PO fields or storeClaims
+      let refundAmt = 0;
+      if (targetPO.totalRefunded !== undefined && targetPO.totalRefunded !== null) {
+        refundAmt = Number(targetPO.totalRefunded);
+      } else if (targetPO.refundAmount !== undefined && targetPO.refundAmount !== null) {
+        refundAmt = Number(targetPO.refundAmount);
+      } else if (targetPO.storeClaims && typeof targetPO.storeClaims === 'object') {
+        Object.values(targetPO.storeClaims).forEach(c => {
+          if (c?.isResolved && (c.type === 'REFUND' || c.resolutionType === 'REFUND' || c.actionType === 'REFUND' || String(c.note || '').includes('คืนเงิน'))) {
+            refundAmt += Number(c.refundAmount || 0);
+          }
+        });
+      }
+
+      if (refundAmt > 0) {
+        const transactions = await readFile('budgetTransactions.json', []);
+        const idempotencyKey = `REFUND_${refPo}_TOTAL_${refundAmt}`;
+        const alreadyLogged = transactions.some(t => 
+          t.idempotencyKey === idempotencyKey ||
+          ((t.docNo === refPo || t.referenceDoc === refPo) && Number(t.amount || t.refundAmount || 0) === refundAmt)
+        );
+
+        if (!alreadyLogged) {
+          const now = new Date();
+          const newTx = {
+            id: `TX-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+            idempotencyKey,
+            timestamp: now.toISOString(),
+            date: now.toISOString().replace('T', ' ').slice(0, 19),
+            createdAt: now.toISOString(),
+            period: period || '2026-09',
+            department: dept,
+            dept,
+            departmentName: `ฝ่าย ${dept}`,
+            type: 'BUDGET_ROLLBACK',
+            actionType: 'REFUND_SETTLEMENT',
+            transactionType: 'REFUND_SETTLEMENT',
+            settlementType: 'REFUND_SETTLEMENT',
+            typeLabel: 'คืนงบประมาณ (Refund)',
+            amount: Number(refundAmt),
+            refundAmount: Number(refundAmt),
+            creditAmount: Number(refundAmt),
+            docType: 'PO',
+            docNo: refPo,
+            referenceDoc: refPo,
+            notes: `คืนงบประมาณจากการเคลม/ปิดงาน (${refPo})`,
+            note: `คืนงบประมาณจากการเคลม/ปิดงาน (${refPo})`,
+            remark: `คืนงบประมาณจากการเคลม/ปิดงาน (${refPo})`,
+            actor: targetPO.updatedBy || 'ผู้ดูแลระบบจัดซื้อ',
+            actorName: targetPO.updatedBy || 'ผู้ดูแลระบบจัดซื้อ',
+            actorRole: 'PURCHASER'
+          };
+          transactions.unshift(newTx);
+          await writeFile('budgetTransactions.json', transactions);
+
+          // Update budgets.json
+          const budgets = await readFile('budgets.json', {});
+          if (budgets[dept]) {
+            const curSpent = Number(budgets[dept].spent ?? budgets[dept].actualExpense ?? 0);
+            const newSpent = Math.max(0, Math.round((curSpent - refundAmt) * 100) / 100);
+            const monthlyAlloc = Number(budgets[dept].monthlyBudget || budgets[dept].budgetTotal || 0);
+            budgets[dept].spent = newSpent;
+            budgets[dept].actualExpense = newSpent;
+            budgets[dept].variance = Math.round((monthlyAlloc - newSpent) * 100) / 100;
+            budgets[dept].remainingBudget = budgets[dept].variance;
+            if (!budgets[dept].refundCredits) budgets[dept].refundCredits = {};
+            budgets[dept].refundCredits[period] = Math.round(((budgets[dept].refundCredits[period] || 0) + refundAmt) * 100) / 100;
+            await writeFile('budgets.json', budgets);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[procurementRoutes] Budget sync error:', e.message);
+    }
+
     res.json(updated);
   } catch (e) {
     res.status(500).json({ error: e.message });

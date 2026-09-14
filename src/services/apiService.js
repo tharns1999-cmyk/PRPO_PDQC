@@ -253,10 +253,16 @@ export const apiService = {
     const { dept, action, newAmount, previousAmount, delta, reason, actor, targetMonth } = params;
     const budgets = storageService.getBudgets();
     if (!budgets[dept]) budgets[dept] = { monthlyBudget: 0, spent: 0, pending: 0, variance: 0, history: {}, historicalSpent: {} };
-    const prev = previousAmount !== undefined ? Number(previousAmount) : (Number(budgets[dept].monthlyBudget) || 0);
-    const finalAmount = action === 'TOP_UP' ? prev + Number(delta || 0) : Number(newAmount ?? prev);
     const today = new Date();
-    const monthKey = targetMonth || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const currentActiveMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const monthKey = targetMonth || currentActiveMonth;
+
+    // Strict Zero-based: Previous budget strictly refers to the same month's allocated history
+    const prevInMonth = (budgets[dept]?.history && budgets[dept].history[monthKey] !== undefined && budgets[dept].history[monthKey] !== null)
+      ? Number(budgets[dept].history[monthKey])
+      : 0;
+    const prev = previousAmount !== undefined ? Number(previousAmount) : prevInMonth;
+    const finalAmount = action === 'TOP_UP' ? prev + Number(delta || 0) : Number(newAmount ?? prev);
 
     if (action === 'BUDGET_ROLLBACK') {
       const rollbackAmt = Number(delta || 0);
@@ -270,50 +276,81 @@ export const apiService = {
       if (!budgets[dept].refundCredits) budgets[dept].refundCredits = {};
       budgets[dept].refundCredits[monthKey] = (Number(budgets[dept].refundCredits[monthKey]) || 0) + rollbackAmt;
     } else {
-      budgets[dept].monthlyBudget = finalAmount;
-      budgets[dept].variance = finalAmount - (Number(budgets[dept].spent) || 0);
+      if (monthKey === '2026-09' || monthKey === currentActiveMonth) {
+        budgets[dept].monthlyBudget = finalAmount;
+        budgets[dept].variance = finalAmount - (Number(budgets[dept].spent) || 0);
+        budgets[dept].remainingBudget = budgets[dept].variance;
+      }
       if (!budgets[dept].history) budgets[dept].history = {};
       budgets[dept].history[monthKey] = finalAmount;
     }
     storageService.saveBudgets(budgets);
 
-    const amountDiff = action === 'BUDGET_ROLLBACK' ? Number(delta || 0) : finalAmount - prev;
+    const isInitial = (action === 'MONTHLY_ALLOCATION') || (prev === 0 && action !== 'BUDGET_ROLLBACK');
+    let txType = action || 'ADJUST';
+    let txTypeLabel = 'ปรับปรุงงบประมาณ';
+    let amountDiff = 0;
+
+    if (action === 'BUDGET_ROLLBACK') {
+      txType = 'BUDGET_ROLLBACK';
+      txTypeLabel = 'คืนงบประมาณ (Budget Reversal)';
+      amountDiff = Number(delta || 0);
+    } else if (isInitial) {
+      txType = 'MONTHLY_ALLOCATION';
+      txTypeLabel = 'จัดสรรงบประมาณประจำเดือน';
+      amountDiff = finalAmount;
+    } else if (action === 'TOP_UP') {
+      txType = 'TOP_UP';
+      txTypeLabel = 'เติมงบประมาณพิเศษ (Top-up)';
+      amountDiff = Number(delta || 0);
+    } else {
+      txType = 'SET_BUDGET';
+      txTypeLabel = (finalAmount - prev >= 0) ? 'ปรับเพิ่มงบประมาณ' : 'ปรับลดยอดงบประมาณ';
+      amountDiff = finalAmount - prev;
+    }
+
     const newTx = {
       id: `BTX-${Date.now()}`,
       date: today.toISOString().replace('T', ' ').slice(0, 19),
       createdAt: today.toISOString(),
       dept,
-      type: action || 'ADJUST',
-      typeLabel: action === 'SET_BUDGET' 
-        ? 'กำหนดงบประมาณประจำเดือน' 
-        : action === 'TOP_UP' 
-          ? 'เติมงบประมาณพิเศษ (Top-up)' 
-          : action === 'BUDGET_ROLLBACK' 
-            ? 'คืนงบประมาณ (Budget Reversal)' 
-            : 'ปรับปรุงงบประมาณ',
+      type: txType,
+      typeLabel: txTypeLabel,
       previousAmount: prev,
       newAmount: finalAmount,
       amount: amountDiff,
       actor: actor || 'Staff',
-      note: reason || 'ปรับปรุงงบประมาณ',
-      targetMonth: monthKey
+      note: reason || (txType === 'MONTHLY_ALLOCATION' ? `จัดสรรงบประมาณประจำเดือน ${monthKey}` : 'ปรับปรุงงบประมาณ'),
+      targetMonth: monthKey,
+      period: monthKey
     };
     storageService.appendBudgetTransaction(newTx);
     return { success: true, budget: budgets[dept], transaction: newTx, budgets };
   },
 
   async updateBudget(department, newAmount, targetMonth = null, actor = null, reason = null) {
+    const today = new Date();
+    const currentActiveMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const monthKey = targetMonth || currentActiveMonth;
     const budgets = await this.getBudgets();
-    const prevAmount = budgets[department]?.monthlyBudget || 0;
+    const deptObj = budgets[department] || {};
+    // Strict Zero-based: Previous budget strictly refers to the same month's allocated history
+    const prevInMonth = (deptObj.history && deptObj.history[monthKey] !== undefined && deptObj.history[monthKey] !== null)
+      ? Number(deptObj.history[monthKey])
+      : 0;
+    const isInitial = prevInMonth === 0;
+    const delta = isInitial ? Number(newAmount) : (Number(newAmount) - prevInMonth);
+    const action = isInitial ? 'MONTHLY_ALLOCATION' : 'SET_BUDGET';
+
     return this.adjustBudget({
       dept: department,
-      action: 'SET_BUDGET',
-      newAmount,
-      previousAmount: prevAmount,
-      delta: Number(newAmount) - Number(prevAmount),
-      reason: reason || 'ปรับยอดงบประมาณประจำเดือน',
+      action,
+      newAmount: Number(newAmount),
+      previousAmount: prevInMonth,
+      delta,
+      reason: reason || (isInitial ? `จัดสรรงบประมาณประจำเดือน ${monthKey}` : `ปรับปรุงงบประมาณประจำเดือน ${monthKey}`),
       actor: actor || 'ผู้ดูแลระบบ',
-      targetMonth
+      targetMonth: monthKey
     });
   },
 

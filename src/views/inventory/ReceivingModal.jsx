@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Package, Download, AlertTriangle, CheckCircle2, 
@@ -6,12 +6,15 @@ import {
   Check, Truck, AlertOctagon
 } from 'lucide-react';
 import { recordGoodsReceipt as recordGoodsReceiptFn } from '../../context/ProcurementContext';
+import { useAuth } from '../../context/AuthContext';
+import { useAppContext } from '../../context/AppContext';
+import { authService } from '../../services/authService';
 import { modalService } from '../../services/modalService';
 import { apiService } from '../../services/apiService';
 import { storageService } from '../../services/storageService';
 import { generateGRNNumber } from '../../services/warehouseService';
 import { formatLocalTimestamp } from '../../services/inventoryService';
-import { getValidConversionRate } from '../../utils/uomEngine.js';
+import { getValidConversionRate, toStockQuantity, toStockUnitCost } from '../../utils/uomEngine.js';
 
 /**
  * Helper to resiliently resolve refund quantity and amount
@@ -106,6 +109,19 @@ export const checkIsFullyAccounted = (items = []) => {
 };
 
 /**
+ * Helper to generate a collision-safe unique line identifier for PO items
+ * Prevents State Overwrite when a PO contains multiple line items with the same product
+ */
+export const getLineKey = (item, index = 0) => {
+  if (!item) return `item_p_${index}`;
+  if (item.lineId) return String(item.lineId);
+  if (item.id && item.id !== item.productId && item.id !== item.code && item.id !== item.sku) {
+    return String(item.id);
+  }
+  return `item_${item.productId || item.code || 'p'}_${index}`;
+};
+
+/**
  * ReceivingModal (GoodsReceiptModal)
  * Enterprise-grade partial receiving modal with automatic shortage calculation,
  * stock acceptance filtering, and automatic dispute task routing to Online Hub.
@@ -118,9 +134,22 @@ export default function ReceivingModal({
   onSuccess,
   onBack,
   onBackToPO,
-  _currentRole 
+  _currentRole,
+  currentRole,
+  currentUser: propCurrentUser,
+  user: propUser
 }) {
   const targetPO = po || selectedPO;
+  const auth = useAuth();
+  const appContext = useAppContext();
+
+  // ดึงข้อมูลผู้ใช้งานปัจจุบันอย่างปลอดภัย (Safe User Resolution)
+  const sessionUser = (typeof authService?.getCurrentUser === 'function' ? authService.getCurrentUser() : null) ||
+                      (typeof authService?.getCurrentSession === 'function' ? authService.getCurrentSession() : null) || {};
+  const activeUser = propCurrentUser || propUser || currentRole || _currentRole || auth?.currentUser || appContext?.currentUser || sessionUser || {};
+  const actorName = activeUser?.name || activeUser?.employeeName || activeUser?.username || (typeof activeUser === 'string' ? activeUser : 'ผู้ตรวจรับพัสดุ');
+  const actorRole = activeUser?.canonicalRole || activeUser?.roleId || activeUser?.role || activeUser?.title || 'REQUESTER';
+
   if (!isOpen || !targetPO) return null;
 
   const handleBackToPO = onBack || onBackToPO;
@@ -131,9 +160,10 @@ export default function ReceivingModal({
   const [itemsState, setItemsState] = useState(() => {
     const initial = {};
     (targetPO.items || []).forEach((item, idx) => {
+      const lineKey = getLineKey(item, idx);
       const { remainingToReceive } = resolveRefundedQtyAndAmount(item, targetPO);
 
-      initial[item.productId || idx] = {
+      initial[lineKey] = {
         acceptedQty: remainingToReceive === 0 ? 0 : (item.initialAcceptedQty !== undefined ? item.initialAcceptedQty : (item.inspectQty !== undefined ? item.inspectQty : remainingToReceive)),
         damagedQty: 0,
         shortageAction: item.shortageAction || 'CLAIM_SHORTAGE', // Default: CLAIM_SHORTAGE เพื่อป้องกันการเสียสิทธิ์เคลม
@@ -145,6 +175,26 @@ export default function ReceivingModal({
     return initial;
   });
 
+  // Re-sync line-item state if targetPO changes
+  useEffect(() => {
+    if (!targetPO?.items) return;
+    const initial = {};
+    targetPO.items.forEach((item, idx) => {
+      const lineKey = getLineKey(item, idx);
+      const { remainingToReceive } = resolveRefundedQtyAndAmount(item, targetPO);
+
+      initial[lineKey] = {
+        acceptedQty: remainingToReceive === 0 ? 0 : (item.initialAcceptedQty !== undefined ? item.initialAcceptedQty : (item.inspectQty !== undefined ? item.inspectQty : remainingToReceive)),
+        damagedQty: 0,
+        shortageAction: item.shortageAction || 'CLAIM_SHORTAGE',
+        shortageReason: item.shortageReason || (item.shortageAction === 'WAIT_NEXT_ROUND' ? 'SPLIT_SHIPMENT' : 'VENDOR_SHORTAGE'),
+        defectNote: '',
+        isDamagedExpanded: false
+      };
+    });
+    setItemsState(initial);
+  }, [targetPO?.id, targetPO?.poNo]);
+
   const [grnNote, setGrnNote] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -153,8 +203,9 @@ export default function ReceivingModal({
   // Computed line items with auto-calculated shortage and remaining quantity
   const computedItems = useMemo(() => {
     return (targetPO.items || []).map((item, idx) => {
-      const key = item.productId || idx;
-      const state = itemsState[key] || {
+      const lineKey = getLineKey(item, idx);
+      const key = lineKey;
+      const state = itemsState[lineKey] || {
         acceptedQty: 0,
         damagedQty: 0,
         shortageReason: 'VENDOR_SHORTAGE',
@@ -204,7 +255,9 @@ export default function ReceivingModal({
 
       return {
         ...item,
-        key,
+        key: lineKey,
+        lineKey,
+        lineIndex: idx,
         ordered,
         orderedQty: ordered,
         accumulated,
@@ -484,6 +537,8 @@ export default function ReceivingModal({
     setIsSubmitting(true);
 
     try {
+      // ดึงข้อมูลผู้ใช้งานปัจจุบันอย่างปลอดภัย
+      const currentUser = activeUser;
       const nextRound = (targetPO.grnHistory?.length || 0) + 1;
       const grnNumber = generateGRNNumber(targetPO.poNo || targetPO.id, nextRound);
       const timestamp = new Date().toLocaleString('th-TH');
@@ -549,9 +604,25 @@ export default function ReceivingModal({
         grnNumber,
         round: nextRound,
         receivedDate: timestamp,
-        receivedBy: currentUser?.name ? `${currentUser.name} (${currentUser.title || ''})` : receiverName,
+        receivedBy: currentUser?.name ? `${currentUser.name} (${currentUser.title || actorRole || ''})` : receiverName,
         receiverSignature,
         receivingInfo,
+        actorName,
+        actorRole,
+        user: {
+          id: currentUser?.id || 'USR-RECEIVER',
+          name: actorName,
+          title: actorRole,
+          role: actorRole,
+          canonicalRole: actorRole
+        },
+        currentUser: {
+          id: currentUser?.id || 'USR-RECEIVER',
+          name: actorName,
+          title: actorRole,
+          role: actorRole,
+          canonicalRole: actorRole
+        },
         note: grnNote.trim(),
         attachments,
         statusOverride,
@@ -577,11 +648,9 @@ export default function ReceivingModal({
       };
 
       // 4. Call recordGoodsReceipt from Procurement Context
-      const grResult = procurement?.recordGoodsReceipt
-        ? await procurement.recordGoodsReceipt(targetPO.id, grnPayload)
-        : appContext?.recordGoodsReceipt
-          ? await appContext.recordGoodsReceipt(targetPO.id, grnPayload)
-          : await recordGoodsReceiptFn(targetPO.id, grnPayload);
+      const grResult = appContext?.recordGoodsReceipt
+        ? await appContext.recordGoodsReceipt(targetPO.id, grnPayload)
+        : await recordGoodsReceiptFn(targetPO.id, grnPayload);
 
       // 5. Call receiveToStock / submitGRN and emit enterprise stockMovements with Dual-UOM (Strictly good goods only)
       const stockItemsToReceive = computedItems
@@ -593,8 +662,12 @@ export default function ReceivingModal({
           const purchaseUnit = it.purchaseUom || it.purchaseUnit || it.pUnit || uom?.purchaseUom || 'ชิ้น';
           const stockUnit = it.baseUom || it.stockUnit || it.sUnit || uom?.baseUom || purchaseUnit;
           const purchasePrice = Number(it.actUnitPrice ?? it.actualPrice ?? it.price ?? uom?.purchaseUnitPrice ?? 0);
-          const baseUnitCost = toStockUnitCost(purchasePrice, ratio);
-          const baseStockQty = toStockQuantity(it.acceptedQty, ratio);
+          const baseUnitCost = typeof toStockUnitCost === 'function'
+            ? toStockUnitCost(purchasePrice, ratio)
+            : purchasePrice / (Number(ratio) > 0 ? Number(ratio) : 1);
+          const baseStockQty = typeof toStockQuantity === 'function'
+            ? toStockQuantity(it.acceptedQty, ratio)
+            : Number(it.acceptedQty || 0) * (Number(ratio) > 0 ? Number(ratio) : 1);
           const totalVal = baseStockQty * baseUnitCost;
 
           return {
@@ -678,9 +751,9 @@ export default function ReceivingModal({
             totalAmount: Number(it.totalValue), // มูลค่าเงินตาม PO จริง (เช่น 1,000.00 ฿)
             totalPrice: Number(it.totalValue),
             totalValue: Number(it.totalValue),
-            actorName: (typeof currentUser === 'object' ? currentUser?.name : String(currentUser || '')) || 'สิรภัทร แจ่มมิน',
-            user: (typeof currentUser === 'object' ? currentUser?.name : String(currentUser || '')) || 'สิรภัทร แจ่มมิน',
-            actorRole: currentUser?.canonicalRole || currentUser?.role || 'REQUESTER',
+            actorName,
+            user: actorName,
+            actorRole,
             department: targetPO.department || matchedProd?.department || 'PD',
             location: matchedProd?.storageLocationName || it.locationName || 'ออฟฟิศ PD',
             locationName: matchedProd?.storageLocationName || it.locationName || 'ออฟฟิศ PD',
@@ -699,12 +772,15 @@ export default function ReceivingModal({
 
       // 6. Calculate updatedPoItems reflecting this inspection round with dynamic remaining quantity & refund settlement
       const updatedPoItems = (targetPO.items || []).map((poItem, poIdx) => {
-        const inspected = computedItems.find(row => 
-          (row.id && (row.id === poItem.id || row.productId === poItem.id)) || 
-          (row.productId && (row.productId === poItem.productId || row.productId === poItem.id)) ||
-          (row.code && String(row.code).trim().toUpperCase() === String(poItem.code || poItem.sku).trim().toUpperCase()) ||
-          (row.key !== undefined && (row.key === poItem.productId || row.key === poIdx))
-        );
+        const lineKey = getLineKey(poItem, poIdx);
+        const inspected = computedItems.find(row => row.key === lineKey) ||
+          computedItems[poIdx] ||
+          computedItems.find(row => 
+            (row.id && (row.id === poItem.id || row.productId === poItem.id)) || 
+            (row.productId && (row.productId === poItem.productId || row.productId === poItem.id)) ||
+            (row.code && String(row.code).trim().toUpperCase() === String(poItem.code || poItem.sku).trim().toUpperCase()) ||
+            (row.key !== undefined && (row.key === poItem.productId || row.key === poIdx))
+          );
         
         if (!inspected) return poItem;
 
@@ -787,7 +863,7 @@ export default function ReceivingModal({
           reason: disputeItems[0].reasonLabel,
           description: claimDesc,
           channel: targetPO.purchaseChannel || 'ONLINE',
-          reportedBy: currentUser?.name || 'Warehouse Inspector',
+          reportedBy: actorName || currentUser?.name || 'Warehouse Inspector',
           reportedAt: timestamp,
           disputeItems,
           items: disputeItems
@@ -826,9 +902,6 @@ export default function ReceivingModal({
         storageService.savePOs(allPos);
       }
 
-      if (procurement?.updatePO) {
-        procurement.updatePO(targetPO.id, finalTargetPO);
-      }
       if (appContext?.updatePO) {
         appContext.updatePO(targetPO.id, finalTargetPO);
       }
@@ -947,183 +1020,230 @@ export default function ReceivingModal({
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full text-left border-collapse table-fixed">
                 <thead>
                   <tr className="bg-slate-100/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    <th className="py-2.5 px-4 text-left">สินค้า</th>
-                    <th className="py-2.5 px-3 text-center w-20">สั่งมา</th>
-                    <th className="py-2.5 px-3 text-center w-20">รับแล้ว</th>
-                    <th className="py-2.5 px-3 text-center w-28">ตรวจรับรอบนี้</th>
-                    <th className="py-2.5 px-3 text-center w-24">ชำรุด/NG</th>
-                    <th className="py-2.5 px-4 text-left w-60">สถานะ / การจัดการ</th>
+                    <th style={{ width: '32%' }} className="w-[32%] py-2.5 px-4 text-left">สินค้า</th>
+                    <th style={{ width: '8%' }} className="w-[8%] py-2.5 px-3 text-center">สั่งมา</th>
+                    <th style={{ width: '8%' }} className="w-[8%] py-2.5 px-3 text-center">รับแล้ว</th>
+                    <th style={{ width: '16%' }} className="w-[16%] py-2.5 px-3 text-center">ตรวจรับรอบนี้</th>
+                    <th style={{ width: '12%' }} className="w-[12%] py-2.5 px-3 text-center">ชำรุด/NG</th>
+                    <th style={{ width: '24%' }} className="w-[24%] py-2.5 px-4 text-left">สถานะ / การจัดการ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {computedItems.map((item, idx) => (
-                    <tr 
-                      key={item.key} 
-                      className={`transition-colors border-b border-slate-100 ${
-                        item.isRowLocked && item.refunded > 0 
-                          ? 'opacity-80 bg-slate-50/50' 
-                          : (item.isRowLocked ? 'bg-slate-50/40' : 'hover:bg-slate-50/80')
-                      }`}
-                    >
-                      {/* 1. สินค้า */}
-                      <td className="py-3.5 px-4 align-top">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0">
-                              {item.code || `ITEM-${idx + 1}`}
-                            </span>
-                            <span className="text-sm font-bold text-slate-800 leading-snug" title={item.name}>
-                              {item.name}
-                            </span>
-                          </div>
-                          <div className="text-xs text-slate-500 font-mono flex items-center gap-2 flex-wrap">
-                            <span>หน่วย: <strong className="text-slate-700">{item.pUnit}</strong></span>
-                            {item.conversionRatio > 1 && (
-                              <span className="text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded font-sans">
-                                (1 {item.pUnit} = {item.conversionRatio.toLocaleString()} {item.sUnit})
-                              </span>
-                            )}
-                            {item.originalPurchaseQty && Number(item.originalPurchaseQty) !== Number(item.orderedQty) && (
-                              <span className="text-[11px] text-indigo-700 font-sans">
-                                (ปรับจาก PR: {item.originalPurchaseQty})
-                              </span>
-                            )}
-                          </div>
+                  {computedItems.map((item, idx) => {
+                    // Mathematical calculation of remaining pending quantity for next delivery round:
+                    // [Total Ordered Qty] - [Already Received in prior rounds] - [Refunded] - [Current user accepted input in this round]
+                    const ordered = Number(item.orderedQty ?? item.quantity ?? item.ordered ?? 0);
+                    const alreadyReceived = Number(item.alreadyReceived ?? item.accumulated ?? item.receivedQty ?? 0);
+                    const refunded = Number(item.refunded ?? item.refundedQty ?? 0);
+                    const rawAccepted = item.rawAcceptedInput !== undefined ? item.rawAcceptedInput : item.acceptedQty;
+                    const parsedAccepted = rawAccepted === '' ? 0 : Number(rawAccepted);
+                    const currentAcceptedInput = isNaN(parsedAccepted) ? 0 : Math.max(0, parsedAccepted);
+                    const pendingNextRound = Math.max(0, ordered - alreadyReceived - refunded - (item.isRowLocked ? 0 : currentAcceptedInput));
 
-                          {/* Compact Defect Note Input (if damaged > 0) */}
-                          {item.hasDamage && (
-                            <div className="mt-2 pt-0.5">
+                    return (
+                      <tr 
+                        key={item.key} 
+                        className={`transition-colors border-b border-slate-100 ${
+                          item.isRowLocked && item.refunded > 0 
+                            ? 'opacity-80 bg-slate-50/50' 
+                            : (item.isRowLocked ? 'bg-slate-50/40' : 'hover:bg-slate-50/80')
+                        }`}
+                      >
+                        {/* 1. สินค้า (32%) */}
+                        <td style={{ width: '32%' }} className="w-[32%] py-3.5 px-4 align-middle">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0">
+                                {item.code || `ITEM-${idx + 1}`}
+                              </span>
+                              <span className="text-sm font-bold text-slate-800 leading-snug" title={item.name}>
+                                {item.name}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-500 font-mono flex items-center gap-2 flex-wrap">
+                              <span>หน่วย: <strong className="text-slate-700">{item.pUnit}</strong></span>
+                              {item.conversionRatio > 1 && (
+                                <span className="text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded font-sans">
+                                  (1 {item.pUnit} = {item.conversionRatio.toLocaleString()} {item.sUnit})
+                                </span>
+                              )}
+                              {item.originalPurchaseQty && Number(item.originalPurchaseQty) !== Number(item.orderedQty) && (
+                                <span className="text-[11px] text-indigo-700 font-sans">
+                                  (ปรับจาก PR: {item.originalPurchaseQty})
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Compact Defect Note Input (if damaged > 0) */}
+                            {item.hasDamage && (
+                              <div className="mt-2 pt-0.5">
+                                <input
+                                  type="text"
+                                  placeholder="ระบุอาการชำรุด เช่น แตกหัก, ผิดสเปก..."
+                                  value={item.defectNote}
+                                  onChange={(e) => handleDefectNoteChange(item.key, e.target.value)}
+                                  className="w-full h-8 px-2.5 text-xs bg-rose-50/70 border border-rose-200 rounded-md text-rose-900 placeholder:text-rose-400 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 2. สั่งมา (8%) */}
+                        <td style={{ width: '8%' }} className="w-[8%] py-3.5 px-3 text-center align-middle">
+                          <div className="flex flex-col items-center justify-center">
+                            <span className="font-mono font-bold text-slate-800 text-sm h-8 flex items-center justify-center">
+                              {item.orderedQty}
+                            </span>
+                            <span className="text-[11px] text-slate-400 h-5 flex items-center justify-center font-mono">
+                              {item.pUnit}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 3. รับแล้ว (8%) */}
+                        <td style={{ width: '8%' }} className="w-[8%] py-3.5 px-3 text-center align-middle">
+                          <div className="flex flex-col items-center justify-center">
+                            <span className="font-mono text-sm font-bold h-8 flex items-center justify-center">
+                              {item.alreadyReceived > 0 ? (
+                                <span className="text-emerald-700 font-bold">{item.alreadyReceived}</span>
+                              ) : (
+                                <span className="text-slate-400 font-medium">-</span>
+                              )}
+                            </span>
+                            <span className="text-[11px] text-slate-400 h-5 flex items-center justify-center font-mono">
+                              {item.alreadyReceived > 0 ? item.pUnit : ''}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 4. ตรวจรับรอบนี้ (16%) */}
+                        <td style={{ width: '16%' }} className="w-[16%] py-3.5 px-3 text-center align-middle">
+                          <div className="flex flex-col items-center justify-center">
+                            <div className="h-8 flex items-center justify-center">
                               <input
-                                type="text"
-                                placeholder="ระบุอาการชำรุด เช่น แตกหัก, ผิดสเปก..."
-                                value={item.defectNote}
-                                onChange={(e) => handleDefectNoteChange(item.key, e.target.value)}
-                                className="w-full h-8 px-2.5 text-xs bg-rose-50/70 border border-rose-200 rounded-md text-rose-900 placeholder:text-rose-400 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                                type="number"
+                                min="0"
+                                max={item.remainingReceivable}
+                                value={item.isRowLocked ? 0 : item.rawAcceptedInput}
+                                disabled={item.isRowLocked}
+                                onChange={(e) => handleAcceptedQtyChange(item.key, e.target.value)}
+                                className={`w-16 h-8 text-sm font-mono font-bold text-center rounded-lg outline-none shadow-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all ${
+                                  item.isRowLocked
+                                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 select-none'
+                                    : 'bg-white border border-emerald-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400/30 text-slate-900'
+                                }`}
+                                title={item.isRowLocked ? 'ปิดรับแล้ว' : 'จำนวนสินค้าสมบูรณ์ที่รับรอบนี้'}
                               />
                             </div>
-                          )}
-                        </div>
-                      </td>
+                            <div className="h-5 min-h-[20px] flex items-center justify-center mt-1">
+                              {!item.isRowLocked ? (
+                                item.isReplacement && item.remainingToReceive > 0 ? (
+                                  <span className="text-xs text-amber-600 font-medium whitespace-nowrap">
+                                    📦 รอรับของทดแทน {item.remainingToReceive} {item.pUnit}
+                                  </span>
+                                ) : item.isSplitShipment && item.remainingToReceive > 0 ? (
+                                  <span className="text-xs text-amber-600 font-medium whitespace-nowrap">
+                                    ⏳ รอรับรอบถัดไป {item.remainingToReceive} {item.pUnit}
+                                  </span>
+                                ) : pendingNextRound > 0 ? (
+                                  <span className="text-xs text-amber-600 font-medium whitespace-nowrap">
+                                    ⏳ รอรับรอบถัดไป {pendingNextRound} {item.pUnit}
+                                  </span>
+                                ) : null
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
 
-                      {/* 2. สั่งมา */}
-                      <td className="py-3.5 px-3 text-center align-middle">
-                        <span className="font-mono font-semibold text-slate-700 text-sm">{item.orderedQty}</span>
-                      </td>
+                        {/* 5. ชำรุด/NG (12%) */}
+                        <td style={{ width: '12%' }} className="w-[12%] py-3.5 px-3 text-center align-middle">
+                          <div className="flex flex-col items-center justify-center">
+                            <div className="h-8 flex items-center justify-center">
+                              <input
+                                type="number"
+                                min="0"
+                                max={item.remainingReceivable}
+                                value={item.isRowLocked ? 0 : item.rawDamagedInput}
+                                disabled={item.isRowLocked}
+                                onChange={(e) => handleDamagedQtyChange(item.key, e.target.value)}
+                                className={`w-16 h-8 text-sm font-mono font-bold text-center rounded-lg outline-none shadow-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all ${
+                                  item.isRowLocked
+                                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 select-none'
+                                    : item.hasDamage
+                                      ? 'border-2 border-rose-400 text-rose-700 ring-2 ring-rose-200 bg-white'
+                                      : 'border border-slate-300 text-slate-700 focus:border-slate-400 bg-white'
+                                }`}
+                                title={item.isRowLocked ? 'ปิดรับแล้ว' : 'จำนวนสินค้าชำรุดเสียหาย'}
+                              />
+                            </div>
+                            <div className="h-5 min-h-[20px] flex items-center justify-center mt-1">
+                              {!item.isRowLocked && item.hasDamage ? (
+                                <span className="text-xs text-rose-600 font-medium whitespace-nowrap">
+                                  ชำรุด {item.damagedQty} {item.pUnit}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
 
-                      {/* 3. รับแล้ว */}
-                      <td className="py-3.5 px-3 text-center align-middle">
-                        <span className="font-mono text-sm text-slate-700 font-semibold">
-                          {item.alreadyReceived > 0 ? (
-                            <span className="text-emerald-700 font-bold">{item.alreadyReceived}</span>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </span>
-                      </td>
-
-                      {/* 4. ตรวจรับรอบนี้ */}
-                      <td className="py-3.5 px-3 text-center align-middle">
-                        <input
-                          type="number"
-                          min="0"
-                          max={item.remainingReceivable}
-                          value={item.isRowLocked ? 0 : item.rawAcceptedInput}
-                          disabled={item.isRowLocked}
-                          onChange={(e) => handleAcceptedQtyChange(item.key, e.target.value)}
-                          className={`w-16 h-8 text-sm font-mono font-bold text-center rounded-lg outline-none shadow-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all ${
-                            item.isRowLocked
-                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 select-none'
-                              : 'bg-white border border-emerald-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400/30 text-slate-900'
-                          }`}
-                          title={item.isRowLocked ? 'ปิดรับแล้ว' : 'จำนวนสินค้าสมบูรณ์ที่รับรอบนี้'}
-                        />
-                        {item.remainingToReceive > 0 && (
-                          <div className="mt-1 whitespace-nowrap">
-                            {item.isReplacement ? (
-                              <span className="text-xs text-amber-600 font-medium">📦 รอรับของทดแทน {item.remainingToReceive} {item.pUnit}</span>
-                            ) : item.isSplitShipment ? (
-                              <span className="text-xs text-amber-600 font-medium">⏳ รอรับรอบถัดไป {item.remainingToReceive} {item.pUnit}</span>
+                        {/* 6. สถานะ / การจัดการ (24%) */}
+                        <td style={{ width: '24%' }} className="w-[24%] py-3.5 px-4 align-middle">
+                          {item.isRowLocked ? (
+                            item.refunded > 0 ? (
+                              <span className="inline-flex items-center justify-center w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
+                                💰 ได้รับเงินคืนแล้ว ฿{item.refundAmountFormatted} (ปิดรับ)
+                              </span>
                             ) : (
-                              <span className="text-xs text-amber-600 font-medium">⏳ รอรับรอบถัดไป {item.remainingToReceive} {item.pUnit}</span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-
-                      {/* 5. ชำรุด/NG */}
-                      <td className="py-3.5 px-3 text-center align-middle">
-                        <input
-                          type="number"
-                          min="0"
-                          max={item.remainingReceivable}
-                          value={item.isRowLocked ? 0 : item.rawDamagedInput}
-                          disabled={item.isRowLocked}
-                          onChange={(e) => handleDamagedQtyChange(item.key, e.target.value)}
-                          className={`w-16 h-8 text-sm font-mono font-bold text-center rounded-lg outline-none shadow-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all ${
-                            item.isRowLocked
-                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 select-none'
-                              : item.hasDamage
-                                ? 'border-2 border-rose-400 text-rose-700 ring-2 ring-rose-200 bg-white'
-                                : 'border border-slate-300 text-slate-700 focus:border-slate-400 bg-white'
-                          }`}
-                          title={item.isRowLocked ? 'ปิดรับแล้ว' : 'จำนวนสินค้าชำรุดเสียหาย'}
-                        />
-                      </td>
-
-                      {/* 6. สถานะ / การจัดการ */}
-                      <td className="py-3.5 px-4 align-middle">
-                        {item.isRowLocked ? (
-                          item.refunded > 0 ? (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
-                              💰 ได้รับเงินคืนแล้ว ฿{item.refundAmountFormatted} (ปิดรับ)
-                            </span>
+                              <span className="inline-flex items-center justify-center w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+                                <Check className="w-4 h-4 text-emerald-600 shrink-0 mr-1" />
+                                ✓ ตรวจรับครบแล้วในรอบก่อน
+                              </span>
+                            )
+                          ) : item.hasShortage ? (
+                            <div className="flex flex-col gap-1.5 w-full">
+                              <div className="flex items-center">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold font-mono bg-amber-100 text-amber-900 border border-amber-300">
+                                  ขาด {item.shortageQty} {item.pUnit}
+                                </span>
+                              </div>
+                              <select
+                                value={item.shortageAction || (item.shortageReason === 'SPLIT_SHIPMENT' ? 'WAIT_NEXT_ROUND' : 'CLAIM_SHORTAGE')}
+                                onChange={(e) => handleShortageActionChange(item.key, e.target.value)}
+                                className="w-full h-8 px-2.5 text-xs font-medium rounded-lg border border-slate-300 bg-white text-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-400/20 focus:outline-none cursor-pointer shadow-xs transition-all"
+                              >
+                                <option value="CLAIM_SHORTAGE">🚨 ของขาด - ส่งเรื่องจัดซื้อเคลม/ขอเงินคืน</option>
+                                <option value="WAIT_NEXT_ROUND">📦 ร้านแจ้งแยกส่ง - รอส่งมอบรอบถัดไป</option>
+                              </select>
+                            </div>
+                          ) : item.hasDamage ? (
+                            <div className="h-8 px-2.5 rounded-lg text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1.5 w-full justify-center">
+                              <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0" />
+                              <span>ชำรุด {item.damagedQty} {item.pUnit} (ส่งเรื่องเคลม)</span>
+                            </div>
                           ) : (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
-                              <Check className="w-4 h-4 text-emerald-600 shrink-0 mr-1" />
-                              ✓ ตรวจรับครบแล้วในรอบก่อน
-                            </span>
-                          )
-                        ) : item.hasShortage ? (
-                          <div className="space-y-1.5">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold font-mono bg-amber-100 text-amber-900 border border-amber-300">
-                              ขาด {item.shortageQty} {item.pUnit}
-                            </span>
-                            <select
-                              value={item.shortageAction || (item.shortageReason === 'SPLIT_SHIPMENT' ? 'WAIT_NEXT_ROUND' : 'CLAIM_SHORTAGE')}
-                              onChange={(e) => handleShortageActionChange(item.key, e.target.value)}
-                              className="w-full h-8 px-2 text-xs font-medium rounded-lg border border-slate-300 bg-white text-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-400/20 focus:outline-none cursor-pointer shadow-xs"
-                            >
-                              <option value="CLAIM_SHORTAGE">🚨 ของขาด - ส่งเรื่องจัดซื้อเคลม/ขอเงินคืน</option>
-                              <option value="WAIT_NEXT_ROUND">📦 ร้านแจ้งแยกส่ง - รอส่งมอบรอบถัดไป</option>
-                            </select>
-                          </div>
-                        ) : item.hasDamage ? (
-                          <div className="h-8 px-2.5 rounded-lg text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1.5">
-                            <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0" />
-                            <span>ชำรุด {item.damagedQty} {item.pUnit} (ส่งเรื่องเคลม)</span>
-                          </div>
-                        ) : (
-                          <div className="h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1.5">
-                            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span>ครบสมบูรณ์</span>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                            <div className="h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1.5 w-full justify-center">
+                              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                              <span>ครบสมบูรณ์</span>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
 
-          {/* ── 3. Compact Note & Photos Grid ── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          {/* ── 3. Compact Note & Photos Grid (Symmetrical Equal-Height Columns) ── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
             {/* Note */}
-            <div className="bg-white rounded-xl border border-slate-200 p-3.5 space-y-2 shadow-2xs">
-              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+            <div className="bg-white rounded-xl border border-slate-200 p-3.5 space-y-2 shadow-2xs flex flex-col h-full">
+              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5 shrink-0">
                 <FileText className="w-4 h-4 text-slate-500" />
                 <span>หมายเหตุการตรวจรับ</span>
               </label>
@@ -1131,13 +1251,13 @@ export default function ReceivingModal({
                 value={grnNote}
                 onChange={(e) => setGrnNote(e.target.value)}
                 placeholder="บันทึกข้อความเพิ่มเติม เช่น พัสดุอยู่ในสภาพเรียบร้อย..."
-                className="w-full h-20 p-2.5 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 rounded-lg outline-none resize-none transition-all placeholder:text-slate-400"
+                className="w-full flex-1 min-h-[88px] p-2.5 text-xs sm:text-sm bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 rounded-lg outline-none resize-none transition-all placeholder:text-slate-400"
               />
             </div>
 
             {/* Attachments */}
-            <div className="bg-white rounded-xl border border-slate-200 p-3.5 space-y-2 shadow-2xs flex flex-col justify-between">
-              <div className="flex items-center justify-between">
+            <div className="bg-white rounded-xl border border-slate-200 p-3.5 space-y-2 shadow-2xs flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between shrink-0">
                 <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                   <Camera className="w-4 h-4 text-slate-500" />
                   <span>ภาพถ่ายพัสดุ / ใบปะหน้ากล่อง</span>
@@ -1158,21 +1278,21 @@ export default function ReceivingModal({
               </div>
 
               {attachments.length === 0 ? (
-                <div className="h-20 border border-dashed border-slate-200 rounded-lg flex items-center justify-center text-slate-400 text-xs sm:text-sm gap-2 bg-slate-50/50">
+                <div className="flex-1 min-h-[88px] border border-dashed border-slate-200 rounded-lg flex items-center justify-center text-slate-400 text-xs sm:text-sm gap-2 bg-slate-50/50">
                   <Camera className="w-4 h-4 text-slate-300" />
                   <span>ยังไม่มีรูปถ่ายหรือเอกสารแนบ</span>
                 </div>
               ) : (
-                <div className="grid grid-cols-4 gap-2 h-20 overflow-y-auto pr-1">
+                <div className="flex-1 min-h-[88px] grid grid-cols-4 gap-2 overflow-y-auto pr-1">
                   {attachments.map((att, i) => (
-                    <div key={i} className="relative group bg-slate-50 border border-slate-200 rounded-md p-1 overflow-hidden h-18 flex flex-col items-center justify-center">
+                    <div key={i} className="relative group bg-slate-50 border border-slate-200 rounded-md p-1 overflow-hidden h-20 flex flex-col items-center justify-center">
                       {att.type === 'application/pdf' ? (
-                        <div className="w-full h-11 bg-rose-50 rounded flex flex-col items-center justify-center text-rose-500">
+                        <div className="w-full h-12 bg-rose-50 rounded flex flex-col items-center justify-center text-rose-500">
                           <FileText className="w-4 h-4" />
                           <span className="text-[9px] font-bold">PDF</span>
                         </div>
                       ) : (
-                        <img src={att.previewUrl || att.dataUrl} alt={att.name} className="h-11 w-full object-cover rounded" />
+                        <img src={att.previewUrl || att.dataUrl} alt={att.name} className="h-12 w-full object-cover rounded" />
                       )}
                       <p className="text-[9px] text-slate-500 truncate w-full text-center mt-0.5 font-mono">{att.name}</p>
                       <button

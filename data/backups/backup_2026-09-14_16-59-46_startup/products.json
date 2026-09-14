@@ -22,7 +22,7 @@
     "id": "PROD-T02",
     "code": "PT02",
     "name": "Part B",
-    "stockBalance": 12,
+    "stockBalance": 5,
     "unit": "กล่อง",
     "sku": "",
     "itemCode": "",

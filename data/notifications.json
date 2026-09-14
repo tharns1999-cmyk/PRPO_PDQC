@@ -1,5 +1,173 @@
 [
   {
+    "id": "NOTI-1789384392585-168",
+    "type": "PO_CLAIM",
+    "typeInfo": {
+      "id": "PO_CLAIM",
+      "label": "แจ้งปัญหา / เคลมสินค้า",
+      "badgeColor": "bg-rose-100 text-rose-800 border-rose-200",
+      "icon": "AlertOctagon",
+      "colorHex": "#DC2626",
+      "priority": "URGENT"
+    },
+    "title": "🚨 แจ้งปัญหา / เคลมสินค้าออนไลน์",
+    "message": "มีรายการแจ้งปัญหาสำหรับ PO PO-PD-2026-001 จาก สิรภัทร แจ่มมิน — กรุณาตรวจสอบและติดต่อร้านค้า",
+    "docNo": "PO-PD-2026-001",
+    "refDocType": "PO",
+    "refDocId": "PO-1789383773488-1",
+    "department": "PD",
+    "targetRoles": [
+      "ONLINE_PURCHASER",
+      "ADMIN"
+    ],
+    "amount": 2280,
+    "actor": "สิรภัทร แจ่มมิน",
+    "timestamp": "2026-09-14T11:13:12.585Z",
+    "timeFormatted": "14/9/69 18:13",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789383795666-474",
+    "type": "ONLINE_ORDERED",
+    "typeInfo": {
+      "id": "ONLINE_ORDERED",
+      "label": "สั่งซื้อออนไลน์แล้ว (รอตรวจรับของ)",
+      "badgeColor": "bg-purple-100 text-purple-800 border-purple-200",
+      "icon": "ShoppingBag",
+      "colorHex": "#9333EA",
+      "priority": "INFO"
+    },
+    "title": "📦 สินค้าออนไลน์สั่งซื้อแล้ว (รอจัดส่ง)",
+    "message": "ใบสั่งซื้อ PO-PD-2026-001 (อ้างอิง PR PD001/2026) สั่งซื้อจาก \"เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ\" แล้ว (ยอดรวม ฿2,280) มีการปรับปรุงราคา/จำนวนตามสต็อกจริง",
+    "docNo": "PO-PD-2026-001",
+    "refDocType": "PO",
+    "refDocId": "PO-1789383773488-1",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN",
+      "ASST_MANAGER"
+    ],
+    "amount": 2280,
+    "actor": "คุณนัท จัดซื้อ",
+    "timestamp": "2026-09-14T11:03:15.666Z",
+    "timeFormatted": "14/9/69 18:03",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789383773489-48",
+    "type": "ONLINE_TASK",
+    "typeInfo": {
+      "id": "ONLINE_TASK",
+      "label": "งานสั่งซื้อออนไลน์ (Shopee/Lazada)",
+      "badgeColor": "bg-purple-100 text-purple-800 border-purple-200",
+      "icon": "ShoppingBag",
+      "colorHex": "#7C3AED",
+      "priority": "URGENT"
+    },
+    "title": "มีงานสั่งซื้อออนไลน์ใหม่ (Shopee / Lazada)",
+    "message": "ใบสั่งซื้อออนไลน์เลขที่ PO-PD-2026-001 อ้างอิง PR PD001/2026 ยอดประเมิน ฿2,712 รอคุณนัทดำเนินการสั่งซื้อ",
+    "docNo": "PO-PD-2026-001",
+    "refDocType": "PO",
+    "refDocId": "PO-1789383773488-1",
+    "department": "PD",
+    "targetRoles": [
+      "ONLINE_PURCHASER",
+      "ADMIN"
+    ],
+    "amount": 2712,
+    "actor": "คุณประเสริฐ ยิ่งยง",
+    "timestamp": "2026-09-14T11:02:53.489Z",
+    "timeFormatted": "14/9/69 18:02",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789383767815-705",
+    "type": "PR_REVIEWED",
+    "typeInfo": {
+      "id": "PR_REVIEWED",
+      "label": "PR ผ่านการตรวจ รออนุมัติ (Final Approve)",
+      "badgeColor": "bg-blue-100 text-blue-800 border-blue-200",
+      "icon": "ShieldCheck",
+      "colorHex": "#2563EB",
+      "priority": "URGENT"
+    },
+    "title": "PR ผ่านการตรวจสอบแล้ว รออนุมัติสั่งซื้อ (Final Approve)",
+    "message": "ใบขอซื้อเลขที่ PD001/2026 แผนก PD ยอดเงิน ฿2,712 ผ่านการตรวจ Level 1 แล้ว รอคุณประเสริฐ (Plant Manager) อนุมัติ",
+    "docNo": "PD001/2026",
+    "refDocType": "PR",
+    "refDocId": "PR-1789383757396-RE0",
+    "department": "PD",
+    "targetRoles": [
+      "PLANT_MANAGER",
+      "ADMIN"
+    ],
+    "amount": 2712,
+    "actor": "กัลยาณี พลไกร",
+    "timestamp": "2026-09-14T11:02:47.815Z",
+    "timeFormatted": "14/9/69 18:02",
+    "isRead": false
+  },
+  {
+    "id": "NOTI-1789381453077-858",
+    "type": "PO_CLAIM_CLOSED",
+    "typeInfo": {
+      "id": "PO_CLAIM_CLOSED",
+      "label": "ปิดเคสหลังแจ้งปัญหา (Claim Closed)",
+      "badgeColor": "bg-slate-100 text-slate-700 border-slate-200",
+      "icon": "Lock",
+      "colorHex": "#64748B",
+      "priority": "INFO"
+    },
+    "title": "🔒 ใบสั่งซื้อ (PO) ถูกปิดหลังเคลมปัญหา",
+    "message": "PO PO-PD-2026-005 (ONLINE): [ONLINE CLAIM RESOLVED] จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿100 เข้าแผนก | [ร้าน xcvxczvsxdcvsdffsdfsdaf]: คืนเงินจ้าาาาาาาา โดย คุณนัท จัดซื้อ",
+    "docNo": "PO-PD-2026-005",
+    "refDocType": "PO",
+    "refDocId": "PO-1789380891907-1",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN",
+      "ASST_MANAGER"
+    ],
+    "amount": 2100,
+    "actor": "คุณนัท จัดซื้อ",
+    "timestamp": "2026-09-14T10:24:13.077Z",
+    "timeFormatted": "14/9/69 17:24",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
+    "id": "NOTI-1789381421310-708",
+    "type": "PO_CLAIM",
+    "typeInfo": {
+      "id": "PO_CLAIM",
+      "label": "แจ้งปัญหา / เคลมสินค้า",
+      "badgeColor": "bg-rose-100 text-rose-800 border-rose-200",
+      "icon": "AlertOctagon",
+      "colorHex": "#DC2626",
+      "priority": "URGENT"
+    },
+    "title": "🚨 แจ้งปัญหา / เคลมสินค้าออนไลน์",
+    "message": "มีรายการแจ้งปัญหาสำหรับ PO PO-PD-2026-005 จาก สิรภัทร แจ่มมิน — กรุณาตรวจสอบและติดต่อร้านค้า",
+    "docNo": "PO-PD-2026-005",
+    "refDocType": "PO",
+    "refDocId": "PO-1789380891907-1",
+    "department": "PD",
+    "targetRoles": [
+      "ONLINE_PURCHASER",
+      "ADMIN"
+    ],
+    "amount": 2100,
+    "actor": "สิรภัทร แจ่มมิน",
+    "timestamp": "2026-09-14T10:23:41.310Z",
+    "timeFormatted": "14/9/69 17:23",
+    "isRead": true,
+    "read": true,
+    "status": "read"
+  },
+  {
     "id": "NOTI-1789375420207-911",
     "type": "ONLINE_TASK",
     "typeInfo": {
@@ -24,7 +192,9 @@
     "actor": "คุณประเสริฐ ยิ่งยง",
     "timestamp": "2026-09-14T08:43:40.207Z",
     "timeFormatted": "14/9/69 15:43",
-    "isRead": false
+    "isRead": true,
+    "read": true,
+    "status": "read"
   },
   {
     "id": "NOTI-1789375420082-928",
@@ -51,7 +221,9 @@
     "actor": "คุณประเสริฐ ยิ่งยง",
     "timestamp": "2026-09-14T08:43:40.082Z",
     "timeFormatted": "14/9/69 15:43",
-    "isRead": false
+    "isRead": true,
+    "read": true,
+    "status": "read"
   },
   {
     "id": "NOTI-1789375419860-80",
@@ -79,7 +251,9 @@
     "actor": "Tharn Online Purchaser",
     "timestamp": "2026-09-14T08:43:39.861Z",
     "timeFormatted": "14/9/69 15:43",
-    "isRead": false
+    "isRead": true,
+    "read": true,
+    "status": "read"
   },
   {
     "id": "NOTI-1789375419692-629",
@@ -107,7 +281,9 @@
     "actor": "คุณวิชัย (PD)",
     "timestamp": "2026-09-14T08:43:39.692Z",
     "timeFormatted": "14/9/69 15:43",
-    "isRead": false
+    "isRead": true,
+    "read": true,
+    "status": "read"
   },
   {
     "id": "NOTI-1789375419682-487",
@@ -135,7 +311,9 @@
     "actor": "คุณประเสริฐ (Plant Mgr)",
     "timestamp": "2026-09-14T08:43:39.682Z",
     "timeFormatted": "14/9/69 15:43",
-    "isRead": false
+    "isRead": true,
+    "read": true,
+    "status": "read"
   },
   {
     "id": "NOTI-1789375419545-260",
@@ -162,6 +340,8 @@
     "actor": "คุณสมชาย (Asst. Mgr)",
     "timestamp": "2026-09-14T08:43:39.545Z",
     "timeFormatted": "14/9/69 15:43",
-    "isRead": false
+    "isRead": true,
+    "read": true,
+    "status": "read"
   }
 ]
