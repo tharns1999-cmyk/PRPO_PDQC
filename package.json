@@ -9,6 +9,12 @@
     "backend": "node server/server.js",
     "start": "concurrently \"npm run backend\" \"vite\"",
     "build": "vite build",
+    "build:gas": "vite build --mode gas",
+    "prepare:gas": "node scripts/prepare-gas.js",
+    "gas:build": "npm run build:gas && npm run prepare:gas",
+    "gas:status": "clasp status",
+    "gas:push": "npm run gas:build && clasp push --force",
+    "gas:deploy": "node scripts/deploy-gas.js",
     "test": "vitest run tests",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
@@ -25,6 +31,7 @@
     "recharts": "^3.10.1"
   },
   "devDependencies": {
+    "@google/clasp": "^2.4.2",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/react": "^19.2.17",
@@ -39,6 +46,7 @@
     "tailwindcss": "^3.4.19",
     "terser": "^5.51.2",
     "vite": "^8.2.0",
+    "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^4.1.10"
   }
 }

@@ -5,7 +5,7 @@ import { useAppContext } from '../context/AppContext';
 import { 
   ShoppingCart, CheckCircle2,
   Search, Clock,
-  ChevronRight, ChevronLeft, Truck, Calendar, RotateCcw, AlertTriangle, X
+  ChevronRight, ChevronLeft, Truck, Calendar, AlertTriangle, X
 } from 'lucide-react';
 import EmptyState from '../components/common/EmptyState';
 import AttachmentViewerModal from '../components/common/AttachmentViewerModal';
@@ -432,32 +432,8 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
           </p>
         </div>
 
-        {/* Actions & Total Value Capsule */}
+        {/* Total Value Capsule */}
         <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-          {/* Reset Mock Data Button */}
-          <button
-            type="button"
-            onClick={async () => {
-              const confirmed = await modalService.confirm({
-                title: 'รีเซ็ตข้อมูลจำลอง PO-QC-2026-001',
-                message: 'ต้องการกู้คืนข้อมูล PO-QC-2026-001 ให้ตรงตามใบ PR ต้นทาง (รายการที่ 1: 2 ขวด @ ฿750 = ฿1,500, รายการที่ 2: 8 ขวด @ ฿70 = ฿560, รวม ฿2,060) หรือไม่?',
-                confirmText: 'ยืนยันรีเซ็ต',
-                cancelText: 'ยกเลิก'
-              });
-              if (confirmed) {
-                await apiService.resetPOQC2026001();
-                await fetchPOs();
-                modalService.success('กู้คืนข้อมูลสำเร็จ', 'รีเซ็ตข้อมูล PO-QC-2026-001 ยอดรวม ฿2,060 เรียบร้อยแล้ว');
-              }
-            }}
-            className="h-9 px-3 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 rounded-xl border border-slate-200/80 shadow-2xs text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
-            title="รีเซ็ตค่า PO-QC-2026-001 ให้ตรงตาม PR"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-            <span className="hidden sm:inline">รีเซ็ตข้อมูล Mock PO</span>
-          </button>
-
-          {/* Total Value Capsule */}
           <div className="flex items-center gap-3 px-3 py-1.5 bg-white rounded-xl border border-slate-200/80 shadow-2xs">
             <div className="text-right">
               <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">มูลค่าคำขอในมือ</span>

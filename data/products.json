@@ -1,5 +1,32 @@
 [
   {
+    "id": "PROD-PD-1789386674822",
+    "code": "TH22",
+    "name": "bvnfghxjxfyjhdxfrtyhjdxrtghdrsf",
+    "category": "PD",
+    "purchaseUnit": "ชิ้น",
+    "stockUnit": "ชิ้น",
+    "conversionRate": 1,
+    "unit": "ชิ้น",
+    "price": 100,
+    "stockBalance": 0,
+    "reorderPoint": 10,
+    "leadTimeDays": 7,
+    "supplierId": null,
+    "locationId": "LOC-PD-002",
+    "locationName": "ชั้นวาง A-02 (อะไหล่เครื่องจักร & สายพาน)",
+    "isActive": true,
+    "status": "ACTIVE",
+    "isEdit": false,
+    "_mode": "CREATE",
+    "department": "PD",
+    "sku": "",
+    "itemCode": "",
+    "purchaseUom": "ชิ้น",
+    "baseUom": "ชิ้น",
+    "conversionRatio": 1
+  },
+  {
     "id": "PROD-T01",
     "code": "PT01",
     "name": "Part A",
@@ -33,6 +60,16 @@
     "stockUnit": "กล่อง",
     "conversionRate": 1,
     "category": "PD",
-    "department": "PD"
+    "department": "PD",
+    "price": 100,
+    "reorderPoint": 10,
+    "leadTimeDays": 7,
+    "supplierId": null,
+    "locationId": null,
+    "locationName": null,
+    "isActive": true,
+    "status": "ACTIVE",
+    "isEdit": true,
+    "_mode": "EDIT"
   }
 ]

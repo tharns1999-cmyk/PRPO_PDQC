@@ -1,5 +1,33 @@
 [
   {
+    "id": "NOTI-1789385650491-682",
+    "type": "PO_CLAIM_CLOSED",
+    "typeInfo": {
+      "id": "PO_CLAIM_CLOSED",
+      "label": "ปิดเคสหลังแจ้งปัญหา (Claim Closed)",
+      "badgeColor": "bg-slate-100 text-slate-700 border-slate-200",
+      "icon": "Lock",
+      "colorHex": "#64748B",
+      "priority": "INFO"
+    },
+    "title": "🔒 ใบสั่งซื้อ (PO) ถูกปิดหลังเคลมปัญหา",
+    "message": "PO PO-PD-2026-001 (ONLINE): [ONLINE CLAIM RESOLVED] จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿285 เข้าแผนก | [ร้าน เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ]:  โดย คุณนัท จัดซื้อ",
+    "docNo": "PO-PD-2026-001",
+    "refDocType": "PO",
+    "refDocId": "PO-1789383773488-1",
+    "department": "PD",
+    "targetRoles": [
+      "REQUESTER_PD",
+      "ADMIN",
+      "ASST_MANAGER"
+    ],
+    "amount": 2280,
+    "actor": "คุณนัท จัดซื้อ",
+    "timestamp": "2026-09-14T11:34:10.491Z",
+    "timeFormatted": "14/9/69 18:34",
+    "isRead": false
+  },
+  {
     "id": "NOTI-1789384392585-168",
     "type": "PO_CLAIM",
     "typeInfo": {

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Users, Plus, Search, X, Edit3, Trash2, Check, 
+  Users, User, Plus, Search, X, Edit3, Trash2, Check, 
   PenTool, Upload, RefreshCw, CheckCircle2, AlertCircle, 
   Building2, UserCheck, Eraser, Sparkles
 } from 'lucide-react';

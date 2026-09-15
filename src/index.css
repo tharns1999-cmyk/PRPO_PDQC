@@ -26,3 +26,16 @@ body {
   color-scheme: light;
 }
 
+@media print {
+  html, body, #root {
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+  }
+  body {
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+  }
+}
+

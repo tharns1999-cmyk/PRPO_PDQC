@@ -4,6 +4,61 @@ import { DEFAULT_EMPLOYEE_ACCOUNTS } from './authService.js';
 const DATA_VERSION = 'prpo_clean_v16_empty_state';
 const API_URL = '/api/storage';
 
+/**
+ * Environment detection: Checks if running inside Google Apps Script Web App
+ */
+export const isGAS = () => {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_USE_GAS === 'true') {
+    return true;
+  }
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.google !== 'undefined' &&
+    typeof window.google.script !== 'undefined' &&
+    typeof window.google.script.run !== 'undefined'
+  );
+};
+
+/**
+ * Universal Promise wrapper for google.script.run RPC calls.
+ * Automatically unwraps standard API envelope: { success, data, error, message }.
+ * 
+ * @param {string} functionName Name of GAS function in Code.gs
+ * @param  {...any} args Arguments to pass to GAS function
+ * @returns {Promise<any>}
+ */
+export const callGAS = (functionName, ...args) => {
+  return new Promise((resolve, reject) => {
+    if (!isGAS()) {
+      return reject(new Error(`GAS_UNAVAILABLE: google.script.run is not available for calling "${functionName}".`));
+    }
+
+    if (typeof window.google?.script?.run?.[functionName] !== 'function') {
+      return reject(new Error(`GAS_METHOD_NOT_FOUND: Method "${functionName}" does not exist on google.script.run.`));
+    }
+
+    window.google.script.run
+      .withSuccessHandler((response) => {
+        if (response && typeof response === 'object' && 'success' in response) {
+          if (response.success) {
+            resolve(response.data);
+          } else {
+            const err = new Error(response.message || response.error || 'GAS Request Failed');
+            err.code = response.error || 'GAS_ERROR';
+            reject(err);
+          }
+        } else {
+          resolve(response);
+        }
+      })
+      .withFailureHandler((error) => {
+        console.error(`[GAS RPC Error] ${functionName}:`, error);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      })
+      [functionName](...args);
+  });
+};
+
 // ── Permanent Blacklist Guard against Test / Mock Artifacts ──
 export const DUMMY_BLACKLIST = new Set(['P01', 'P02', 'PROD-01', 'PROD-02']);
 export const isBlacklistedProduct = (item) => {
@@ -95,6 +150,7 @@ const _resultCache = new Map();
 const _dirtyKeys = new Set();
 
 const _syncApi = async () => {
+  if (isGAS()) return;
   if (!_apiReady) return;
   try {
     await fetch(API_URL, {
@@ -274,10 +330,106 @@ export const storageService = {
     _apiReady = true;
   },
 
-  // Initialize storage from Local Node.js Backend with fallback to LocalStorage
+  // Check if running in Google Apps Script mode
+  isGASMode() {
+    return isGAS();
+  },
+
+  // Synchronize entire dataset from Google Sheets backend into local memory cache
+  async syncAllFromGAS() {
+    if (!isGAS()) return false;
+    try {
+      console.info('[StorageService] Syncing all collections from Google Sheets backend...');
+      const results = await Promise.allSettled([
+        callGAS('apiGetProducts'),
+        callGAS('apiGetVendors'),
+        callGAS('apiGetStorageLocations'),
+        callGAS('apiGetUsageUnits'),
+        callGAS('apiGetDepartments'),
+        callGAS('apiGetUsers'),
+        callGAS('apiGetPRs'),
+        callGAS('apiGetPOs'),
+        callGAS('apiGetStockLogs'),
+        callGAS('apiGetBudgets'),
+        callGAS('apiGetBudgetTransactions'),
+        callGAS('apiGetAuditLogs'),
+        callGAS('apiGetNotifications')
+      ]);
+
+      const [
+        prodsRes,
+        vendorsRes,
+        locsRes,
+        unitsRes,
+        deptsRes,
+        usersRes,
+        prsRes,
+        posRes,
+        logsRes,
+        budgetsRes,
+        txsRes,
+        auditsRes,
+        notifsRes
+      ] = results;
+
+      if (prodsRes.status === 'fulfilled' && Array.isArray(prodsRes.value)) {
+        this.saveProducts(prodsRes.value);
+      }
+      if (vendorsRes.status === 'fulfilled' && Array.isArray(vendorsRes.value)) {
+        this.saveVendors(vendorsRes.value);
+      }
+      if (locsRes.status === 'fulfilled' && Array.isArray(locsRes.value)) {
+        this.saveStorageLocations(locsRes.value);
+      }
+      if (unitsRes.status === 'fulfilled' && Array.isArray(unitsRes.value)) {
+        this.saveUsageUnits(unitsRes.value);
+      }
+      if (deptsRes.status === 'fulfilled' && Array.isArray(deptsRes.value)) {
+        this.saveDepartments(deptsRes.value);
+      }
+      if (usersRes.status === 'fulfilled' && Array.isArray(usersRes.value)) {
+        this.saveUsers(usersRes.value);
+      }
+      if (prsRes.status === 'fulfilled' && Array.isArray(prsRes.value)) {
+        this.savePRs(prsRes.value);
+      }
+      if (posRes.status === 'fulfilled' && Array.isArray(posRes.value)) {
+        this.savePOs(posRes.value);
+      }
+      if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value)) {
+        this.saveStockLogs(logsRes.value);
+      }
+      if (budgetsRes.status === 'fulfilled' && budgetsRes.value && typeof budgetsRes.value === 'object') {
+        this.saveBudgets(budgetsRes.value);
+      }
+      if (txsRes.status === 'fulfilled' && Array.isArray(txsRes.value)) {
+        this.saveBudgetTransactions(txsRes.value);
+      }
+      if (auditsRes.status === 'fulfilled' && Array.isArray(auditsRes.value)) {
+        this.saveAuditLogs(auditsRes.value);
+      }
+      if (notifsRes.status === 'fulfilled' && Array.isArray(notifsRes.value)) {
+        this.saveNotifications(notifsRes.value);
+      }
+
+      console.info('[StorageService] Google Sheets sync complete.');
+      return true;
+    } catch (err) {
+      console.warn('[StorageService] syncAllFromGAS error:', err.message);
+      return false;
+    }
+  },
+
+  // Initialize storage from Google Sheets backend or Local Node.js Backend with fallback to LocalStorage
   async init() {
     this.hydrateFromClientStorage();
     _migrateLocalStorageCache();
+
+    if (isGAS()) {
+      await this.syncAllFromGAS();
+      _apiReady = true;
+      return;
+    }
 
     // Local Node.js Backend API
     try {
@@ -494,19 +646,19 @@ export const storageService = {
       return item;
     });
 
-    // Deduplicate by unique code or id and discard blacklisted items
-    const map = new Map();
-    migrated.forEach(item => {
-      if (isBlacklistedProduct(item)) return;
-      const key = String(item.code || item.id || '').trim().toUpperCase();
-      if (key && !map.has(key)) {
-        map.set(key, item);
+    // Strip duplicate codes, keeping the most complete record
+    const deduped = [];
+    const seenCodes = new Set();
+    migrated.forEach(p => {
+      const codeKey = (p.code || p.id || '').toUpperCase();
+      if (!seenCodes.has(codeKey)) {
+        seenCodes.add(codeKey);
+        deduped.push(p);
       }
     });
-    const deduped = Array.from(map.values());
 
-    if (needsSave || !data || deduped.length !== products.length) {
-      _setItem(STORAGE_KEYS.PRODUCTS, deduped);
+    if (needsSave || deduped.length !== products.length) {
+      this.saveProducts(deduped);
     }
     // Cache the fully-sanitized result and mark key as clean
     _resultCache.set(_cacheKey, deduped);
@@ -576,6 +728,11 @@ export const storageService = {
       updated = [prodObj, ...products];
     }
     this.saveProducts(updated);
+
+    if (isGAS()) {
+      callGAS('apiUpsertProduct', prodObj).catch(e => console.warn('[StorageService] GAS apiUpsertProduct background error:', e.message));
+    }
+
     return prodObj;
   },
   deleteProduct(productId) {
@@ -587,6 +744,11 @@ export const storageService = {
       return pId !== targetStr && pCode !== targetStr && !isBlacklistedProduct(p);
     });
     this.saveProducts(filtered);
+
+    if (isGAS()) {
+      callGAS('apiDeleteProduct', productId).catch(e => console.warn('[StorageService] GAS apiDeleteProduct background error:', e.message));
+    }
+
     // Also clean up any stock logs tied to this product
     const stockLogs = this.getStockLogs();
     const cleanLogs = stockLogs.filter(l => {
@@ -604,6 +766,9 @@ export const storageService = {
   getStorageLocations() {
     const data = _getItem(STORAGE_KEYS.STORAGE_LOCATIONS);
     if (!data) {
+      if (isGAS()) {
+        return [];
+      }
       this.saveStorageLocations(initialStorageLocations);
       return initialStorageLocations;
     }
@@ -618,8 +783,12 @@ export const storageService = {
     const data = _getItem(STORAGE_KEYS.USAGE_UNITS);
     let list;
     if (!data) {
-      this.saveUsageUnits(INITIAL_USAGE_UNITS);
-      list = INITIAL_USAGE_UNITS;
+      if (isGAS()) {
+        list = [];
+      } else {
+        this.saveUsageUnits(INITIAL_USAGE_UNITS);
+        list = INITIAL_USAGE_UNITS;
+      }
     } else {
       list = data;
     }
@@ -649,12 +818,22 @@ export const storageService = {
       }
     }
     this.saveUsageUnits(units);
+
+    if (isGAS()) {
+      callGAS('apiUpsertUsageUnit', updatedUnit).catch(e => console.warn('[StorageService] GAS apiUpsertUsageUnit error:', e.message));
+    }
+
     return updatedUnit;
   },
   deleteUsageUnit(unitId) {
     const units = this.getUsageUnits();
     const filtered = units.filter(u => u.id !== unitId);
     this.saveUsageUnits(filtered);
+
+    if (isGAS()) {
+      callGAS('apiDeleteUsageUnit', unitId).catch(e => console.warn('[StorageService] GAS apiDeleteUsageUnit error:', e.message));
+    }
+
     return true;
   },
 
@@ -662,6 +841,9 @@ export const storageService = {
   getDepartments() {
     const data = _getItem(STORAGE_KEYS.DEPARTMENTS);
     if (!data || !Array.isArray(data) || data.length === 0) {
+      if (isGAS()) {
+        return [];
+      }
       this.saveDepartments(INITIAL_DEPARTMENTS);
       return INITIAL_DEPARTMENTS;
     }
@@ -692,6 +874,11 @@ export const storageService = {
       }
     }
     this.saveDepartments(depts);
+
+    if (isGAS()) {
+      callGAS('apiUpsertDepartment', updatedDept).catch(e => console.warn('[StorageService] GAS apiUpsertDepartment error:', e.message));
+    }
+
     return updatedDept;
   },
   deleteDepartment(deptId) {
@@ -705,6 +892,9 @@ export const storageService = {
   getUsers() {
     const data = _getItem(STORAGE_KEYS.USERS);
     if (!data) {
+      if (isGAS()) {
+        return [];
+      }
       this.saveUsers(DEFAULT_EMPLOYEE_ACCOUNTS);
       return DEFAULT_EMPLOYEE_ACCOUNTS;
     }
@@ -745,12 +935,22 @@ export const storageService = {
       }
     }
     this.saveUsers(users);
+
+    if (isGAS()) {
+      callGAS('apiUpsertUser', updatedUser).catch(e => console.warn('[StorageService] GAS apiUpsertUser error:', e.message));
+    }
+
     return updatedUser;
   },
   deleteUser(userId) {
     const users = this.getUsers();
     const filtered = users.filter(u => u.id !== userId);
     this.saveUsers(filtered);
+
+    if (isGAS()) {
+      callGAS('apiDeleteUser', userId).catch(e => console.warn('[StorageService] GAS apiDeleteUser error:', e.message));
+    }
+
     return true;
   },
   saveStorageLocation(locationObj) {
@@ -771,6 +971,10 @@ export const storageService = {
       }
     }
     this.saveStorageLocations(locations);
+
+    if (isGAS()) {
+      callGAS('apiUpsertStorageLocation', updatedLoc).catch(e => console.warn('[StorageService] GAS apiUpsertStorageLocation error:', e.message));
+    }
 
     // Cascading Sync on Update: sync all products referencing this locationId
     if (isUpdate) {
@@ -832,13 +1036,24 @@ export const storageService = {
 
     const filtered = locations.filter(l => l.id !== locationId);
     this.saveStorageLocations(filtered);
+
+    if (isGAS()) {
+      callGAS('apiDeleteStorageLocation', locationId).catch(e => console.warn('[StorageService] GAS apiDeleteStorageLocation error:', e.message));
+    }
+
     return true;
   },
 
   // Vendors
   getVendors() {
     const data = _getItem(STORAGE_KEYS.VENDORS);
-    return data || initialVendors;
+    if (!data) {
+      if (isGAS()) {
+        return [];
+      }
+      return initialVendors;
+    }
+    return data;
   },
   saveVendors(vendors) {
     _setItem(STORAGE_KEYS.VENDORS, vendors, true);
@@ -861,6 +1076,11 @@ export const storageService = {
       updated = [vendorObj, ...vendors];
     }
     this.saveVendors(updated);
+
+    if (isGAS()) {
+      callGAS('apiUpsertVendor', vendorObj).catch(e => console.warn('[StorageService] GAS apiUpsertVendor error:', e.message));
+    }
+
     return vendorObj;
   },
 
@@ -1321,6 +1541,11 @@ export const storageService = {
         completedAt: finalData.completedAt || new Date().toISOString()
       };
       this.savePOs(pos);
+
+      if (isGAS()) {
+        callGAS('apiFinalizePO', poId, finalData).catch(e => console.warn('[StorageService] GAS apiFinalizePO error:', e.message));
+      }
+
       return pos[idx];
     }
     return null;
@@ -1833,14 +2058,18 @@ export const storageService = {
       this.saveProducts(products);
       this.saveStockLogs(currentLogs);
 
-      // Sync to local server if running
-      try {
-        fetch('/api/stock-logs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(currentLogs)
-        }).catch(() => {});
-      } catch {}
+      if (isGAS()) {
+        callGAS('apiAppendStockMovements', newLogs).catch(e => console.warn('[StorageService] GAS apiAppendStockMovements error:', e.message));
+      } else {
+        // Sync to local server if running
+        try {
+          fetch('/api/stock-logs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentLogs)
+          }).catch(() => {});
+        } catch {}
+      }
     }
 
     return newLogs;
@@ -1874,6 +2103,9 @@ export const storageService = {
   // Budgets
   getBudgets() {
     const data = _getItem(STORAGE_KEYS.BUDGETS);
+    if (!data && isGAS()) {
+      return {};
+    }
     const budgets = data || initialBudgets;
     const sanitized = {};
     if (budgets && typeof budgets === 'object') {
@@ -1888,6 +2120,9 @@ export const storageService = {
   },
   saveBudgets(budgets) {
     _setItem(STORAGE_KEYS.BUDGETS, budgets);
+    if (isGAS()) {
+      callGAS('apiSaveBudgets', budgets).catch(e => console.warn('[StorageService] GAS apiSaveBudgets error:', e.message));
+    }
   },
 
   // Budget Transaction Log (Refund / Restore entries)
@@ -1930,6 +2165,10 @@ export const storageService = {
     };
     existing.unshift(normalizedTx); // prepend newest first
     _setItem(STORAGE_KEYS.BUDGET_TRANSACTIONS, existing);
+
+    if (isGAS()) {
+      callGAS('apiAppendBudgetTransaction', normalizedTx).catch(e => console.warn('[StorageService] GAS apiAppendBudgetTransaction error:', e.message));
+    }
   },
 
   getPRCounters() {

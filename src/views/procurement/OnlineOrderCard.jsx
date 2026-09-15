@@ -1313,14 +1313,27 @@ export default function OnlineOrderCard({
 
     if (!claimResolutionType) return;
 
-    // Directive 1: ปลดล็อก Validation ให้เป็น Optional 100% (Image 1 Fix)
-    // ลบการบังคับกรอก newTrackingNo และ claimNote ออก สามารถกดบันทึกผลเจรจาได้ทันที
-    if (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL') {
+    // Validation: ตรวจสอบยอดเงินสำหรับ REFUND และ CANCEL
+    if (claimResolutionType === 'REFUND') {
+      if (refundAmount === '' || isNaN(Number(refundAmount)) || Number(refundAmount) < 0) {
+        return modalService.warning('กรุณาระบุยอดเงินที่ได้รับคืนจริงให้ถูกต้อง');
+      }
+      // 🛡️ Guard: ยอดคืนต้องไม่เกินมูลค่าสินค้าที่มีปัญหาจริง (max claimable)
+      const storeObjCheck = storesGroup.find(g => g.storeKey === storeKey);
+      const maxClaimable = storeObjCheck?.defaultRefund ?? storeObjCheck?.totalAmount ?? 0;
+      if (maxClaimable > 0 && Number(refundAmount) > maxClaimable + 0.01) {
+        return modalService.warning(
+          `ยอดเงินคืนสูงเกินไป — ต้องไม่เกินมูลค่าสินค้าที่มีปัญหาจริง (สูงสุด ฿${maxClaimable.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+        );
+      }
+    }
+    if (claimResolutionType === 'CANCEL') {
       if (refundAmount === '' || isNaN(Number(refundAmount)) || Number(refundAmount) < 0) {
         return modalService.warning('กรุณาระบุยอดเงินที่ได้รับคืนจริงให้ถูกต้อง');
       }
     }
 
+    // WRITE_OFF จงใจไม่คืนเงิน (0) แต่ยังบันทึก audit trail และปิดงาน
     const resolvedRefundNum = (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL') ? Number(refundAmount) : 0;
     const storeObj = storesGroup.find(g => g.storeKey === storeKey);
     const storeName = storeObj ? storeObj.storeName : '';
@@ -1328,7 +1341,9 @@ export default function OnlineOrderCard({
     const trackingSuffix = (newTrackingNo || '').trim() ? ` (เลขพัสดุ: ${(newTrackingNo || '').trim()})` : '';
     const confirmMsg = (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL')
       ? `ยืนยันบันทึกผลการเคลมเป็นคืนเงิน ฿${resolvedRefundNum.toLocaleString()} จากร้าน "${storeName}" คืนงบประมาณให้ฝ่าย ${po?.department || ''} และปิดงานของร้านนี้ ใช่หรือไม่?`
-      : `ยืนยันบันทึกผลการเคลมเป็นส่งของใหม่จากร้าน "${storeName}"${trackingSuffix} ใช่หรือไม่?`;
+      : claimResolutionType === 'WRITE_OFF'
+        ? `ยืนยันตัดจำหน่าย/ยกเว้นเคลมสินค้าที่ขาด/เสียหายจากร้าน "${storeName}" โดยไม่รับเงินคืน — ระบบจะบันทึก Audit Trail และปิดเคสของร้านนี้ทันที ใช่หรือไม่?`
+        : `ยืนยันบันทึกผลการเคลมเป็นส่งของใหม่จากร้าน "${storeName}"${trackingSuffix} ใช่หรือไม่?`;
 
     const confirmed = await modalService.confirm({
       title: 'ยืนยันผลการดำเนินการเคลม',
@@ -1433,7 +1448,9 @@ export default function OnlineOrderCard({
       // บันทึก Activity Timeline
       const timelineTitle = (claimResolutionType === 'REFUND' || claimResolutionType === 'CANCEL')
         ? `จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${resolvedRefundNum.toLocaleString()} เข้าแผนก`
-        : `จัดซื้อเจรจาเคลมสำเร็จ ร้าน "${storeName}" ส่งสินค้าใหม่ทดแทน ${(newTrackingNo || '').trim() ? `(เลขพัสดุ: ${(newTrackingNo || '').trim()})` : ''}`;
+        : claimResolutionType === 'WRITE_OFF'
+          ? `ตัดจำหน่าย/ยกเว้นเคลม (Write-off): ปิดเคสร้าน "${storeName}" — ไม่มีการคืนเงิน${(claimNote || '').trim() ? ` (${(claimNote || '').trim()})` : ''}`
+          : `จัดซื้อเจรจาเคลมสำเร็จ ร้าน "${storeName}" ส่งสินค้าใหม่ทดแทน ${(newTrackingNo || '').trim() ? `(เลขพัสดุ: ${(newTrackingNo || '').trim()})` : ''}`;
 
       // Update items metadata for settled store (Directives D & E)
       const updatedItems = (res?.items || po?.items || []).map((item, idx) => {
@@ -1487,6 +1504,18 @@ export default function OnlineOrderCard({
             refundedQty: 0,
             isSettled: false, // Remains receivable in GRN
             hasDispute: false
+          };
+        } else if (claimResolutionType === 'WRITE_OFF') {
+          // ตัดจำหน่าย: ปิดงานโดยไม่คืนเงิน — บันทึก audit trail ไว้สำหรับตรวจสอบ
+          return {
+            ...item,
+            claimResolution: 'WRITE_OFF',
+            refundedQty: 0,
+            refundAmount: 0,
+            isSettled: true,
+            hasDispute: false,
+            damagedQty: 0,
+            shortageQty: 0
           };
         }
         return item;
@@ -2545,13 +2574,16 @@ export default function OnlineOrderCard({
               {isStoreClaimActive && !isStoreResolved && (() => {
                 const currentResolutionType = storeClaimState.claimResolutionType || group.claimData?.type || 'REFUND';
                 const effectiveDefaultRefund = group.defaultRefund !== undefined ? group.defaultRefund : 0;
-                const currentRefundAmount = storeClaimState.refundAmount !== undefined 
-                  ? storeClaimState.refundAmount 
-                  : (currentResolutionType === 'CANCEL' 
-                      ? group.totalAmount 
-                      : (effectiveDefaultRefund > 0 
-                          ? (Math.round(effectiveDefaultRefund * 100) / 100) 
-                          : (group.claimData?.refundAmount !== undefined ? group.claimData.refundAmount : 0)));
+                // WRITE_OFF จงใจ = 0 เสมอ ห้ามแก้ไข
+                const currentRefundAmount = currentResolutionType === 'WRITE_OFF'
+                  ? 0
+                  : storeClaimState.refundAmount !== undefined 
+                    ? storeClaimState.refundAmount 
+                    : (currentResolutionType === 'CANCEL' 
+                        ? group.totalAmount 
+                        : (effectiveDefaultRefund > 0 
+                            ? (Math.round(effectiveDefaultRefund * 100) / 100) 
+                            : (group.claimData?.refundAmount !== undefined ? group.claimData.refundAmount : 0)));
                 const currentTrackingNo = storeClaimState.newTrackingNo !== undefined 
                   ? storeClaimState.newTrackingNo 
                   : (group.claimData?.replacementTrackingNo || group.claimData?.newTrackingNo || '');
@@ -2576,7 +2608,9 @@ export default function OnlineOrderCard({
                                 claimResolutionType: val,
                                 refundAmount: val === 'REFUND'
                                   ? (prev[group.storeKey]?.refundAmount !== undefined ? prev[group.storeKey]?.refundAmount : effectiveDefaultRefund)
-                                  : (val === 'CANCEL' ? group.totalAmount : 0)
+                                  : val === 'CANCEL'
+                                    ? group.totalAmount
+                                    : 0  // WRITE_OFF, REPLACEMENT = ไม่มีเงินคืน
                               }
                             }));
                           }}
@@ -2584,11 +2618,29 @@ export default function OnlineOrderCard({
                         >
                           <option value="REFUND">💰 คืนเงิน (Refund)</option>
                           <option value="REPLACEMENT">📦 ส่งของใหม่ชดเชย (Replacement)</option>
-                          <option value="CANCEL">❌ ยกเลิกรายการ</option>
+                          <option value="WRITE_OFF">✏️ ตัดจำหน่าย/ยกเว้นเคลม (Write-off)</option>
+                          <option
+                              value="CANCEL"
+                              disabled={Boolean(po?.hasGRN || po?.grNumber || po?.grId || po?.grnNumber || (Array.isArray(po?.grnHistory) && po.grnHistory.length > 0) || po?.receivedAt || (Array.isArray(po?.items) && po.items.some(it => it.receivedQty !== undefined && it.receivedQty !== null && Number(it.receivedQty) > 0)))}
+                              title={(po?.hasGRN || po?.grNumber || po?.grId || po?.grnNumber || (Array.isArray(po?.grnHistory) && po.grnHistory.length > 0) || po?.receivedAt || (Array.isArray(po?.items) && po.items.some(it => it.receivedQty !== undefined && Number(it.receivedQty) > 0))) ? 'ไม่สามารถใช้ได้: มีการรับของเข้าคลังแล้ว (GRN)' : 'ยกเลิกทั้งใบสั่งซื้อ (Full Cancellation)'}
+                            >❌ ยกเลิกรายการ</option>
                         </select>
 
                         {/* ฟิลด์ตามเงื่อนไข (Conditional Input) */}
-                        {currentResolutionType !== 'REPLACEMENT' && (
+                        {/* WRITE_OFF: แสดง read-only badge ฿0.00 พร้อมข้อความช่วยเหลือ */}
+                        {currentResolutionType === 'WRITE_OFF' && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5 h-8 px-3 bg-slate-100 border border-slate-200 rounded-lg shadow-2xs">
+                              <span className="text-slate-400 font-mono text-xs">฿</span>
+                              <span className="font-mono font-bold text-slate-400 text-xs">0.00</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 italic leading-tight max-w-[180px]">
+                              ไม่ได้รับเงินคืน — ปิดเคสทันที
+                            </span>
+                          </div>
+                        )}
+                        {/* REFUND / CANCEL: แสดงช่องกรอกยอดเงินและปุ่มคืนเต็มจำนวน */}
+                        {(currentResolutionType === 'REFUND' || currentResolutionType === 'CANCEL') && (
                           <div className="flex items-center gap-1.5 shrink-0">
                             <div className="relative w-28 shrink-0">
                               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs">฿</span>
@@ -2653,9 +2705,8 @@ export default function OnlineOrderCard({
                           type="button"
                           onClick={() => handleResolveStoreClaim(group.storeKey)}
                           disabled={isSubmitting}
-                          className="h-8 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center gap-1.5 shadow-xs transition-colors shrink-0 whitespace-nowrap cursor-pointer disabled:opacity-50"
+                          className="h-8 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center justify-center shadow-xs transition-colors shrink-0 whitespace-nowrap cursor-pointer disabled:opacity-50"
                         >
-                          <Check className="w-3.5 h-3.5"/>
                           <span>✓ บันทึกผลเจรจา</span>
                         </button>
                       </div>

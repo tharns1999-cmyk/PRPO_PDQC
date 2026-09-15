@@ -250,7 +250,7 @@ export default function PrintablePO({ po }) {
 
   return (
     <div
-      className="font-sarabun text-slate-900 bg-white p-8 max-w-[210mm] mx-auto text-sm thai-doc-container"
+      className="font-sarabun text-slate-900 bg-white p-8 print:p-0 max-w-[210mm] print:max-w-none print:w-full mx-auto print:m-0 text-sm thai-doc-container"
       style={{
         fontFamily: "'TH Sarabun New', 'Sarabun', 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif",
         letterSpacing: '0px',
@@ -341,9 +341,18 @@ export default function PrintablePO({ po }) {
       </div>
 
       {/* Items Table */}
-      <table className="w-full border-collapse border border-black mb-6">
-        <thead>
-          <tr className="bg-gray-100">
+      <table 
+        className="w-full border-collapse border border-black mb-6 po-items-table"
+        style={{
+          pageBreakInside: 'auto',
+          breakInside: 'auto',
+        }}
+      >
+        <thead
+          className="table-header-group"
+          style={{ display: 'table-header-group' }}
+        >
+          <tr className="bg-gray-100 break-inside-avoid print:break-inside-avoid" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
             <th className="border border-black p-4 w-12 text-center">{cleanThaiText('ลำดับ')}<br />(No.)</th>
             <th className="border border-black p-4 w-24 text-center">{cleanThaiText('รหัสสินค้า')}<br />(Code)</th>
             <th className="border border-black p-4 text-left">{cleanThaiText('รายการสินค้า')}<br />(Description)</th>
@@ -352,14 +361,18 @@ export default function PrintablePO({ po }) {
             <th className="border border-black p-4 w-32 text-right">{cleanThaiText('รวมเงิน (บาท)')}<br />(Amount)</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody style={{ display: 'table-row-group' }}>
           {(po.items || []).map((item, index) => {
             const itemQty = Number(item.actualQty ?? item.qty ?? item.purchaseQty) || 0;
             const itemPrice = Number(item.actualPrice ?? item.price ?? item.unitPrice ?? item.estimatedPrice) || 0;
             const itemTotal = itemQty * itemPrice;
 
             return (
-              <tr key={item.id || item.sku || index}>
+              <tr 
+                key={item.id || item.sku || index}
+                className="break-inside-avoid print:break-inside-avoid"
+                style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+              >
                 <td className="border border-black p-4 text-center">{index + 1}</td>
                 <td className="border border-black p-4 text-center font-mono text-sm">{cleanThaiText(item.code || item.sku || '-')}</td>
                 <td className="border border-black p-4 break-words whitespace-normal text-xs leading-relaxed">
@@ -381,7 +394,11 @@ export default function PrintablePO({ po }) {
           })}
 
           {(po.items || []).length < 5 && Array.from({ length: 5 - (po.items || []).length }).map((_, i) => (
-            <tr key={`empty-${i}`}>
+            <tr 
+              key={`empty-${i}`}
+              className="break-inside-avoid print:break-inside-avoid"
+              style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+            >
               <td className="border-x border-black p-4 h-8"></td>
               <td className="border-x border-black p-4"></td>
               <td className="border-x border-black p-4 break-words whitespace-normal text-xs leading-relaxed"></td>
@@ -390,75 +407,89 @@ export default function PrintablePO({ po }) {
               <td className="border-x border-black p-4"></td>
             </tr>
           ))}
-          <tr>
+          <tr className="break-inside-avoid print:break-inside-avoid" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
             <td colSpan="6" className="border-t border-black"></td>
           </tr>
         </tbody>
       </table>
 
-      {/* Financial Summary Breakdown */}
-      <div className="flex justify-between items-start my-3 text-xs">
-        <div className="w-1/2 align-top text-slate-700 pr-4">
-          <span className="font-semibold text-xs text-slate-900">{cleanThaiText('หมายเหตุ (Remarks):')}</span>
-          <p className="mt-0.5 leading-relaxed text-[11px] text-slate-600">{cleanThaiText('1. โปรดระบุเลขที่ใบสั่งซื้อ (PO No.) ในเอกสารใบกำกับภาษีทุกครั้ง')}</p>
-          <p className="leading-relaxed text-[11px] text-slate-600">{cleanThaiText('2. กรณีส่งมอบล่าช้ากว่ากำหนด บริษัทขอสงวนสิทธิ์ในการคิดค่าปรับตามระเบียบบริษัท')}</p>
-          {po.note && (
-            <p className="mt-1 text-slate-800 leading-relaxed font-medium break-words whitespace-normal text-[11px]">
-              <strong>{cleanThaiText('ข้อความเพิ่มเติม: ')}</strong>{cleanThaiText(po.note)}
-            </p>
-          )}
-        </div>
-        <div className="flex justify-end pt-3.5 pb-1" style={{ paddingTop: '12px' }}>
-          <div className="w-64 space-y-1 text-right">
-            {/* แถว Subtotal & VAT: บังคับฟอนต์ 10px */}
-            <div style={{ fontSize: '10px', lineHeight: '14px' }} className="flex justify-between items-center text-[10px] leading-tight text-slate-600">
-              <span className="font-medium">{cleanThaiText('รวมมูลค่าสินค้า (Subtotal):')}</span>
-              <span style={{ fontFamily: 'monospace' }} className="text-[10px] font-mono text-slate-800">
-                ฿{subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
+      {/* ── Atomic Financial & Signature Section (Page-Break Avoid Container) ── */}
+      <div
+        className="po-atomic-summary-signatures break-inside-avoid print:break-inside-avoid mt-4"
+        style={{
+          breakInside: 'avoid',
+          pageBreakInside: 'avoid',
+        }}
+      >
+        {/* Financial Summary Breakdown */}
+        <div className="flex justify-between items-start my-3 text-xs">
+          <div className="w-1/2 align-top text-slate-700 pr-4">
+            <span className="font-semibold text-xs text-slate-900">{cleanThaiText('หมายเหตุ (Remarks):')}</span>
+            <p className="mt-0.5 leading-relaxed text-[11px] text-slate-600">{cleanThaiText('1. โปรดระบุเลขที่ใบสั่งซื้อ (PO No.) ในเอกสารใบกำกับภาษีทุกครั้ง')}</p>
+            <p className="leading-relaxed text-[11px] text-slate-600">{cleanThaiText('2. กรณีส่งมอบล่าช้ากว่ากำหนด บริษัทขอสงวนสิทธิ์ในการคิดค่าปรับตามระเบียบบริษัท')}</p>
+            {po.note && (
+              <p className="mt-1 text-slate-800 leading-relaxed font-medium break-words whitespace-normal text-[11px]">
+                <strong>{cleanThaiText('ข้อความเพิ่มเติม: ')}</strong>{cleanThaiText(po.note)}
+              </p>
+            )}
+          </div>
+          <div className="flex justify-end pt-3.5 pb-1" style={{ paddingTop: '12px' }}>
+            <div className="w-64 space-y-1 text-right">
+              {/* แถว Subtotal & VAT: บังคับฟอนต์ 10px */}
+              <div style={{ fontSize: '10px', lineHeight: '14px' }} className="flex justify-between items-center text-[10px] leading-tight text-slate-600">
+                <span className="font-medium">{cleanThaiText('รวมมูลค่าสินค้า (Subtotal):')}</span>
+                <span style={{ fontFamily: 'monospace' }} className="text-[10px] font-mono text-slate-800">
+                  ฿{subtotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
 
-            <div style={{ fontSize: '10px', lineHeight: '14px' }} className="flex justify-between items-center text-[10px] leading-tight text-slate-600">
-              <span className="font-medium">{cleanThaiText('ภาษีมูลค่าเพิ่ม 7% (VAT 7%):')}</span>
-              <span style={{ fontFamily: 'monospace' }} className="text-[10px] font-mono text-slate-700">
-                {hasVat && vatAmount > 0
-                  ? `฿${vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : cleanThaiText('ไม่มี VAT (0%)')}
-              </span>
-            </div>
+              <div style={{ fontSize: '10px', lineHeight: '14px' }} className="flex justify-between items-center text-[10px] leading-tight text-slate-600">
+                <span className="font-medium">{cleanThaiText('ภาษีมูลค่าเพิ่ม 7% (VAT 7%):')}</span>
+                <span style={{ fontFamily: 'monospace' }} className="text-[10px] font-mono text-slate-700">
+                  {hasVat && vatAmount > 0
+                    ? `฿${vatAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : cleanThaiText('ไม่มี VAT (0%)')}
+                </span>
+              </div>
 
-            {/* เส้นคั่นบาง */}
-            <div style={{ borderTop: '1px solid #E2E8F0', margin: '3px 0' }} />
+              {/* เส้นคั่นบาง */}
+              <div style={{ borderTop: '1px solid #E2E8F0', margin: '3px 0' }} />
 
-            {/* แถว Grand Total: บังคับฟอนต์ 11px ตัวหนา */}
-            <div style={{ fontSize: '11px', lineHeight: '16px', fontWeight: 'bold' }} className="flex justify-between items-center text-[11px] leading-tight font-bold text-slate-900">
-              <span>{cleanThaiText('ยอดเงินรวมสุทธิ (Grand Total):')}</span>
-              <span style={{ fontFamily: 'monospace', color: '#047857' }} className="text-[11px] font-mono font-bold">
-                ฿{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
+              {/* แถว Grand Total: บังคับฟอนต์ 11px ตัวหนา */}
+              <div style={{ fontSize: '11px', lineHeight: '16px', fontWeight: 'bold' }} className="flex justify-between items-center text-[11px] leading-tight font-bold text-slate-900">
+                <span>{cleanThaiText('ยอดเงินรวมสุทธิ (Grand Total):')}</span>
+                <span style={{ fontFamily: 'monospace', color: '#047857' }} className="text-[11px] font-mono font-bold">
+                  ฿{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Electronic Approvals & Acknowledgement */}
-      <table className="w-full table-fixed border-collapse border border-black text-center mt-10">
-        <thead>
-          <tr className="bg-slate-50 border-b border-black">
-            {[
-              { role: 'ผู้ขอซื้อ' },
-              { role: 'ผู้ทบทวน' },
-              { role: 'ผู้อนุมัติ' },
-              { role: 'ผู้ตรวจรับ / บันทึกสต็อก' }
-            ].map((stamp, idx) => (
-              <th key={idx} className={`w-1/4 py-1.5 px-2 ${idx < 3 ? 'border-r border-black' : ''} text-[11px] font-bold text-slate-800`}>
-                {cleanThaiText(stamp.role)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
+        {/* Electronic Approvals & Acknowledgement */}
+        <table 
+          className="w-full table-fixed border-collapse border border-black text-center mt-6 break-inside-avoid print:break-inside-avoid"
+          style={{
+            breakInside: 'avoid',
+            pageBreakInside: 'avoid',
+          }}
+        >
+          <thead>
+            <tr className="bg-slate-50 border-b border-black break-inside-avoid print:break-inside-avoid" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
+              {[
+                { role: 'ผู้ขอซื้อ' },
+                { role: 'ผู้ทบทวน' },
+                { role: 'ผู้อนุมัติ' },
+                { role: 'ผู้ตรวจรับ / บันทึกสต็อก' }
+              ].map((stamp, idx) => (
+                <th key={idx} className={`w-1/4 py-1.5 px-2 ${idx < 3 ? 'border-r border-black' : ''} text-[11px] font-bold text-slate-800`}>
+                  {cleanThaiText(stamp.role)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="break-inside-avoid print:break-inside-avoid" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
             <td className="w-1/4 p-2 align-top border-r border-black">
               <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
                 <div className="h-14 flex items-center justify-center">
@@ -571,6 +602,7 @@ export default function PrintablePO({ po }) {
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

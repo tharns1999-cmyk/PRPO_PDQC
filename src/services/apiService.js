@@ -1,4 +1,4 @@
-import { storageService } from './storageService';
+import { storageService, isGAS, callGAS } from './storageService';
 import { workflowEngine } from './workflowEngine';
 import { auditService } from './auditService';
 import { PO_STATUS } from '../config/constants';
@@ -8,6 +8,17 @@ import { clearMockTransactions, resetMockTransactions } from '../utils/dataReset
 export const apiService = {
   // --- Audit Trail Operations ---
   async getAuditLogs(filters) {
+    if (isGAS()) {
+      try {
+        const gasLogs = await callGAS('apiGetAuditLogs');
+        if (Array.isArray(gasLogs)) {
+          storageService.saveAuditLogs(gasLogs);
+          return gasLogs;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetAuditLogs error:', e.message);
+      }
+    }
     return auditService.getLogs(filters);
   },
   async clearAuditLogs() {
@@ -15,6 +26,18 @@ export const apiService = {
   },
   // --- Data Getters ---
   async getProducts() {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetProducts');
+        if (Array.isArray(data)) {
+          storageService.saveProducts(data);
+          return data;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetProducts fallback:', e.message);
+      }
+      return storageService.getProducts();
+    }
     try {
       const res = await fetch('/api/products');
       if (res.ok) {
@@ -30,6 +53,18 @@ export const apiService = {
     return storageService.getProducts();
   },
   async getVendors() {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetVendors');
+        if (Array.isArray(data)) {
+          storageService.saveVendors(data);
+          return data;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetVendors fallback:', e.message);
+      }
+      return storageService.getVendors();
+    }
     try {
       const res = await fetch('/api/vendors');
       if (res.ok) {
@@ -45,6 +80,18 @@ export const apiService = {
     return storageService.getVendors();
   },
   async getStorageLocations() {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetStorageLocations');
+        if (Array.isArray(data)) {
+          storageService.saveStorageLocations(data);
+          return data;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetStorageLocations fallback:', e.message);
+      }
+      return storageService.getStorageLocations();
+    }
     try {
       const res = await fetch('/api/storage-locations');
       if (res.ok) {
@@ -60,6 +107,21 @@ export const apiService = {
     return storageService.getStorageLocations();
   },
   async getUsageUnits(department) {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetUsageUnits');
+        if (Array.isArray(data)) {
+          storageService.saveUsageUnits(data);
+          if (department && department !== 'ALL') {
+            return data.filter(u => u.department === department);
+          }
+          return data;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetUsageUnits fallback:', e.message);
+      }
+      return storageService.getUsageUnits(department);
+    }
     try {
       const url = department && department !== 'ALL' 
         ? `/api/usage-units?department=${encodeURIComponent(department)}`
@@ -80,6 +142,18 @@ export const apiService = {
     return storageService.getUsageUnits(department);
   },
   async getUsers() {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetUsers');
+        if (Array.isArray(data)) {
+          storageService.saveUsers(data);
+          return data;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetUsers fallback:', e.message);
+      }
+      return storageService.getUsers();
+    }
     try {
       const res = await fetch('/api/users');
       if (res.ok) {
@@ -95,6 +169,18 @@ export const apiService = {
     return storageService.getUsers();
   },
   async getDepartments() {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetDepartments');
+        if (Array.isArray(data)) {
+          storageService.saveDepartments(data);
+          return data;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetDepartments fallback:', e.message);
+      }
+      return storageService.getDepartments();
+    }
     try {
       const res = await fetch('/api/departments');
       if (res.ok) {
@@ -110,6 +196,25 @@ export const apiService = {
     return storageService.getDepartments();
   },
   async getPRs() {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetPRs');
+        if (Array.isArray(data)) {
+          const seen = new Set();
+          const unique = data.filter(p => {
+            const key = p.id || p.prNo;
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          storageService.savePRs(unique);
+          return unique;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetPRs fallback:', e.message);
+      }
+      return storageService.getPRs();
+    }
     if (typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true') {
       return storageService.getPRs();
     }
@@ -142,6 +247,25 @@ export const apiService = {
     });
   },
   async getPOs() {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetPOs');
+        if (Array.isArray(data)) {
+          const seen = new Set();
+          const unique = data.filter(p => {
+            const key = p.poNo || p.poNumber || p.id;
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          storageService.savePOs(unique);
+          return unique;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetPOs fallback:', e.message);
+      }
+      return storageService.getPOs();
+    }
     if (typeof localStorage !== 'undefined' && localStorage.getItem('app_data_cleared') === 'true') {
       return storageService.getPOs();
     }
@@ -174,6 +298,18 @@ export const apiService = {
     });
   },
   async getStockLogs() {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetStockLogs');
+        if (Array.isArray(data)) {
+          storageService.saveStockLogs(data);
+          return data;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetStockLogs fallback:', e.message);
+      }
+      return storageService.getStockLogs();
+    }
     try {
       const res = await fetch('/api/stock-logs');
       if (res.ok) {
@@ -189,6 +325,18 @@ export const apiService = {
     return storageService.getStockLogs();
   },
   async getBudgets() {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetBudgets');
+        if (data && typeof data === 'object') {
+          storageService.saveBudgets(data);
+          return data;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetBudgets fallback:', e.message);
+      }
+      return storageService.getBudgets();
+    }
     try {
       const res = await fetch('/api/budgets');
       if (res.ok) {
@@ -204,6 +352,17 @@ export const apiService = {
     return storageService.getBudgets();
   },
   async getNotifications() {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetNotifications');
+        if (Array.isArray(data)) {
+          return data;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetNotifications fallback:', e.message);
+      }
+      return [];
+    }
     try {
       const res = await fetch('/api/notifications');
       if (res.ok) {
@@ -219,6 +378,18 @@ export const apiService = {
   },
   
   async getBudgetTransactions() {
+    if (isGAS()) {
+      try {
+        const data = await callGAS('apiGetBudgetTransactions');
+        if (Array.isArray(data)) {
+          storageService.saveBudgetTransactions(data);
+          return data;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetBudgetTransactions fallback:', e.message);
+      }
+      return storageService.getBudgetTransactions();
+    }
     try {
       const res = await fetch('/api/budget-transactions');
       if (res.ok) {
@@ -368,6 +539,16 @@ export const apiService = {
     // 1. Generate new PR payload via workflow engine logic & validation
     const newPR = await workflowEngine.createPR(prData, user, isDraft);
 
+    if (isGAS()) {
+      try {
+        const gasResult = await callGAS('apiCreatePR', newPR);
+        return gasResult || newPR;
+      } catch (e) {
+        console.warn('[apiService] GAS apiCreatePR error:', e.message);
+      }
+      return newPR;
+    }
+
     // 2. Direct Sync to Local API Backend File
     try {
       const res = await fetch('/api/prs', {
@@ -387,6 +568,14 @@ export const apiService = {
 
   async updatePR(prId, prData, user, isDraft = false) {
     const updated = await workflowEngine.updatePR(prId, prData, user, isDraft);
+    if (isGAS()) {
+      try {
+        await callGAS('apiSavePR', updated);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSavePR error:', e.message);
+      }
+      return updated;
+    }
     try {
       await fetch(`/api/prs/${prId}`, {
         method: 'PUT',
@@ -399,6 +588,14 @@ export const apiService = {
 
   async submitPR(prId, user, memoData = null) {
     const result = await workflowEngine.submitPR(prId, user, memoData);
+    if (isGAS()) {
+      try {
+        await callGAS('apiSavePR', result);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSavePR error:', e.message);
+      }
+      return result;
+    }
     try {
       await fetch(`/api/prs/${prId}`, {
         method: 'PUT',
@@ -411,6 +608,20 @@ export const apiService = {
 
   async updatePRStatus(prId, nextStatus, user, note = '') {
     const result = await workflowEngine.updatePRStatus(prId, nextStatus, user, note);
+    if (isGAS()) {
+      try {
+        if (result?.pr) await callGAS('apiSavePR', result.pr);
+        if (result?.po) {
+          const poList = Array.isArray(result.po) ? result.po : [result.po];
+          for (const singlePo of poList) {
+            await callGAS('apiCreatePO', singlePo);
+          }
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS updatePRStatus error:', e.message);
+      }
+      return result;
+    }
     try {
       if (result?.pr) {
         await fetch(`/api/prs/${prId}`, {
@@ -435,6 +646,14 @@ export const apiService = {
 
   async rejectPR(prId, user, reason) {
     const updated = await workflowEngine.rejectPR(prId, user, reason);
+    if (isGAS()) {
+      try {
+        await callGAS('apiSavePR', updated);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSavePR error:', e.message);
+      }
+      return updated;
+    }
     try {
       await fetch(`/api/prs/${prId}`, {
         method: 'PUT',
@@ -447,6 +666,14 @@ export const apiService = {
 
   async editPRItems(prId, items, user, reason = '') {
     const updated = await workflowEngine.editPRItems(prId, items, user, reason);
+    if (isGAS()) {
+      try {
+        await callGAS('apiSavePR', updated);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSavePR error:', e.message);
+      }
+      return updated;
+    }
     try {
       await fetch(`/api/prs/${prId}`, {
         method: 'PUT',
@@ -459,6 +686,14 @@ export const apiService = {
 
   async cancelPR(prId, user, reason) {
     const cancelled = await workflowEngine.cancelPR(prId, user, reason);
+    if (isGAS()) {
+      try {
+        await callGAS('apiSavePR', cancelled);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSavePR error:', e.message);
+      }
+      return cancelled;
+    }
     try {
       await fetch(`/api/prs/${prId}`, {
         method: 'PUT',
@@ -471,6 +706,14 @@ export const apiService = {
 
   async cancelPO(poId, user, reason) {
     const cancelled = await workflowEngine.cancelPO(poId, user, reason);
+    if (isGAS()) {
+      try {
+        await callGAS('apiSavePO', cancelled);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSavePO error:', e.message);
+      }
+      return cancelled;
+    }
     try {
       await fetch(`/api/pos/${poId}`, {
         method: 'PUT',
@@ -485,6 +728,14 @@ export const apiService = {
 
   async acknowledgeOnlineTask(poId, vendorName, user, updatedItems = null, varianceNote = '') {
     const updated = await workflowEngine.acknowledgeOnlineTask(poId, vendorName, user, updatedItems, varianceNote);
+    if (isGAS()) {
+      try {
+        await callGAS('apiSavePO', updated);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSavePO error:', e.message);
+      }
+      return updated;
+    }
     try {
       await fetch(`/api/pos/${poId}`, {
         method: 'PUT',
@@ -528,6 +779,14 @@ export const apiService = {
   // --- PO & Receive Goods Operations ---
   async assignVendor(poId, vendorId, customVendorName, user) {
     const updated = await workflowEngine.assignVendor(poId, vendorId, customVendorName, user);
+    if (isGAS()) {
+      try {
+        await callGAS('apiSavePO', updated);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSavePO error:', e.message);
+      }
+      return updated;
+    }
     try {
       await fetch(`/api/pos/${poId}`, {
         method: 'PUT',
@@ -543,6 +802,14 @@ export const apiService = {
   // Generic claim filing — supports both ONLINE and SELF-BUY channels
   async fileClaim(poId, claimData, user) {
     const updated = await workflowEngine.fileClaim(poId, claimData, user);
+    if (isGAS()) {
+      try {
+        await callGAS('apiSavePO', updated);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSavePO error:', e.message);
+      }
+      return updated;
+    }
     try {
       await fetch(`/api/pos/${poId}`, {
         method: 'PUT',
@@ -561,6 +828,14 @@ export const apiService = {
   // Generic claim resolution — supports both ONLINE and SELF-BUY channels
   async resolveClaim(poId, resolution, user) {
     const resolved = await workflowEngine.resolveClaim(poId, resolution, user);
+    if (isGAS()) {
+      try {
+        await callGAS('apiSavePO', resolved);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSavePO error:', e.message);
+      }
+      return resolved;
+    }
     try {
       await fetch(`/api/pos/${poId}`, {
         method: 'PUT',
@@ -578,6 +853,14 @@ export const apiService = {
 
   async updatePOStatus(poId, nextStatus, user, note = '') {
     const updated = await workflowEngine.updatePOStatus(poId, nextStatus, user, note);
+    if (isGAS()) {
+      try {
+        await callGAS('apiSavePO', updated);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSavePO error:', e.message);
+      }
+      return updated;
+    }
     try {
       await fetch(`/api/pos/${poId}`, {
         method: 'PUT',

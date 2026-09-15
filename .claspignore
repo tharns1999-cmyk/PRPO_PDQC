@@ -1,0 +1,8 @@
+# Clasp upload filtering rules
+# Ignore all files by default
+**/*
+
+# Only whitelist backend scripts, HTML bundles, and manifest
+!**/*.gs
+!**/*.html
+!appsscript.json

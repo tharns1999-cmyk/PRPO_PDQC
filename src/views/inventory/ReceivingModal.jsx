@@ -15,6 +15,8 @@ import { storageService } from '../../services/storageService';
 import { generateGRNNumber } from '../../services/warehouseService';
 import { formatLocalTimestamp } from '../../services/inventoryService';
 import { getValidConversionRate, toStockQuantity, toStockUnitCost } from '../../utils/uomEngine.js';
+import AttachmentViewerModal from '../../components/common/AttachmentViewerModal';
+import { driveService } from '../../services/driveService';
 
 /**
  * Helper to resiliently resolve refund quantity and amount
@@ -197,6 +199,7 @@ export default function ReceivingModal({
 
   const [grnNote, setGrnNote] = useState('');
   const [attachments, setAttachments] = useState([]);
+  const [previewAttachment, setPreviewAttachment] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -419,7 +422,7 @@ export default function ReceivingModal({
 
   const handleFillAllComplete = handleFillAllRemaining;
 
-  // Handle Image compression & attachment
+  // Handle Image compression & Google Drive attachment
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -428,22 +431,30 @@ export default function ReceivingModal({
     try {
       const processed = [];
       for (const file of files) {
-        if (file.type.startsWith('image/')) {
-          const reader = new FileReader();
-          const base64 = await new Promise((res, rej) => {
-            reader.onload = (re) => res(re.target.result);
-            reader.onerror = rej;
-            reader.readAsDataURL(file);
+        try {
+          const uploadRes = await driveService.uploadFileToDrive({
+            file,
+            category: 'GRN',
+            poNumber: targetPO.poNo || targetPO.id,
+            docNo: targetPO.poNo || targetPO.id,
+            docType: 'GRN_EVIDENCE',
+            description: `ภาพถ่ายตรวจรับสินค้า PO ${targetPO.poNo || targetPO.id}`
           });
           processed.push({
             name: file.name,
+            fileName: file.name,
             size: file.size,
             type: file.type,
-            previewUrl: base64,
-            dataUrl: base64,
+            fileId: uploadRes.fileId,
+            fileUrl: uploadRes.fileUrl,
+            viewUrl: uploadRes.viewUrl,
+            downloadUrl: uploadRes.downloadUrl,
+            previewUrl: uploadRes.previewUrl || uploadRes.fileUrl,
+            dataUrl: uploadRes.previewUrl || uploadRes.fileUrl,
             uploadedAt: new Date().toLocaleString('th-TH')
           });
-        } else if (file.type === 'application/pdf') {
+        } catch (uploadErr) {
+          console.warn('[ReceivingModal] Drive upload fallback to local preview:', uploadErr.message);
           const reader = new FileReader();
           const base64 = await new Promise((res, rej) => {
             reader.onload = (re) => res(re.target.result);
@@ -452,6 +463,7 @@ export default function ReceivingModal({
           });
           processed.push({
             name: file.name,
+            fileName: file.name,
             size: file.size,
             type: file.type,
             previewUrl: base64,
@@ -1285,19 +1297,27 @@ export default function ReceivingModal({
               ) : (
                 <div className="flex-1 min-h-[88px] grid grid-cols-4 gap-2 overflow-y-auto pr-1">
                   {attachments.map((att, i) => (
-                    <div key={i} className="relative group bg-slate-50 border border-slate-200 rounded-md p-1 overflow-hidden h-20 flex flex-col items-center justify-center">
+                    <div 
+                      key={i} 
+                      onClick={() => setPreviewAttachment({ file: att, url: att.previewUrl || att.fileUrl || att.dataUrl, title: att.name || att.fileName })}
+                      className="relative group bg-slate-50 border border-slate-200 rounded-md p-1 overflow-hidden h-20 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:shadow-xs transition-all"
+                      title="คลิกเพื่อดูตัวอย่างเอกสาร/รูปภาพจริง"
+                    >
                       {att.type === 'application/pdf' ? (
                         <div className="w-full h-12 bg-rose-50 rounded flex flex-col items-center justify-center text-rose-500">
                           <FileText className="w-4 h-4" />
                           <span className="text-[9px] font-bold">PDF</span>
                         </div>
                       ) : (
-                        <img src={att.previewUrl || att.dataUrl} alt={att.name} className="h-12 w-full object-cover rounded" />
+                        <img src={att.previewUrl || att.fileUrl || att.dataUrl} alt={att.name} className="h-12 w-full object-cover rounded" />
                       )}
                       <p className="text-[9px] text-slate-500 truncate w-full text-center mt-0.5 font-mono">{att.name}</p>
                       <button
                         type="button"
-                        onClick={() => handleRemoveAttachment(i)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveAttachment(i);
+                        }}
                         className="absolute top-0.5 right-0.5 p-0.5 bg-rose-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                         title="ลบไฟล์"
                       >
@@ -1430,6 +1450,15 @@ export default function ReceivingModal({
           )}
         </div>
 
+        {/* Real File Preview Modal */}
+        {previewAttachment && (
+          <AttachmentViewerModal
+            file={previewAttachment.file}
+            url={previewAttachment.url}
+            title={previewAttachment.title}
+            onClose={() => setPreviewAttachment(null)}
+          />
+        )}
       </div>
     </div>
   );

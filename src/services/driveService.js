@@ -7,10 +7,12 @@
  * - 03_GRN_Evidence/{YYYY-MM}/{PO_NUMBER}/
  * - 04_Claim_Evidence/{YYYY-MM}/{PO_NUMBER}/
  * 
- * Uploads directly to Express backend (/api/upload) with local storage & Base64 fallback.
+ * Dual-Mode Client Adapter:
+ * - In Google Apps Script mode (isGAS): delegates to `callGAS('apiUploadFile', payload)`
+ * - In Local Dev: uploads to Express backend (/api/upload) with local storage & Base64 fallback.
  */
 
-import { storageService } from './storageService.js';
+import { isGAS, callGAS } from './storageService.js';
 
 export const DRIVE_ROOT_FOLDER = '[ERP] PR-PO-Stock-System';
 
@@ -58,6 +60,85 @@ export const resolveDriveFolderPath = (category, poNumber = '', date = new Date(
 };
 
 /**
+ * Extracts Google Drive file ID from various Drive URL formats or raw ID string.
+ * Supports:
+ * - https://drive.google.com/file/d/{id}/view...
+ * - https://drive.google.com/open?id={id}
+ * - https://drive.google.com/uc?id={id}
+ * - https://drive.google.com/thumbnail?id={id}
+ * - https://lh3.googleusercontent.com/d/{id}
+ * 
+ * @param {string} urlOrId
+ * @returns {string|null} Google Drive File ID or null
+ */
+export const extractDriveFileId = (urlOrId = '') => {
+  if (!urlOrId || typeof urlOrId !== 'string') return null;
+  const str = urlOrId.trim();
+
+  // Pattern 1: /file/d/{id}
+  const fileDMatch = str.match(/\/file\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (fileDMatch) return fileDMatch[1];
+
+  // Pattern 2: id={id}
+  const idParamMatch = str.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
+  if (idParamMatch) return idParamMatch[1];
+
+  // Pattern 3: googleusercontent.com/d/{id}
+  const lh3Match = str.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (lh3Match) return lh3Match[1];
+
+  // Pattern 4: Bare Drive file ID (25-50 chars, no slashes or protocols)
+  if (!str.includes('/') && !str.includes(':') && /^[a-zA-Z0-9_-]{25,50}$/.test(str)) {
+    return str;
+  }
+
+  return null;
+};
+
+/**
+ * Checks if a given string represents a Google Drive file or URL
+ * 
+ * @param {string} urlOrId
+ * @returns {boolean}
+ */
+export const isDriveUrl = (urlOrId = '') => {
+  if (!urlOrId || typeof urlOrId !== 'string') return false;
+  return Boolean(
+    urlOrId.includes('drive.google.com') ||
+    urlOrId.includes('googleusercontent.com') ||
+    extractDriveFileId(urlOrId)
+  );
+};
+
+/**
+ * Generates an optimized Google Drive display or preview URL
+ * 
+ * @param {string} urlOrId Drive URL or File ID
+ * @param {Object} [options]
+ * @param {'image'|'pdf'|'preview'|'download'} [options.type='image'] Target embed type
+ * @param {string} [options.size='w1600'] Thumbnail resolution size
+ * @returns {string} Direct embeddable URL
+ */
+export const getDriveDisplayUrl = (urlOrId, { type = 'image', size = 'w1600' } = {}) => {
+  if (!urlOrId) return '';
+  const fileId = extractDriveFileId(urlOrId);
+  if (!fileId) return urlOrId;
+
+  if (type === 'pdf' || type === 'preview') {
+    return `https://drive.google.com/file/d/${fileId}/preview`;
+  }
+  if (type === 'download') {
+    return `https://drive.google.com/uc?export=download&id=${fileId}`;
+  }
+  // High-res direct image thumbnail URL
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=${size}`;
+};
+
+export const getDrivePreviewUrl = (urlOrId) => getDriveDisplayUrl(urlOrId, { type: 'preview' });
+export const getDriveDownloadUrl = (urlOrId) => getDriveDisplayUrl(urlOrId, { type: 'download' });
+export const getDriveThumbnailUrl = (urlOrId, size = 'w1600') => getDriveDisplayUrl(urlOrId, { type: 'image', size });
+
+/**
  * Converts a browser File or Blob to a clean Base64 string
  * Strips data URI header (e.g. data:image/png;base64,) if present
  * 
@@ -98,7 +179,7 @@ export const fileToBase64 = (file) => {
 };
 
 /**
- * Uploads a document or evidence image via Express /api/upload or Base64 fallback
+ * Uploads a document or evidence image via Google Apps Script RPC, Express /api/upload, or Base64 fallback.
  * 
  * @param {Object} options
  * @param {File|Blob} [options.file] Browser file instance
@@ -107,8 +188,10 @@ export const fileToBase64 = (file) => {
  * @param {string} [options.mimeType] MIME type (e.g. 'image/jpeg')
  * @param {string} options.category 'PR' | 'PO' | 'GRN' | 'CLAIM'
  * @param {string} [options.poNumber] Relevant Purchase Order number
+ * @param {string} [options.docNo] Relevant document number
+ * @param {string} [options.docType] Document type (e.g. 'RECEIPT_PHOTO', 'INVOICE')
  * @param {string} [options.description] Human-readable description
- * @returns {Promise<{ success: boolean, fileId: string, fileUrl: string, fileName: string, folderPath: string }>}
+ * @returns {Promise<{ success: boolean, fileId: string, fileUrl: string, viewUrl?: string, downloadUrl?: string, fileName: string, folderPath: string, uploadedAt: string }>}
  */
 export const uploadFileToDrive = async ({
   file,
@@ -117,6 +200,8 @@ export const uploadFileToDrive = async ({
   mimeType,
   category = 'PR',
   poNumber = '',
+  docNo = '',
+  docType = '',
   description = ''
 }) => {
   let resolvedBase64 = base64Data || '';
@@ -142,11 +227,42 @@ export const uploadFileToDrive = async ({
     fileName: resolvedName,
     category: normalizeCategory(category),
     poNumber: poNumber || '',
+    docNo: docNo || poNumber || '',
+    docType: docType || category || 'OTHER',
     folderPath,
     description: description || ''
   };
 
-  // 1. Try upload to Express backend
+  // 1. Google Apps Script Production Mode
+  if (isGAS()) {
+    try {
+      const gasResult = await callGAS('apiUploadFile', payload);
+      const fileId = gasResult?.fileId || `FILE-GAS-${Date.now()}`;
+      const viewUrl = gasResult?.viewUrl || `https://drive.google.com/file/d/${fileId}/view`;
+      const downloadUrl = gasResult?.downloadUrl || `https://drive.google.com/uc?export=download&id=${fileId}`;
+      const previewUrl = getDriveDisplayUrl(fileId, { type: resolvedMime.includes('pdf') ? 'pdf' : 'image' });
+
+      return {
+        success: true,
+        attachmentId: gasResult?.attachmentId || `ATT-${Date.now()}`,
+        fileId,
+        fileUrl: previewUrl || viewUrl,
+        viewUrl,
+        downloadUrl,
+        previewUrl,
+        fileName: gasResult?.fileName || resolvedName,
+        mimeType: gasResult?.mimeType || resolvedMime,
+        fileSize: gasResult?.fileSize || 0,
+        folderPath: gasResult?.folderPath || folderPath,
+        uploadedAt: gasResult?.uploadedAt || new Date().toISOString()
+      };
+    } catch (gasErr) {
+      console.error('[driveService] Google Drive upload via GAS failed:', gasErr.message);
+      throw gasErr;
+    }
+  }
+
+  // 2. Local Dev: Try upload to Express backend
   try {
     const res = await fetch('/api/upload', {
       method: 'POST',
@@ -159,6 +275,7 @@ export const uploadFileToDrive = async ({
         success: true,
         fileId: data.fileId || `FILE-${Date.now()}`,
         fileUrl: data.fileUrl || `data:${resolvedMime};base64,${resolvedBase64}`,
+        previewUrl: data.fileUrl || `data:${resolvedMime};base64,${resolvedBase64}`,
         fileName: data.fileName || resolvedName,
         mimeType: data.mimeType || resolvedMime,
         folderPath: data.folderPath || folderPath,
@@ -169,7 +286,7 @@ export const uploadFileToDrive = async ({
     console.warn('[driveService] Backend upload offline, using Base64 fallback:', err.message);
   }
 
-  // 2. Fallback: Base64 data URL stored locally
+  // 3. Fallback: Base64 data URL stored locally
   const fileId = `FILE-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const dataUrl = `data:${resolvedMime};base64,${resolvedBase64}`;
 
@@ -177,6 +294,7 @@ export const uploadFileToDrive = async ({
     success: true,
     fileId,
     fileUrl: dataUrl,
+    previewUrl: dataUrl,
     fileName: resolvedName,
     mimeType: resolvedMime,
     folderPath,
@@ -189,6 +307,12 @@ export const driveService = {
   DRIVE_CATEGORIES,
   normalizeCategory,
   resolveDriveFolderPath,
+  extractDriveFileId,
+  isDriveUrl,
+  getDriveDisplayUrl,
+  getDrivePreviewUrl,
+  getDriveDownloadUrl,
+  getDriveThumbnailUrl,
   fileToBase64,
   uploadFileToDrive
 };

@@ -117,11 +117,15 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       if (typeof localStorage === 'undefined') return null;
-      const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('prpo_explicit_signout') === 'true') {
+        return null;
+      }
+      const stored = localStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem('prpo_auth_session');
       if (!stored) return null;
       const parsed = JSON.parse(stored);
       if (!isSessionValid(parsed)) {
         localStorage.removeItem(AUTH_STORAGE_KEY);
+        localStorage.removeItem('prpo_auth_session');
         return null;
       }
       return {
@@ -179,6 +183,8 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     fetchClientIp().catch(() => {});
   }, []);
+
+
 
   // Synchronize state when persona or session changes from outside (storage or custom event)
   useEffect(() => {
@@ -243,10 +249,12 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('prpo_original_admin_user');
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.clear();
+        sessionStorage.setItem('prpo_explicit_signout', 'true');
       }
     } catch (e) {
       console.warn('[AuthContext] Error clearing session:', e);
     }
+    authService.logout();
     setCurrentUser(null);
     setOriginalUser(null);
     setAuthError(null);
@@ -320,6 +328,11 @@ export function AuthProvider({ children }) {
     setIsLoading(true);
     setAuthError(null);
 
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('prpo_explicit_signout');
+    }
+    authService.clearExplicitSignOut();
+
     // Clear stale cached keys from previous sessions
     localStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem('prpo_current_user');
@@ -374,6 +387,70 @@ export function AuthProvider({ children }) {
       return sessionPayload;
     } catch (err) {
       const msg = err?.message || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ';
+      setAuthError(msg);
+      setIsLoading(false);
+      throw err;
+    }
+  }, []);
+
+  /**
+   * Explicit Google Apps Script Login:
+   * Clears explicit sign-out flag and invokes getNativeGoogleUser(true)
+   */
+  const loginWithGoogle = useCallback(async () => {
+    setIsLoading(true);
+    setAuthError(null);
+
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem('prpo_explicit_signout');
+    }
+    authService.clearExplicitSignOut();
+
+    try {
+      const nativeSession = await authService.getNativeGoogleUser(true);
+      if (!nativeSession) {
+        throw new Error('ไม่พบข้อมูลบัญชี Google หรือยังไม่ได้รับสิทธิ์เข้าใช้งานระบบ (โปรดติดต่อผู้ดูแลระบบ)');
+      }
+
+      const normalized = normalizeRole(nativeSession);
+      const userDepts = nativeSession.departments || nativeSession.allowedDepartments || (nativeSession.department ? [nativeSession.department] : ['PD']);
+
+      const sessionPayload = {
+        ...nativeSession,
+        name: nativeSession.name || nativeSession.employeeName || nativeSession.displayName,
+        employeeName: nativeSession.name || nativeSession.employeeName || nativeSession.displayName,
+        displayName: nativeSession.name || nativeSession.employeeName || nativeSession.displayName,
+        primaryDepartment: nativeSession.primaryDepartment || nativeSession.department || 'PD',
+        department: nativeSession.department || 'PD',
+        departments: userDepts,
+        assignedDepartments: userDepts,
+        allowedDepartments: userDepts,
+        canonicalRole: normalized,
+        expiresAt: Date.now() + SESSION_EXPIRATION_MS
+      };
+
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionPayload));
+      localStorage.setItem('prpo_auth_session', JSON.stringify(sessionPayload));
+      storageService.setCurrentRole?.(sessionPayload);
+      setCurrentUser(sessionPayload);
+      setIsLoading(false);
+
+      try {
+        auditService.logAction({
+          action: 'LOGIN',
+          docType: 'USER',
+          docNo: nativeSession.email || nativeSession.username || 'GOOGLE_USER',
+          details: `เข้าสู่ระบบสำเร็จผ่าน Google Native Identity (${nativeSession.email || nativeSession.username})`,
+          actor: sessionPayload,
+          department: sessionPayload.department || 'PD'
+        });
+      } catch (auditErr) {
+        console.warn('[AuthContext] Google Login audit error:', auditErr);
+      }
+
+      return sessionPayload;
+    } catch (err) {
+      const msg = err?.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อกับ Google Account';
       setAuthError(msg);
       setIsLoading(false);
       throw err;
@@ -486,6 +563,7 @@ export function AuthProvider({ children }) {
     isSimulating,
     originalUser,
     login,
+    loginWithGoogle,
     logout,
     switchRoleDev,
     revertSimulation,
@@ -504,6 +582,7 @@ export function AuthProvider({ children }) {
     isSimulating,
     originalUser,
     login,
+    loginWithGoogle,
     logout,
     switchRoleDev,
     revertSimulation,
@@ -534,6 +613,7 @@ export const useAuth = () => {
       isSimulating: false,
       originalUser: null,
       login: async () => ({}),
+      loginWithGoogle: async () => ({}),
       logout: () => {},
       switchRoleDev: () => ({}),
       revertSimulation: () => ({}),

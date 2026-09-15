@@ -1456,31 +1456,68 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                   );
                 })()}
 
-                {/* GR Attachments */}
-                {selectedPO.grAttachments && selectedPO.grAttachments.length > 0 && (
-                  <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs">
-                    <div className="flex items-center gap-2 font-semibold text-xs text-slate-700">
-                      <Camera className="w-4 h-4 text-indigo-500" />
-                      ภาพถ่ายและเอกสารการตรวจรับ
+                {/* GR & Evidence Attachments */}
+                {(() => {
+                  const allGrAttachments = [
+                    ...(Array.isArray(selectedPO.grAttachments) ? selectedPO.grAttachments : []),
+                    ...(Array.isArray(selectedPO.grnHistory)
+                      ? selectedPO.grnHistory.flatMap(grn => Array.isArray(grn.attachments) ? grn.attachments : [])
+                      : [])
+                  ];
+
+                  const claimPhotos = [
+                    ...(Array.isArray(selectedPO.claimEvidence) ? selectedPO.claimEvidence : []),
+                    ...(selectedPO.claimPhoto ? [{ previewUrl: selectedPO.claimPhoto, name: 'ภาพหลักฐานเคลมสินค้า' }] : [])
+                  ];
+
+                  const seenUrls = new Set();
+                  const uniqueAttachments = allGrAttachments.filter(att => {
+                    const key = att.fileId || att.previewUrl || att.url || att.dataUrl || att.fileUrl;
+                    if (!key || seenUrls.has(key)) return false;
+                    seenUrls.add(key);
+                    return true;
+                  });
+
+                  if (uniqueAttachments.length === 0 && claimPhotos.length === 0) return null;
+
+                  return (
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 font-semibold text-xs text-slate-700">
+                          <Camera className="w-4 h-4 text-indigo-500" />
+                          <span>ภาพถ่ายและเอกสารการตรวจรับ / หลักฐานเคลม</span>
+                        </div>
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {uniqueAttachments.length + claimPhotos.length} ไฟล์
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                        {uniqueAttachments.map((att, i) => (
+                          <button key={`grn-att-${i}`} type="button"
+                            onClick={() => setViewingAttachment({ file: att, url: att.previewUrl || att.fileUrl || att.dataUrl || att.url, title: att.name || att.fileName })}
+                            className="group bg-slate-50 border border-slate-200 rounded-xl p-1.5 hover:border-indigo-300 hover:shadow-sm transition-all cursor-pointer flex flex-col items-center">
+                            {att.type === 'application/pdf' ? (
+                              <div className="w-full h-16 bg-rose-50 rounded-lg flex flex-col items-center justify-center text-rose-500">
+                                <FileText className="w-5 h-5" /><span className="text-[9px] font-bold mt-0.5">PDF</span>
+                              </div>
+                            ) : (
+                              <img src={att.previewUrl || att.fileUrl || att.dataUrl || att.url} alt={att.name || 'attachment'} className="w-full h-16 object-cover rounded-lg group-hover:scale-105 transition-transform" />
+                            )}
+                            <p className="text-[10px] font-medium text-slate-600 truncate w-full mt-1 text-center font-mono">{att.name || att.fileName || `เอกสาร #${i + 1}`}</p>
+                          </button>
+                        ))}
+                        {claimPhotos.map((att, i) => (
+                          <button key={`claim-att-${i}`} type="button"
+                            onClick={() => setViewingAttachment({ file: att, url: att.previewUrl || att.fileUrl || att.dataUrl || att.url, title: att.name || 'หลักฐานเคลม' })}
+                            className="group bg-rose-50/60 border border-rose-200 rounded-xl p-1.5 hover:border-rose-400 hover:shadow-sm transition-all cursor-pointer flex flex-col items-center">
+                            <img src={att.previewUrl || att.fileUrl || att.dataUrl || att.url} alt={att.name || 'claim evidence'} className="w-full h-16 object-cover rounded-lg group-hover:scale-105 transition-transform" />
+                            <p className="text-[10px] font-medium text-rose-700 truncate w-full mt-1 text-center font-mono">{att.name || `หลักฐาน #${i + 1}`}</p>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                      {selectedPO.grAttachments.map((att, i) => (
-                        <button key={i} type="button"
-                          onClick={() => setViewingAttachment({ url: att.previewUrl || att.dataUrl, title: att.name })}
-                          className="group bg-slate-50 border border-slate-200 rounded-xl p-1.5 hover:border-indigo-300 hover:shadow-sm transition-all cursor-pointer flex flex-col items-center">
-                          {att.type === 'application/pdf' ? (
-                            <div className="w-full h-16 bg-rose-50 rounded-lg flex flex-col items-center justify-center text-rose-500">
-                              <FileText className="w-5 h-5" /><span className="text-[9px] font-bold mt-0.5">PDF</span>
-                            </div>
-                          ) : (
-                            <img src={att.previewUrl || att.dataUrl} alt={att.name} className="w-full h-16 object-cover rounded-lg group-hover:scale-105 transition-transform" />
-                          )}
-                          <p className="text-[10px] font-medium text-slate-600 truncate w-full mt-1 text-center">{att.name}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Activity Log (Collapsible & Compact) */}
                 {selectedPO.activityLog && selectedPO.activityLog.length > 0 && (

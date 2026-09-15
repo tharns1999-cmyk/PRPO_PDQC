@@ -31,3 +31,9 @@ blob-report
 .cursor
 .codex
 .agents
+
+# Google Apps Script & Clasp Deployment Security Guardrails
+.clasprc.json
+.clasp.json
+gas-deploy/
+dist-gas/

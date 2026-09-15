@@ -1,8 +1,8 @@
 /**
  * LoginView Component
  * 
- * Minimalist, high-density authentication interface for desktop and warehouse mobile/tablet devices.
- * Integrates with authentication service and session management.
+ * Standard Unified Authentication Interface for Localhost and Google Apps Script Production.
+ * Pure Username & Password credential authentication with quick-access Personas for rapid testing.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -32,12 +32,12 @@ export default function LoginView() {
     }
   }, [isAuthenticated, location.state, navigate]);
 
-  const handleSubmit = async (e) => {
-    if (e) e.preventDefault();
+  // Credentials Sign-In Handler
+  const performLogin = async (targetUser, targetPass) => {
     setLocalError('');
 
-    const cleanUser = username.trim();
-    const cleanPass = password.trim();
+    const cleanUser = String(targetUser || '').trim();
+    const cleanPass = String(targetPass || '').trim();
 
     if (!cleanUser) {
       setLocalError('กรุณาระบุ Username หรือ Employee ID');
@@ -72,6 +72,11 @@ export default function LoginView() {
     }
   };
 
+  const handleSubmit = async (e) => {
+    if (e) e.preventDefault();
+    await performLogin(username, password);
+  };
+
   const errorMessage = localError || authError;
 
   return (
@@ -103,7 +108,7 @@ export default function LoginView() {
               เข้าสู่ระบบ (Sign In)
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              กรอก Username และ Password เพื่อยืนยันตัวตน
+              กรอก Username และ Password เพื่อยืนยันตัวตนเข้าสู่ระบบ
             </p>
           </div>
 
@@ -115,11 +120,12 @@ export default function LoginView() {
             </div>
           )}
 
+          {/* Standard Credentials Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Username Input */}
             <div>
               <label htmlFor="username-input" className="block text-xs font-semibold text-slate-700 mb-1.5 font-mono uppercase tracking-wider">
-                Username
+                Username / รหัสพนักงาน
               </label>
               <div className="relative">
                 <input
@@ -127,7 +133,7 @@ export default function LoginView() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Username หรือ Employee ID"
+                  placeholder="เช่น wichai.pd หรือ admin"
                   autoComplete="username"
                   className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-mono"
                   required
@@ -142,7 +148,7 @@ export default function LoginView() {
             <div>
               <div className="flex justify-between items-center mb-1.5">
                 <label htmlFor="password-input" className="block text-xs font-semibold text-slate-700 font-mono uppercase tracking-wider">
-                  Password
+                  Password / รหัสผ่าน
                 </label>
                 <button
                   type="button"
@@ -159,7 +165,7 @@ export default function LoginView() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
+                  placeholder="รหัสผ่าน (เช่น password123)"
                   autoComplete="current-password"
                   className="w-full px-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-mono tracking-wide"
                   required
