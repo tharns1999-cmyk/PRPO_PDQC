@@ -1,6 +1,7 @@
 import { storageService, isGAS, callGAS } from './storageService';
 import { workflowEngine } from './workflowEngine';
 import { auditService } from './auditService';
+import { modalService } from './modalService';
 import { PO_STATUS } from '../config/constants';
 import { clearMockTransactions, resetMockTransactions } from '../utils/dataResetHelper';
 
@@ -583,12 +584,29 @@ export const apiService = {
 
     if (isGAS()) {
       try {
-        const gasResult = await callGAS('apiCreatePR', newPR);
-        return gasResult || newPR;
+        const gasResult = await callGAS('apiCreatePR', newPR, user);
+        if (gasResult && typeof gasResult === 'object') {
+          const finalPR = Object.assign({}, newPR, gasResult);
+          if (typeof finalPR.items === 'string') {
+            try { finalPR.items = JSON.parse(finalPR.items); } catch (e) {}
+          }
+          try {
+            if (storageService && typeof storageService.savePR === 'function') {
+              storageService.savePR(finalPR);
+            } else if (storageService && typeof storageService.upsertPR === 'function') {
+              storageService.upsertPR(finalPR);
+            }
+          } catch (storageErr) {
+            console.warn('[apiService] Storage sync non-blocking error in createPR:', storageErr);
+          }
+          return finalPR;
+        }
+        return newPR;
       } catch (e) {
-        console.warn('[apiService] GAS apiCreatePR error:', e.message);
+        console.error('[apiService] GAS apiCreatePR error:', e.message);
+        modalService.error('สร้างใบขอซื้อ (PR) ไม่สำเร็จ', e.message);
+        throw e;
       }
-      return newPR;
     }
 
     // 2. Direct Sync to Local API Backend File
@@ -612,11 +630,29 @@ export const apiService = {
     const updated = await workflowEngine.updatePR(prId, prData, user, isDraft);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePR', updated);
+        const gasResult = await callGAS('apiSavePR', updated, user);
+        if (gasResult && typeof gasResult === 'object') {
+          const finalPR = Object.assign({}, updated, gasResult);
+          if (typeof finalPR.items === 'string') {
+            try { finalPR.items = JSON.parse(finalPR.items); } catch (e) {}
+          }
+          try {
+            if (storageService && typeof storageService.savePR === 'function') {
+              storageService.savePR(finalPR);
+            } else if (storageService && typeof storageService.upsertPR === 'function') {
+              storageService.upsertPR(finalPR);
+            }
+          } catch (storageErr) {
+            console.warn('[apiService] Storage sync non-blocking error in updatePR:', storageErr);
+          }
+          return finalPR;
+        }
+        return updated;
       } catch (e) {
-        console.warn('[apiService] GAS apiSavePR error:', e.message);
+        console.error('[apiService] GAS apiSavePR error:', e.message);
+        modalService.error('แก้ไขใบขอซื้อ (PR) ไม่สำเร็จ', e.message);
+        throw e;
       }
-      return updated;
     }
     try {
       await fetch(`/api/prs/${prId}`, {
@@ -632,9 +668,11 @@ export const apiService = {
     const result = await workflowEngine.submitPR(prId, user, memoData);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePR', result);
+        await callGAS('apiSavePR', result, user);
       } catch (e) {
-        console.warn('[apiService] GAS apiSavePR error:', e.message);
+        console.error('[apiService] GAS apiSavePR error:', e.message);
+        modalService.error('ยื่นส่ง PR ไม่สำเร็จ', e.message);
+        throw e;
       }
       return result;
     }
@@ -652,15 +690,17 @@ export const apiService = {
     const result = await workflowEngine.updatePRStatus(prId, nextStatus, user, note);
     if (isGAS()) {
       try {
-        if (result?.pr) await callGAS('apiSavePR', result.pr);
+        if (result?.pr) await callGAS('apiSavePR', result.pr, user);
         if (result?.po) {
           const poList = Array.isArray(result.po) ? result.po : [result.po];
           for (const singlePo of poList) {
-            await callGAS('apiCreatePO', singlePo);
+            await callGAS('apiCreatePO', singlePo, user);
           }
         }
       } catch (e) {
-        console.warn('[apiService] GAS updatePRStatus error:', e.message);
+        console.error('[apiService] GAS updatePRStatus error:', e.message);
+        modalService.error('ปรับสถานะ PR ไม่สำเร็จ', e.message);
+        throw e;
       }
       return result;
     }
@@ -690,9 +730,11 @@ export const apiService = {
     const updated = await workflowEngine.rejectPR(prId, user, reason);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePR', updated);
+        await callGAS('apiSavePR', updated, user);
       } catch (e) {
-        console.warn('[apiService] GAS apiSavePR error:', e.message);
+        console.error('[apiService] GAS apiSavePR error:', e.message);
+        modalService.error('ปฏิเสธ PR ไม่สำเร็จ', e.message);
+        throw e;
       }
       return updated;
     }
@@ -710,9 +752,11 @@ export const apiService = {
     const updated = await workflowEngine.editPRItems(prId, items, user, reason);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePR', updated);
+        await callGAS('apiSavePR', updated, user);
       } catch (e) {
-        console.warn('[apiService] GAS apiSavePR error:', e.message);
+        console.error('[apiService] GAS apiSavePR error:', e.message);
+        modalService.error('แก้ไขรายการ PR ไม่สำเร็จ', e.message);
+        throw e;
       }
       return updated;
     }
@@ -730,9 +774,11 @@ export const apiService = {
     const cancelled = await workflowEngine.cancelPR(prId, user, reason);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePR', cancelled);
+        await callGAS('apiSavePR', cancelled, user);
       } catch (e) {
-        console.warn('[apiService] GAS apiSavePR error:', e.message);
+        console.error('[apiService] GAS apiSavePR error:', e.message);
+        modalService.error('ยกเลิก PR ไม่สำเร็จ', e.message);
+        throw e;
       }
       return cancelled;
     }
@@ -750,9 +796,11 @@ export const apiService = {
     const cancelled = await workflowEngine.cancelPO(poId, user, reason);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePO', cancelled);
+        await callGAS('apiSavePO', cancelled, user);
       } catch (e) {
-        console.warn('[apiService] GAS apiSavePO error:', e.message);
+        console.error('[apiService] GAS apiSavePO error:', e.message);
+        modalService.error('ยกเลิก PO ไม่สำเร็จ', e.message);
+        throw e;
       }
       return cancelled;
     }
@@ -823,9 +871,11 @@ export const apiService = {
     const updated = await workflowEngine.assignVendor(poId, vendorId, customVendorName, user);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePO', updated);
+        await callGAS('apiSavePO', updated, user);
       } catch (e) {
-        console.warn('[apiService] GAS apiSavePO error:', e.message);
+        console.error('[apiService] GAS apiSavePO error:', e.message);
+        modalService.error('มอบหมายผู้ขายไม่สำเร็จ', e.message);
+        throw e;
       }
       return updated;
     }
@@ -846,9 +896,11 @@ export const apiService = {
     const updated = await workflowEngine.fileClaim(poId, claimData, user);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePO', updated);
+        await callGAS('apiSavePO', updated, user);
       } catch (e) {
-        console.warn('[apiService] GAS apiSavePO error:', e.message);
+        console.error('[apiService] GAS apiSavePO error:', e.message);
+        modalService.error('ยื่นเคลมพัสดุไม่สำเร็จ', e.message);
+        throw e;
       }
       return updated;
     }
@@ -872,9 +924,11 @@ export const apiService = {
     const resolved = await workflowEngine.resolveClaim(poId, resolution, user);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePO', resolved);
+        await callGAS('apiSavePO', resolved, user);
       } catch (e) {
-        console.warn('[apiService] GAS apiSavePO error:', e.message);
+        console.error('[apiService] GAS apiSavePO error:', e.message);
+        modalService.error('บันทึกผลการเคลมไม่สำเร็จ', e.message);
+        throw e;
       }
       return resolved;
     }
@@ -897,9 +951,11 @@ export const apiService = {
     const updated = await workflowEngine.updatePOStatus(poId, nextStatus, user, note);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePO', updated);
+        await callGAS('apiSavePO', updated, user);
       } catch (e) {
-        console.warn('[apiService] GAS apiSavePO error:', e.message);
+        console.error('[apiService] GAS apiSavePO error:', e.message);
+        modalService.error('ปรับสถานะ PO ไม่สำเร็จ', e.message);
+        throw e;
       }
       return updated;
     }
@@ -923,6 +979,37 @@ export const apiService = {
     return workflowEngine.closePO(poId, user, note);
   },
 
+  // Update PO document attributes, status, and line items atomically
+  async updatePO(poId, poData, user) {
+    const pos = storageService.getPOs() || [];
+    const idx = pos.findIndex(p => p.id === poId || p.poNo === poId || p.poNumber === poId);
+    let updated = poData;
+    if (idx !== -1) {
+      updated = { ...pos[idx], ...poData };
+      pos[idx] = updated;
+      storageService.savePOs(pos);
+    }
+    if (isGAS()) {
+      try {
+        const gasResult = await callGAS('apiSavePO', updated, user);
+        return gasResult || updated;
+      } catch (e) {
+        console.error('[apiService] GAS apiSavePO error:', e.message);
+        throw e;
+      }
+    }
+    try {
+      await fetch(`/api/pos/${poId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+    } catch (e) {
+      console.warn('[apiService] Backend PUT /api/pos/:id fallback:', e.message);
+    }
+    return updated;
+  },
+
   // Partial or Full goods receiving — handles PARTIAL → CLOSED transitions
   async receiveGoods(poId, receivingItems, user, note = '', options = {}) {
     const grNumber = options.grNumber || options.grId || `GR-${poId}-${Date.now()}`;
@@ -934,6 +1021,10 @@ export const apiService = {
       options: { ...options, grNumber, grId: grNumber },
       grNumber
     };
+
+    if (isGAS()) {
+      return workflowEngine.receiveGoods(poId, receivingItems, user, note, { ...options, grNumber, grId: grNumber });
+    }
 
     try {
       const res = await fetch(`/api/pos/${poId}/receive`, {
@@ -1796,5 +1887,12 @@ export const apiService = {
     }
 
     return true;
+  },
+
+  async makeAllDriveFilesPublic() {
+    if (isGAS()) {
+      return callGAS('apiMakeAllDriveFilesPublic');
+    }
+    return { success: true, message: 'Simulated Drive Public Read Migration' };
   }
 };

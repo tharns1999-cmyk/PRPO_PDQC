@@ -4,6 +4,7 @@ import { PackagePlus, AlertCircle, X, Check, Boxes, FileText, MapPin } from 'luc
 import { STOCK_IN_REASONS } from '../../config/constants';
 import { storageService } from '../../services/storageService';
 import SearchableSelect from '../common/SearchableSelect';
+import { safeStringCompare } from '../../utils/formatters';
 
 export default function ManualStockInModal({ products = [], currentRole, onClose, onRefresh }) {
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -18,7 +19,7 @@ export default function ManualStockInModal({ products = [], currentRole, onClose
     return (currentRole.canViewAllDepts
       ? products
       : products.filter(p => (p.category || p.department) === currentRole.department)
-    ).sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    ).sort((a, b) => safeStringCompare(a?.code, b?.code));
   }, [products, currentRole]);
 
   const productOptions = useMemo(() => {

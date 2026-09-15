@@ -7,8 +7,59 @@
  */
 
 /**
+ * Set of identifier column names that must strictly be returned as String
+ * to prevent Google Sheets from sending raw numbers that break frontend operations.
+ */
+const STRING_IDENTIFIER_FIELDS = {
+  'id': true,
+  'code': true,
+  'employeeid': true,
+  'phone': true,
+  'telephone': true,
+  'mobile': true,
+  'username': true,
+  'prno': true,
+  'pono': true,
+  'prnumber': true,
+  'ponumber': true,
+  'docno': true,
+  'documentno': true,
+  'grnnumber': true,
+  'sku': true,
+  'vendorcode': true,
+  'itemcode': true,
+  'productid': true,
+  'productcode': true,
+  'vendorid': true,
+  'locationid': true,
+  'roleid': true,
+  'storagelocationid': true,
+  'usageunitid': true,
+  'dept': true,
+  'department': true,
+  'primarydepartment': true,
+  'category': true,
+  'status': true,
+  'role': true
+};
+
+/**
+ * Checks if a column name represents an identifier that should be cast to string.
+ * @param {string} headerName
+ * @returns {boolean}
+ */
+function isIdentifierColumn(headerName) {
+  if (!headerName) return false;
+  const lower = String(headerName).trim().toLowerCase();
+  if (STRING_IDENTIFIER_FIELDS[lower]) return true;
+  if (lower.endsWith('id') || lower.endsWith('code') || lower.endsWith('no')) return true;
+  return false;
+}
+
+/**
  * Reads all records from a sheet tab into an array of JavaScript objects.
- * Automatically parses JSON fields and normalizes data types.
+ * Automatically parses JSON fields, normalizes data types, and strictly casts
+ * identifier columns (id, code, employeeId, phone, username, etc.) to String.
  * 
  * @param {string} sheetName Name of the sheet tab
  * @returns {Object[]} Array of row objects mapped by header keys
@@ -38,8 +89,11 @@ function batchReadRecords(sheetName) {
       
       let val = row[c];
       
-      // Auto-parse JSON string if it looks like an array or object
-      if (typeof val === 'string' && val.length > 1) {
+      // Strict string conversion for identifier columns to avoid Google Sheets sending numbers
+      if (isIdentifierColumn(header)) {
+        val = (val !== null && val !== undefined) ? String(val).trim() : '';
+      } else if (typeof val === 'string' && val.length > 1) {
+        // Auto-parse JSON string if it looks like an array or object
         const trimmed = val.trim();
         if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
             (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
@@ -61,6 +115,17 @@ function batchReadRecords(sheetName) {
   }
 
   return records;
+}
+
+/**
+ * Reads all records from a sheet tab into an array of JavaScript objects.
+ * Alias for batchReadRecords for complete API compatibility.
+ * 
+ * @param {string} sheetName Name of the sheet tab
+ * @returns {Object[]} Array of row objects mapped by header keys
+ */
+function getRowsAsObjects(sheetName) {
+  return batchReadRecords(sheetName);
 }
 
 /**
@@ -276,8 +341,8 @@ function serializeRecordToRow(record, headers) {
     // Safety guard against Google Sheets 50,000 characters cell overflow
     if (strVal.length > MAX_CELL_LENGTH) {
       console.warn(`[SheetService] Cell value for header "${header}" exceeds ${MAX_CELL_LENGTH} characters (${strVal.length} chars). Stripping inline Base64 data...`);
-      // Replace inline base64 payloads: data:image/... or data:application/...
-      strVal = strVal.replace(/data:(image|application)\/[a-zA-Z0-9.-]+;base64,[A-Za-z0-9+/=]{100,}/g, '[BASE64_ATTACHMENT_STORED_IN_DRIVE]');
+      // Remove inline base64 payloads: data:image/... or data:application/... without injecting broken mock strings
+      strVal = strVal.replace(/data:(image|application)\/[a-zA-Z0-9.-]+;base64,[A-Za-z0-9+/=]{100,}/g, '');
       
       if (strVal.length > MAX_CELL_LENGTH) {
         console.warn(`[SheetService] Cell value for "${header}" still exceeds limit after regex strip. Truncating to ${MAX_CELL_LENGTH} characters.`);

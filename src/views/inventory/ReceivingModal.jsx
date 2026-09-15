@@ -11,7 +11,7 @@ import { useAppContext } from '../../context/AppContext';
 import { authService } from '../../services/authService';
 import { modalService } from '../../services/modalService';
 import { apiService } from '../../services/apiService';
-import { storageService } from '../../services/storageService';
+import { storageService, isGAS, callGAS } from '../../services/storageService';
 import { generateGRNNumber } from '../../services/warehouseService';
 import { formatLocalTimestamp } from '../../services/inventoryService';
 import { getValidConversionRate, toStockQuantity, toStockUnitCost } from '../../utils/uomEngine.js';
@@ -485,9 +485,20 @@ export default function ReceivingModal({
     setAttachments(prev => prev.filter((_, i) => i !== idx));
   };
 
+  const TERMINAL_RECEIVE_STATUSES = ['CLOSED', 'CANCELLED', 'RECEIVED', 'COMPLETED', 'COMPLETED_WITH_REFUND'];
+
   // Main Confirm Receiving Handler
   const handleConfirmReceiving = async () => {
     if (isSubmitting) return;
+
+    // Double-Receipt Guard: ห้ามรับของซ้ำหาก PO อยู่ในสถานะเสร็จสิ้นแล้วโดยเด็ดขาด
+    const isAlreadyClosed = TERMINAL_RECEIVE_STATUSES.includes(String(targetPO?.status || '').toUpperCase());
+    if (isAlreadyClosed) {
+      return modalService.warning(
+        'เอกสารนี้ตรวจรับเข้าคลังเรียบร้อยแล้ว',
+        `ใบสั่งซื้อ ${targetPO.poNo || targetPO.id} อยู่ในสถานะ "${targetPO.status}" ไม่สามารถกดรับซ้ำได้ เพื่อป้องกันยอดสต็อกบวม`
+      );
+    }
 
     // Validate boundaries & enforce allowedReceiveQty
     for (const it of computedItems) {
@@ -919,9 +930,38 @@ export default function ReceivingModal({
       }
 
       try {
-        await apiService.updatePO(targetPO.id, finalTargetPO);
+        await apiService.updatePO(targetPO.id, finalTargetPO, activeUser);
       } catch {
         // Backend offline fallback
+      }
+
+      if (isGAS()) {
+        try {
+          const gasPayload = {
+            id: finalTargetPO.id,
+            poNo: finalTargetPO.poNo,
+            department: finalTargetPO.department,
+            status: finalTargetPO.status,
+            grNumber: grnNumber,
+            items: finalTargetPO.items,
+            history: finalTargetPO.history,
+            timeline: finalTargetPO.timeline,
+            activityLog: finalTargetPO.activityLog,
+            grnHistory: finalTargetPO.grnHistory,
+            ngItems: finalTargetPO.ngItems,
+            receivedBy: receiverName,
+            receiverName: receiverName,
+            receivedAt: receivedAtIso,
+            receivingInfo: receivingMetadata,
+            prId: finalTargetPO.prId,
+            prNo: finalTargetPO.prNo,
+            prNumber: finalTargetPO.prNumber,
+            currentUser: activeUser
+          };
+          await callGAS('apiReceivePO', gasPayload);
+        } catch (gasErr) {
+          console.warn('[ReceivingModal] GAS apiReceivePO error:', gasErr.message);
+        }
       }
 
       // Refresh app data
@@ -1403,6 +1443,12 @@ export default function ReceivingModal({
             >
               <span>กำลังบันทึกตรวจรับ...</span>
             </button>
+          ) : TERMINAL_RECEIVE_STATUSES.includes(String(targetPO?.status || '').toUpperCase()) ? (
+            /* ป้องกันการกดรับของซ้ำ (Double-Receipt Guard) */
+            <div className="h-9 px-4 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center gap-2 shadow-2xs">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>✓ เอกสารนี้ตรวจรับเข้าคลังครบเรียบร้อยแล้ว (ปิด PO แล้ว)</span>
+            </div>
           ) : isFullyAccounted ? (
             /* กรณีสินค้าทุกรายการตรวจรับหรือเคลมชดเชยครบถ้วนแล้ว (Finalize PO): ปุ่มสีเขียว Emerald */
             <button

@@ -78,8 +78,8 @@ try {
         name: img.name || 'image',
         size: img.size || 0,
         type: img.type || 'image/jpeg',
-        previewUrl: (img.previewUrl && String(img.previewUrl).startsWith('data:')) ? '[INLINE_BASE64_STORED_IN_DRIVE]' : (img.previewUrl || ''),
-        url: (img.url && String(img.url).startsWith('data:')) ? '[INLINE_BASE64_STORED_IN_DRIVE]' : (img.url || '')
+        previewUrl: (img.previewUrl && String(img.previewUrl).startsWith('data:')) ? '' : (img.previewUrl || ''),
+        url: (img.url && String(img.url).startsWith('data:')) ? '' : (img.url || '')
       }));
     }
     if (Array.isArray(cleanIt.attachments)) {
@@ -87,8 +87,8 @@ try {
         name: att.name || 'file',
         size: att.size || 0,
         type: att.type || 'application/octet-stream',
-        previewUrl: (att.previewUrl && String(att.previewUrl).startsWith('data:')) ? '[INLINE_BASE64_STORED_IN_DRIVE]' : (att.previewUrl || ''),
-        url: (att.url && String(att.url).startsWith('data:')) ? '[INLINE_BASE64_STORED_IN_DRIVE]' : (att.url || '')
+        previewUrl: (att.previewUrl && String(att.previewUrl).startsWith('data:')) ? '' : (att.previewUrl || ''),
+        url: (att.url && String(att.url).startsWith('data:')) ? '' : (att.url || '')
       }));
     }
     return cleanIt;

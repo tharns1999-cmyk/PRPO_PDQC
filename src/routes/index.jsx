@@ -221,8 +221,14 @@ function QuickIssueRoute() {
 
 function BudgetRoute() {
   const { budgetSummary, currentRole, currentUser, prs, pos, departments, refreshData } = useAppContext();
+  const isOnlinePurchaser = Boolean(
+    currentRole?.roleId === 'ONLINE_PURCHASER' || 
+    currentRole?.id === 'ONLINE_PURCHASER' || 
+    currentUser?.roleId === 'ONLINE_PURCHASER' ||
+    currentUser?.id === 'ONLINE_PURCHASER'
+  );
   return (
-    <RoleGuard allowed={(role) => role?.canViewBudget}>
+    <RoleGuard allowed={(role) => role?.canViewBudget || isOnlinePurchaser}>
       <BudgetView
         budgetSummary={budgetSummary}
         currentRole={currentRole}
@@ -377,7 +383,14 @@ export const router = createHashRouter([
           { path: 'dashboard', element: <DashboardRoute /> },
           
           // Workspace
-          { path: 'my-workspace', element: <MyWorkRoute /> },
+          { 
+            path: 'my-workspace', 
+            element: (
+              <ProtectedRoute disallowOnlinePurchaser fallback="/dashboard">
+                <MyWorkRoute />
+              </ProtectedRoute>
+            ) 
+          },
           { path: 'my-work', element: <Navigate to="/my-workspace" replace /> },
           
           // PRs
@@ -386,7 +399,7 @@ export const router = createHashRouter([
           { 
             path: 'prs/create', 
             element: (
-              <ProtectedRoute requiredPermission="PR_CREATE">
+              <ProtectedRoute requiredPermission="PR_CREATE" fallback="/dashboard">
                 <PRCreateRoute />
               </ProtectedRoute>
             ) 
@@ -400,7 +413,14 @@ export const router = createHashRouter([
           // Inventory
           { path: 'inventory/stock-card', element: <StockCardRoute /> },
           { path: 'stock-card', element: <Navigate to="/inventory/stock-card" replace /> },
-          { path: 'inventory/quick-issue', element: <QuickIssueRoute /> },
+          { 
+            path: 'inventory/quick-issue', 
+            element: (
+              <ProtectedRoute disallowOnlinePurchaser fallback="/dashboard">
+                <QuickIssueRoute />
+              </ProtectedRoute>
+            ) 
+          },
           { path: 'quick-issue', element: <Navigate to="/inventory/quick-issue" replace /> },
           
           // Administrative & Business Control
@@ -415,15 +435,16 @@ export const router = createHashRouter([
           { 
             path: 'master-data', 
             element: (
-              <ProtectedRoute allowedRoles={['REQUESTER', 'REVIEWER', 'PURCHASER', 'APPROVER', 'ADMIN']}>
+              <ProtectedRoute allowedRoles={['REQUESTER', 'REVIEWER', 'PURCHASER', 'APPROVER', 'ADMIN']} disallowOnlinePurchaser fallback="/dashboard">
                 <MasterDataRoute />
               </ProtectedRoute>
             ) 
           },
+          { path: 'admin/master-data', element: <Navigate to="/master-data" replace /> },
           { 
             path: 'master-data/users', 
             element: (
-              <ProtectedRoute requiredPermission="SYSTEM_ADMIN">
+              <ProtectedRoute requiredPermission="SYSTEM_ADMIN" fallback="/dashboard">
                 <UserMasterRoute />
               </ProtectedRoute>
             ) 
@@ -431,7 +452,7 @@ export const router = createHashRouter([
           { 
             path: 'admin/users', 
             element: (
-              <ProtectedRoute requiredPermission="SYSTEM_ADMIN">
+              <ProtectedRoute requiredPermission="SYSTEM_ADMIN" fallback="/dashboard">
                 <UserMasterRoute />
               </ProtectedRoute>
             ) 
@@ -439,7 +460,7 @@ export const router = createHashRouter([
           { 
             path: 'admin/audit-logs', 
             element: (
-              <ProtectedRoute requiredPermission="SYSTEM_ADMIN">
+              <ProtectedRoute requiredPermission="SYSTEM_ADMIN" fallback="/dashboard">
                 <AuditLogRoute />
               </ProtectedRoute>
             ) 

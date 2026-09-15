@@ -69,9 +69,15 @@ class ModalService {
    * Show an error modal
    */
   error(title, message = '', options = {}) {
+    const errObj = options?.error || (message instanceof Error ? message : null) || (title instanceof Error ? title : null);
+    if (errObj) {
+      console.error('[Workflow Error Stack]:', errObj.stack || errObj);
+    } else {
+      console.error('[Workflow Error Stack]:', message || title);
+    }
     return this.alert({
-      title: message ? title : 'เกิดข้อผิดพลาด',
-      message: message || title,
+      title: message ? (typeof title === 'string' ? title : 'เกิดข้อผิดพลาด') : 'เกิดข้อผิดพลาด',
+      message: message ? (message?.message || String(message)) : (title?.message || String(title)),
       type: 'error',
       confirmText: options.confirmText || 'เข้าใจแล้ว',
       ...options

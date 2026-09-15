@@ -1204,5 +1204,82 @@ describe('Domain Suite: Purchase Request (PR) Lifecycle & Workflow Architecture'
       expect(po001.prNumber).toBe('PD001/2026');
       expect(po001.prId).toBe('PR-PD001-2026');
     });
+
+    it('storageService.savePR() and upsertPR() insert new PR or update existing PR in storage', () => {
+      const initialPR = { id: 'PR-TEST-001', prNo: 'PD999/2026', title: 'Initial PR', department: 'PD' };
+      storageService.savePR(initialPR);
+
+      let prs = storageService.getPRs();
+      expect(prs.some(p => p.id === 'PR-TEST-001' && p.title === 'Initial PR')).toBe(true);
+
+      // Update via savePR
+      storageService.savePR({ id: 'PR-TEST-001', title: 'Updated PR Title' });
+      prs = storageService.getPRs();
+      const updated = prs.find(p => p.id === 'PR-TEST-001');
+      expect(updated.title).toBe('Updated PR Title');
+
+      // Update via upsertPR alias
+      storageService.upsertPR({ id: 'PR-TEST-001', notes: 'Upserted notes' });
+      prs = storageService.getPRs();
+      const upserted = prs.find(p => p.id === 'PR-TEST-001');
+      expect(upserted.notes).toBe('Upserted notes');
+      expect(upserted.title).toBe('Updated PR Title');
+    });
+
+    it('storageService.savePO() and upsertPO() insert new PO or update existing PO in storage', () => {
+      const initialPO = { id: 'PO-TEST-001', poNo: 'PO-PD-2026-999', department: 'PD', vendorName: 'Vendor A' };
+      storageService.savePO(initialPO);
+
+      let pos = storageService.getPOs();
+      expect(pos.some(p => p.id === 'PO-TEST-001' && p.vendorName === 'Vendor A')).toBe(true);
+
+      // Update via savePO
+      storageService.savePO({ id: 'PO-TEST-001', vendorName: 'Vendor B' });
+      pos = storageService.getPOs();
+      const updated = pos.find(p => p.id === 'PO-TEST-001');
+      expect(updated.vendorName).toBe('Vendor B');
+
+      // Update via upsertPO alias
+      storageService.upsertPO({ id: 'PO-TEST-001', remarks: 'Upserted remarks' });
+      pos = storageService.getPOs();
+      const upserted = pos.find(p => p.id === 'PO-TEST-001');
+      expect(upserted.remarks).toBe('Upserted remarks');
+      expect(upserted.vendorName).toBe('Vendor B');
+    });
+
+    it('defensively handles updatePRStatus and workflowEngine transitions when arrays are undefined or null', async () => {
+      const corruptPR = {
+        id: 'PR-CORRUPT-001',
+        prNo: 'PD999/2026',
+        department: 'PD',
+        status: 'SUBMITTED',
+        purchaseChannel: 'SELF',
+        vendorName: 'Default Vendor',
+        items: [{ id: '1', code: 'A', name: 'Item A', price: 100, qty: 2 }],
+        history: undefined,
+        timeline: undefined,
+        activityLog: undefined,
+        approvalHistory: undefined
+      };
+      storageService.savePR(corruptPR);
+
+      // 1. Test Review workflow action (Asst Mgr)
+      const userAsst = { name: 'คุณสมชาย', title: 'Asst. Manager', role: 'ASST_MANAGER' };
+      const reviewRes = await workflowEngine.updatePRStatus('PR-CORRUPT-001', 'REVIEWED', userAsst, 'ตรวจสอบผ่าน');
+      expect(reviewRes.pr.status).toBe('REVIEWED');
+      expect(Array.isArray(reviewRes.pr.activityLog)).toBe(true);
+      expect(Array.isArray(reviewRes.pr.approvalHistory)).toBe(true);
+
+      // 2. Test Approve workflow action (Plant Mgr)
+      const userMgr = { name: 'คุณประเสริฐ', title: 'Plant Manager', role: 'PLANT_MANAGER' };
+      const approveRes = await workflowEngine.updatePRStatus('PR-CORRUPT-001', 'APPROVED', userMgr, 'อนุมัติ');
+      expect(['APPROVED', 'PO_ISSUED', 'IN_PROGRESS_ONLINE']).toContain(approveRes.pr.status);
+      expect(approveRes.po).toBeDefined();
+
+      // 3. Test storageService.updatePRStatus with corrupt history
+      const directUpdate = storageService.updatePRStatus('PR-CORRUPT-001', 'REVIEWED', userAsst, 'Direct test');
+      expect(directUpdate.status).toBe('REVIEWED');
+      expect(Array.isArray(directUpdate.history)).toBe(true);
+    });
   });
 });

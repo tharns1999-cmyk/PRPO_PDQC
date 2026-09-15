@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import SearchableSelect from '../common/SearchableSelect';
 import { getUnifiedProductList } from '../../views/PRCreateView';
+import { safeStringCompare } from '../../utils/formatters';
 
 /**
  * ProductSelectDropdown - Modern Searchable Dropdown for Products in Procurement (PR/PO)
@@ -29,7 +30,7 @@ export default function ProductSelectDropdown({
     return rawList.filter(p => {
       const pDept = (p.department || p.category || '').toUpperCase();
       return !pDept || pDept === 'ALL' || pDept === department.toUpperCase();
-    }).sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    }).sort((a, b) => safeStringCompare(a?.code, b?.code));
   }, [products, inventory, department]);
 
   // 2. Transform into options with unique collision-safe keys

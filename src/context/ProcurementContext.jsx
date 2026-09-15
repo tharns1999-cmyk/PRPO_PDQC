@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useMemo, useCallback } from 'react';
 import { useAppContext } from './AppContext';
-import { storageService } from '../services/storageService';
+import { storageService, isGAS, callGAS } from '../services/storageService';
 import { apiService } from '../services/apiService';
 import { PO_STATUS } from '../config/constants';
 import { hasUnresolvedClaim } from '../views/OnlineTaskView';
@@ -267,13 +267,45 @@ export async function recordGoodsReceipt(poId, grnPayload = {}) {
   pos[targetIdx] = updatedPO;
   storageService.savePOs(pos);
 
-  try {
-    await apiService.receiveGoods(poId, incomingItems, grnPayload.receivedBy || { name: 'Staff', title: 'Inspector' }, grnPayload.note || '', {
-      grNumber: grnNumber,
-      grId: grnNumber
-    });
-  } catch {
-    // Graceful offline fallback
+  if (isGAS()) {
+    try {
+      const gasPoPayload = {
+        id: updatedPO.id,
+        poNo: updatedPO.poNo,
+        department: updatedPO.department,
+        status: updatedPO.status,
+        grNumber: grnNumber,
+        items: updatedPO.items,
+        history: updatedPO.history,
+        timeline: updatedPO.timeline,
+        activityLog: updatedPO.activityLog,
+        grnHistory: updatedPO.grnHistory,
+        ngItems: updatedPO.ngItems,
+        receivedBy: receiverName,
+        receiverName,
+        receivedAt: receivedAtIso,
+        receivingInfo: {
+          receiverName,
+          receiverSignature: receiverSig,
+          receivedAt: receivedAtIso
+        },
+        prId: updatedPO.prId,
+        prNo: updatedPO.prNo,
+        prNumber: updatedPO.prNumber
+      };
+      await callGAS('apiReceivePO', gasPoPayload);
+    } catch (gasErr) {
+      console.warn('[ProcurementContext] GAS apiReceivePO error:', gasErr.message);
+    }
+  } else {
+    try {
+      await apiService.receiveGoods(poId, incomingItems, grnPayload.receivedBy || { name: 'Staff', title: 'Inspector' }, grnPayload.note || '', {
+        grNumber: grnNumber,
+        grId: grnNumber
+      });
+    } catch {
+      // Graceful offline fallback
+    }
   }
 
   return { success: true, po: updatedPO, grn: grnEntry };

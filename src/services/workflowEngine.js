@@ -1,4 +1,4 @@
-import { storageService } from './storageService.js';
+import { storageService, callGAS, isGAS } from './storageService.js';
 import { PR_STATUS, PO_STATUS, DEPARTMENTS } from '../config/constants.js';
 import { notificationService } from './notificationService.js';
 import { auditService } from './auditService.js';
@@ -407,6 +407,9 @@ export const workflowEngine = {
     pr.totalAmount = newTotal;
 
     const timestamp = new Date().toLocaleString('th-TH');
+    if (!Array.isArray(pr.activityLog)) {
+      pr.activityLog = [];
+    }
     pr.activityLog.push({
       action: 'แก้ไขรายการสินค้า (Approver Item Edit)',
       user: user.name,
@@ -617,6 +620,9 @@ export const workflowEngine = {
         const itemCode = item.code || item.sku || item.name;
 
         if (origQ !== undefined && Number(curQ) !== Number(origQ)) {
+          if (!Array.isArray(po.activityLog)) {
+            po.activityLog = [];
+          }
           po.activityLog.push({
             action: 'ปรับปรุงจำนวนสั่งซื้อจริง',
             user: user.name || 'Online Purchaser',
@@ -626,6 +632,9 @@ export const workflowEngine = {
           });
         }
         if (origP !== undefined && Number(curP) !== Number(origP)) {
+          if (!Array.isArray(po.activityLog)) {
+            po.activityLog = [];
+          }
           po.activityLog.push({
             action: 'ปรับปรุงราคาซื้อจริง',
             user: user.name || 'Online Purchaser',
@@ -726,15 +735,16 @@ export const workflowEngine = {
       note: noteText
     });
 
-    if (Array.isArray(po.timeline)) {
-      po.timeline.push({
-        status: 'ORDERED_PENDING_DELIVERY',
-        title: 'สั่งซื้อสินค้าออนไลน์แล้ว',
-        description: noteText,
-        user: user.name,
-        date: new Date().toISOString()
-      });
+    if (!Array.isArray(po.timeline)) {
+      po.timeline = [];
     }
+    po.timeline.push({
+      status: 'ORDERED_PENDING_DELIVERY',
+      title: 'สั่งซื้อสินค้าออนไลน์แล้ว',
+      description: noteText,
+      user: user.name,
+      date: new Date().toISOString()
+    });
 
     storageService.savePOs(pos);
 
@@ -781,6 +791,9 @@ export const workflowEngine = {
     pr.status = 'CANCELLED';
     const timestamp = new Date().toLocaleString('th-TH');
 
+    if (!Array.isArray(pr.activityLog)) {
+      pr.activityLog = [];
+    }
     pr.activityLog.push({
       action: 'ยกเลิกใบขอซื้อ (Cancelled PR)',
       user: user.name,
@@ -838,6 +851,9 @@ export const workflowEngine = {
     po.status = 'CANCELLED';
     const timestamp = new Date().toLocaleString('th-TH');
 
+    if (!Array.isArray(po.activityLog)) {
+      po.activityLog = [];
+    }
     po.activityLog.push({
       action: 'ยกเลิกใบสั่งซื้อ (Cancelled PO)',
       user: user.name,
@@ -862,6 +878,9 @@ export const workflowEngine = {
       const prs = storageService.getPRs();
       const parentPR = prs.find(p => p.id === po.prId || p.prNo === po.prNo);
       if (parentPR) {
+        if (!Array.isArray(parentPR.activityLog)) {
+          parentPR.activityLog = [];
+        }
         parentPR.activityLog.push({
           action: 'ใบสั่งซื้ออ้างอิงถูกยกเลิก (Referenced PO Cancelled)',
           user: user.name,
@@ -1554,6 +1573,7 @@ export const workflowEngine = {
     if (nextStatus === 'REJECTED_TO_DRAFT') actionLabel = 'ไม่อนุมัติ / ตีกลับให้แก้ไข (Rejected to Draft)';
     if (nextStatus === 'CANCELLED') actionLabel = 'ยกเลิกเอกสาร (Cancelled)';
 
+    if (!Array.isArray(pr.activityLog)) pr.activityLog = [];
     pr.activityLog.push({
       action: actionLabel,
       user: user.name,
@@ -1710,7 +1730,9 @@ export const workflowEngine = {
       (pr.items || []).forEach(item => {
         const prod = products.find(p => p.id === item.productId);
         const supplierId = item.vendorId || item.supplierId || prod?.supplierId || prod?.preferredSupplier || 'NULL';
-        if (!groups[supplierId]) groups[supplierId] = [];
+        if (!Array.isArray(groups[supplierId])) {
+          groups[supplierId] = [];
+        }
         groups[supplierId].push(item);
       });
     }
@@ -1903,6 +1925,11 @@ export const workflowEngine = {
         subtotal,
         vat,
         grandTotal,
+        history: [],
+        timeline: [],
+        claimHistory: [],
+        attachments: [],
+        comments: [],
         activityLog: [
           {
             action: 'แปลง PR เป็น PO และออกใบสั่งซื้ออัตโนมัติ',
@@ -1991,7 +2018,7 @@ export const workflowEngine = {
 
     const po = pos.find(p => p.id === poId);
     if (!po) throw new Error('ไม่พบเอกสาร PO ในระบบ');
-    if (['CLOSED', 'CANCELLED', 'RECEIVED'].includes(po.status)) {
+    if (['CLOSED', 'CANCELLED', 'RECEIVED', 'COMPLETED', 'COMPLETED_WITH_REFUND'].includes(po.status)) {
       throw new Error(`ไม่สามารถตรวจรับได้เนื่องจาก PO ${po.poNo || po.id} อยู่ในสถานะ "${po.status}" เรียบร้อยแล้ว`);
     }
 
@@ -2173,7 +2200,9 @@ export const workflowEngine = {
         poItem.defectReason = defectNote || reasonLabel;
         poItem.defectNote = defectNote || reasonLabel;
 
-        po.ngItems = po.ngItems || [];
+        if (!Array.isArray(po.ngItems)) {
+          po.ngItems = [];
+        }
         po.ngItems.push({
           productId: poItem.productId,
           productCode: poItem.code,
@@ -2266,6 +2295,9 @@ export const workflowEngine = {
       if (problematicSummaryParts.length > 0) parts.push(`ส่งเรื่องเคลม: ${problematicSummaryParts.join(', ')}`);
       const summaryNote = parts.join(' | ') + (note ? ` (หมายเหตุ: ${note})` : '');
 
+      if (!Array.isArray(po.activityLog)) {
+        po.activityLog = [];
+      }
       po.activityLog.push({
         action: `[${channel} CLAIM] ตรวจรับสินค้าพร้อมแจ้งเคลม`,
         user: user.name,
@@ -2360,6 +2392,9 @@ export const workflowEngine = {
           pr.poStatus = 'completed';
           pr.poNumber = po.poNo || po.poNumber || pr.poNumber;
           pr.fullyReceivedAt = new Date().toISOString();
+          if (!Array.isArray(pr.activityLog)) {
+            pr.activityLog = [];
+          }
           pr.activityLog.push({
             action: 'ปิดเอกสาร (Closed)',
             user: user.name,
@@ -2416,24 +2451,81 @@ export const workflowEngine = {
       receivedAt: new Date().toISOString()
     };
 
+    // ── Persist to local storage immediately (Optimistic Update) ────────────
     storageService.savePOs(pos);
     storageService.saveProducts(products);
     storageService.saveStockLogs(stockLogs);
 
-    try {
-      await Promise.all([
-        fetch('/api/products/batch', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(products)
-        }),
-        fetch('/api/stock-logs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(stockLogs)
-        })
-      ]);
-    } catch {}
+    // ── Persist to GAS (Google Sheet SSOT) ──────────────────────────────────
+    // Fire-and-forget: do NOT block the UI on GAS round-trip.
+    // apiReceivePO handles its own Idempotency Guard server-side.
+    if (isGAS()) {
+      const gasPoPayload = {
+        id: po.id,
+        poNo: po.poNo,
+        department: po.department,
+        status: po.status,
+        grNumber,
+        items: po.items,
+        history: po.history,
+        timeline: po.timeline,
+        activityLog: po.activityLog,
+        grnHistory: po.grnHistory,
+        ngItems: po.ngItems,
+        claimHistory: po.claimHistory,
+        claimDetails: po.claimDetails,
+        claimData: po.claimData,
+        receivedBy: po.receivedBy,
+        receiverName: po.receiverName,
+        receivedById: po.receivedById,
+        receiverSignature: po.receiverSignature,
+        receivedAt: po.receivedAt,
+        receivingInfo: po.receivingInfo,
+        fullyReceivedAt: po.fullyReceivedAt,
+        prId: po.prId,
+        prNo: po.prNo,
+        prNumber: po.prNumber,
+        currentUser: user
+      };
+
+      // Build stock movements list for apiAppendStockMovements
+      const stockMovementsForGAS = stockLogs
+        .filter(l => l.grNumber === grNumber)
+        .map(l => ({
+          id: l.id,
+          timestamp: l.isoDate || l.date,
+          productId: l.productId,
+          productCode: l.productCode,
+          name: l.name,
+          type: l.type || 'IN',
+          documentNo: l.grNumber,
+          grnNumber: l.grNumber,
+          poNumber: po.poNo,
+          qty: l.qty,
+          unit: l.unit,
+          conversionRate: l.conversionRate || 1,
+          unitPrice: l.unitPrice || 0,
+          totalPrice: l.totalPrice || 0,
+          balanceAfter: l.balance,
+          actorName: realReceiverName,
+          department: po.department,
+          locationId: l.locationId || '',
+          notes: l.note || ''
+        }));
+
+      try {
+        await callGAS('apiReceivePO', gasPoPayload);
+      } catch (e) {
+        console.warn('[WorkflowEngine] GAS apiReceivePO failed:', e.message);
+      }
+      if (stockMovementsForGAS.length > 0) {
+        try {
+          await callGAS('apiAppendStockMovements', stockMovementsForGAS);
+        } catch (e) {
+          console.warn('[WorkflowEngine] GAS apiAppendStockMovements failed:', e.message);
+        }
+      }
+    }
 
     return po;
   },
@@ -2472,6 +2564,9 @@ export const workflowEngine = {
 
     const noteMsg = `ปิด PO ก่อนกำหนด (ของไม่ครบ/ไม่รอของแล้ว): ${reason.trim()}${unfulfilledSummary ? ` [ยอดที่ยังไม่ได้รับ: ${unfulfilledSummary}]` : ''}`;
 
+    if (!Array.isArray(po.activityLog)) {
+      po.activityLog = [];
+    }
     po.activityLog.push({
       action: 'ปิด PO ก่อนกำหนด (Short-Close PO)',
       user: user.name,
@@ -2488,6 +2583,9 @@ export const workflowEngine = {
       (po.prNumber && (p.prNo === po.prNumber || p.id === po.prNumber || p.prNo === po.prNo))
     );
     if (relatedPR) {
+      if (!Array.isArray(relatedPR.activityLog)) {
+        relatedPR.activityLog = [];
+      }
       relatedPR.activityLog.push({
         action: 'ใบสั่งซื้อถูกปิดก่อนกำหนด (PO Short-Closed)',
         user: user.name,
@@ -2545,6 +2643,9 @@ export const workflowEngine = {
     const pQty = item.purchaseQty ?? item.qty ?? 1;
     const variance = (oldPrice - item.actUnitPrice) * pQty; // Positive means saved money, negative means overspent
 
+    if (!Array.isArray(po.activityLog)) {
+      po.activityLog = [];
+    }
     po.activityLog.push({
       action: 'อัปเดตราคาจริง (Actual Price)',
       user: user.name,
@@ -2575,6 +2676,9 @@ export const workflowEngine = {
     po.shopName = vendorName;
     const timestamp = new Date().toLocaleString('th-TH');
 
+    if (!Array.isArray(po.activityLog)) {
+      po.activityLog = [];
+    }
     po.activityLog.push({
       action: 'ระบุผู้ขาย (Assign Vendor)',
       user: user.name,
@@ -2606,6 +2710,9 @@ export const workflowEngine = {
     };
 
     // Channel-tagged audit log
+    if (!Array.isArray(po.activityLog)) {
+      po.activityLog = [];
+    }
     po.activityLog.push({
       action: channel === 'ONLINE'
         ? '[ONLINE CLAIM] แจ้งปัญหาสินค้าสั่งซื้อออนไลน์'
@@ -2669,7 +2776,9 @@ export const workflowEngine = {
 
     const channel = po.purchaseChannel === 'ONLINE' ? 'ONLINE' : 'SELF-BUY';
     po.claimRound = (po.claimRound || 0) + 1;
-    po.claimHistory = po.claimHistory || [];
+    if (!Array.isArray(po.claimHistory)) {
+      po.claimHistory = [];
+    }
     
     const timestamp = new Date().toLocaleString('th-TH');
     
@@ -2886,7 +2995,9 @@ export const workflowEngine = {
       }
     }
 
-    po.activityLog = po.activityLog || [];
+    if (!Array.isArray(po.activityLog)) {
+      po.activityLog = [];
+    }
     po.activityLog.push({
       action: actionLabel,
       user: user.name,
@@ -2903,6 +3014,9 @@ export const workflowEngine = {
       const prs = storageService.getPRs();
       const pr = prs.find(p => p.id === po.prId);
       if (pr) {
+        if (!Array.isArray(pr.activityLog)) {
+          pr.activityLog = [];
+        }
         pr.activityLog.push({
           action: 'ใบสั่งซื้อถูกปิดหลังจากเคลม (PO Closed Post-Claim)',
           user: user.name,
@@ -2964,6 +3078,9 @@ export const workflowEngine = {
     let actionLabel = 'อัปเดตสถานะ PO';
     if (nextStatus === 'IN_DELIVERY') actionLabel = 'อัปเดตสถานะการจัดส่ง (In Delivery)';
 
+    if (!Array.isArray(po.activityLog)) {
+      po.activityLog = [];
+    }
     po.activityLog.push({
       action: actionLabel,
       user: user.name,
@@ -3032,6 +3149,9 @@ export const workflowEngine = {
     });
 
     po.status = 'CLOSED';
+    if (!Array.isArray(po.activityLog)) {
+      po.activityLog = [];
+    }
     po.activityLog.push({
       action: 'รับสินค้าและปิด PO (Closed)',
       user: user.name,
@@ -3053,6 +3173,9 @@ export const workflowEngine = {
     const pr = prs.find(p => p.id === po.prId);
     if (pr) {
       pr.status = 'CLOSED';
+      if (!Array.isArray(pr.activityLog)) {
+        pr.activityLog = [];
+      }
       pr.activityLog.push({
         action: 'ปิดเอกสาร (Closed)',
         user: user.name,

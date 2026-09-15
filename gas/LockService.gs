@@ -18,6 +18,9 @@
  */
 function withScriptLock(callback, timeoutMs = 15000, operationName = 'Operation') {
   const lock = LockService.getScriptLock();
+  if (lock.hasLock()) {
+    return callback();
+  }
   let lockAcquired = false;
 
   try {

@@ -20,6 +20,7 @@ import ImageLightboxModal from '../common/ImageLightboxModal';
 import RejectPRModal from './RejectPRModal';
 import CollapsibleActivityTimeline from '../common/CollapsibleActivityTimeline';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
+import { resolveDriveImageUrl, handleDriveImageError } from '../../utils/driveHelper';
 
 const formatDateTime = (dateVal) => {
   if (!dateVal) return '-';
@@ -88,6 +89,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
       onClose();
       if (onRefresh) onRefresh();
     } catch (err) {
+      console.error('[Workflow Error Stack]:', err.stack || err);
       modalService.error('เกิดข้อผิดพลาด', err.message);
       throw err;
     }
@@ -163,6 +165,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
       onRefresh();
       modalService.success('บันทึกสำเร็จ', 'บันทึกการแก้ไขรายการสินค้าเรียบร้อย');
     } catch (err) {
+      console.error('[Workflow Error Stack]:', err.stack || err);
       modalService.error('เกิดข้อผิดพลาด', err.message);
     } finally {
       setIsSavingItems(false);
@@ -206,6 +209,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
       onClose();
       if (onRefresh) onRefresh();
     } catch (err) {
+      console.error('[Workflow Error Stack]:', err.stack || err);
       modalService.error('เกิดข้อผิดพลาด', err.message);
     }
   };
@@ -229,6 +233,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
       if (onRefresh) onRefresh();
       onClose();
     } catch (err) {
+      console.error('[Workflow Error Stack]:', err.stack || err);
       modalService.error('เกิดข้อผิดพลาดในการยกเลิก', err.message);
     } finally {
       setIsCancelling(false);
@@ -564,15 +569,16 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                                     {/* แกลเลอรีรูปภาพขนาดย่อม 40x40px */}
                                     <div className="flex items-center gap-1.5">
                                       {photos.map((img, imgIdx) => {
-                                        const src = typeof img === 'string' ? img : (img.url || img.previewUrl || img.dataUrl);
+                                        const src = typeof img === 'string' ? img : (img.url || img.previewUrl || img.dataUrl || img.directUrl || img.fileUrl);
                                         if (!src) return null;
+                                        const resolvedThumb = resolveDriveImageUrl(src, 'w400');
                                         return (
                                           <div
                                             key={imgIdx}
                                             onClick={() => setSelectedPreviewImage({
                                               url: src,
                                               images: photos.map((p, pIdx) => ({
-                                                url: typeof p === 'string' ? p : (p.url || p.previewUrl || p.dataUrl || ''),
+                                                url: typeof p === 'string' ? p : (p.url || p.previewUrl || p.dataUrl || p.directUrl || p.fileUrl || ''),
                                                 name: (typeof p === 'object' && p.name) ? p.name : `${item.name} (${pIdx + 1})`
                                               })),
                                               initialIndex: imgIdx,
@@ -582,9 +588,10 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                                             title="คลิกเพื่อดูรูปขนาดใหญ่"
                                           >
                                             <img
-                                              src={src}
+                                              src={resolvedThumb}
                                               alt={`Item attachment ${imgIdx + 1}`}
                                               className="w-full h-full object-cover"
+                                              onError={(e) => handleDriveImageError(e, img)}
                                             />
                                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px]">
                                               🔍

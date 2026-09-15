@@ -22,6 +22,7 @@ import {
   Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   Cell, PieChart as RechartsPieChart, Pie
 } from 'recharts';
+import { safeStringCompare } from '../utils/formatters';
 
 const RANGE_OPTIONS = [
   { value: 3, label: '3 ด.' },
@@ -159,7 +160,8 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   const userAssignedDepts = useMemo(() => {
     const u = effectiveUser;
     if (!u) return [];
-    if (isSuperAdminOrApprover) {
+    const isOnline = Boolean(u.roleId === 'ONLINE_PURCHASER' || u.id === 'ONLINE_PURCHASER');
+    if (isSuperAdminOrApprover || u.canViewAllDepts || isOnline) {
       return deptList.map(d => d.code);
     }
 
@@ -179,14 +181,15 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   // 3. Department Selection & Security Fallback
   const queryDept = searchParams.get('dept');
   const [selectedDept, setSelectedDept] = useState(() => {
+    const isOnline = Boolean(effectiveUser?.roleId === 'ONLINE_PURCHASER' || effectiveUser?.id === 'ONLINE_PURCHASER');
     if (queryDept) {
-      if (queryDept === 'ALL' && isSuperAdminOrApprover) return 'ALL';
+      if (queryDept === 'ALL' && (isSuperAdminOrApprover || effectiveUser?.canViewAllDepts || isOnline)) return 'ALL';
       if (queryDept === 'ALL' && !isSuperAdminOrApprover && userAssignedDepts.length > 1) return 'ALL';
       if (isSuperAdminOrApprover || userAssignedDepts.includes(queryDept)) {
         return queryDept;
       }
     }
-    if (isSuperAdminOrApprover) return 'ALL';
+    if (isSuperAdminOrApprover || effectiveUser?.canViewAllDepts || isOnline) return 'ALL';
     return userAssignedDepts.length > 1 ? 'ALL' : (userAssignedDepts[0] || 'ALL');
   });
 
@@ -403,7 +406,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
     const tableData = [];
 
     if (dynamicSummary?.trends) {
-      const allMonths = Object.keys(dynamicSummary.trends).sort();
+      const allMonths = Object.keys(dynamicSummary.trends).sort((a, b) => safeStringCompare(a, b));
       const targetIdx = allMonths.indexOf(selectedMonthKey);
       let rawSliceMonths = [];
       if (targetIdx !== -1) {
@@ -525,7 +528,12 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   }, [pos, selectedDept, dynamicSummary, selectedMonthKey, timeRange, deptsToShow]);
 
   const effectiveRole = effectiveUser || currentRole || currentUser;
+  const isOnlinePurchaser = Boolean(
+    effectiveRole?.roleId === 'ONLINE_PURCHASER' ||
+    effectiveRole?.id === 'ONLINE_PURCHASER'
+  );
   const hasBudgetAccess = isSuperAdminOrApprover || 
+    isOnlinePurchaser ||
     effectiveRole?.canViewBudget === true || 
     effectiveRole?.canViewBudgetMenu === true ||
     (effectiveRole && (effectiveRole.roleId === 'ADMIN' || effectiveRole.level >= 99)) ||

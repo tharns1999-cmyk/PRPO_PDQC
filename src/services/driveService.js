@@ -151,26 +151,70 @@ export const fileToBase64 = (file) => {
       return reject(new Error('No file provided for Base64 conversion'));
     }
 
+    const isImage = file.type.startsWith('image/') && !file.type.includes('svg');
     const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result || '';
-      const base64Index = result.indexOf(';base64,');
-      let pureBase64 = '';
-      let mimeType = file.type || 'application/octet-stream';
+    
+    reader.onload = (e) => {
+      if (isImage) {
+        const img = new Image();
+        img.onload = () => {
+          const MAX_WIDTH = 1200;
+          const MAX_HEIGHT = 1200;
+          let width = img.width;
+          let height = img.height;
 
-      if (base64Index !== -1) {
-        pureBase64 = result.substring(base64Index + 8);
-        mimeType = result.substring(5, base64Index);
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height = Math.round((height *= MAX_WIDTH / width));
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width = Math.round((width *= MAX_HEIGHT / height));
+              height = MAX_HEIGHT;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Compress to JPEG 70%
+          const mimeType = 'image/jpeg';
+          const dataUrl = canvas.toDataURL(mimeType, 0.7);
+          const pureBase64 = dataUrl.replace(/^data:image\/jpeg;base64,/, '');
+          
+          resolve({
+            base64Data: pureBase64,
+            mimeType: mimeType,
+            fileName: file.name ? file.name.replace(/\.[^/.]+$/, "") + ".jpg" : `image_${Date.now()}.jpg`,
+            size: Math.round(pureBase64.length * 3 / 4) // Estimate base64 decoded size
+          });
+        };
+        img.onerror = () => reject(new Error('Failed to process image for compression'));
+        img.src = e.target.result;
       } else {
-        pureBase64 = result.replace(/^data:[^;]+;base64,/, '');
-      }
+        const result = reader.result || '';
+        const base64Index = result.indexOf(';base64,');
+        let pureBase64 = '';
+        let mimeType = file.type || 'application/octet-stream';
 
-      resolve({
-        base64Data: pureBase64,
-        mimeType: mimeType || file.type || 'application/octet-stream',
-        fileName: file.name || `file_${Date.now()}`,
-        size: file.size || 0
-      });
+        if (base64Index !== -1) {
+          pureBase64 = result.substring(base64Index + 8);
+          mimeType = result.substring(5, base64Index);
+        } else {
+          pureBase64 = result.replace(/^data:[^;]+;base64,/, '');
+        }
+
+        resolve({
+          base64Data: pureBase64,
+          mimeType: mimeType || file.type || 'application/octet-stream',
+          fileName: file.name || `file_${Date.now()}`,
+          size: file.size || 0
+        });
+      }
     };
 
     reader.onerror = (error) => reject(error);
@@ -302,6 +346,27 @@ export const uploadFileToDrive = async ({
   };
 };
 
+export {
+  resolveDriveImageUrl,
+  getDriveLh3Url,
+  getDriveFileViewUrl,
+  handleDriveImageError
+} from '../utils/driveHelper.js';
+
+import {
+  resolveDriveImageUrl,
+  getDriveLh3Url,
+  getDriveFileViewUrl,
+  handleDriveImageError
+} from '../utils/driveHelper.js';
+
+export async function makeAllDriveFilesPublic() {
+  if (isGAS()) {
+    return callGAS('apiMakeAllDriveFilesPublic');
+  }
+  return { success: true, message: 'Simulated Drive Public Read Migration' };
+}
+
 export const driveService = {
   DRIVE_ROOT_FOLDER,
   DRIVE_CATEGORIES,
@@ -313,8 +378,13 @@ export const driveService = {
   getDrivePreviewUrl,
   getDriveDownloadUrl,
   getDriveThumbnailUrl,
+  resolveDriveImageUrl,
+  getDriveLh3Url,
+  getDriveFileViewUrl,
+  handleDriveImageError,
   fileToBase64,
-  uploadFileToDrive
+  uploadFileToDrive,
+  makeAllDriveFilesPublic
 };
 
 export default driveService;

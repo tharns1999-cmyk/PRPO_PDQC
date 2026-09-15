@@ -9,7 +9,7 @@
     "conversionRate": 1,
     "unit": "ชิ้น",
     "price": 100,
-    "stockBalance": 6,
+    "stockBalance": 0,
     "reorderPoint": 10,
     "leadTimeDays": 7,
     "supplierId": null,

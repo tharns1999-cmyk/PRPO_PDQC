@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ChevronLeft, ChevronRight, Download, ExternalLink, Image as ImageIcon } from 'lucide-react';
+import { resolveDriveImageUrl, getDriveFileViewUrl, handleDriveImageError } from '../../utils/driveHelper';
 
 /**
  * ImageLightboxModal
@@ -85,11 +86,27 @@ export default function ImageLightboxModal({
         </div>
 
         {/* Counter & Action Buttons */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0">
           {total > 1 && (
             <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
               {currentIndex + 1} / {total}
             </span>
+          )}
+
+          {/* ปุ่มเปิดดูใน Google Drive */}
+          {currentImage.driveViewUrl && (
+            <a
+              href={currentImage.driveViewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xs transition-all hover:scale-105 cursor-pointer"
+              title="เปิดดูใน Google Drive"
+              onClick={e => e.stopPropagation()}
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">เปิดดูใน Google Drive</span>
+              <span className="sm:hidden">Drive</span>
+            </a>
           )}
 
           {currentImage.url && (
@@ -140,6 +157,7 @@ export default function ImageLightboxModal({
             src={currentImage.url}
             alt={currentImage.name || 'preview'}
             className="max-h-[70vh] max-w-full object-contain rounded-2xl shadow-2xl border border-slate-800 bg-slate-900/50 transition-all duration-200"
+            onError={(e) => handleDriveImageError(e, currentImage.raw || currentImage.url)}
           />
         </div>
 
@@ -177,6 +195,7 @@ export default function ImageLightboxModal({
                 src={img.url}
                 alt={img.name || `thumb-${idx}`}
                 className="w-full h-full object-cover"
+                onError={(e) => handleDriveImageError(e, img.raw || img.url)}
               />
             </button>
           ))}
@@ -195,15 +214,15 @@ function useMemoImages(rawImages, defaultTitle) {
     if (!rawImages) return [];
     const list = Array.isArray(rawImages) ? rawImages : [rawImages];
     return list.map((item, idx) => {
-      if (typeof item === 'string') {
-        return {
-          url: item,
-          name: defaultTitle ? `${defaultTitle} (${idx + 1})` : `รูปที่ ${idx + 1}`
-        };
-      }
+      const rawInput = typeof item === 'string' ? item : (item.previewUrl || item.url || item.dataUrl || item.directUrl || item.fileUrl || item);
+      const resolvedUrl = resolveDriveImageUrl(rawInput, 'w1600');
+      const driveViewUrl = getDriveFileViewUrl(rawInput);
+      const name = (typeof item === 'object' && item.name) ? item.name : (defaultTitle ? `${defaultTitle} (${idx + 1})` : `รูปที่ ${idx + 1}`);
       return {
-        url: item.previewUrl || item.url || item.dataUrl || '',
-        name: item.name || (defaultTitle ? `${defaultTitle} (${idx + 1})` : `รูปที่ ${idx + 1}`)
+        raw: item,
+        url: resolvedUrl || (typeof item === 'string' ? item : (item.url || item.previewUrl || '')),
+        driveViewUrl,
+        name
       };
     }).filter(it => Boolean(it.url));
   }, [rawImages, defaultTitle]);

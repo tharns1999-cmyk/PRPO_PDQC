@@ -41,6 +41,13 @@ const SCHEMA_DEFINITIONS = Object.freeze({
     'items', 'subtotal', 'totalAmount', 'createdAt', 'updatedAt', 'reviewedBy', 
     'reviewedAt', 'approvedBy', 'approvedAt', 'poNumber', 'note'
   ],
+  [SHEET_NAMES.PR_ITEMS]: [
+    'id', 'prId', 'prNo', 'productId', 'productCode', 'name', 
+    'purchaseUnit', 'stockUnit', 'conversionRate', 'qty', 'unit', 
+    'price', 'totalPrice', 'department', 'notes', 'status', 
+    'imageUrl', 'fileId', 'driveUrl', 'images', 'attachments',
+    'createdAt', 'updatedAt'
+  ],
   [SHEET_NAMES.POS]: [
     'id', 'poNo', 'prId', 'prNo', 'department', 'vendorName', 'vendorId', 
     'purchaseChannel', 'issueDate', 'orderDate', 'status', 'workflowStatus', 
@@ -77,7 +84,7 @@ const SCHEMA_DEFINITIONS = Object.freeze({
   ],
   [SHEET_NAMES.ATTACHMENTS]: [
     'id', 'fileId', 'fileName', 'mimeType', 'fileSize', 'category', 'poNumber', 
-    'docNo', 'docType', 'viewUrl', 'downloadUrl', 'folderPath', 'uploadedBy', 'uploadedAt'
+    'docNo', 'docType', 'viewUrl', 'directUrl', 'lh3Url', 'downloadUrl', 'folderPath', 'uploadedBy', 'uploadedAt'
   ]
 });
 
@@ -121,9 +128,11 @@ function initializeSystem() {
 
     if (!sheet) {
       sheet = ss.insertSheet(sheetName);
+      if (!Array.isArray(report.sheetsCreated)) report.sheetsCreated = [];
       report.sheetsCreated.push(sheetName);
       console.info(`[Initializer] Created missing sheet: "${sheetName}"`);
     } else {
+      if (!Array.isArray(report.sheetsExisted)) report.sheetsExisted = [];
       report.sheetsExisted.push(sheetName);
     }
 
@@ -135,6 +144,7 @@ function initializeSystem() {
       // Empty sheet: write header row
       sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
       formatHeaderRow(sheet, expectedHeaders.length);
+      if (!Array.isArray(report.headersFormatted)) report.headersFormatted = [];
       report.headersFormatted.push(sheetName);
       console.info(`[Initializer] Added and formatted headers for: "${sheetName}"`);
     } else {
@@ -178,9 +188,11 @@ function initializeSystem() {
     standardCategories.forEach(catName => {
       const existing = root.getFoldersByName(catName);
       if (existing.hasNext()) {
+        if (!Array.isArray(report.driveFoldersExisted)) report.driveFoldersExisted = [];
         report.driveFoldersExisted.push(catName);
       } else {
         root.createFolder(catName);
+        if (!Array.isArray(report.driveFoldersCreated)) report.driveFoldersCreated = [];
         report.driveFoldersCreated.push(catName);
         console.info(`[Initializer] Created Drive category folder: "${catName}"`);
       }
@@ -249,3 +261,64 @@ function formatHeaderRange(sheet, row, startCol, numCols) {
     .setHorizontalAlignment('center')
     .setVerticalAlignment('middle');
 }
+
+/**
+ * Ensures PRItems sheet tab exists with schema headers and dynamic column sync.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet}
+ */
+function ensurePRItemsSheet() {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_NAMES.PR_ITEMS);
+  const targetHeaders = SCHEMA_DEFINITIONS[SHEET_NAMES.PR_ITEMS];
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAMES.PR_ITEMS);
+    sheet.appendRow(targetHeaders);
+    formatHeaderRow(sheet, targetHeaders.length);
+    SpreadsheetApp.flush();
+  } else {
+    try {
+      const currentHeaders = getSheetHeaders(sheet);
+      const missingHeaders = targetHeaders.filter(h => !currentHeaders.includes(h));
+      if (missingHeaders.length > 0) {
+        const newHeaders = currentHeaders.concat(missingHeaders);
+        sheet.getRange(1, 1, 1, newHeaders.length).setValues([newHeaders]);
+        formatHeaderRow(sheet, newHeaders.length);
+        SpreadsheetApp.flush();
+      }
+    } catch (e) {
+      console.warn('[ensurePRItemsSheet] Header sync warning: ' + e.message);
+    }
+  }
+  return sheet;
+}
+
+/**
+ * Ensures Attachments sheet tab exists with schema headers and dynamic column sync.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet}
+ */
+function ensureAttachmentsSheet() {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_NAMES.ATTACHMENTS);
+  const targetHeaders = SCHEMA_DEFINITIONS[SHEET_NAMES.ATTACHMENTS];
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_NAMES.ATTACHMENTS);
+    sheet.appendRow(targetHeaders);
+    formatHeaderRow(sheet, targetHeaders.length);
+    SpreadsheetApp.flush();
+  } else {
+    try {
+      const currentHeaders = getSheetHeaders(sheet);
+      const missingHeaders = targetHeaders.filter(h => !currentHeaders.includes(h));
+      if (missingHeaders.length > 0) {
+        const newHeaders = currentHeaders.concat(missingHeaders);
+        sheet.getRange(1, 1, 1, newHeaders.length).setValues([newHeaders]);
+        formatHeaderRow(sheet, newHeaders.length);
+        SpreadsheetApp.flush();
+      }
+    } catch (e) {
+      console.warn('[ensureAttachmentsSheet] Header sync warning: ' + e.message);
+    }
+  }
+  return sheet;
+}
+

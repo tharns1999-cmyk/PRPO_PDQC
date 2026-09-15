@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import './setup.js';
 
 import { authService, DEFAULT_EMPLOYEE_ACCOUNTS, getRolePermissionsChecklist } from '../src/services/authService';
@@ -11,6 +11,7 @@ import { notificationService } from '../src/services/notificationService';
 import UserProfileModal from '../src/components/common/UserProfileModal.jsx';
 import Sidebar from '../src/components/common/Sidebar.jsx';
 import SidebarAlias from '../src/components/Sidebar';
+import ProtectedRoute from '../src/components/common/ProtectedRoute.jsx';
 import { AuthProvider, AUTH_STORAGE_KEY } from '../src/context/AuthContext.jsx';
 import { AppProvider } from '../src/context/AppContext';
 import { 
@@ -736,6 +737,191 @@ describe('Domain Suite: Authentication, Authorization & RBAC', () => {
 
     it('src/components/Sidebar alias points to Sidebar component seamlessly', () => {
       expect(SidebarAlias).toBe(Sidebar);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════════
+  // Sub-Suite 7: Online Purchaser Sidebar RBAC & Route Guards
+  // ══════════════════════════════════════════════════════════════════
+  describe('7. Online Purchaser Sidebar RBAC & Route Guards', () => {
+    const onlinePurchaserUser = {
+      id: 'ONLINE_PURCHASER',
+      roleId: 'ONLINE_PURCHASER',
+      name: 'คุณนัท (จัดซื้อออนไลน์)',
+      title: 'Online Purchaser',
+      department: 'PUR',
+      canOnlinePurchase: true,
+      level: 2,
+      expiresAt: Date.now() + 86400000
+    };
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      localStorage.clear();
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(onlinePurchaserUser));
+    });
+
+    it('Sidebar strictly renders ONLY the 6 allowed menus for ONLINE_PURCHASER', () => {
+      const html = renderToStaticMarkup(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <AppProvider>
+            <Sidebar
+              currentRole={onlinePurchaserUser}
+              currentUser={onlinePurchaserUser}
+              pos={[]}
+              prs={[]}
+            />
+          </AppProvider>
+        </MemoryRouter>
+      );
+
+      // 6 Allowed Menus
+      expect(html).toContain('ภาพรวม');
+      expect(html).toContain('งานจัดซื้อ');
+      expect(html).toContain('ใบขอซื้อ');
+      expect(html).toContain('ใบสั่งซื้อ');
+      expect(html).toContain('คลังพัสดุ');
+      expect(html).toContain('งบประมาณ');
+
+      // 4 Forbidden Menus strictly HIDDEN
+      expect(html).not.toContain('งานของฉัน');
+      expect(html).not.toContain('เบิกจ่ายด่วน');
+      expect(html).not.toContain('ข้อมูลระบบ');
+      expect(html).not.toContain('บันทึกระบบ (Audit Logs)');
+    });
+
+    it('Internal purchaser (roleId: PURCHASER) is NOT treated as ONLINE_PURCHASER', () => {
+      const internalPurchaser = {
+        id: 'PURCHASER_GENERAL',
+        roleId: 'PURCHASER',
+        name: 'คุณสุดา (จัดซื้อทั่วไป)',
+        canonicalRole: 'PURCHASER',
+        canManageMaster: true,
+        canOnlinePurchase: false,
+        level: 2
+      };
+
+      const html = renderToStaticMarkup(
+        <MemoryRouter initialEntries={['/dashboard']}>
+          <AppProvider>
+            <Sidebar
+              currentRole={internalPurchaser}
+              currentUser={internalPurchaser}
+              pos={[]}
+              prs={[]}
+            />
+          </AppProvider>
+        </MemoryRouter>
+      );
+
+      // Internal purchaser sees "งานของฉัน" and "ข้อมูลระบบ"
+      expect(html).toContain('งานของฉัน');
+      expect(html).toContain('ข้อมูลระบบ');
+    });
+
+    it('Route Guard prevents ONLINE_PURCHASER from accessing forbidden routes and redirects to fallback', () => {
+      // 1. /inventory/quick-issue guarded with disallowOnlinePurchaser (triggers Navigate to fallback)
+      const quickIssueHtml = renderToStaticMarkup(
+        <MemoryRouter initialEntries={['/inventory/quick-issue']}>
+          <AuthProvider>
+            <Routes>
+              <Route 
+                path="/inventory/quick-issue" 
+                element={
+                  <ProtectedRoute disallowOnlinePurchaser fallback="/dashboard">
+                    <div data-testid="quick-issue-page">Quick Issue Content</div>
+                  </ProtectedRoute>
+                } 
+              />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+      expect(quickIssueHtml).not.toContain('Quick Issue Content');
+      expect(quickIssueHtml).toBe(''); // Navigate renders null/empty in SSR
+
+      // 2. /my-workspace guarded with disallowOnlinePurchaser
+      const myWorkHtml = renderToStaticMarkup(
+        <MemoryRouter initialEntries={['/my-workspace']}>
+          <AuthProvider>
+            <Routes>
+              <Route 
+                path="/my-workspace" 
+                element={
+                  <ProtectedRoute disallowOnlinePurchaser fallback="/dashboard">
+                    <div data-testid="my-work-page">My Work Content</div>
+                  </ProtectedRoute>
+                } 
+              />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+      expect(myWorkHtml).not.toContain('My Work Content');
+      expect(myWorkHtml).toBe('');
+
+      // 3. /master-data guarded with disallowOnlinePurchaser
+      const masterDataHtml = renderToStaticMarkup(
+        <MemoryRouter initialEntries={['/master-data']}>
+          <AuthProvider>
+            <Routes>
+              <Route 
+                path="/master-data" 
+                element={
+                  <ProtectedRoute allowedRoles={['REQUESTER', 'REVIEWER', 'PURCHASER', 'APPROVER', 'ADMIN']} disallowOnlinePurchaser fallback="/dashboard">
+                    <div data-testid="master-data-page">Master Data Content</div>
+                  </ProtectedRoute>
+                } 
+              />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+      expect(masterDataHtml).not.toContain('Master Data Content');
+      expect(masterDataHtml).toBe('');
+
+      // 4. AccessDeniedCard rendering when fallback is omitted
+      const accessDeniedHtml = renderToStaticMarkup(
+        <MemoryRouter initialEntries={['/master-data']}>
+          <AuthProvider>
+            <Routes>
+              <Route 
+                path="/master-data" 
+                element={
+                  <ProtectedRoute allowedRoles={['REQUESTER', 'REVIEWER', 'APPROVER', 'ADMIN']} disallowOnlinePurchaser>
+                    <div data-testid="master-data-page">Master Data Content</div>
+                  </ProtectedRoute>
+                } 
+              />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+      expect(accessDeniedHtml).not.toContain('Master Data Content');
+      expect(accessDeniedHtml).toContain('403 Access Denied');
+      expect(accessDeniedHtml).toContain('สิทธิ์การเข้าถึงถูกจำกัด');
+    });
+
+    it('Route Guard permits ONLINE_PURCHASER to access /budget (BUDGET_MANAGE overview)', () => {
+      const budgetHtml = renderToStaticMarkup(
+        <MemoryRouter initialEntries={['/budget']}>
+          <AuthProvider>
+            <Routes>
+              <Route 
+                path="/budget" 
+                element={
+                  <ProtectedRoute requiredPermission="BUDGET_MANAGE" fallback="/dashboard">
+                    <div data-testid="budget-overview-page">Budget Overview Permitted</div>
+                  </ProtectedRoute>
+                } 
+              />
+              <Route path="/dashboard" element={<div data-testid="dashboard-page">Dashboard Redirected</div>} />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+      expect(budgetHtml).toContain('Budget Overview Permitted');
+      expect(budgetHtml).not.toContain('Dashboard Redirected');
     });
   });
 });

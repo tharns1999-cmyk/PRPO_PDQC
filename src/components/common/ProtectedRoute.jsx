@@ -98,6 +98,8 @@ export default function ProtectedRoute({
   children,
   requiredRole,
   allowedRoles,
+  disallowRoles,
+  disallowOnlinePurchaser,
   requiredPermission,
   requiredDepartment,
   fallback
@@ -154,8 +156,38 @@ export default function ProtectedRoute({
     return children;
   }
 
-  // 4. Role Requirement check (supports single role or array via requiredRole or allowedRoles)
+  // 4. Role requirements resolution
   const effectiveRoles = allowedRoles || requiredRole;
+
+  // Strict Online Purchaser check (strictly roleId or id === 'ONLINE_PURCHASER')
+  const isOnlinePurchaser = !isAdmin && Boolean(
+    activeUser?.roleId === 'ONLINE_PURCHASER' ||
+    activeUser?.id === 'ONLINE_PURCHASER'
+  );
+
+  // Disallow Check (disallowOnlinePurchaser or disallowRoles)
+  const isDisallowedByRole = Array.isArray(disallowRoles) && disallowRoles.some(r => {
+    const roleUpper = String(r).toUpperCase();
+    return (
+      roleUpper === effectiveCanonical ||
+      (activeUser?.roleId && roleUpper === String(activeUser.roleId).toUpperCase()) ||
+      (roleUpper === 'ONLINE_PURCHASER' && isOnlinePurchaser)
+    );
+  });
+
+  if ((disallowOnlinePurchaser && isOnlinePurchaser) || isDisallowedByRole) {
+    if (fallback) {
+      return <Navigate to={fallback} replace />;
+    }
+    return (
+      <AccessDeniedCard
+        requiredRole={effectiveRoles || 'AUTHORIZED_USERS'}
+        currentRole={activeUser}
+      />
+    );
+  }
+
+  // 5. Role Requirement check (supports single role or array via requiredRole or allowedRoles)
   if (effectiveRoles) {
     const targetRoles = (Array.isArray(effectiveRoles) ? effectiveRoles : [effectiveRoles]).map(r => String(r).toUpperCase());
     const roleMatches = targetRoles.includes(effectiveCanonical) || 
@@ -175,7 +207,7 @@ export default function ProtectedRoute({
     }
   }
 
-  // 5. Permission Requirement check
+  // 6. Permission Requirement check
   if (requiredPermission) {
     let hasPermission = typeof canAccess === 'function' ? canAccess(requiredPermission) : false;
 
@@ -184,6 +216,7 @@ export default function ProtectedRoute({
       if (requiredPermission === 'BUDGET_MANAGE') {
         hasPermission = Boolean(
           isAdmin ||
+          isOnlinePurchaser ||
           activeUser.canViewBudget === true ||
           activeUser.canViewBudgetMenu === true ||
           ['APPROVER', 'ADMIN', 'REVIEWER'].includes(effectiveCanonical) ||

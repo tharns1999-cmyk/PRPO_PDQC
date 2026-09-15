@@ -1,0 +1,272 @@
+[
+  {
+    "id": "AUD-1789374469326-BUMI7",
+    "timestamp": "2026-09-14 15:27:49",
+    "timeFormatted": "2026-09-14 15:27:49",
+    "action": "APPROVE",
+    "module": "PURCHASE",
+    "targetRef": "PO-PD-2026-002",
+    "summary": "อนุมัติ PR PD002/2026 ออกใบสั่งซื้อ PO-PD-2026-002 (ผู้ขาย: บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด) ยอดเงิน ฿10,106.14",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager (PD, QC, ALL)",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374465833-GGEGD",
+    "timestamp": "2026-09-14 15:27:45",
+    "timeFormatted": "2026-09-14 15:27:45",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "prasert.pm",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: prasert.pm)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374463462-KMUXG",
+    "timestamp": "2026-09-14 15:27:43",
+    "timeFormatted": "2026-09-14 15:27:43",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "ออกจากระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี",
+      "role": "Assistant Manager",
+      "department": "PD, QC"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374457996-95DDA",
+    "timestamp": "2026-09-14 15:27:37",
+    "timeFormatted": "2026-09-14 15:27:37",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี",
+      "role": "Assistant Manager",
+      "department": "PD, QC"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374456000-R452B",
+    "timestamp": "2026-09-14 15:27:36",
+    "timeFormatted": "2026-09-14 15:27:36",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "siraphat.pd",
+    "summary": "ออกจากระบบสำเร็จ (Username: siraphat.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374453466-QILUE",
+    "timestamp": "2026-09-14 15:27:33",
+    "timeFormatted": "2026-09-14 15:27:33",
+    "action": "CREATE",
+    "module": "PURCHASE",
+    "targetRef": "PD002/2026",
+    "summary": "สร้างและยื่นส่งใบขอซื้อ เลขที่ PD002/2026 ยอดรวม ฿10,106.14",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374387970-26E7H",
+    "timestamp": "2026-09-14 15:26:27",
+    "timeFormatted": "2026-09-14 15:26:27",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "siraphat.pd",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: siraphat.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374385005-FEOJ6",
+    "timestamp": "2026-09-14 15:26:25",
+    "timeFormatted": "2026-09-14 15:26:25",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "prasert.pm",
+    "summary": "ออกจากระบบสำเร็จ (Username: prasert.pm)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374382591-BFF8S",
+    "timestamp": "2026-09-14 15:26:22",
+    "timeFormatted": "2026-09-14 15:26:22",
+    "action": "APPROVE",
+    "module": "PURCHASE",
+    "targetRef": "PO-PD-2026-001",
+    "summary": "อนุมัติ PR PD001/2026 ออกใบสั่งซื้อ PO-PD-2026-001 (ผู้ขาย: บริษัท สยามอินดัสเตรียลซัพพลาย จำกัด) ยอดเงิน ฿1,797.6",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager (PD, QC, ALL)",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374376726-QTJF4",
+    "timestamp": "2026-09-14 15:26:16",
+    "timeFormatted": "2026-09-14 15:26:16",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "prasert.pm",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: prasert.pm)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374368925-0MALE",
+    "timestamp": "2026-09-14 15:26:08",
+    "timeFormatted": "2026-09-14 15:26:08",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "ออกจากระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี",
+      "role": "Assistant Manager",
+      "department": "PD, QC"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374358900-SFS0G",
+    "timestamp": "2026-09-14 15:25:58",
+    "timeFormatted": "2026-09-14 15:25:58",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "kallayani.mgr",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: kallayani.mgr)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "กัลยาณี",
+      "role": "Assistant Manager",
+      "department": "PD, QC"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374349989-OZ5AT",
+    "timestamp": "2026-09-14 15:25:49",
+    "timeFormatted": "2026-09-14 15:25:49",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "siraphat.pd",
+    "summary": "ออกจากระบบสำเร็จ (Username: siraphat.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374346315-4VDJ2",
+    "timestamp": "2026-09-14 15:25:46",
+    "timeFormatted": "2026-09-14 15:25:46",
+    "action": "CREATE",
+    "module": "PURCHASE",
+    "targetRef": "PD001/2026",
+    "summary": "สร้างและยื่นส่งใบขอซื้อ เลขที่ PD001/2026 ยอดรวม ฿1,797.6",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374332249-CH3QE",
+    "timestamp": "2026-09-14 15:25:32",
+    "timeFormatted": "2026-09-14 15:25:32",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "siraphat.pd",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: siraphat.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789374332236-M4151",
+    "timestamp": "2026-09-14 15:25:32",
+    "timeFormatted": "2026-09-14 15:25:32",
+    "action": "LOGIN",
+    "docType": "USER",
+    "docNo": "siraphat.pd",
+    "details": "เข้าสู่ระบบสำเร็จ (Username: siraphat.pd)",
+    "actorName": "สิรภัทร แจ่มมิน",
+    "department": "PD",
+    "actorRole": "Requester (PD)",
+    "clientIp": "180.183.54.83",
+    "clientEnv": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+    "changes": ""
+  }
+]

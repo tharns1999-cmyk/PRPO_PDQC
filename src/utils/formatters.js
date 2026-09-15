@@ -140,3 +140,27 @@ export function formatNumber(num, maxDecimals = 2) {
     maximumFractionDigits: maxDecimals
   });
 }
+
+/**
+ * Safe string comparison for sorting alphanumeric identifiers, codes, or strings.
+ * Safely handles numbers, null, undefined, and objects without throwing TypeError.
+ * Natural sorting via `{ numeric: true }` so numeric codes order properly (e.g. 1, 2, 10).
+ *
+ * @param {*} a
+ * @param {*} b
+ * @param {string} [locale='th']
+ * @param {object} [options={ numeric: true }]
+ * @returns {number}
+ */
+export const safeStringCompare = (a, b, locale = 'th', options = { numeric: true }) => {
+  return String(a ?? '').localeCompare(String(b ?? ''), locale, options);
+};
+
+// Re-export Google Drive image resolvers for seamless developer ergonomics
+export {
+  resolveDriveImageUrl,
+  getDriveLh3Url,
+  getDriveFileViewUrl,
+  handleDriveImageError
+} from './driveHelper.js';
+

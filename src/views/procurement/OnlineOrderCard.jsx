@@ -18,6 +18,7 @@ import ImageLightboxModal from '../../components/common/ImageLightboxModal';
 import { getFallbackAttachmentsForCode } from '../../services/workflowEngine';
 import AttachmentViewerModal from '../../components/common/AttachmentViewerModal';
 import { formatCurrency } from '../../utils/formatters.js';
+import { resolveDriveImageUrl, handleDriveImageError } from '../../utils/driveHelper';
 
 const formatMoney = (n) => formatCurrency(n);
 
@@ -801,7 +802,9 @@ export default function OnlineOrderCard({
         };
       }
       
+      if (!Array.isArray(groups[key].items)) groups[key].items = [];
       groups[key].items.push(item);
+      if (!Array.isArray(groups[key].itemIndices)) groups[key].itemIndices = [];
       groups[key].itemIndices.push(itemIdx);
       const price = Number(item.unitPrice ?? item.actualPrice ?? item.price ?? 0);
       const qty = Number(item.purchaseQty ?? item.actualQty ?? item.qty ?? 0);
@@ -819,6 +822,7 @@ export default function OnlineOrderCard({
         groups[key].hasDispute = true;
         groups[key].status = 'DISPUTED';
         groups[key].defaultRefund += metrics.claimableAmount;
+        if (!Array.isArray(groups[key].issueItems)) groups[key].issueItems = [];
         groups[key].issueItems.push({
           ...item,
           ...metrics,
@@ -2191,9 +2195,10 @@ export default function OnlineOrderCard({
                                   className="relative w-8 h-8 rounded-lg border border-slate-200 shadow-2xs overflow-hidden bg-slate-100 transition-transform duration-150 hover:scale-110 hover:z-10 cursor-pointer shrink-0 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                 >
                                   <img
-                                    src={img.url}
+                                    src={resolveDriveImageUrl(img.url, 'w400')}
                                     alt={img.name || `thumb-${imgIdx}`}
                                     className="w-full h-full object-cover"
+                                    onError={(e) => handleDriveImageError(e, img)}
                                   />
                                 </button>
                               ))}
@@ -2383,9 +2388,10 @@ export default function OnlineOrderCard({
                                   className="relative w-7 h-7 rounded-md border border-slate-200 shadow-2xs overflow-hidden bg-slate-100 transition-transform duration-150 hover:scale-110 hover:z-10 cursor-pointer shrink-0 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                                 >
                                   <img
-                                    src={img.url}
+                                    src={resolveDriveImageUrl(img.url, 'w400')}
                                     alt={img.name || `thumb-${imgIdx}`}
                                     className="w-full h-full object-cover"
+                                    onError={(e) => handleDriveImageError(e, img)}
                                   />
                                 </button>
                               ))}

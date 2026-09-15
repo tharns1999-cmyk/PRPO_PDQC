@@ -19,6 +19,7 @@ import { generatePoPdf } from '../../utils/generatePoPdf';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
 import ReceivingModal, { resolveRefundedQtyAndAmount } from '../../views/inventory/ReceivingModal';
 import { getValidConversionRate, toStockQuantity } from '../../utils/uomEngine.js';
+import { resolveDriveImageUrl, handleDriveImageError } from '../../utils/driveHelper';
 
 const getVendorDisplayName = (vendorData) => {
   if (!vendorData) return '';
@@ -213,6 +214,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
 
       setGrAttachments(prev => [...prev, ...processed]);
     } catch (err) {
+      console.error('[Workflow Error Stack]:', err.stack || err);
       modalService.error('เกิดข้อผิดพลาดในการอัปโหลดไฟล์', err.message);
     } finally {
       setIsUploading(false);
@@ -362,6 +364,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
       onRefresh();
       onClose();
     } catch (err) {
+      console.error('[Workflow Error Stack]:', err.stack || err);
       modalService.error('เกิดข้อผิดพลาดในการตรวจรับ', err.message);
     } finally {
       setIsSubmitting(false);
@@ -388,6 +391,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
       if (onRefresh) onRefresh();
       onClose();
     } catch (err) {
+      console.error('[Workflow Error Stack]:', err.stack || err);
       modalService.error('เกิดข้อผิดพลาดในการปิด PO', err.message);
     } finally {
       setIsShortClosing(false);
@@ -427,6 +431,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
       onRefresh();
       onClose();
     } catch (err) {
+      console.error('[Workflow Error Stack]:', err.stack || err);
       modalService.error('เกิดข้อผิดพลาด', err.message);
     } finally {
       setIsAssigning(false);
@@ -452,6 +457,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
       if (onRefresh) onRefresh();
       onClose();
     } catch (err) {
+      console.error('[Workflow Error Stack]:', err.stack || err);
       modalService.error('เกิดข้อผิดพลาดในการยกเลิก', err.message);
     } finally {
       setIsCancelling(false);
@@ -490,7 +496,8 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     currentRole?.roleId === 'ADMIN' ||
     (Number(currentRole?.level) === 1 && (currentRole?.department === 'ALL' || currentRole?.department === selectedPO.department))
   );
-  const isReceivable = ['ISSUED', 'ORDERED', 'ORDERED_PENDING_DELIVERY', 'PARTIAL', 'IN_DELIVERY'].includes(selectedPO.status);
+  const TERMINAL_PO_STATUSES = ['CLOSED', 'CANCELLED', 'RECEIVED', 'COMPLETED', 'COMPLETED_WITH_REFUND'];
+  const isReceivable = !TERMINAL_PO_STATUSES.includes(selectedPO.status) && ['ISSUED', 'ORDERED', 'ORDERED_PENDING_DELIVERY', 'PARTIAL', 'IN_DELIVERY'].includes(selectedPO.status);
 
   // ─── Claim Permission Guard ───
   // Whether the current user can file a claim (report problem) on this PO
@@ -668,6 +675,9 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
         onClose={() => setShowReceivingModal(false)}
         onSuccess={(result) => {
           setShowReceivingModal(false);
+          if (result?.po && context?.updatePO) {
+            context.updatePO(result.po.id, result.po);
+          }
           if (onRefresh) onRefresh(result?.po);
           onClose();
         }}
@@ -1501,7 +1511,12 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                                 <FileText className="w-5 h-5" /><span className="text-[9px] font-bold mt-0.5">PDF</span>
                               </div>
                             ) : (
-                              <img src={att.previewUrl || att.fileUrl || att.dataUrl || att.url} alt={att.name || 'attachment'} className="w-full h-16 object-cover rounded-lg group-hover:scale-105 transition-transform" />
+                              <img 
+                                src={resolveDriveImageUrl(att.previewUrl || att.fileUrl || att.dataUrl || att.url, 'w400')} 
+                                alt={att.name || 'attachment'} 
+                                className="w-full h-16 object-cover rounded-lg group-hover:scale-105 transition-transform" 
+                                onError={(e) => handleDriveImageError(e, att)}
+                              />
                             )}
                             <p className="text-[10px] font-medium text-slate-600 truncate w-full mt-1 text-center font-mono">{att.name || att.fileName || `เอกสาร #${i + 1}`}</p>
                           </button>
@@ -1510,7 +1525,12 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                           <button key={`claim-att-${i}`} type="button"
                             onClick={() => setViewingAttachment({ file: att, url: att.previewUrl || att.fileUrl || att.dataUrl || att.url, title: att.name || 'หลักฐานเคลม' })}
                             className="group bg-rose-50/60 border border-rose-200 rounded-xl p-1.5 hover:border-rose-400 hover:shadow-sm transition-all cursor-pointer flex flex-col items-center">
-                            <img src={att.previewUrl || att.fileUrl || att.dataUrl || att.url} alt={att.name || 'claim evidence'} className="w-full h-16 object-cover rounded-lg group-hover:scale-105 transition-transform" />
+                            <img 
+                              src={resolveDriveImageUrl(att.previewUrl || att.fileUrl || att.dataUrl || att.url, 'w400')} 
+                              alt={att.name || 'claim evidence'} 
+                              className="w-full h-16 object-cover rounded-lg group-hover:scale-105 transition-transform" 
+                              onError={(e) => handleDriveImageError(e, att)}
+                            />
                             <p className="text-[10px] font-medium text-rose-700 truncate w-full mt-1 text-center font-mono">{att.name || `หลักฐาน #${i + 1}`}</p>
                           </button>
                         ))}
@@ -1619,7 +1639,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                     </button>
                   )}
 
-                  {selectedPO.status === 'CLOSED' && (
+                  {['CLOSED', 'COMPLETED', 'RECEIVED'].includes(selectedPO.status) && (
                     <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-3.5 py-2 rounded-xl text-xs font-bold">
                       <CheckCircle2 className="w-3.5 h-3.5" />รับเข้าคลังครบแล้ว (+IN)
                     </div>

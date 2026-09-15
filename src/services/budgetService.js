@@ -414,7 +414,9 @@ export const budgetService = {
     }
 
     if (targetPO) {
-      targetPO.processedRefundTransactions = targetPO.processedRefundTransactions || [];
+      if (!Array.isArray(targetPO.processedRefundTransactions)) {
+        targetPO.processedRefundTransactions = [];
+      }
       if (!targetPO.processedRefundTransactions.includes(idempotencyKey)) {
         targetPO.processedRefundTransactions.push(idempotencyKey);
         storageService.savePOs(pos);

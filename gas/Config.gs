@@ -42,6 +42,7 @@ const SHEET_NAMES = Object.freeze({
 
   // Transactions
   PRS: 'PRs',
+  PR_ITEMS: 'PRItems',
   POS: 'POs',
   STOCK_LOGS: 'StockLogs',
   BUDGET_TRANSACTIONS: 'BudgetTransactions',

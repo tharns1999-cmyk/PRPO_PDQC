@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { SlidersHorizontal, AlertCircle, X, Check, ArrowDownCircle, ArrowUpCircle, MapPin } from 'lucide-react';
 import { storageService } from '../../services/storageService';
 import SearchableSelect from '../common/SearchableSelect';
+import { safeStringCompare } from '../../utils/formatters';
 
 export default function StockAdjustmentModal({ products = [], currentRole, onClose, onRefresh }) {
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -18,7 +19,7 @@ export default function StockAdjustmentModal({ products = [], currentRole, onClo
     return (currentRole.canViewAllDepts
       ? products
       : products.filter(p => (p.category || p.department) === currentRole.department)
-    ).sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    ).sort((a, b) => safeStringCompare(a?.code, b?.code));
   }, [products, currentRole]);
 
   const productOptions = useMemo(() => {

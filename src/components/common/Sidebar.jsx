@@ -178,23 +178,19 @@ export default function Sidebar({
 
   const isOnlinePurchaser = !isAdmin && Boolean(
     effectiveUser?.roleId === 'ONLINE_PURCHASER' ||
-    effectiveUser?.id === 'ONLINE_PURCHASER' ||
-    effectiveUser?.canonicalRole === 'PURCHASER' ||
-    (effectiveUser?.canOnlinePurchase && !effectiveUser?.canReview && !effectiveUser?.canFinalApprove)
+    effectiveUser?.id === 'ONLINE_PURCHASER'
   );
 
   // Dynamic UX Filtering: Check if current user has permission to view/manage budget
-  // True for Admin, Plant Manager / Approver, Asst Manager / Reviewer
-  // Strictly false for Requester and Purchaser
+  // True for Admin, Plant Manager / Approver, Asst Manager / Reviewer, and Online Purchaser (Overview)
   const canViewBudget = Boolean(
-    isAdmin || (
-      !isOnlinePurchaser && (
-        effectiveUser?.canViewBudget === true ||
-        effectiveUser?.canViewBudgetMenu === true ||
-        auth?.canAccess?.('BUDGET_MANAGE') ||
-        ['APPROVER', 'REVIEWER'].includes(effectiveUser?.canonicalRole) ||
-        ['ASST_MANAGER', 'PLANT_MANAGER'].includes(effectiveUser?.roleId)
-      )
+    isAdmin ||
+    isOnlinePurchaser || (
+      effectiveUser?.canViewBudget === true ||
+      effectiveUser?.canViewBudgetMenu === true ||
+      auth?.canAccess?.('BUDGET_MANAGE') ||
+      ['APPROVER', 'REVIEWER'].includes(effectiveUser?.canonicalRole) ||
+      ['ASST_MANAGER', 'PLANT_MANAGER'].includes(effectiveUser?.roleId)
     )
   );
 
@@ -245,7 +241,7 @@ export default function Sidebar({
           label: 'ภาพรวม',
           ariaLabel: 'ภาพรวม',
           icon: LayoutDashboard, 
-          visible: !isOnlinePurchaser 
+          visible: true 
         },
         { 
           id: 'my-workspace', 
@@ -276,7 +272,7 @@ export default function Sidebar({
           label: 'ใบขอซื้อ',
           ariaLabel: 'ใบขอซื้อ',
           icon: ScrollText, 
-          visible: !isOnlinePurchaser, 
+          visible: true, 
           badge: taskCounts.prCount > 0 ? taskCounts.prCount : null 
         },
         { 

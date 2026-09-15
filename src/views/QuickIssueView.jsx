@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import SearchableSelect from '../components/common/SearchableSelect';
 import Pagination from '../components/common/Pagination';
+import { safeStringCompare } from '../utils/formatters';
 
 const ISSUE_REASONS = [
   'เบิกใช้ในสายการผลิต (Production Line)',
@@ -151,7 +152,7 @@ export default function QuickIssueView({
         const matchesCat = categoryFilter === 'ALL' || pCat === categoryFilter;
         return matchesDept && matchesCat;
       })
-      .sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+      .sort((a, b) => safeStringCompare(a?.code, b?.code));
   }, [products, user, categoryFilter]);
 
   // Transform to SearchableSelect options

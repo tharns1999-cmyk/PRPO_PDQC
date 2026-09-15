@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { storageService } from '../services/storageService';
+import { storageService, isGAS, callGAS } from '../services/storageService';
 import { apiService } from '../services/apiService';
 import { notificationService } from '../services/notificationService';
 import { workflowEngine } from '../services/workflowEngine';
@@ -527,12 +527,15 @@ export function AppProvider({ children }) {
 
     // Disallowed routes for online purchaser
     if (isTargetOnlinePurchaser && (
-      currentPath.includes('/budget') || 
+      currentPath.includes('/my-workspace') ||
+      currentPath.includes('/my-work') ||
       currentPath.includes('/master-data') || 
       currentPath.includes('/prs/create') ||
-      currentPath.includes('/inventory/quick-issue')
+      currentPath.includes('/quick-issue') ||
+      currentPath.includes('/inventory/quick-issue') ||
+      currentPath.includes('/audit-logs')
     )) {
-      navigate('/online-tasks', { replace: true });
+      navigate('/dashboard', { replace: true });
       return;
     }
 
@@ -542,8 +545,8 @@ export function AppProvider({ children }) {
       return;
     }
 
-    // Disallowed routes for users without budget permissions
-    if (!newSession.canViewBudget && currentPath.includes('/budget')) {
+    // Disallowed routes for users without budget permissions (allow ONLINE_PURCHASER)
+    if (!newSession.canViewBudget && !isTargetOnlinePurchaser && currentPath.includes('/budget')) {
       navigate('/dashboard', { replace: true });
       return;
     }
@@ -706,6 +709,8 @@ export function AppProvider({ children }) {
     const enrichedOptions = { ...options, grNumber, grId: grNumber };
 
     const result = await apiService.receiveGoods(poId, receivingItems, currentRole, note, enrichedOptions);
+    const freshPOs = storageService.getPOs();
+    if (freshPOs) setPOs([...freshPOs]);
     await loadAllData();
     return result;
   }, [currentRole, loadAllData]);
@@ -908,14 +913,47 @@ export function AppProvider({ children }) {
 
     currentPOs[targetIdx] = updatedPO;
     storageService.savePOs(currentPOs);
-    setPOs(currentPOs);
+    setPOs([...currentPOs]);
 
-    try {
-      await apiService.receiveGoods(poId, incomingItems, currentRole, grnPayload.note || '', {
-        grNumber: grnNumber,
-        grId: grnNumber
-      });
-    } catch {}
+    if (isGAS()) {
+      try {
+        const gasPoPayload = {
+          id: updatedPO.id,
+          poNo: updatedPO.poNo,
+          department: updatedPO.department,
+          status: updatedPO.status,
+          grNumber: grnNumber,
+          items: updatedPO.items,
+          history: updatedPO.history,
+          timeline: updatedPO.timeline,
+          activityLog: updatedPO.activityLog,
+          grnHistory: updatedPO.grnHistory,
+          ngItems: updatedPO.ngItems,
+          receivedBy: receiverName,
+          receiverName: receiverName,
+          receivedAt: receivedAtIso,
+          receivingInfo: {
+            receiverName,
+            receiverSignature: receiverSig,
+            receivedAt: receivedAtIso
+          },
+          prId: updatedPO.prId,
+          prNo: updatedPO.prNo,
+          prNumber: updatedPO.prNumber,
+          currentUser: currentRole
+        };
+        await callGAS('apiReceivePO', gasPoPayload);
+      } catch (gasErr) {
+        console.warn('[AppContext] GAS apiReceivePO error in handleRecordGoodsReceipt:', gasErr.message);
+      }
+    } else {
+      try {
+        await apiService.receiveGoods(poId, incomingItems, currentRole, grnPayload.note || '', {
+          grNumber: grnNumber,
+          grId: grnNumber
+        });
+      } catch {}
+    }
 
     await loadAllData();
     return { success: true, po: updatedPO, grn: grnEntry };

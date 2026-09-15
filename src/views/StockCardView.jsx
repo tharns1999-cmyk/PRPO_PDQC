@@ -13,6 +13,7 @@ import { storageService } from '../services/storageService';
 import { modalService } from '../services/modalService';
 import Pagination from '../components/common/Pagination';
 import { getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
+import { safeStringCompare } from '../utils/formatters';
 
 export default function StockCardView({ 
   products = [], 
@@ -154,7 +155,7 @@ export default function StockCardView({
         const aRatio = a.reorderPoint > 0 ? (a.stockBalance / a.reorderPoint) : 999;
         const bRatio = b.reorderPoint > 0 ? (b.stockBalance / b.reorderPoint) : 999;
         if (aRatio !== bRatio) return aRatio - bRatio;
-        return (a.code || '').localeCompare(b.code || '');
+        return safeStringCompare(a?.code, b?.code);
       });
   }, [viewableProducts, categoryFilter, selectedLocation, searchQuery, showDiscontinued]);
 

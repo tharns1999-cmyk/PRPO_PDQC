@@ -487,8 +487,9 @@ export default function WorkspaceView({
           selectedPO={currentActivePO}
           currentRole={currentRole}
           onClose={() => setSelectedPO(null)}
-          onRefresh={() => {
-            if (onRefresh) onRefresh();
+          onRefresh={(updatedDoc) => {
+            setSelectedPO(null);
+            if (onRefresh) onRefresh(updatedDoc);
           }}
         />
       )}

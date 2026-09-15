@@ -1,6 +1,8 @@
 import { STORAGE_KEYS, ROLES, INITIAL_USAGE_UNITS, INITIAL_DEPARTMENTS } from '../config/constants.js';
 import { initialProducts, initialVendors, initialStorageLocations, initialPRs, initialPOs, initialStockLogs, initialBudgets, initialCounters } from '../data/mockData.js';
 import { DEFAULT_EMPLOYEE_ACCOUNTS } from './authService.js';
+import { modalService } from './modalService.js';
+import { normalizePR, normalizePO } from '../utils/dataNormalizer.js';
 const DATA_VERSION = 'prpo_clean_v16_empty_state';
 const API_URL = '/api/storage';
 
@@ -21,7 +23,8 @@ export const isGAS = () => {
 
 /**
  * Universal Promise wrapper for google.script.run RPC calls.
- * Automatically unwraps standard API envelope: { success, data, error, message }.
+ * Automatically enriches payloads with currentUser, unwraps API envelope,
+ * and triggers red modal notification on backend failure.
  * 
  * @param {string} functionName Name of GAS function in Code.gs
  * @param  {...any} args Arguments to pass to GAS function
@@ -37,13 +40,49 @@ export const callGAS = (functionName, ...args) => {
       return reject(new Error(`GAS_METHOD_NOT_FOUND: Method "${functionName}" does not exist on google.script.run.`));
     }
 
+    // Automatically resolve active user session to attach currentUser
+    let currentUser = null;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const authData = localStorage.getItem('prpo_auth_session') || localStorage.getItem('prpo_current_user');
+        if (authData) {
+          currentUser = JSON.parse(authData);
+        }
+      }
+    } catch (e) {}
+
+    // Enrich object arguments with currentUser if absent
+    const enrichedArgs = args.map(arg => {
+      if (arg && typeof arg === 'object' && !Array.isArray(arg)) {
+        if (!arg.currentUser && !arg.user && currentUser) {
+          return { ...arg, currentUser };
+        }
+      }
+      return arg;
+    });
+
+    // If last arg is not user and currentUser exists, append userContext
+    let finalArgs = enrichedArgs;
+    if (currentUser) {
+      if (finalArgs.length === 0) {
+        finalArgs = [{}, currentUser];
+      } else if (finalArgs.length === 1) {
+        finalArgs = [finalArgs[0], currentUser];
+      } else if (finalArgs.length === 2 && typeof finalArgs[0] === 'string') {
+        finalArgs = [finalArgs[0], finalArgs[1], currentUser];
+      }
+    }
+
     window.google.script.run
       .withSuccessHandler((response) => {
         if (response && typeof response === 'object' && 'success' in response) {
           if (response.success) {
             resolve(response.data);
           } else {
-            const err = new Error(response.message || response.error || 'GAS Request Failed');
+            const errMsg = response.error || response.message || 'GAS Request Failed';
+            console.error(`[GAS Server Error] ${functionName}:`, errMsg);
+            modalService.error('ข้อผิดพลาดจากระบบหลังบ้าน', errMsg);
+            const err = new Error(errMsg);
             err.code = response.error || 'GAS_ERROR';
             reject(err);
           }
@@ -52,10 +91,12 @@ export const callGAS = (functionName, ...args) => {
         }
       })
       .withFailureHandler((error) => {
+        const errMsg = error instanceof Error ? error.message : String(error);
         console.error(`[GAS RPC Error] ${functionName}:`, error);
+        modalService.error('ข้อผิดพลาดการเชื่อมต่อระบบ', errMsg);
         reject(error instanceof Error ? error : new Error(String(error)));
       })
-      [functionName](...args);
+      [functionName](...finalArgs);
   });
 };
 
@@ -1121,7 +1162,7 @@ export const storageService = {
     }
     const data = _getItem(STORAGE_KEYS.PRS);
     const prs = Array.isArray(data) ? data : [];
-    const filtered = prs;
+    const filtered = prs.map(normalizePR);
     
     let needsSave = false;
     const migrated = filtered.map(pr => {
@@ -1210,6 +1251,42 @@ export const storageService = {
     _dirtyKeys.add(STORAGE_KEYS.PRS);
     _setItem(STORAGE_KEYS.PRS, prs);
   },
+  savePR(pr) {
+    if (!pr || typeof pr !== 'object') return null;
+    const normalized = normalizePR(pr);
+    const prs = this.getPRs();
+    const id = normalized.id || normalized.prNo || normalized.prNumber;
+    const index = prs.findIndex(p => (id && (p.id === id || p.prNo === id || p.prNumber === id)));
+    if (index >= 0) {
+      prs[index] = { ...prs[index], ...normalized };
+    } else {
+      prs.unshift(normalized);
+    }
+    this.savePRs(prs);
+    return prs[index >= 0 ? index : 0];
+  },
+  upsertPR(pr) {
+    return this.savePR(pr);
+  },
+  updatePRStatus(prId, status, user, note = '') {
+    const prs = this.getPRs();
+    const index = prs.findIndex(p => p.id === prId || p.prNo === prId || p.prNumber === prId);
+    if (index === -1) return null;
+    const pr = normalizePR(prs[index]);
+    pr.status = status;
+    if (!Array.isArray(pr.history)) {
+      pr.history = [];
+    }
+    pr.history.push({
+      action: `เปลี่ยนสถานะเป็น ${status}`,
+      by: user?.name || user?.username || 'System',
+      timestamp: new Date().toISOString(),
+      note: note || ''
+    });
+    prs[index] = pr;
+    this.savePRs(prs);
+    return pr;
+  },
 
   // POs (with Lazy Migration & Deduplication)
   // Performance: returns cached post-migration result if the key has not been written since last call.
@@ -1220,7 +1297,7 @@ export const storageService = {
     }
     const data = _getItem(STORAGE_KEYS.POS);
     const pos = Array.isArray(data) ? data : [];
-    const filtered = pos.filter(po => po.department === 'PD' || po.department === 'QC');
+    const filtered = pos.map(normalizePO).filter(po => po.department === 'PD' || po.department === 'QC');
 
     // Deduplicate POs by unique identifier
     const seen = new Set();
@@ -1550,6 +1627,42 @@ export const storageService = {
       return true;
     });
     _setItem(STORAGE_KEYS.POS, unique);
+  },
+  savePO(po) {
+    if (!po || typeof po !== 'object') return null;
+    const normalized = normalizePO(po);
+    const pos = this.getPOs();
+    const id = normalized.id || normalized.poNo || normalized.poNumber;
+    const index = pos.findIndex(p => (id && (p.id === id || p.poNo === id || p.poNumber === id)));
+    if (index >= 0) {
+      pos[index] = { ...pos[index], ...normalized };
+    } else {
+      pos.unshift(normalized);
+    }
+    this.savePOs(pos);
+    return pos[index >= 0 ? index : 0];
+  },
+  upsertPO(po) {
+    return this.savePO(po);
+  },
+  updatePOStatus(poId, status, user, note = '') {
+    const pos = this.getPOs();
+    const index = pos.findIndex(p => p.id === poId || p.poNo === poId || p.poNumber === poId);
+    if (index === -1) return null;
+    const po = normalizePO(pos[index]);
+    po.status = status;
+    if (!Array.isArray(po.history)) {
+      po.history = [];
+    }
+    po.history.push({
+      action: `เปลี่ยนสถานะเป็น ${status}`,
+      by: user?.name || user?.username || 'System',
+      timestamp: new Date().toISOString(),
+      note: note || ''
+    });
+    pos[index] = po;
+    this.savePOs(pos);
+    return po;
   },
 
   finalizePO(poId, finalData = {}) {

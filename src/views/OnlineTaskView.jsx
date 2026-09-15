@@ -126,6 +126,9 @@ export function hasUnresolvedClaim(po) {
         items: []
       };
     }
+    if (!Array.isArray(storeGroups[key].items)) {
+      storeGroups[key].items = [];
+    }
     storeGroups[key].items.push(it);
   });
 

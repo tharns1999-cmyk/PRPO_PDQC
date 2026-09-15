@@ -15,6 +15,8 @@ import { modalService } from '../services/modalService';
 import { budgetService } from '../services/budgetService';
 import { sanitizeExternalUrl, getProductUrl } from '../utils/urlHelper';
 import { getNextPRNumber } from '../utils/idGenerator';
+import { safeStringCompare } from '../utils/formatters';
+import { resolveDriveImageUrl, handleDriveImageError, getDriveFileViewUrl } from '../utils/driveHelper';
 
 /**
  * Deduplicate Master Data & Inventory list for product dropdowns/comboboxes
@@ -34,8 +36,13 @@ export const getUnifiedProductList = (products = [], inventory = []) => {
     if (raw.isActive === false || raw.status === 'INACTIVE') return;
     if (['P01', 'P02', 'PROD-01', 'PROD-02'].includes(key)) return;
 
+    const itemObj = { ...raw };
+    if (itemObj.id !== undefined && itemObj.id !== null) itemObj.id = String(itemObj.id).trim();
+    if (itemObj.code !== undefined && itemObj.code !== null) itemObj.code = String(itemObj.code).trim();
+    if (itemObj.name !== undefined && itemObj.name !== null) itemObj.name = String(itemObj.name).trim();
+
     if (!productMap.has(key)) {
-      productMap.set(key, { ...raw });
+      productMap.set(key, itemObj);
     }
   });
 
@@ -245,7 +252,7 @@ export default function PRCreateView({
     return rawList.filter(p => {
       const pDept = (p.department || p.category || '').toUpperCase();
       return !pDept || pDept === 'ALL' || pDept === userDepartment.toUpperCase();
-    }).sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    }).sort((a, b) => safeStringCompare(a?.code, b?.code));
   }, [products, inventory, department, currentRole?.department]);
 
   // Transform available products into searchable options
@@ -1581,7 +1588,7 @@ export default function PRCreateView({
 
                             {/* Thumbnail Cards 48x48px */}
                             {itemImages.map((img, imgIdx) => {
-                              const imgSrc = img.url || img.previewUrl || (typeof img === 'string' ? img : '');
+                              const imgSrc = resolveDriveImageUrl(img, 'w400');
                               return (
                                 <div key={imgIdx} className="relative group w-12 h-12 rounded-xl overflow-hidden border-2 border-white ring-1 ring-slate-200 shadow-2xs">
                                   <img 
@@ -1589,6 +1596,7 @@ export default function PRCreateView({
                                     alt={img.name || `preview-${imgIdx}`} 
                                     className="w-full h-full object-cover group-hover:scale-110 transition-transform cursor-pointer"
                                     onClick={() => handlePreviewImage(img)}
+                                    onError={(e) => handleDriveImageError(e, img)}
                                   />
                                   {/* Hover Action Overlay */}
                                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
@@ -1629,7 +1637,7 @@ export default function PRCreateView({
                               📷 รูปแนบ ({itemImages.length})
                             </span>
                             {itemImages.map((img, imgIdx) => {
-                              const imgSrc = img.url || img.previewUrl || (typeof img === 'string' ? img : '');
+                              const imgSrc = resolveDriveImageUrl(img, 'w400');
                               return (
                                 <div key={imgIdx} className="relative group w-12 h-12 rounded-xl overflow-hidden border-2 border-white ring-1 ring-slate-200 shadow-2xs">
                                   <img 
@@ -1637,6 +1645,7 @@ export default function PRCreateView({
                                     alt={img.name || `preview-${imgIdx}`} 
                                     className="w-full h-full object-cover group-hover:scale-110 transition-transform cursor-pointer"
                                     onClick={() => handlePreviewImage(img)}
+                                    onError={(e) => handleDriveImageError(e, img)}
                                   />
                                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
                                     <button 
@@ -2208,22 +2217,38 @@ export default function PRCreateView({
           onClick={() => setPreviewImage(null)}
         >
           <div 
-            className="relative max-w-2xl max-h-[85vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-2 border border-white/20 animate-scale-up"
+            className="relative max-w-2xl max-h-[85vh] bg-white rounded-2xl overflow-hidden shadow-2xl p-3 border border-white/20 animate-scale-up"
             onClick={e => e.stopPropagation()}
           >
-            <button 
-              type="button"
-              onClick={() => setPreviewImage(null)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-black/60 hover:bg-black text-white flex items-center justify-center font-bold text-sm shadow-md transition-colors z-10 cursor-pointer"
-              title="ปิดหน้าต่าง"
-            >
-              ✕
-            </button>
-            <div className="flex items-center justify-center overflow-auto max-h-[80vh] rounded-xl bg-slate-100">
+            <div className="flex items-center justify-between gap-2 mb-2 px-1">
+              {getDriveFileViewUrl(previewImage) ? (
+                <a
+                  href={getDriveFileViewUrl(previewImage)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  <span>เปิดดูใน Google Drive</span>
+                </a>
+              ) : <div />}
+              <button 
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-sm shadow-xs transition-colors cursor-pointer"
+                title="ปิดหน้าต่าง"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex items-center justify-center overflow-auto max-h-[75vh] rounded-xl bg-slate-100">
               <img 
-                src={previewImage.url || previewImage.previewUrl || (typeof previewImage === 'string' ? previewImage : '')} 
+                src={resolveDriveImageUrl(previewImage, 'w1600')} 
                 alt="Product preview" 
-                className="max-w-full max-h-[78vh] object-contain rounded-lg"
+                className="max-w-full max-h-[73vh] object-contain rounded-lg"
+                onError={(e) => handleDriveImageError(e, previewImage)}
               />
             </div>
             {previewImage.name && (

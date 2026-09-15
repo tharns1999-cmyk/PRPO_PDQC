@@ -13,6 +13,7 @@ import { apiService } from '../src/services/apiService.js';
 import { MasterDataProvider, useMasterDataContext } from '../src/context/MasterDataContext.jsx';
 import { ROLES } from '../src/config/constants';
 import { workflowEngine } from '../src/services/workflowEngine';
+import { safeStringCompare } from '../src/utils/formatters';
 
 describe('Domain Suite: Master Data Management, Deduplication & Validation', () => {
   beforeEach(() => {
@@ -92,6 +93,16 @@ describe('Domain Suite: Master Data Management, Deduplication & Validation', () 
       expect(html).not.toContain('403 Access Denied');
       expect(html).not.toContain('สิทธิ์การเข้าถึงถูกจำกัด');
       expect(html).toContain('Master Data View Loaded');
+
+      // Type safety verification for safeStringCompare with numeric codes, nulls, and mixed types
+      expect(safeStringCompare(1001, 1002)).toBeLessThan(0);
+      expect(safeStringCompare(1002, 1001)).toBeGreaterThan(0);
+      expect(safeStringCompare(1001, '1001')).toBe(0);
+      expect(safeStringCompare(null, undefined)).toBe(0);
+      expect(safeStringCompare(undefined, 'ABC')).toBeLessThan(0);
+      const numericProds = [{ code: 102 }, { code: 20 }, { code: 101 }, { code: null }];
+      expect(() => numericProds.sort((a, b) => safeStringCompare(a?.code, b?.code))).not.toThrow();
+      expect(numericProds.map(p => p.code)).toEqual([null, 20, 101, 102]);
     });
 
     it('renders exactly 4 general tabs and completely hides Users and Departments tabs for Warehouse user', () => {
