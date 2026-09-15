@@ -223,6 +223,41 @@ export function wrapText(text, font, size, maxWidth) {
 }
 
 /**
+ * แปลง ISO/Date string เป็น DD/MM/YYYY เท่านั้น (Timezone: Asia/Bangkok, ไม่แสดงเวลา)
+ * ใช้สำหรับช่อง "วันที่ออก PO" มุมขวาบน
+ */
+export function formatPODateOnly(dt) {
+  if (!dt || dt === '-') return '-';
+  try {
+    const str = String(dt).trim();
+    // ถ้าเป็น ISO String หรือ timestamp ให้แปลงผ่าน Intl (Asia/Bangkok)
+    if (!str.includes('/')) {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Bangkok',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        }).formatToParts(d);
+        const p = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+        return `${p.day}/${p.month}/${p.year}`;
+      }
+    }
+    // DD/MM/YYYY ที่ป้อนมาแล้ว ตัดส่วนเวลาออกก่อนคืนค่า
+    const match = str.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (match) {
+      let year = Number(match[3]);
+      if (year > 2400) year -= 543;
+      return `${String(Number(match[1])).padStart(2, '0')}/${String(Number(match[2])).padStart(2, '0')}/${year}`;
+    }
+    return str;
+  } catch {
+    return String(dt);
+  }
+}
+
+/**
  * ฟังก์ชันจัดรูปแบบวันเวลาเอกสาร (ISO, YYYY-MM-DD, Thai String) ให้อยู่ในฟอร์แมต "วันที่ DD/MM/YYYY เวลา HH:mm น." (ค.ศ.)
  */
 export function formatDocDateTime(dt) {
@@ -373,7 +408,8 @@ export async function generatePoPdf(po) {
 
   // ── ข้อมูลเลขที่ PO และวันที่ออก PO (ชิดขอบขวาสุด rightX = 555, ไม่มีกรอบสี่เหลี่ยม) ──
   const poNoText = normalizeThaiText(`เลขที่ PO: ${po?.poNo || po?.id || po?.poNumber || '-'}`);
-  const poDateText = normalizeThaiText(`วันที่ออก PO: ${po?.issueDate || po?.createdAt || '-'}`);
+  // แปลงวันที่ออก PO → DD/MM/YYYY (Asia/Bangkok) เท่านั้น ห้ามแสดง ISO raw string หรือเวลา
+  const poDateText = normalizeThaiText(`วันที่ออก PO: ${formatPODateOnly(po?.issueDate || po?.createdAt || po?.date || '')}`);
   const poMetaSize = 9;
   let poNoX = 440;
   let poDateX = 440;
@@ -690,10 +726,14 @@ export async function generatePoPdf(po) {
     }
   };
 
+  // isReceivedDoc: เป็น true ทันทีที่มีหลักฐานการรับสินค้าใดๆ (ไม่ว่าสถานะจะเป็น claim/refund/จบเคส)
+  const hasGrnEntry = Array.isArray(po?.grnHistory) && po.grnHistory.length > 0;
   const isReceivedDoc = Boolean(
     po?.receivingInfo ||
     po?.receivedAt ||
     po?.receiverSignature ||
+    po?.receivedBy ||
+    hasGrnEntry ||
     isCompleted
   );
 

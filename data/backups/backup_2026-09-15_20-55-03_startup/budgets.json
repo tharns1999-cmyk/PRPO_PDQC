@@ -1,0 +1,70 @@
+{
+  "PD": {
+    "monthlyBudget": 1000000,
+    "historicalSpent": {
+      "2026-09": 0
+    },
+    "history": {
+      "2026-09": 1000000,
+      "2026-10": 25000
+    },
+    "variance": 1000828,
+    "pending": 0,
+    "spent": 0,
+    "actualExpense": 0,
+    "budgetSpent": 0,
+    "remainingBudget": 1000828,
+    "budgetRemaining": 1000000,
+    "refundCredits": {
+      "2026-09": 1645
+    }
+  },
+  "QC": {
+    "monthlyBudget": 150000,
+    "historicalSpent": {
+      "2026-09": 0
+    },
+    "history": {
+      "2026-09": 150000
+    },
+    "variance": 150000,
+    "pending": 0,
+    "spent": 0
+  },
+  "WH": {
+    "monthlyBudget": 120000,
+    "historicalSpent": {
+      "2026-09": 0
+    },
+    "history": {
+      "2026-09": 120000
+    },
+    "variance": 120000,
+    "spent": 0,
+    "pending": 0
+  },
+  "PUR": {
+    "monthlyBudget": 100000,
+    "historicalSpent": {
+      "2026-09": 0
+    },
+    "history": {
+      "2026-09": 100000
+    },
+    "variance": 100000,
+    "spent": 0,
+    "pending": 0
+  },
+  "ENG": {
+    "monthlyBudget": 205000,
+    "historicalSpent": {
+      "2026-09": 0
+    },
+    "history": {
+      "2026-09": 205000
+    },
+    "variance": 205000,
+    "spent": 0,
+    "pending": 0
+  }
+}

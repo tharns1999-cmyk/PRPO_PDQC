@@ -231,6 +231,18 @@ export default function PRListView({
 
       return matchesStatus && matchesSearch;
     });
+
+    // Sort Descending by createdAt or prNo
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.requestedDate || 0).getTime();
+      const dateB = new Date(b.createdAt || b.requestedDate || 0).getTime();
+      if (dateA !== dateB) return dateB - dateA;
+      const prA = String(a.prNo || '').toLowerCase();
+      const prB = String(b.prNo || '').toLowerCase();
+      if (prA < prB) return 1;
+      if (prA > prB) return -1;
+      return 0;
+    });
   }, [scopedPRs, filterStatus, searchQuery]);
 
   // Tab Badge Counters (scoped to period & dept)

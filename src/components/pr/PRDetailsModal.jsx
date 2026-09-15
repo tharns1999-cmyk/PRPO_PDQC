@@ -62,6 +62,17 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
     );
   }, [allPOs, selectedPR]);
 
+  const allAttachments = React.useMemo(() => {
+    const list = [];
+    if (Array.isArray(selectedPR.attachments)) list.push(...selectedPR.attachments);
+    if (Array.isArray(selectedPR.quotationFiles)) list.push(...selectedPR.quotationFiles);
+    if (Array.isArray(selectedPR.generalAttachments)) list.push(...selectedPR.generalAttachments);
+    if (typeof selectedPR.quotationUrl === 'string' && selectedPR.quotationUrl.trim()) {
+      list.push({ url: selectedPR.quotationUrl, previewUrl: selectedPR.quotationUrl, name: 'เอกสารอ้างอิง / ใบเสนอราคา (Link)', category: 'Quotation' });
+    }
+    return list.filter(Boolean);
+  }, [selectedPR.attachments, selectedPR.quotationFiles, selectedPR.generalAttachments, selectedPR.quotationUrl]);
+
   const [actionNote, setActionNote] = useState('');
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -822,24 +833,27 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                   <span>ไฟล์แนบ & เอกสารอ้างอิง</span>
                 </span>
                 <div>
-                  {selectedPR.attachments && selectedPR.attachments.length > 0 ? (
+                  {allAttachments.length > 0 ? (
                     <div className="space-y-1.5">
-                      {selectedPR.attachments.map((att, attIdx) => (
-                        <button
-                          key={attIdx}
-                          type="button"
-                          onClick={() => setViewingAttachment({ file: att, title: att.name, url: att.previewUrl })}
-                          className="w-full text-left flex items-center gap-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 p-2 rounded-xl transition-all group cursor-pointer"
-                        >
-                          <div className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-2xs shrink-0">
-                            <ExternalLink className="w-3 h-3" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-xs text-slate-800 group-hover:text-slate-950 truncate">{att.name}</p>
-                            <p className="text-[10px] text-slate-400">{att.category || 'เอกสารแนบ'} • เปิดดู</p>
-                          </div>
-                        </button>
-                      ))}
+                      {allAttachments.map((att, attIdx) => {
+                        const finalUrl = att.url || att.previewUrl || att.dataUrl || att.driveUrl;
+                        return (
+                          <button
+                            key={attIdx}
+                            type="button"
+                            onClick={() => setViewingAttachment({ file: att, title: att.name || 'ไฟล์แนบ', url: finalUrl })}
+                            className="w-full text-left flex items-center gap-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 p-2 rounded-xl transition-all group cursor-pointer"
+                          >
+                            <div className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-2xs shrink-0">
+                              <ExternalLink className="w-3 h-3" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-xs text-slate-800 group-hover:text-slate-950 truncate">{att.name || 'ไฟล์แนบ'}</p>
+                              <p className="text-[10px] text-slate-400">{att.category || 'เอกสารแนบ'} • เปิดดู</p>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : selectedPR.specUrl ? (
                     <button

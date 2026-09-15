@@ -241,6 +241,18 @@ export default function POListView({ pos = EMPTY_ARRAY, departments: propDepartm
 
       return matchesStatus && matchesSearch;
     });
+
+    // Sort Descending by createdAt or poNo
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.issueDate || a.issuedDate || 0).getTime();
+      const dateB = new Date(b.createdAt || b.issueDate || b.issuedDate || 0).getTime();
+      if (dateA !== dateB) return dateB - dateA;
+      const poA = String(a.poNo || '').toLowerCase();
+      const poB = String(b.poNo || '').toLowerCase();
+      if (poA < poB) return 1;
+      if (poA > poB) return -1;
+      return 0;
+    });
   }, [scopedPOs, filterStatus, searchQuery]);
 
   // Tab Badge Counters (scoped to period & dept)

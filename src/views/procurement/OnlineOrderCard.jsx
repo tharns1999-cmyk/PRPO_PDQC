@@ -19,6 +19,7 @@ import { getFallbackAttachmentsForCode } from '../../services/workflowEngine';
 import AttachmentViewerModal from '../../components/common/AttachmentViewerModal';
 import { formatCurrency } from '../../utils/formatters.js';
 import { resolveDriveImageUrl, handleDriveImageError } from '../../utils/driveHelper';
+import LoadingOverlay from '../../components/common/LoadingOverlay.jsx';
 
 const formatMoney = (n) => formatCurrency(n);
 
@@ -351,6 +352,7 @@ export default function OnlineOrderCard({
   const [_vendorName, _setVendorName] = useState(initialVendor);
   const [varianceNote, _setVarianceNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // Blocking overlay สำหรับ "บันทึกผลเจรจา"
   const [copiedCode, setCopiedCode] = useState('');
   const [copiedPO, setCopiedPO] = useState(false);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
@@ -1359,6 +1361,7 @@ export default function OnlineOrderCard({
     if (!confirmed) return;
 
     setIsSubmitting(true);
+    setIsSaving(true); // แสดง LoadingOverlay บล็อกหน้าจอทันที
     try {
       const claimUpdateData = {
         status: 'RESOLVED',
@@ -1593,6 +1596,7 @@ export default function OnlineOrderCard({
       modalService.error('เกิดข้อผิดพลาดในการบันทึก', err?.message || 'ไม่สามารถบันทึกข้อมูลได้');
     } finally {
       setIsSubmitting(false);
+      setIsSaving(false); // ซ่อน LoadingOverlay เมื่อเสร็จ / เกิดข้อผิดพลาด
     }
   };
 
@@ -3039,6 +3043,12 @@ export default function OnlineOrderCard({
         initialIndex={lightboxState.initialIndex}
         title={lightboxState.title}
         onClose={closeLightbox}
+      />
+
+      {/* Loading Overlay — บล็อกหน้าจอขณะบันทึกผลเจรจาเคลม */}
+      <LoadingOverlay
+        isVisible={isSaving}
+        message="กำลังบันทึกผลการเจรจาเคลมสินค้า..."
       />
     </div>
   );

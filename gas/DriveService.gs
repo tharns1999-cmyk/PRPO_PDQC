@@ -42,19 +42,31 @@ function getRootDriveFolder() {
 }
 
 /**
+ * In-memory folder cache for the current GAS execution.
+ * Avoids repeated getFoldersByName() Drive API calls when uploading multiple images
+ * within the same PR/PO save operation.
+ * Key: parentFolder.getId() + '::' + subFolderName
+ */
+var _driveFolderCache = {};
+
+/**
  * Finds an existing subfolder by name or creates it if missing.
- * 
+ * Uses an in-execution cache to avoid repeated Drive API round-trips.
+ *
  * @param {GoogleAppsScript.Drive.Folder} parentFolder Parent directory
  * @param {string} subFolderName Name of subfolder
  * @returns {GoogleAppsScript.Drive.Folder}
  */
 function getOrCreateSubFolder(parentFolder, subFolderName) {
-  const cleanName = String(subFolderName).trim();
-  const children = parentFolder.getFoldersByName(cleanName);
-  if (children.hasNext()) {
-    return children.next();
+  var cleanName = String(subFolderName).trim();
+  var cacheKey = parentFolder.getId() + '::' + cleanName;
+  if (_driveFolderCache[cacheKey]) {
+    return _driveFolderCache[cacheKey];
   }
-  return parentFolder.createFolder(cleanName);
+  var children = parentFolder.getFoldersByName(cleanName);
+  var folder = children.hasNext() ? children.next() : parentFolder.createFolder(cleanName);
+  _driveFolderCache[cacheKey] = folder;
+  return folder;
 }
 
 /**
@@ -90,27 +102,9 @@ function normalizeDriveCategory(category = '') {
  */
 function resolveTargetDriveFolder(category, poNumber = '', date = new Date()) {
   const root = getRootDriveFolder();
-  const d = date instanceof Date ? date : new Date(date);
-  const yearMonth = !isNaN(d.getTime())
-    ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    : new Date().toISOString().slice(0, 7);
-
-  const canonicalCat = normalizeDriveCategory(category);
-  const categoryFolder = getOrCreateSubFolder(root, canonicalCat);
-  const ymFolder = getOrCreateSubFolder(categoryFolder, yearMonth);
-
-  const cleanPo = String(poNumber || '').trim();
-  if (cleanPo && (canonicalCat === DRIVE_CATEGORIES.GRN || canonicalCat === DRIVE_CATEGORIES.CLAIM)) {
-    const poFolder = getOrCreateSubFolder(ymFolder, cleanPo);
-    return {
-      folder: poFolder,
-      pathString: `${CONFIG.DEFAULTS.DRIVE_ROOT_NAME}/${canonicalCat}/${yearMonth}/${cleanPo}`
-    };
-  }
-
   return {
-    folder: ymFolder,
-    pathString: `${CONFIG.DEFAULTS.DRIVE_ROOT_NAME}/${canonicalCat}/${yearMonth}`
+    folder: root,
+    pathString: CONFIG.DEFAULTS.DRIVE_ROOT_NAME || 'PR-PO-Stock-System'
   };
 }
 
@@ -177,12 +171,7 @@ function uploadBase64File(payload) {
 
   try {
     createdFile = folder.createFile(blob);
-    // เปิดสิทธิ์ Public Read ทันทีหลังสร้างไฟล์ (Anyone with link can view)
-    try {
-      createdFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    } catch (shareErr) {
-      console.warn('[DriveService] setSharing warning: ' + shareErr.message);
-    }
+    // ข้าม setSharing() ไปเพื่อให้สืบทอดสิทธิ์จาก Folder แม่ ประหยัดเวลา 3-5 วิ
   } catch (driveErr) {
     console.error('[DriveService] Failed to create file in Drive:', driveErr.message);
     throw new Error(`DRIVE_UPLOAD_FAILED: ไม่สามารถบันทึกไฟล์ลง Google Drive: ${driveErr.message}`);
@@ -304,8 +293,10 @@ function uploadBase64Image(base64Data, fileName, mimeType, category, docNo, docT
     }
   }
 
-  // 2. Guard against non-base64, empty or dummy placeholder strings
-  if (!rawBase64 || rawBase64.includes('STORED_IN_DRIVE') || rawBase64.includes('BASE64_') || rawBase64.length < 20) {
+  // 2. Guard against non-base64, empty, placeholder, or already-uploaded Drive URLs
+  // ถ้า URL เป็น Drive URL อยู่แล้ว (ขึ้นต้นด้วย https://) ให้คืนค่า null ทันที ไม่ต้อง decode
+  if (!rawBase64 || rawBase64.includes('STORED_IN_DRIVE') || rawBase64.includes('BASE64_') || rawBase64.length < 20
+      || rawBase64.startsWith('https://') || rawBase64.startsWith('http://')) {
     return null;
   }
 
@@ -323,17 +314,13 @@ function uploadBase64Image(base64Data, fileName, mimeType, category, docNo, docT
     cleanFileName += ext;
   }
 
-  var folder = getOrCreateAttachmentFolder(category || DRIVE_CATEGORIES.PR);
+  var folder = getRootDriveFolder();
   var blob = Utilities.newBlob(bytes, cleanMime, cleanFileName);
   var file;
 
   try {
     file = folder.createFile(blob);
-    try {
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    } catch (shareErr) {
-      console.warn('[uploadBase64Image] setSharing warning: ' + shareErr.message);
-    }
+    // ข้าม setSharing() ไปเพื่อให้สืบทอดสิทธิ์จาก Folder แม่
   } catch (driveErr) {
     console.error('[uploadBase64Image] createFile failed: ' + driveErr.message);
     return null;
@@ -424,8 +411,11 @@ function processItemImages(items, docNo, docType) {
         if (!img) return img;
         var rawUrl = (typeof img === 'string') ? img : (img.url || img.previewUrl || '');
         var imgName = (typeof img === 'object' && img.name) ? img.name : ((cleanItem.name || 'item_' + (idx + 1)) + '_img_' + (imgIdx + 1));
-        
-        if (typeof rawUrl === 'string' && rawUrl.startsWith('data:image/')) {
+
+        // อายุดรวดเร็ว: ถ้าไม่ใช่ data: blob ให้คืนค่าเดิมทันที ไม่ต้อง decode
+        if (!rawUrl || !rawUrl.startsWith('data:')) return img;
+
+        if (typeof rawUrl === 'string' && rawUrl.startsWith('data:')) {
           var res = uploadBase64Image(rawUrl, imgName, 'image/jpeg', DRIVE_CATEGORIES.PR, docNo, docType || 'PR');
           if (res) {
             if (typeof img === 'string') {
@@ -461,7 +451,9 @@ function processItemImages(items, docNo, docType) {
       cleanItem.attachments = cleanItem.attachments.map(function(att, attIdx) {
         if (!att || typeof att !== 'object') return att;
         var rawUrl = att.url || att.previewUrl || att.dataUrl || '';
-        if (typeof rawUrl === 'string' && (rawUrl.startsWith('data:image/') || rawUrl.startsWith('data:application/'))) {
+        // อายุดรวดเร็ว: เฉพาะ data: blob เท่านั้นที่ต้องอัปโหลด
+        if (!rawUrl || !rawUrl.startsWith('data:')) return att;
+        if (typeof rawUrl === 'string' && rawUrl.startsWith('data:')) {
           var attName = att.name || ((cleanItem.name || 'item_' + (idx + 1)) + '_att_' + (attIdx + 1));
           var res = uploadBase64Image(rawUrl, attName, att.type || 'image/jpeg', DRIVE_CATEGORIES.PR, docNo, docType || 'PR');
           if (res) {
@@ -498,7 +490,9 @@ function processDocumentAttachments(attachments, category, docNo, docType) {
   return attachments.map(function(att, idx) {
     if (!att || typeof att !== 'object') return att;
     var rawUrl = att.url || att.previewUrl || att.dataUrl || '';
-    if (typeof rawUrl === 'string' && (rawUrl.startsWith('data:image/') || rawUrl.startsWith('data:application/'))) {
+    // อายุดรวดเร็ว: เฉพาะ data: blob เท่านั้นที่ต้องอัปโหลด ถ้าเป็น https:// หรือว่างเปล่า คืนเลย
+    if (!rawUrl || !rawUrl.startsWith('data:')) return att;
+    if (typeof rawUrl === 'string' && rawUrl.startsWith('data:')) {
       var attName = att.name || ('attachment_' + (idx + 1));
       var res = uploadBase64Image(rawUrl, attName, att.type || 'application/octet-stream', category || DRIVE_CATEGORIES.PR, docNo, docType);
       if (res) {

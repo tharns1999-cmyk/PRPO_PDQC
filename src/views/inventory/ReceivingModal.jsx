@@ -17,6 +17,7 @@ import { formatLocalTimestamp } from '../../services/inventoryService';
 import { getValidConversionRate, toStockQuantity, toStockUnitCost } from '../../utils/uomEngine.js';
 import AttachmentViewerModal from '../../components/common/AttachmentViewerModal';
 import { driveService } from '../../services/driveService';
+import LoadingOverlay from '../../components/common/LoadingOverlay.jsx';
 
 /**
  * Helper to resiliently resolve refund quantity and amount
@@ -1513,5 +1514,15 @@ export default function ReceivingModal({
     return modalContent;
   }
 
-  return createPortal(modalContent, document.body);
+  return createPortal(
+    <>
+      {modalContent}
+      {/* Loading Overlay — บล็อกหน้าจอตลอดระยะเวลา API บันทึกการรับสินค้าและอัปเดตสต็อค */}
+      <LoadingOverlay
+        isVisible={isSubmitting}
+        message="กำลังบันทึกการรับสินค้าและอัปเดตสต็อค..."
+      />
+    </>,
+    document.body
+  );
 }

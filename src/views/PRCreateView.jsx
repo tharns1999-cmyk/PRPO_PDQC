@@ -1057,12 +1057,12 @@ export default function PRCreateView({
         supplierName: vName,
         hasVat: currentChannel === 'SELF' ? hasVat : false,
         specUrl: quotationFiles[0] ? quotationFiles[0].name : '',
-        quotationFiles: quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl })),
-        generalAttachments: processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'GENERAL' })),
-        images: processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'IMAGE' })),
+        quotationFiles: quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, url: f.url || f.previewUrl })),
+        generalAttachments: processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'GENERAL' })),
+        images: processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'IMAGE' })),
         attachments: [
-          ...quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, category: 'QUOTATION' })),
-          ...processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'GENERAL' }))
+          ...quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'QUOTATION' })),
+          ...processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'GENERAL' }))
         ],
         note,
         items: processedItems,

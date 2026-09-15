@@ -1,8 +1,5 @@
 import React, { useMemo } from 'react';
 import KPICards from '../components/dashboard/KPICards';
-import RecentPRsTable from '../components/dashboard/RecentPRsTable';
-import RecentPOsTable from '../components/dashboard/RecentPOsTable';
-import LowStockAlertCard from '../components/dashboard/LowStockAlertCard';
 import DashboardSkeleton from '../components/dashboard/DashboardSkeleton';
 
 export default function DashboardView({
@@ -162,34 +159,86 @@ export default function DashboardView({
         lowStockItems={lowStockItems}
       />
 
-      {/* 2. MAIN BENTO WORKSPACE (65% vs 35%) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* ฝั่งซ้าย (col-span-12 lg:col-span-7 xl:col-span-8): DOCUMENT TRACKING */}
-        <div className="col-span-12 lg:col-span-7 xl:col-span-8 space-y-5">
-          {/* กล่อง: ใบขอซื้อล่าสุด (Recent PRs) */}
-          <RecentPRsTable
-            prs={prs}
-            onNavigate={onNavigate}
-            onOpenPR={onOpenPR}
-          />
-
-          {/* กล่อง: ใบสั่งซื้อล่าสุด (Recent POs) */}
-          <RecentPOsTable
-            pos={pos}
-            onNavigate={onNavigate}
-            onOpenPO={onOpenPO}
-          />
+      {/* 2. MAIN BENTO WORKSPACE (Full Width Low Stock Alert) */}
+      <div className="mt-5 bg-white rounded-2xl border border-rose-200/80 shadow-xs overflow-hidden">
+        {/* Header Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 sm:p-5 border-b border-rose-100 bg-linear-to-r from-rose-50/50 to-white gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shadow-2xs border border-rose-200/60 shrink-0">
+               <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-rose-900 tracking-tight">สินค้าใกล้หมด / แจ้งเตือน ROP</h3>
+              <p className="text-xs text-slate-500 mt-0.5">สินค้าที่ระดับสต็อกคงเหลือต่ำกว่าหรือเท่ากับจุดสั่งซื้อซ้ำ</p>
+            </div>
+          </div>
+          {lowStockItems.length > 0 && (
+            <button
+              type="button"
+              onClick={handleBatchQuickPR}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-2 shrink-0 cursor-pointer self-start sm:self-auto"
+            >
+              <span>⚡ ขอซื้อทั้งหมด ({lowStockItems.length})</span>
+            </button>
+          )}
         </div>
 
-        {/* ฝั่งขวา (col-span-12 lg:col-span-5 xl:col-span-4): ACTION & ALERT PANEL */}
-        <div className="col-span-12 lg:col-span-5 xl:col-span-4 space-y-5">
-          {/* กล่อง: สินค้าแตะจุดสั่งซื้อซ้ำ (Redesigned ROP Alert Widget) */}
-          <LowStockAlertCard
-            lowStockItems={lowStockItems}
-            onSingleQuickPR={handleSingleQuickPR}
-            onBatchQuickPR={handleBatchQuickPR}
-          />
-        </div>
+        {/* Content */}
+        {lowStockItems.length === 0 ? (
+          <div className="py-16 px-6 text-center text-slate-500 flex flex-col items-center justify-center gap-3 bg-slate-50/30">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-2xs">
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-800">ระดับสต็อกสินค้าทุกรายการอยู่ในเกณฑ์ปกติ</p>
+              <p className="text-xs text-slate-400 mt-1">ไม่มีสินค้าที่ต้องสั่งซื้อซ้ำในขณะนี้</p>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full overflow-x-auto">
+            <table className="w-full min-w-[800px] text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">
+                  <th className="px-5 py-3.5 w-[40%]">รหัส / ชื่อสินค้า</th>
+                  <th className="px-5 py-3.5 w-[20%] text-right">คงเหลือ</th>
+                  <th className="px-5 py-3.5 w-[20%] text-right">จุดสั่งซื้อซ้ำ (ROP)</th>
+                  <th className="px-5 py-3.5 w-[20%] text-center">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {lowStockItems.map((item) => (
+                  <tr key={item.sku || item.id} className="hover:bg-rose-50/30 transition-colors">
+                    <td className="px-5 py-4">
+                      <div className="font-bold text-sm text-slate-800">{item.name || 'สินค้าไม่มีชื่อ'}</div>
+                      <div className="text-xs text-slate-400 font-mono mt-0.5">{item.sku || item.code || '-'}</div>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <span className="text-rose-600 font-bold tabular-nums text-sm">
+                        {Number(item.currentStock ?? item.stock ?? 0).toLocaleString()}
+                      </span>
+                      <span className="text-xs text-slate-500 ml-1.5">{item.unit || 'ชิ้น'}</span>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <span className="text-slate-700 font-bold tabular-nums text-sm">
+                        {Number(item.rop ?? item.reorderPoint ?? 0).toLocaleString()}
+                      </span>
+                      <span className="text-xs text-slate-500 ml-1.5">{item.unit || 'ชิ้น'}</span>
+                    </td>
+                    <td className="px-5 py-4 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleSingleQuickPR(item)}
+                        className="inline-flex items-center justify-center px-4 py-2 bg-white hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200 hover:border-rose-200 text-xs font-bold rounded-xl shadow-2xs transition-all cursor-pointer"
+                      >
+                        + เปิดใบขอซื้อ
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
