@@ -11,7 +11,7 @@ import {
   Trash2, Send, Edit3, Save, RotateCcw, AlertTriangle, Layers, 
   X, User, FileText, 
   ChevronRight, MessageSquare, Pencil,
-  Paperclip, Package
+  Paperclip, Package, Loader2
 } from 'lucide-react';
 import MEMODetailsSection from './MEMODetailsSection';
 import POSplitModal from '../po/POSplitModal';
@@ -21,6 +21,7 @@ import RejectPRModal from './RejectPRModal';
 import CollapsibleActivityTimeline from '../common/CollapsibleActivityTimeline';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
 import { resolveDriveImageUrl, handleDriveImageError } from '../../utils/driveHelper';
+import LoadingOverlay from '../common/LoadingOverlay';
 
 const formatDateTime = (dateVal) => {
   if (!dateVal) return '-';
@@ -66,6 +67,10 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   const [isCancelling, setIsCancelling] = useState(false);
   const [viewingAttachment, setViewingAttachment] = useState(null);
   const [selectedPreviewImage, setSelectedPreviewImage] = useState(null);
+
+  // Async Workflow: Blocking state while API call is in-flight
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingAction, setProcessingAction] = useState('กำลังประมวลผล...');
 
   // Reject / Revision Modal State (Decoupled from footer)
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -172,6 +177,16 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
     }
   };
 
+  /**
+   * Resolve the overlay message for each workflow action.
+   */
+  const getProcessingMessage = ({ isSubmit, nextStatus }) => {
+    if (isSubmit) return 'กำลังส่งใบขอซื้อเข้าสู่ระบบ...';
+    if (nextStatus === 'REVIEWED') return 'กำลังอัปเดตสถานะ (ตรวจสอบผ่าน)...';
+    if (nextStatus === 'APPROVED') return 'กำลังบันทึกและสร้าง PO กรุณารอสักครู่...';
+    return 'กำลังอัปเดตสถานะเอกสาร...';
+  };
+
   const handleWorkflowAction = async ({ actionText, nextStatus, isSubmit = false }) => {
     // State Machine Guard: Only allow approving / PO issuance if PR has passed review (status is REVIEWED)
     if (nextStatus === 'APPROVED') {
@@ -182,6 +197,9 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
       }
     }
 
+    // Guard: prevent concurrent actions (e.g. rapid double-click before confirm modal opens)
+    if (isProcessing) return;
+
     const confirmed = await modalService.confirm({
       title: 'ยืนยันการดำเนินการ',
       message: `ต้องการดำเนินการ "${actionText}" สำหรับใบขอซื้อเลขที่ ${selectedPR.prNo} หรือไม่?`,
@@ -190,6 +208,11 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
       type: 'info'
     });
     if (!confirmed) return;
+
+    // Show blocking overlay immediately after user confirms — before any await
+    const msg = getProcessingMessage({ isSubmit, nextStatus });
+    setProcessingAction(msg);
+    setIsProcessing(true);
 
     try {
       if (isSubmit) {
@@ -211,10 +234,13 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
     } catch (err) {
       console.error('[Workflow Error Stack]:', err.stack || err);
       modalService.error('เกิดข้อผิดพลาด', err.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleCancelPR = async () => {
+    if (isProcessing || isCancelling) return;
     const reason = await modalService.prompt({
       title: 'ยกเลิกใบขอซื้อ (PR)',
       message: `กรุณาระบุเหตุผลในการยกเลิกใบขอซื้อเลขที่ ${selectedPR.prNo}:`,
@@ -227,6 +253,8 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
     if (!reason || !reason.trim()) return;
 
     setIsCancelling(true);
+    setProcessingAction('กำลังบันทึกการยกเลิกคำขอ...');
+    setIsProcessing(true);
     try {
       await apiService.cancelPR(selectedPR.id, currentRole, reason.trim());
       await modalService.success('ยกเลิกสำเร็จ', `ยกเลิกใบขอซื้อ ${selectedPR.prNo} เรียบร้อยแล้ว`);
@@ -237,6 +265,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
       modalService.error('เกิดข้อผิดพลาดในการยกเลิก', err.message);
     } finally {
       setIsCancelling(false);
+      setIsProcessing(false);
     }
   };
 
@@ -746,7 +775,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                   <div>
                     <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">ช่องทางจัดซื้อ</span>
                     <p className="text-xs font-semibold text-slate-800 mt-0.5 truncate">
-                      {selectedPR.purchaseChannel === 'ONLINE' ? 'สั่งซื้อออนไลน์' : 'จัดซื้อเอง'}
+                      {(selectedPR.purchaseChannel === 'ONLINE' || selectedPR.purchaseChannel === 'ONLINE_PURCHASE' || (Array.isArray(selectedPR.items) && selectedPR.items.some(item => !!(item.productUrl || item.onlineUrl || item.url)))) ? '🛒 ออนไลน์' : '🏢 ภายใน'}
                     </p>
                   </div>
 
@@ -757,7 +786,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                     </p>
                   </div>
 
-                  {selectedPR.purchaseChannel !== 'ONLINE' && (selectedPR.vendorName || selectedPR.vendor?.name) && (
+                  {!(selectedPR.purchaseChannel === 'ONLINE' || selectedPR.purchaseChannel === 'ONLINE_PURCHASE' || (Array.isArray(selectedPR.items) && selectedPR.items.some(item => !!(item.productUrl || item.onlineUrl || item.url)))) && (selectedPR.vendorName || selectedPR.vendor?.name) && (
                     <div className="col-span-2 pt-1 border-t border-slate-100">
                       <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">ผู้จัดจำหน่าย (Vendor)</span>
                       <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">
@@ -923,10 +952,10 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                   <button 
                     type="button"
                     onClick={handleCancelPR}
-                    disabled={isCancelling}
-                    className="px-3.5 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                    disabled={isCancelling || isProcessing}
+                    className={`px-3.5 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-xl transition-all flex items-center gap-1.5 ${isCancelling || isProcessing ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    {isCancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                     <span>{isCancelling ? 'กำลังยกเลิก...' : 'ยกเลิกคำขอ'}</span>
                   </button>
                 )}
@@ -954,7 +983,8 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                     )}
                     <button 
                       onClick={() => handleWorkflowAction({ actionText: 'ส่งใบ PR เข้าสู่ระบบ', nextStatus: null, isSubmit: true })}
-                      className="bg-slate-950 hover:bg-slate-900 text-white rounded-xl px-5 py-2.5 font-semibold text-xs shadow-lg shadow-slate-950/20 active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
+                      disabled={isProcessing}
+                      className={`bg-slate-950 hover:bg-slate-900 text-white rounded-xl px-5 py-2.5 font-semibold text-xs shadow-lg shadow-slate-950/20 active:scale-[0.98] transition-all flex items-center gap-2 ${isProcessing ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
                     >
                       <Send className="w-3.5 h-3.5" />
                       <span>ส่งใบขอซื้อ (Submit PR)</span>
@@ -969,8 +999,9 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                     {/* ปุ่มรอง: ส่งกลับแก้ไข */}
                     <button 
                       type="button"
-                      onClick={() => setShowRejectModal(true)}
-                      className="px-4 py-2.5 bg-rose-50/60 hover:bg-rose-100/70 text-rose-700 border border-rose-200/80 font-semibold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      onClick={() => { if (!isProcessing) setShowRejectModal(true); }}
+                      disabled={isProcessing}
+                      className={`px-4 py-2.5 bg-rose-50/60 hover:bg-rose-100/70 text-rose-700 border border-rose-200/80 font-semibold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-2xs ${isProcessing ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
                     >
                       <XCircle className="w-3.5 h-3.5 text-rose-600" />
                       <span>ส่งกลับแก้ไข (Reject)</span>
@@ -979,7 +1010,8 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                     {/* ปุ่มหลัก: ตรวจสอบผ่าน */}
                     <button 
                       onClick={() => handleWorkflowAction({ actionText: 'ตรวจสอบและส่งต่อให้ Plant Manager', nextStatus: 'REVIEWED' })}
-                      className="bg-slate-950 hover:bg-slate-900 text-white rounded-xl px-5 py-2.5 font-semibold text-xs shadow-lg shadow-slate-950/20 active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
+                      disabled={isProcessing}
+                      className={`bg-slate-950 hover:bg-slate-900 text-white rounded-xl px-5 py-2.5 font-semibold text-xs shadow-lg shadow-slate-950/20 active:scale-[0.98] transition-all flex items-center gap-2 ${isProcessing ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
                     >
                       <ShieldCheck className="w-4 h-4 text-emerald-400" />
                       <span>ตรวจสอบผ่าน (ส่งต่อ Plant Mgr)</span>
@@ -994,8 +1026,9 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                     {/* ปุ่มรอง: ส่งกลับแก้ไข */}
                     <button 
                       type="button"
-                      onClick={() => setShowRejectModal(true)}
-                      className="px-4 py-2.5 bg-rose-50/60 hover:bg-rose-100/70 text-rose-700 border border-rose-200/80 font-semibold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      onClick={() => { if (!isProcessing) setShowRejectModal(true); }}
+                      disabled={isProcessing}
+                      className={`px-4 py-2.5 bg-rose-50/60 hover:bg-rose-100/70 text-rose-700 border border-rose-200/80 font-semibold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-2xs ${isProcessing ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
                       title="ส่งกลับให้ผู้ขอซื้อแก้ไข"
                     >
                       <XCircle className="w-3.5 h-3.5 text-rose-600" />
@@ -1005,7 +1038,8 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                     {/* ปุ่มหลัก: อนุมัติสั่งซื้อ */}
                     <button 
                       onClick={() => handleWorkflowAction({ actionText: 'อนุมัติสั่งซื้อและสร้าง PO', nextStatus: 'APPROVED' })}
-                      className="bg-slate-950 hover:bg-slate-900 text-white rounded-xl px-5 py-2.5 font-semibold text-xs shadow-lg shadow-slate-950/20 active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
+                      disabled={isProcessing}
+                      className={`bg-slate-950 hover:bg-slate-900 text-white rounded-xl px-5 py-2.5 font-semibold text-xs shadow-lg shadow-slate-950/20 active:scale-[0.98] transition-all flex items-center gap-2 ${isProcessing ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
                     >
                       <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                       <span>อนุมัติสั่งซื้อ (Approve & ออก PO)</span>
@@ -1019,6 +1053,9 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
         </div>
 
       </div>
+
+      {/* Blocking Loading Overlay — shown while API call is in-flight */}
+      <LoadingOverlay isVisible={isProcessing} message={processingAction} />
 
       {/* RejectPRModal */}
       {showRejectModal && (

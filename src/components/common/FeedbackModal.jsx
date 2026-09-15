@@ -9,19 +9,24 @@ import {
   HelpCircle, 
   X, 
   MessageSquareQuote,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 
 export default function FeedbackModal() {
   const [modalState, setModalState] = useState(null);
   const [promptInput, setPromptInput] = useState('');
   const [inputError, setInputError] = useState('');
+  // Prevents double-click on confirm button — reset once modal closes
+  const [isConfirming, setIsConfirming] = useState(false);
   const inputRef = useRef(null);
   const confirmButtonRef = useRef(null);
 
   useEffect(() => {
     const unsubscribe = modalService.subscribe((state) => {
       setModalState(state);
+      // Always reset confirming state when modal changes (new modal or close)
+      setIsConfirming(false);
       if (state?.mode === 'prompt') {
         setPromptInput(state.defaultValue || '');
         setInputError('');
@@ -41,12 +46,15 @@ export default function FeedbackModal() {
   }, [modalState]);
 
   // Handle Keyboard Navigation (Esc to close, Enter to submit)
+  // Lock Esc and backdrop click while confirming to prevent race conditions
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!modalState) return;
 
       if (e.key === 'Escape') {
         e.preventDefault();
+        // Block Esc while confirm action is in-flight
+        if (isConfirming) return;
         if (modalState.mode === 'confirm' || modalState.mode === 'prompt') {
           modalState.onCancel();
         } else {
@@ -64,7 +72,7 @@ export default function FeedbackModal() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [modalState, promptInput]);
+  }, [modalState, promptInput, isConfirming]);
 
   if (!modalState) return null;
 
@@ -77,6 +85,24 @@ export default function FeedbackModal() {
     modalState.onConfirm(promptInput.trim());
   };
 
+  /**
+   * Handles confirm button click with double-click prevention.
+   * Momentarily disables the button (setIsConfirming=true) then calls onConfirm.
+   * Since modalService.confirm() resolves immediately on click (caller handles async),
+   * we only need to prevent rapid double-clicks — the modal will close right after.
+   */
+  const handleConfirmClick = () => {
+    if (isConfirming) return;
+    if (modalState.mode === 'prompt') {
+      handlePromptSubmit();
+      return;
+    }
+    setIsConfirming(true);
+    // Call the original onConfirm — it will trigger modalService.close() which
+    // resets isConfirming via the subscribe callback above
+    modalState.onConfirm();
+  };
+
   const getVariantStyles = () => {
     const type = modalState.type || 'info';
     switch (type) {
@@ -85,6 +111,7 @@ export default function FeedbackModal() {
           icon: CheckCircle2,
           iconBg: 'bg-emerald-50 text-emerald-600 border border-emerald-200',
           confirmBtn: 'bg-slate-900 hover:bg-slate-800 text-white shadow-sm',
+          confirmBtnLoading: 'bg-slate-700 text-white shadow-sm',
           defaultTitle: 'ดำเนินการสำเร็จ'
         };
       case 'error':
@@ -93,6 +120,7 @@ export default function FeedbackModal() {
           icon: AlertOctagon,
           iconBg: 'bg-rose-50 text-rose-600 border border-rose-200',
           confirmBtn: 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm',
+          confirmBtnLoading: 'bg-rose-500 text-white shadow-sm',
           defaultTitle: 'เกิดข้อผิดพลาด'
         };
       case 'warning':
@@ -100,6 +128,7 @@ export default function FeedbackModal() {
           icon: AlertTriangle,
           iconBg: 'bg-amber-50 text-amber-600 border border-amber-200',
           confirmBtn: 'bg-amber-600 hover:bg-amber-700 text-white shadow-sm',
+          confirmBtnLoading: 'bg-amber-500 text-white shadow-sm',
           defaultTitle: 'ข้อควรระวัง / แจ้งเตือน'
         };
       case 'info':
@@ -108,6 +137,7 @@ export default function FeedbackModal() {
           icon: modalState.mode === 'prompt' ? MessageSquareQuote : Info,
           iconBg: 'bg-indigo-50 text-indigo-600 border border-indigo-200',
           confirmBtn: 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm',
+          confirmBtnLoading: 'bg-indigo-500 text-white shadow-sm',
           defaultTitle: modalState.mode === 'prompt' ? 'ระบุรายละเอียด' : 'ข้อมูลระบบ'
         };
     }
@@ -116,18 +146,32 @@ export default function FeedbackModal() {
   const variant = getVariantStyles();
   const IconComponent = variant.icon;
 
+  const handleBackdropClick = () => {
+    // Block backdrop click while confirming
+    if (isConfirming) return;
+    if (modalState.mode === 'confirm' || modalState.mode === 'prompt') {
+      modalState.onCancel();
+    } else {
+      modalState.onClose();
+    }
+  };
+
+  const handleCloseButtonClick = () => {
+    // Block close button while confirming
+    if (isConfirming) return;
+    if (modalState.mode === 'confirm' || modalState.mode === 'prompt') {
+      modalState.onCancel();
+    } else {
+      modalState.onClose();
+    }
+  };
+
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 animate-fade-in">
-      {/* Blurred Backdrop */}
+      {/* Blurred Backdrop — blocked during confirming */}
       <div 
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
-        onClick={() => {
-          if (modalState.mode === 'confirm' || modalState.mode === 'prompt') {
-            modalState.onCancel();
-          } else {
-            modalState.onClose();
-          }
-        }}
+        className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity ${isConfirming ? 'cursor-not-allowed' : ''}`}
+        onClick={handleBackdropClick}
       />
 
       {/* Modal Card */}
@@ -145,14 +189,9 @@ export default function FeedbackModal() {
                   {modalState.title || variant.defaultTitle}
                 </h3>
                 <button
-                  onClick={() => {
-                    if (modalState.mode === 'confirm' || modalState.mode === 'prompt') {
-                      modalState.onCancel();
-                    } else {
-                      modalState.onClose();
-                    }
-                  }}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                  onClick={handleCloseButtonClick}
+                  disabled={isConfirming}
+                  className={`p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors ${isConfirming ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}`}
                   aria-label="Close"
                 >
                   <X className="w-5 h-5" />
@@ -200,8 +239,9 @@ export default function FeedbackModal() {
             {(modalState.mode === 'confirm' || modalState.mode === 'prompt') && (
               <button
                 type="button"
-                onClick={modalState.onCancel}
-                className="px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all shadow-2xs active:scale-95 cursor-pointer"
+                onClick={() => { if (!isConfirming) modalState.onCancel(); }}
+                disabled={isConfirming}
+                className={`px-5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-all shadow-2xs active:scale-95 ${isConfirming ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'}`}
               >
                 {modalState.cancelText || 'ยกเลิก'}
               </button>
@@ -210,16 +250,23 @@ export default function FeedbackModal() {
             <button
               ref={confirmButtonRef}
               type="button"
-              onClick={() => {
-                if (modalState.mode === 'prompt') {
-                  handlePromptSubmit();
-                } else {
-                  modalState.onConfirm();
-                }
-              }}
-              className={`px-5 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2 cursor-pointer ${variant.confirmBtn}`}
+              id="feedback-modal-confirm-btn"
+              onClick={handleConfirmClick}
+              disabled={isConfirming}
+              className={`px-5 py-2.5 rounded-xl text-xs font-semibold transition-all shadow-sm active:scale-95 flex items-center justify-center gap-2 min-w-[100px] ${
+                isConfirming
+                  ? `${variant.confirmBtnLoading} opacity-80 cursor-not-allowed pointer-events-none`
+                  : `${variant.confirmBtn} cursor-pointer`
+              }`}
             >
-              <span>{modalState.confirmText || 'ตกลง'}</span>
+              {isConfirming ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span>กำลังประมวลผล...</span>
+                </>
+              ) : (
+                <span>{modalState.confirmText || 'ตกลง'}</span>
+              )}
             </button>
           </div>
         </div>

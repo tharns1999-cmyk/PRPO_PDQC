@@ -556,7 +556,7 @@ export default function PRListView({
 
                       {/* ช่องทาง: w-28 text-center */}
                       <td className="w-28 px-2 py-3.5 text-center align-middle whitespace-nowrap">
-                        {pr.purchaseChannel === 'ONLINE' ? (
+                        {(pr.purchaseChannel === 'ONLINE' || pr.purchaseChannel === 'ONLINE_PURCHASE' || (Array.isArray(pr.items) && pr.items.some(item => !!(item.productUrl || item.onlineUrl || item.url)))) ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200/60 whitespace-nowrap">
                             🛒 ออนไลน์
                           </span>

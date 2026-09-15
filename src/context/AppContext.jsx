@@ -265,51 +265,55 @@ export function AppProvider({ children }) {
       // in the background without blocking the initial screen
       (async () => {
         try {
-          const [prsData, posData, logsData, txsData] = await Promise.all([
-            apiService.getPRs(),
-            apiService.getPOs(),
-            apiService.getStockLogs(),
+          const [bootstrapData, txsData] = await Promise.all([
+            apiService.getBootstrapData(),
             apiService.getBudgetTransactions()
           ]);
+          
+          if (bootstrapData) {
+            const prsData = bootstrapData.prs;
+            const posData = bootstrapData.pos;
+            const logsData = bootstrapData.stockLogs;
+            
+            if (Array.isArray(prsData)) {
+              const seenPRKeys = new Set();
+              const uniquePRs = prsData.filter(item => {
+                const idKey = item.id;
+                const noKey = item.prNo || item.prNumber;
+                if ((idKey && seenPRKeys.has(idKey)) || (noKey && seenPRKeys.has(noKey))) return false;
+                if (idKey) seenPRKeys.add(idKey);
+                if (noKey) seenPRKeys.add(noKey);
+                return true;
+              });
+              setPRs(uniquePRs);
+            }
 
-          if (Array.isArray(prsData)) {
-            const seenPRKeys = new Set();
-            const uniquePRs = prsData.filter(item => {
-              const idKey = item.id;
-              const noKey = item.prNo || item.prNumber;
-              if ((idKey && seenPRKeys.has(idKey)) || (noKey && seenPRKeys.has(noKey))) return false;
-              if (idKey) seenPRKeys.add(idKey);
-              if (noKey) seenPRKeys.add(noKey);
-              return true;
-            });
-            setPRs(uniquePRs);
-          }
+            if (Array.isArray(posData)) {
+              const seenPOKeys = new Set();
+              const uniquePOs = posData.filter(item => {
+                const idKey = item.id;
+                const noKey = item.poNo || item.poNumber;
+                if ((idKey && seenPOKeys.has(idKey)) || (noKey && seenPOKeys.has(noKey))) return false;
+                if (idKey) seenPOKeys.add(idKey);
+                if (noKey) seenPOKeys.add(noKey);
+                return true;
+              });
+              setPOs(uniquePOs);
+            }
 
-          if (Array.isArray(posData)) {
-            const seenPOKeys = new Set();
-            const uniquePOs = posData.filter(item => {
-              const idKey = item.id;
-              const noKey = item.poNo || item.poNumber;
-              if ((idKey && seenPOKeys.has(idKey)) || (noKey && seenPOKeys.has(noKey))) return false;
-              if (idKey) seenPOKeys.add(idKey);
-              if (noKey) seenPOKeys.add(noKey);
-              return true;
-            });
-            setPOs(uniquePOs);
-          }
-
-          if (Array.isArray(logsData)) {
-            const localLogs = storageService.getStockLogs() || [];
-            const seenLogIds = new Set();
-            const mergedLogs = [];
-            [...localLogs, ...logsData].forEach(l => {
-              if (l && l.id && !seenLogIds.has(l.id)) {
-                seenLogIds.add(l.id);
-                mergedLogs.push(l);
-              }
-            });
-            setStockLogs(mergedLogs);
-            storageService.saveStockLogs(mergedLogs);
+            if (Array.isArray(logsData)) {
+              const localLogs = storageService.getStockLogs() || [];
+              const seenLogIds = new Set();
+              const mergedLogs = [];
+              [...localLogs, ...logsData].forEach(l => {
+                if (l && l.id && !seenLogIds.has(l.id)) {
+                  seenLogIds.add(l.id);
+                  mergedLogs.push(l);
+                }
+              });
+              setStockLogs(mergedLogs);
+              storageService.saveStockLogs(mergedLogs);
+            }
           }
 
           if (Array.isArray(txsData)) {

@@ -444,11 +444,119 @@ function apiSaveSignature(roleId, signatureUrl, userObj, rawPayload, userContext
 // =========================================================================
 
 /**
+ * Normalizes PR records for backward compatibility.
+ * If any PR contains item store URLs (Shopee/Lazada/http/https) or mentions "ออนไลน์" / "online",
+ * enforce purchaseChannel = 'ONLINE'.
+ *
+ * @param {Array<Object>} prs
+ * @returns {Array<Object>}
+ */
+function normalizePRsLegacyOnline(prs) {
+  if (!Array.isArray(prs)) return [];
+  return prs.map(function(pr) {
+    if (!pr || typeof pr !== 'object') return pr;
+
+    var currentChannel = String(pr.purchaseChannel || pr.channel || '').trim().toUpperCase();
+    if (currentChannel === 'ONLINE' || currentChannel === 'ONLINE_PURCHASE') {
+      pr.purchaseChannel = 'ONLINE';
+      pr.channel = 'ONLINE';
+      return pr;
+    }
+
+    var isOnline = false;
+
+    // 1. Check PR level fields
+    var textToCheck = (
+      String(pr.purchaseChannel || '') + ' ' +
+      String(pr.channel || '') + ' ' +
+      String(pr.orderType || '') + ' ' +
+      String(pr.remarks || '') + ' ' +
+      String(pr.note || '') + ' ' +
+      String(pr.notes || '') + ' ' +
+      String(pr.vendorName || '')
+    ).toLowerCase();
+
+    if (
+      textToCheck.indexOf('ออนไลน์') !== -1 ||
+      textToCheck.indexOf('online') !== -1 ||
+      textToCheck.indexOf('shopee') !== -1 ||
+      textToCheck.indexOf('lazada') !== -1 ||
+      textToCheck.indexOf('tiktok') !== -1
+    ) {
+      isOnline = true;
+    }
+
+    // 2. Check items
+    var rawItems = pr.items;
+    if (typeof rawItems === 'string') {
+      try {
+        rawItems = JSON.parse(rawItems);
+      } catch (e) {
+        var strItems = rawItems.toLowerCase();
+        if (
+          strItems.indexOf('http://') !== -1 ||
+          strItems.indexOf('https://') !== -1 ||
+          strItems.indexOf('shopee') !== -1 ||
+          strItems.indexOf('lazada') !== -1 ||
+          strItems.indexOf('tiktok') !== -1 ||
+          strItems.indexOf('ออนไลน์') !== -1 ||
+          strItems.indexOf('online') !== -1
+        ) {
+          isOnline = true;
+        }
+      }
+    }
+
+    if (!isOnline && Array.isArray(rawItems)) {
+      for (var i = 0; i < rawItems.length; i++) {
+        var it = rawItems[i];
+        if (!it) continue;
+        var url = String(it.productUrl || it.onlineUrl || it.url || it.shopUrl || it.link || it.itemUrl || '').trim().toLowerCase();
+        if (
+          url.indexOf('http://') === 0 ||
+          url.indexOf('https://') === 0 ||
+          url.indexOf('shopee') !== -1 ||
+          url.indexOf('lazada') !== -1 ||
+          url.indexOf('tiktok') !== -1
+        ) {
+          isOnline = true;
+          break;
+        }
+        var itemText = (
+          String(it.name || '') + ' ' +
+          String(it.description || '') + ' ' +
+          String(it.remarks || '') + ' ' +
+          String(it.note || '') + ' ' +
+          String(it.vendorName || '')
+        ).toLowerCase();
+        if (
+          itemText.indexOf('ออนไลน์') !== -1 ||
+          itemText.indexOf('online') !== -1 ||
+          itemText.indexOf('shopee') !== -1 ||
+          itemText.indexOf('lazada') !== -1
+        ) {
+          isOnline = true;
+          break;
+        }
+      }
+    }
+
+    if (isOnline) {
+      pr.purchaseChannel = 'ONLINE';
+      pr.channel = 'ONLINE';
+    }
+
+    return pr;
+  });
+}
+
+/**
  * Retrieves all PRs.
  */
 function apiGetPRs(rawPayload, userContext) {
   return handleApiRequest(function(payload, user) {
-    return batchReadRecords(SHEET_NAMES.PRS);
+    var prs = batchReadRecords(SHEET_NAMES.PRS);
+    return normalizePRsLegacyOnline(prs);
   }, 'GetPRs', rawPayload, userContext);
 }
 
@@ -582,7 +690,7 @@ function apiSavePR(rawPayload, userContext) {
       }
     });
 
-    var saved = upsertRecordById(SHEET_NAMES.PRS, 'id', prObj);
+    var saved = upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
 
     // Also update PRItems if available
     try {
@@ -618,7 +726,7 @@ function apiSavePR(rawPayload, userContext) {
           };
         });
         itemRows.forEach(function(row) {
-          upsertRecordById(SHEET_NAMES.PR_ITEMS, 'id', row);
+          upsertRecordFast(SHEET_NAMES.PR_ITEMS, 'id', row);
         });
       }
     } catch (e) {
@@ -661,7 +769,7 @@ function apiReviewPR(rawPayload, userContext) {
       }
     });
 
-    return upsertRecordById(SHEET_NAMES.PRS, 'id', prObj);
+    return upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
   }, 'ReviewPR', rawPayload, userContext);
 }
 
@@ -688,7 +796,7 @@ function apiApprovePR(rawPayload, userContext) {
       }
     });
 
-    return upsertRecordById(SHEET_NAMES.PRS, 'id', prObj);
+    return upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
   }, 'ApprovePR', rawPayload, userContext);
 }
 
@@ -715,7 +823,7 @@ function apiRejectPR(rawPayload, userContext) {
       }
     });
 
-    return upsertRecordById(SHEET_NAMES.PRS, 'id', prObj);
+    return upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
   }, 'RejectPR', rawPayload, userContext);
 }
 
@@ -813,7 +921,7 @@ function apiSavePO(rawPayload, userContext) {
       }
     });
 
-    upsertRecordById(SHEET_NAMES.POS, 'id', poObj);
+    upsertRecordFast(SHEET_NAMES.POS, 'id', poObj);
     return poObj;
   }, 'SavePO', rawPayload, userContext);
 }
@@ -961,7 +1069,7 @@ function apiReceivePO(rawPayload, userContext) {
     }
 
     // ── 9. Atomic write to POs sheet ─────────────────────────────────────────
-    var updatedPO = upsertRecordById(SHEET_NAMES.POS, 'id', poObj);
+    var updatedPO = upsertRecordFast(SHEET_NAMES.POS, 'id', poObj);
     console.log('[apiReceivePO] PO "' + (poObj.poNo || poId) + '" written to sheet. Status: ' + poObj.status + (incomingGrn ? ' | GRN: ' + incomingGrn : ''));
 
     // ── 10. Cascading PR Completion (if fully received → CLOSED) ────────────
@@ -1004,7 +1112,7 @@ function apiReceivePO(rawPayload, userContext) {
               note: 'PO ' + (poObj.poNo || poId) + ' รับสินค้าครบแล้ว ปิดใบ PR อัตโนมัติ'
             });
             targetPR.activityLog = JSON.stringify(prLog);
-            upsertRecordById(SHEET_NAMES.PRS, 'id', targetPR);
+            upsertRecordFast(SHEET_NAMES.PRS, 'id', targetPR);
             console.log('[apiReceivePO] Cascading PR "' + (targetPR.prNo || prRef) + '" → status: completed');
           }
         } catch (prErr) {
@@ -1050,7 +1158,7 @@ function apiFinalizePO(poIdOrPayload, poDataOrUser, userContext) {
       finalData.items = JSON.stringify(Array.isArray(rawItems) ? rawItems : []);
     }
 
-    var updated = upsertRecordById(SHEET_NAMES.POS, 'id', finalData);
+    var updated = upsertRecordFast(SHEET_NAMES.POS, 'id', finalData);
 
     // If associated with PR, mark PR as APPROVED
     if (finalData.prId || finalData.prNo) {
@@ -1064,7 +1172,7 @@ function apiFinalizePO(poIdOrPayload, poDataOrUser, userContext) {
         targetPr.approvedBy = finalData.approvedBy || user.name || user.username || 'System';
         targetPr.approvedAt = finalData.approvedAt || new Date().toISOString();
         targetPr.updatedAt = new Date().toISOString();
-        upsertRecordById(SHEET_NAMES.PRS, 'id', targetPr);
+        upsertRecordFast(SHEET_NAMES.PRS, 'id', targetPr);
       }
     }
 
@@ -1375,4 +1483,56 @@ function apiPurgeAllDepartment(rawPayload, userContext) {
   return handleApiRequest(function(payload, user) {
     return purgeAllDepartmentEntity();
   }, 'PurgeAllDepartment', rawPayload, userContext);
+}
+
+/**
+ * Fast Bootstrap Data Payload for frontend initial load
+ */
+function apiGetBootstrapData(rawPayload, userContext) {
+  return handleApiRequest(function(payload, user) {
+    var prs = normalizePRsLegacyOnline(batchReadRecords(SHEET_NAMES.PRS));
+    var pos = batchReadRecords(SHEET_NAMES.POS);
+    var products = batchReadRecords(SHEET_NAMES.PRODUCTS);
+    var stockLogs = batchReadRecords(SHEET_NAMES.STOCK_LOGS);
+    
+    return {
+      prs: prs,
+      pos: pos,
+      products: products,
+      stockLogs: stockLogs
+    };
+  }, 'GetBootstrapData', rawPayload, userContext);
+}
+
+/**
+ * Fast RAM Array Indexing Upsert for High-Volume Sheets (PRs, POs)
+ */
+function upsertRecordFast(sheetName, idField, record) {
+  var targetId = record[idField];
+  if (!targetId) throw new Error('VALIDATION_ERROR: Missing idField');
+  var sheet = getSheet(sheetName);
+  var dataRange = sheet.getDataRange();
+  var values = dataRange.getValues();
+  if (values.length === 0) throw new Error('SCHEMA_ERROR: Sheet empty');
+  
+  var headers = values[0].map(function(h) { return String(h).trim(); });
+  var idColIndex = headers.indexOf(idField);
+  if (idColIndex === -1) throw new Error('SCHEMA_ERROR: Header not found');
+  
+  var rowIndexToUpdate = -1;
+  for (var i = 1; i < values.length; i++) {
+    if (String(values[i][idColIndex]).trim() === String(targetId).trim()) {
+      rowIndexToUpdate = i + 1; // 1-based index
+      break;
+    }
+  }
+  
+  var rowValues = serializeRecordToRow(record, headers);
+  if (rowIndexToUpdate !== -1) {
+    sheet.getRange(rowIndexToUpdate, 1, 1, headers.length).setValues([rowValues]);
+  } else {
+    sheet.appendRow(rowValues);
+  }
+  SpreadsheetApp.flush();
+  return record;
 }

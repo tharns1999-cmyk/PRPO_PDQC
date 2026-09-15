@@ -1634,7 +1634,9 @@ export const workflowEngine = {
       pr.status = 'APPROVED';
       pr.workflowStatus = 'APPROVED';
       generatedPO = await this.createPOFromPR(pr, user);
-      const finalApprovedStatus = pr.purchaseChannel === 'ONLINE' ? 'IN_PROGRESS_ONLINE' : 'PO_ISSUED';
+      const hasAnyLink = (pr.items || []).some(item => !!(item.productUrl || item.onlineUrl || item.url));
+      const isOnlinePr = pr.purchaseChannel === 'ONLINE' || pr.purchaseChannel === 'ONLINE_PURCHASE' || hasAnyLink;
+      const finalApprovedStatus = isOnlinePr ? 'IN_PROGRESS_ONLINE' : 'PO_ISSUED';
       pr.status = finalApprovedStatus;
       pr.workflowStatus = finalApprovedStatus;
       if (Array.isArray(generatedPO) && generatedPO.length > 0) {
@@ -1719,8 +1721,11 @@ export const workflowEngine = {
     // 1. If Online Purchase: Exactly 1 PO routed to Online Procurement Hub
     // 2. If Internal Purchase (SELF): Exactly 1 PO for the selected Master Vendor (1 PR = 1 Vendor)
     // 3. Fallback for legacy records: Group by supplierId
+    const hasAnyLink = (pr.items || []).some(item => !!(item.productUrl || item.onlineUrl || item.url));
+    const isOnlinePr = pr.purchaseChannel === 'ONLINE' || pr.purchaseChannel === 'ONLINE_PURCHASE' || hasAnyLink;
+
     let groups = {};
-    if (pr.purchaseChannel === 'ONLINE') {
+    if (isOnlinePr) {
       groups['ONLINE'] = pr.items || [];
     } else if (pr.vendorId || pr.vendor?.id) {
       const vId = pr.vendorId || pr.vendor?.id;
@@ -1773,7 +1778,7 @@ export const workflowEngine = {
         ? Boolean(pr.hasVat) 
         : (pr.financials?.hasVat !== undefined ? Boolean(pr.financials.hasVat) : (pr.financials?.vatMode !== 'NONE'));
 
-      if (pr.purchaseChannel === 'SELF') {
+      if (!isOnlinePr) {
         const prFin = pr.financials || {};
         if (!isSplit && prFin && prFin.grandTotal !== undefined) {
           financials = { ...prFin };
@@ -1818,11 +1823,11 @@ export const workflowEngine = {
         };
       }
 
-      const poStatus = pr.purchaseChannel === 'ONLINE' ? 'IN_PROGRESS_ONLINE' : 'ISSUED';
+      const poStatus = isOnlinePr ? 'IN_PROGRESS_ONLINE' : 'ISSUED';
       
-      let vId = vendor?.id || (pr.purchaseChannel === 'SELF' ? (pr.vendorId || (vendorId !== 'NULL' && vendorId !== 'ONLINE' ? vendorId : null)) : null);
-      let vName = vendor?.name || (pr.purchaseChannel === 'SELF' ? (pr.vendorName || vendor?.name || 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)') : 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)');
-      if (pr.purchaseChannel === 'ONLINE') {
+      let vId = vendor?.id || (!isOnlinePr ? (pr.vendorId || (vendorId !== 'NULL' && vendorId !== 'ONLINE' ? vendorId : null)) : null);
+      let vName = vendor?.name || (!isOnlinePr ? (pr.vendorName || vendor?.name || 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)') : 'ไม่ระบุผู้ขาย (รอจัดซื้อดำเนินการ)');
+      if (isOnlinePr) {
         vId = null;
         const onlineStores = Array.from(new Set((items || []).map(i => (i.actualStoreName || i.storeName || '').trim()).filter(s => s && !s.includes('ระบุร้านภายหลัง'))));
         if (onlineStores.length === 1) {
@@ -1861,7 +1866,7 @@ export const workflowEngine = {
         vendorName: vName,
         vendor: vendorObj || vName,
         vendorDetails: vendorObj,
-        purchaseChannel: pr.purchaseChannel,
+        purchaseChannel: isOnlinePr ? 'ONLINE' : 'SELF',
         onlineLink: pr.onlineLink || null,
         specUrl: pr.specUrl || null,
         issueDate: new Date().toISOString().split('T')[0],

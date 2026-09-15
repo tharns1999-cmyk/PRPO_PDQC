@@ -745,6 +745,11 @@ export default function PRCreateView({
     if (e && e.preventDefault) e.preventDefault();
     if (isSubmitting) return;
 
+    // Auto-detect Guard: Force ONLINE if any item has a shop link
+    const hasAnyLink = prItems.some(item => !!(item.productUrl || item.onlineUrl || '').trim());
+    const currentChannel = hasAnyLink ? 'ONLINE' : purchaseChannel;
+    const isOnline = currentChannel === 'ONLINE';
+
     // Validations
     if (!isDraft) {
       // PR Guardrail: Check if department has allocated budget for the current month
@@ -769,7 +774,7 @@ export default function PRCreateView({
         return modalService.warning('กรุณาระบุข้อมูลรายการสินค้าและจำนวนที่ถูกต้อง');
       }
 
-      if (purchaseChannel === 'SELF' && !selectedVendorId) {
+      if (currentChannel === 'SELF' && !selectedVendorId) {
         return modalService.warning('กรุณาระบุผู้จัดจำหน่าย (Vendor) ที่หัวเอกสารสำหรับการขอซื้อภายใน');
       }
 
@@ -818,9 +823,9 @@ export default function PRCreateView({
 
     setIsSubmitting(true);
     try {
-      const matchedHeaderVendor = purchaseChannel === 'SELF' ? (masterVendors.find(v => v.id === selectedVendorId) || null) : null;
-      const vId = purchaseChannel === 'SELF' ? (matchedHeaderVendor?.id || selectedVendorId || null) : null;
-      const vName = purchaseChannel === 'SELF' ? (matchedHeaderVendor?.name || null) : null;
+      const matchedHeaderVendor = currentChannel === 'SELF' ? (masterVendors.find(v => v.id === selectedVendorId) || null) : null;
+      const vId = currentChannel === 'SELF' ? (matchedHeaderVendor?.id || selectedVendorId || null) : null;
+      const vName = currentChannel === 'SELF' ? (matchedHeaderVendor?.name || null) : null;
 
       const itemsFormatted = prItems.map(item => {
         const prod = availableProducts.find(p => p.id === item.productId) || products.find(p => p.id === item.productId);
@@ -922,7 +927,7 @@ export default function PRCreateView({
         };
       }
 
-      const financialsPayload = purchaseChannel === 'SELF' ? {
+      const financialsPayload = currentChannel === 'SELF' ? {
         subtotal,
         itemDiscountTotal,
         combinedDiscountType,
@@ -965,14 +970,15 @@ export default function PRCreateView({
       const prPayload = {
         prNo: editingPR ? editingPR.prNo : nextPRNumber,
         department,
-        purchaseChannel,
+        purchaseChannel: currentChannel,
+        channel: currentChannel,
         enforceImageValidation: true,
         vendorId: vId,
         vendorName: vName,
         vendor: vendorObj,
         supplierId: vId,
         supplierName: vName,
-        hasVat: purchaseChannel === 'SELF' ? hasVat : false,
+        hasVat: currentChannel === 'SELF' ? hasVat : false,
         specUrl: quotationFiles[0] ? quotationFiles[0].name : '',
         quotationFiles: quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl })),
         generalAttachments: imageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'GENERAL' })),

@@ -43,6 +43,23 @@ export const apiService = {
     }
     return null;
   },
+  async getBootstrapData() {
+    if (isGAS()) {
+      try {
+        const payload = await callGAS('apiGetBootstrapData');
+        if (payload && typeof payload === 'object') {
+          if (Array.isArray(payload.prs)) storageService.savePRs(payload.prs);
+          if (Array.isArray(payload.pos)) storageService.savePOs(payload.pos);
+          if (Array.isArray(payload.products)) storageService.saveProducts(payload.products);
+          if (Array.isArray(payload.stockLogs)) storageService.saveStockLogs(payload.stockLogs);
+          return payload;
+        }
+      } catch (e) {
+        console.warn('[apiService] GAS apiGetBootstrapData error:', e.message);
+      }
+    }
+    return null;
+  },
   async getProducts(forceFetch = false) {
     if (isGAS()) {
       if (forceFetch) {
