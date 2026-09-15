@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { PR_STATUS } from '../../config/constants';
 import { apiService } from '../../services/apiService';
@@ -63,15 +63,30 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   }, [allPOs, selectedPR]);
 
   const allAttachments = React.useMemo(() => {
-    const list = [];
-    if (Array.isArray(selectedPR.attachments)) list.push(...selectedPR.attachments);
-    if (Array.isArray(selectedPR.quotationFiles)) list.push(...selectedPR.quotationFiles);
-    if (Array.isArray(selectedPR.generalAttachments)) list.push(...selectedPR.generalAttachments);
-    if (typeof selectedPR.quotationUrl === 'string' && selectedPR.quotationUrl.trim()) {
+    let list = [];
+    // รวมทุกแหล่งที่อาจเก็บไฟล์
+    [selectedPR?.attachments, selectedPR?.quotationFiles, selectedPR?.generalAttachments, selectedPR?.files].forEach(item => {
+      if (!item) return;
+      if (typeof item === 'string') {
+        try { const parsed = JSON.parse(item); if (Array.isArray(parsed)) list.push(...parsed); } catch(e) {}
+      } else if (Array.isArray(item)) {
+        list.push(...item);
+      } else if (typeof item === 'object') {
+        list.push(item);
+      }
+    });
+    if (typeof selectedPR?.quotationUrl === 'string' && selectedPR.quotationUrl.trim()) {
       list.push({ url: selectedPR.quotationUrl, previewUrl: selectedPR.quotationUrl, name: 'เอกสารอ้างอิง / ใบเสนอราคา (Link)', category: 'Quotation' });
     }
-    return list.filter(Boolean);
-  }, [selectedPR.attachments, selectedPR.quotationFiles, selectedPR.generalAttachments, selectedPR.quotationUrl]);
+    // ตัดรายการซ้ำตาม fileId หรือ url
+    const seen = new Set();
+    return list.filter(f => {
+      const id = f.fileId || f.id || f.viewUrl || f.url || f.fileName || f.name;
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }, [selectedPR]);
 
   const [actionNote, setActionNote] = useState('');
   const [showSplitModal, setShowSplitModal] = useState(false);
@@ -117,6 +132,31 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   const [editReason, setEditReason] = useState('');
   const [isSavingItems, setIsSavingItems] = useState(false);
 
+  // Safe Timeline Aggregator
+  const timelineEvents = useMemo(() => {
+    let events = [];
+    [selectedPR?.timeline, selectedPR?.approvalHistory, selectedPR?.history, selectedPR?.auditLogs, selectedPR?.activityLog].forEach(item => {
+      if (!item) return;
+      if (typeof item === 'string') {
+        try { 
+          const parsed = JSON.parse(item); 
+          if (Array.isArray(parsed)) events.push(...parsed); 
+        } catch(e) {}
+      } else if (Array.isArray(item)) {
+        events.push(...item);
+      }
+    });
+    // Deduplicate ตาม id หรือ timestamp+action
+    const seen = new Set();
+    const unique = events.filter(e => {
+      const key = e.id || `${e.timestamp || e.date}-${e.action}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    // เรียงลำดับจากเก่าไปใหม่ (Chronological Order) สำหรับ Timeline การทำงาน
+    return unique.sort((a, b) => new Date(a.timestamp || a.date || 0) - new Date(b.timestamp || b.date || 0));
+  }, [selectedPR]);
   const canApproverEdit = currentRole.level >= 2 && ['SUBMITTED', 'REVIEWED', 'REJECTED_TO_L2'].includes(selectedPR.status);
 
   const handleItemFieldChange = (index, field, value) => {
@@ -403,19 +443,24 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
           
           {/* Rejection Alert Banner (When PR has been rejected) */}
           {(selectedPR.status === 'REJECTED_TO_DRAFT' || selectedPR.status === 'REJECTED_TO_L2' || selectedPR.rejectReason) && (
-            <div className="bg-rose-50/90 border border-rose-200/90 rounded-2xl p-4 flex items-start gap-3 shadow-2xs mb-4">
-              <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 mt-0.5">
-                <RotateCcw className="w-4 h-4" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-xs sm:text-sm font-bold text-rose-950">
-                  ใบขอซื้อถูกส่งกลับเพื่อแก้ไข (Revision Required)
-                </h4>
-                <p className="text-xs text-rose-900 mt-1 bg-white/90 p-3 rounded-xl border border-rose-200/60 font-medium leading-relaxed">
-                  {selectedPR.rejectReason || 'กรุณาตรวจสอบรายละเอียดและแก้ไขตามที่ได้รับแจ้งก่อนส่งอีกครั้ง'}
-                </p>
-              </div>
-            </div>
+            (() => {
+              const displayReason = selectedPR.rejectReason || selectedPR.revisionReason || selectedPR.comment || selectedPR.latestComment || (selectedPR.approvalHistory?.slice(-1)[0]?.comment) || 'กรุณาตรวจสอบรายละเอียดและแก้ไขตามที่ได้รับแจ้งก่อนส่งอีกครั้ง';
+              return (
+                <div className="bg-rose-50/90 border border-rose-200/90 rounded-2xl p-4 flex items-start gap-3 shadow-2xs mb-4">
+                  <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 mt-0.5">
+                    <RotateCcw className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs sm:text-sm font-bold text-rose-950">
+                      ใบขอซื้อถูกส่งกลับเพื่อแก้ไข (Revision Required)
+                    </h4>
+                    <p className="text-xs text-rose-900 mt-1 bg-white/90 p-3 rounded-xl border border-rose-200/60 font-medium leading-relaxed">
+                      เหตุผลที่ส่งกลับแก้ไข: {displayReason}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()
           )}
 
           {/* Linked PO Banner - แสดงเฉพาะเมื่อ PR ผ่านการอนุมัติแล้วเท่านั้น */}
@@ -836,22 +881,43 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                   {allAttachments.length > 0 ? (
                     <div className="space-y-1.5">
                       {allAttachments.map((att, attIdx) => {
-                        const finalUrl = att.url || att.previewUrl || att.dataUrl || att.driveUrl;
+                        const finalUrl = att.viewUrl || att.url || att.directUrl || att.previewUrl || att.dataUrl || att.driveUrl;
+                        const fileName = att.fileName || att.name || 'ไฟล์แนบ';
+                        const mimeType = String(att.mimeType || '').toLowerCase();
+                        const isPdf = mimeType.includes('pdf') || fileName.toLowerCase().endsWith('.pdf');
+                        const isImage = mimeType.includes('image') || fileName.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif)$/);
+                        const fileBadge = isPdf ? 'PDF' : (isImage ? 'IMG' : 'DOC');
+
                         return (
-                          <button
+                          <div
                             key={attIdx}
-                            type="button"
-                            onClick={() => setViewingAttachment({ file: att, title: att.name || 'ไฟล์แนบ', url: finalUrl })}
-                            className="w-full text-left flex items-center gap-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 p-2 rounded-xl transition-all group cursor-pointer"
+                            className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl transition-all"
                           >
-                            <div className="w-6 h-6 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-2xs shrink-0">
-                              <ExternalLink className="w-3 h-3" />
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 shadow-2xs shrink-0 font-bold text-[10px]">
+                                {fileBadge}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-xs text-slate-800 truncate" title={fileName}>{fileName}</p>
+                                <p className="text-[10px] text-slate-400">{att.category || 'เอกสารแนบ'}</p>
+                              </div>
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="font-semibold text-xs text-slate-800 group-hover:text-slate-950 truncate">{att.name || 'ไฟล์แนบ'}</p>
-                              <p className="text-[10px] text-slate-400">{att.category || 'เอกสารแนบ'} • เปิดดู</p>
+                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                              {finalUrl ? (
+                                <a
+                                  href={finalUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 hover:border-slate-300 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-2xs"
+                                >
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                  <span>เปิดดูเอกสาร</span>
+                                </a>
+                              ) : (
+                                <span className="text-[10px] text-slate-400">ไม่มีลิงก์</span>
+                              )}
                             </div>
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -880,9 +946,9 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
 
               {/* Activity Log Timeline (Collapsible & Compact) */}
               <CollapsibleActivityTimeline
-                events={selectedPR.activityLog || []}
+                events={timelineEvents}
                 title="ลำดับเหตุการณ์ (Activity Timeline)"
-                defaultExpanded={Boolean(selectedPR.activityLog && selectedPR.activityLog.length < 2)}
+                defaultExpanded={timelineEvents.length < 2}
               />
 
             </div>

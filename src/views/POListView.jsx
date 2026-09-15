@@ -10,7 +10,7 @@ import Pagination from '../components/common/Pagination';
 import { getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
 import { useAppContext } from '../context/AppContext';
 import { storageService } from '../services/storageService';
-
+import { sortByNewestFirst } from '../utils/sortUtils';
 const PO_TABS = [
   { id: 'ALL', label: 'ทั้งหมด' },
   { id: 'PENDING', label: 'รอรับของ (ซื้อเอง)' },
@@ -218,7 +218,7 @@ export default function POListView({ pos = EMPTY_ARRAY, departments: propDepartm
 
   // Search & Filter Logic for Table
   const filteredPOs = useMemo(() => {
-    return scopedPOs.filter(po => {
+    const filtered = scopedPOs.filter(po => {
       // Hide cancelled by default unless filter is ALL or CANCELLED
       if (po.status === 'CANCELLED' && filterStatus !== 'ALL' && filterStatus !== 'CANCELLED') return false; 
 
@@ -242,17 +242,7 @@ export default function POListView({ pos = EMPTY_ARRAY, departments: propDepartm
       return matchesStatus && matchesSearch;
     });
 
-    // Sort Descending by createdAt or poNo
-    return filtered.sort((a, b) => {
-      const dateA = new Date(a.createdAt || a.issueDate || a.issuedDate || 0).getTime();
-      const dateB = new Date(b.createdAt || b.issueDate || b.issuedDate || 0).getTime();
-      if (dateA !== dateB) return dateB - dateA;
-      const poA = String(a.poNo || '').toLowerCase();
-      const poB = String(b.poNo || '').toLowerCase();
-      if (poA < poB) return 1;
-      if (poA > poB) return -1;
-      return 0;
-    });
+    return filtered.sort(sortByNewestFirst);
   }, [scopedPOs, filterStatus, searchQuery]);
 
   // Tab Badge Counters (scoped to period & dept)

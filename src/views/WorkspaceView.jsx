@@ -11,7 +11,7 @@ import {
 import PRDetailsModal from '../components/pr/PRDetailsModal';
 import PODetailsModal from '../components/po/PODetailsModal';
 import TaskCard from '../components/workspace/TaskCard';
-
+import { sortByNewestFirst } from '../utils/sortUtils';
 const EMPTY_ARRAY = [];
 
 export default function WorkspaceView({ 
@@ -212,10 +212,10 @@ export default function WorkspaceView({
   const currentTabTasks = useMemo(() => {
     const user = currentUser || currentRole;
     if (activeTab === 'todo' || activeTab === 'action') {
-      return unifiedTasks.filter(t => isTaskForMe(t, user));
+      return unifiedTasks.filter(t => isTaskForMe(t, user)).sort(sortByNewestFirst);
     }
     if (activeTab === 'in_progress' || activeTab === 'waiting') {
-      return unifiedTasks.filter(t => isInProgressTask(t, user));
+      return unifiedTasks.filter(t => isInProgressTask(t, user)).sort(sortByNewestFirst);
     }
     if (activeTab === 'completed') {
       return unifiedTasks.filter(t => {
@@ -224,7 +224,7 @@ export default function WorkspaceView({
         if (completedTypeFilter === 'PR' && t.docType !== 'PR') return false;
         if (completedTypeFilter === 'PO' && t.docType !== 'PO') return false;
         return true;
-      });
+      }).sort(sortByNewestFirst);
     }
     return [];
   }, [unifiedTasks, activeTab, completedTypeFilter, currentUser, currentRole]);

@@ -798,9 +798,9 @@ export const apiService = {
     const updated = await workflowEngine.rejectPR(prId, user, reason);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePR', updated, user);
+        await callGAS('apiRejectPR', updated, user);
       } catch (e) {
-        console.error('[apiService] GAS apiSavePR error:', e.message);
+        console.error('[apiService] GAS apiRejectPR error:', e.message);
         modalService.error('ปฏิเสธ PR ไม่สำเร็จ', e.message);
         throw e;
       }

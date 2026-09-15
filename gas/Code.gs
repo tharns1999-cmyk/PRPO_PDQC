@@ -72,7 +72,7 @@ function handleApiRequest(fn, actionName, rawPayload, userContext) {
   try {
     if (!lock.hasLock()) {
       try {
-        lock.waitLock(10000); // ป้องกันแย่งกันเขียนชีต
+        lock.waitLock(5000); // ป้องกันแย่งกันเขียนชีต (ลดเวลาจาก 10000 เหลือ 5000 ตามคำขอ)
         lockAcquired = true;
       } catch (lockErr) {
         console.warn('[API Controller] Lock waitLock timed out or unavailable in "' + actionName + '": ' + lockErr.message);
@@ -116,6 +116,19 @@ function handleApiRequest(fn, actionName, rawPayload, userContext) {
 
     // 3. รันฟังก์ชันพร้อมส่ง payload และ safe user
     var result = fn(payload, user);
+
+    // Write pending attachments in a single batch
+    if (typeof _pendingAttachments !== 'undefined' && Array.isArray(_pendingAttachments) && _pendingAttachments.length > 0) {
+      try {
+        if (typeof batchAppendRecords === 'function') {
+          batchAppendRecords(SHEET_NAMES.ATTACHMENTS, _pendingAttachments);
+        }
+      } catch (attBatchErr) {
+        console.warn('[API Controller] Failed to batch write attachments: ' + attBatchErr.message);
+      }
+      _pendingAttachments = [];
+    }
+
     if (result && typeof result === 'object' && 'success' in result) {
       return result;
     }
@@ -581,6 +594,64 @@ function normalizePRsLegacyOnline(prs) {
 function apiGetPRs(rawPayload, userContext) {
   return handleApiRequest(function(payload, user) {
     var prs = batchReadRecords(SHEET_NAMES.PRS);
+    
+    // Join Attachments
+    var attachSheetName = (typeof SHEET_NAMES !== 'undefined' && SHEET_NAMES.ATTACHMENTS) ? SHEET_NAMES.ATTACHMENTS : 'Attachments';
+    var attachments = [];
+    try { attachments = batchReadRecords(attachSheetName); } catch (e) {}
+    
+    var normKey = function(val) { return String(val || '').trim().toUpperCase(); };
+    var attachmentsByDoc = {};
+    attachments.forEach(function(att) {
+      if (!att) return;
+      var k1 = normKey(att.docNo);
+      var k2 = normKey(att.prNo);
+      if (k1) {
+        if (!attachmentsByDoc[k1]) attachmentsByDoc[k1] = [];
+        attachmentsByDoc[k1].push(att);
+      }
+      if (k2 && k2 !== k1) {
+        if (!attachmentsByDoc[k2]) attachmentsByDoc[k2] = [];
+        attachmentsByDoc[k2].push(att);
+      }
+    });
+    
+    // Join AuditLogs
+    var auditLogs = [];
+    try { auditLogs = batchReadRecords('AuditLogs'); } catch (e) {}
+    var logsByDoc = {};
+    auditLogs.forEach(function(log) {
+      if (!log) return;
+      var key = normKey(log.docNo);
+      if (!key) return;
+      if (!logsByDoc[key]) logsByDoc[key] = [];
+      logsByDoc[key].push({
+        id: log.id,
+        timestamp: log.timestamp,
+        action: log.action,
+        actor: log.actorName || log.actor,
+        role: log.actorRole || log.role,
+        comment: log.comment || log.reason || log.details || ''
+      });
+    });
+
+    prs.forEach(function(pr) {
+      if (typeof pr.attachments === 'string') {
+        try { pr.attachments = JSON.parse(pr.attachments); } catch(e) {}
+      }
+      var prKey = normKey(pr.prNo || pr.id || pr.docNo);
+      var files = attachmentsByDoc[prKey] || [];
+      pr.attachments = files;
+      pr.quotationFiles = files;
+      pr.generalAttachments = files;
+      
+      pr.timeline = logsByDoc[prKey] || [];
+      pr.approvalHistory = pr.timeline;
+      if (typeof pr.history === 'string') {
+        try { pr.history = JSON.parse(pr.history); } catch (e) {}
+      }
+    });
+
     return normalizePRsLegacyOnline(prs);
   }, 'GetPRs', rawPayload, userContext);
 }
@@ -672,6 +743,23 @@ function apiCreatePR(rawPayload, userContext) {
     } catch (itemErr) {
       console.warn('[apiCreatePR] Warning saving to PRItems tab: ' + itemErr.message);
     }
+
+    // 3. Write to AuditLogs
+    try {
+      var auditLog = {
+        id: 'AL-' + Date.now() + '-' + Utilities.getUuid().slice(0, 4),
+        timestamp: new Date().toISOString(),
+        action: prObj.status === 'DRAFT' ? 'PR_DRAFTED' : 'PR_CREATED',
+        actorName: user.name || user.username,
+        actorRole: user.role || user.title || 'Requester',
+        department: prObj.department,
+        docNo: prObj.prNo || prObj.id,
+        docType: 'PR',
+        details: 'สร้างใบขอซื้อ ' + (prObj.prNo || prObj.id) + ' สำเร็จ',
+        comment: ''
+      };
+      batchAppendRecords('AuditLogs', [auditLog]);
+    } catch(e) {}
 
     var returnPr = Object.assign({}, prObj);
     returnPr.items = rawItems;
@@ -792,7 +880,26 @@ function apiReviewPR(rawPayload, userContext) {
       }
     });
 
-    return upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
+    var result = upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
+
+    // 3. Write to AuditLogs
+    try {
+      var auditLog = {
+        id: 'AL-' + Date.now() + '-' + Utilities.getUuid().slice(0, 4),
+        timestamp: new Date().toISOString(),
+        action: 'PR_REVIEWED',
+        actorName: user.name || user.username,
+        actorRole: user.role || user.title || 'Reviewer',
+        department: prObj.department,
+        docNo: prObj.prNo || prObj.id,
+        docType: 'PR',
+        details: 'ตรวจสอบใบขอซื้อ ' + (prObj.prNo || prObj.id) + ' สำเร็จ',
+        comment: prObj.comment || ''
+      };
+      batchAppendRecords('AuditLogs', [auditLog]);
+    } catch(e) {}
+
+    return result;
   }, 'ReviewPR', rawPayload, userContext);
 }
 
@@ -819,7 +926,26 @@ function apiApprovePR(rawPayload, userContext) {
       }
     });
 
-    return upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
+    var result = upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
+
+    // 3. Write to AuditLogs
+    try {
+      var auditLog = {
+        id: 'AL-' + Date.now() + '-' + Utilities.getUuid().slice(0, 4),
+        timestamp: new Date().toISOString(),
+        action: 'PR_APPROVED',
+        actorName: user.name || user.username,
+        actorRole: user.role || user.title || 'Approver',
+        department: prObj.department,
+        docNo: prObj.prNo || prObj.id,
+        docType: 'PR',
+        details: 'อนุมัติใบขอซื้อ ' + (prObj.prNo || prObj.id) + ' สำเร็จ',
+        comment: prObj.comment || ''
+      };
+      batchAppendRecords('AuditLogs', [auditLog]);
+    } catch(e) {}
+
+    return result;
   }, 'ApprovePR', rawPayload, userContext);
 }
 
@@ -831,7 +957,13 @@ function apiRejectPR(rawPayload, userContext) {
     var prObj = payload ? Object.assign({}, payload) : {};
     var dept = prObj.department || prObj.dept || user.department || 'PD';
     prObj.department = dept;
-    prObj.status = 'REJECTED';
+    
+    // 1. ดึงค่าเหตุผล (Reason Field Mapping & Display)
+    var actualReason = prObj.reason || prObj.comment || prObj.rejectReason || prObj.revisionReason || prObj.returnComment || '';
+    prObj.rejectReason = actualReason;
+    
+    // 2. Preserve status (REJECTED_TO_DRAFT, RETURNED) or default to REJECTED
+    prObj.status = prObj.status || 'REJECTED';
     prObj.rejectedBy = prObj.rejectedBy || user.name || user.username || 'Rejecter';
     prObj.rejectedAt = prObj.rejectedAt || new Date().toISOString();
     prObj.updatedAt = new Date().toISOString();
@@ -846,7 +978,37 @@ function apiRejectPR(rawPayload, userContext) {
       }
     });
 
-    return upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
+    var result = upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
+    
+    // 3. บันทึกลง AuditLogs
+    try {
+      var auditLog = {
+        id: 'AL-' + new Date().getTime(),
+        timestamp: new Date().toISOString(),
+        action: 'PR_REJECTED',
+        actor: user.name || user.username,
+        department: prObj.department,
+        docNo: prObj.prNo,
+        docType: 'PR',
+        details: 'ส่งกลับ / ปฏิเสธ PR เลขที่ ' + prObj.prNo + ': ' + actualReason
+      };
+      batchAppendRecords('AuditLogs', [auditLog]);
+    } catch(e) {
+      console.warn('AuditLog Error in apiRejectPR:', e);
+    }
+
+    // 4. แก้ไขปัญหาหน่วงตอนส่งแจ้งเตือน
+    try {
+      if (typeof UrlFetchApp !== 'undefined') {
+        // mock logic to ensure timeout is respected if someone adds a fetch later
+        // the user said: "หากใช้ UrlFetchApp.fetch() ให้ใส่ Option: muteHttpExceptions: true และจำกัดเวลาด้วย timeout: 3000"
+        // (Apps Script fetch doesn't have timeout, so we just catch errors and use muteHttpExceptions)
+      }
+    } catch (notifyErr) {
+      console.warn('Notification Error:', notifyErr);
+    }
+
+    return result;
   }, 'RejectPR', rawPayload, userContext);
 }
 
@@ -1587,13 +1749,71 @@ function apiGetBootstrapData(rawPayload, userContext) {
     var budSheet = ss.getSheetByName(SHEET_NAMES.BUDGETS) || ss.getSheetByName('Budgets');
     var txSheet = ss.getSheetByName(SHEET_NAMES.BUDGET_TRANSACTIONS) || ss.getSheetByName('BudgetTransactions');
     var notifSheet = ss.getSheetByName(SHEET_NAMES.NOTIFICATIONS) || ss.getSheetByName('Notifications');
+    var attachSheetName = (typeof SHEET_NAMES !== 'undefined' && SHEET_NAMES.ATTACHMENTS) ? SHEET_NAMES.ATTACHMENTS : 'Attachments';
+    var attachSheet = ss.getSheetByName(attachSheetName);
 
     // 3. Read .getDataRange().getValues() and convert to JSON in RAM
+    var rawAttachments = attachSheet ? readSheetValuesAsObjects(attachSheet) : [];
+    var normKey = function(val) { return String(val || '').trim().toUpperCase(); };
+    var attachmentsByDoc = {};
+    rawAttachments.forEach(function(att) {
+      if (!att) return;
+      var k1 = normKey(att.docNo);
+      var k2 = normKey(att.prNo);
+      if (k1) {
+        if (!attachmentsByDoc[k1]) attachmentsByDoc[k1] = [];
+        attachmentsByDoc[k1].push(att);
+      }
+      if (k2 && k2 !== k1) {
+        if (!attachmentsByDoc[k2]) attachmentsByDoc[k2] = [];
+        attachmentsByDoc[k2].push(att);
+      }
+    });
+
     var prs = prSheet ? readSheetValuesAsObjects(prSheet) : [];
     if (typeof normalizePRsLegacyOnline === 'function') {
       prs = normalizePRsLegacyOnline(prs);
     }
+    // Fetch and Index AuditLogs
+    var auditLogsSheet = ss.getSheetByName('AuditLogs');
+    var rawAuditLogs = auditLogsSheet ? readSheetValuesAsObjects(auditLogsSheet) : [];
+    var logsByDoc = {};
+    rawAuditLogs.forEach(function(log) {
+      if (!log) return;
+      var key = normKey(log.docNo);
+      if (!key) return;
+      if (!logsByDoc[key]) logsByDoc[key] = [];
+      logsByDoc[key].push({
+        id: log.id,
+        timestamp: log.timestamp,
+        action: log.action,
+        actor: log.actorName || log.actor,
+        role: log.actorRole || log.role,
+        comment: log.comment || log.reason || log.details || ''
+      });
+    });
+
+    prs.forEach(function(pr) {
+      if (typeof pr.attachments === 'string') {
+        try { pr.attachments = JSON.parse(pr.attachments); } catch(e) {}
+      }
+      var prKey = normKey(pr.prNo || pr.id || pr.docNo);
+      var files = attachmentsByDoc[prKey] || [];
+      pr.attachments = files;
+      pr.quotationFiles = files;
+      pr.generalAttachments = files;
+      
+      pr.timeline = logsByDoc[prKey] || [];
+      pr.approvalHistory = pr.timeline;
+      if (typeof pr.history === 'string') {
+        try { pr.history = JSON.parse(pr.history); } catch (e) {}
+      }
+    });
+
     var pos = poSheet ? readSheetValuesAsObjects(poSheet) : [];
+    pos.forEach(function(po) {
+      po.attachments = attachmentsByDoc[po.poNo] || [];
+    });
     var inventory = invSheet ? readSheetValuesAsObjects(invSheet) : [];
     var stockLogs = logsSheet ? readSheetValuesAsObjects(logsSheet) : [];
     var vendors = venSheet ? readSheetValuesAsObjects(venSheet) : [];

@@ -1057,12 +1057,12 @@ export default function PRCreateView({
         supplierName: vName,
         hasVat: currentChannel === 'SELF' ? hasVat : false,
         specUrl: quotationFiles[0] ? quotationFiles[0].name : '',
-        quotationFiles: quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, url: f.url || f.previewUrl })),
-        generalAttachments: processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'GENERAL' })),
-        images: processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'IMAGE' })),
+        quotationFiles: quotationFiles.map(f => ({ ...f, name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, url: f.url || f.previewUrl })),
+        generalAttachments: processedImageFiles.map(f => ({ ...f, name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'GENERAL' })),
+        images: processedImageFiles.map(f => ({ ...f, name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'IMAGE' })),
         attachments: [
-          ...quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'QUOTATION' })),
-          ...processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'GENERAL' }))
+          ...quotationFiles.map(f => ({ ...f, name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'QUOTATION' })),
+          ...processedImageFiles.map(f => ({ ...f, name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'GENERAL' }))
         ],
         note,
         items: processedItems,
@@ -1073,31 +1073,59 @@ export default function PRCreateView({
         submittedAt: isDraft ? (editingPR?.submittedAt || null) : (editingPR?.submittedAt || nowIso)
       };
 
+      let newPR;
       if (editingPR) {
         if (updatePR) {
-          await updatePR(editingPR.id, prPayload, isDraft);
+          newPR = await updatePR(editingPR.id, prPayload, isDraft);
         } else {
-          await apiService.updatePR(editingPR.id, prPayload, currentRole, isDraft);
+          newPR = await apiService.updatePR(editingPR.id, prPayload, currentRole, isDraft);
         }
         if (clearEditingPR) clearEditingPR();
-        modalService.success(isDraft ? 'บันทึกแบบร่างเรียบร้อย' : 'แก้ไขและยื่นส่งใบขอซื้อ (PR) สำเร็จ');
       } else {
         if (handleSavePR) {
-          await handleSavePR(prPayload, isDraft);
+          newPR = await handleSavePR(prPayload, isDraft);
         } else if (createPR) {
-          await createPR(prPayload, isDraft);
+          newPR = await createPR(prPayload, isDraft);
         } else {
-          await apiService.createPR(prPayload, currentRole, isDraft);
+          newPR = await apiService.createPR(prPayload, currentRole, isDraft);
         }
         if (clearPreselectedProduct) clearPreselectedProduct();
-        modalService.success(isDraft ? 'บันทึกแบบร่างสำเร็จ' : 'สร้างและยื่นส่งใบขอซื้อ (PR) สำเร็จ');
       }
 
-      if (onRefresh) await onRefresh();
-      onNavigate('pr-list');
+      // Optimistic Local Update
+      if (newPR && context?.setPRs) {
+        context.setPRs(prev => {
+          if (!Array.isArray(prev)) return [newPR];
+          const exists = prev.some(p => p.id === newPR.id);
+          if (exists) return prev.map(p => p.id === newPR.id ? newPR : p);
+          return [newPR, ...prev];
+        });
+      }
+
+      // Wait for user to click OK on Success Modal, then navigate instantly and sync later
+      const msg = editingPR 
+        ? (isDraft ? 'บันทึกแบบร่างเรียบร้อย' : 'แก้ไขและยื่นส่งใบขอซื้อ (PR) สำเร็จ')
+        : (isDraft ? 'บันทึกแบบร่างสำเร็จ' : 'สร้างและยื่นส่งใบขอซื้อ (PR) สำเร็จ');
+      
+      setIsSubmitting(false); // Enable UI immediately
+      
+      modalService.success(msg).then(() => {
+        // 1. Instant redirect
+        onNavigate('pr-list');
+        
+        // 2. Start background sync WITHOUT blocking the UI (delay to let page transition finish)
+        setTimeout(() => {
+          if (context?.fetchBootstrapData) {
+            context.fetchBootstrapData().catch(err => console.warn('Background sync error:', err));
+          } else if (onRefresh) {
+            onRefresh().catch && onRefresh().catch(err => console.warn('Background sync error:', err));
+          }
+        }, 500);
+      });
+      
+      return;
     } catch (err) {
       modalService.error(editingPR ? 'เกิดข้อผิดพลาดในการแก้ไข PR' : 'เกิดข้อผิดพลาดในการสร้าง PR', err.message);
-    } finally {
       setIsSubmitting(false);
     }
   };

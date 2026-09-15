@@ -1,3 +1,5 @@
+var _pendingAttachments = [];
+
 /**
  * @file DriveService.gs
  * @description Google Drive Document & Evidence Storage Service
@@ -331,12 +333,10 @@ function uploadBase64Image(base64Data, fileName, mimeType, category, docNo, docT
   var lh3Url = 'https://lh3.googleusercontent.com/d/' + fileId;
   var viewUrl = file.getUrl();
 
-  // Try recording in Attachments sheet
+  // Accumulate in global array for batch insert later
   try {
-    if (typeof ensureAttachmentsSheet === 'function') {
-      ensureAttachmentsSheet();
-    }
-    appendRecord(SHEET_NAMES.ATTACHMENTS, {
+    if (typeof ensureAttachmentsSheet === 'function') ensureAttachmentsSheet();
+    _pendingAttachments.push({
       id: 'ATT-' + Utilities.getUuid().slice(0, 8),
       fileId: fileId,
       fileName: cleanFileName,
@@ -355,7 +355,7 @@ function uploadBase64Image(base64Data, fileName, mimeType, category, docNo, docT
       uploadedAt: new Date().toISOString()
     });
   } catch (attErr) {
-    console.warn('[uploadBase64Image] Attachments sheet record warning: ' + attErr.message);
+    console.warn('[uploadBase64Image] Failed to queue attachment: ' + attErr.message);
   }
 
   return {
@@ -486,7 +486,49 @@ function processItemImages(items, docNo, docType) {
  * @returns {Array<Object>}
  */
 function processDocumentAttachments(attachments, category, docNo, docType) {
-  if (!Array.isArray(attachments) || attachments.length === 0) return attachments;
+  // 1. Reconcile (remove deleted old attachments from the database)
+  if (docNo) {
+    try {
+      if (typeof ensureAttachmentsSheet === 'function') ensureAttachmentsSheet();
+      var allAtts = batchReadRecords(SHEET_NAMES.ATTACHMENTS);
+      var validKeys = {};
+      if (Array.isArray(attachments)) {
+        attachments.forEach(function(att) {
+           if (att && att.fileId) validKeys[att.fileId] = true;
+           if (att && att.url) validKeys[att.url] = true;
+           if (att && att.viewUrl) validKeys[att.viewUrl] = true;
+           if (att && att.directUrl) validKeys[att.directUrl] = true;
+        });
+      }
+      
+      var filteredAtts = allAtts.filter(function(row) {
+        var rDocNo = String(row.docNo || '').trim().toUpperCase();
+        var rPoNo = String(row.poNumber || '').trim().toUpperCase();
+        var rPrNo = String(row.prNo || '').trim().toUpperCase();
+        var targetDocNo = String(docNo).trim().toUpperCase();
+        
+        var isThisDoc = (rDocNo === targetDocNo || rPoNo === targetDocNo || rPrNo === targetDocNo);
+        if (!isThisDoc) return true; // keep files belonging to other documents
+        
+        // This row belongs to the current docNo, check if it's still in the valid list
+        var isKept = false;
+        if (row.fileId && validKeys[row.fileId]) isKept = true;
+        if (row.viewUrl && validKeys[row.viewUrl]) isKept = true;
+        if (row.directUrl && validKeys[row.directUrl]) isKept = true;
+        
+        return isKept;
+      });
+      
+      if (filteredAtts.length < allAtts.length) {
+        batchWriteRecords(SHEET_NAMES.ATTACHMENTS, filteredAtts);
+        console.info('[processDocumentAttachments] Reconciled attachments for ' + docNo + ', deleted ' + (allAtts.length - filteredAtts.length) + ' old files');
+      }
+    } catch (e) {
+      console.warn('[processDocumentAttachments] Reconciliation error: ' + e.message);
+    }
+  }
+
+  if (!Array.isArray(attachments) || attachments.length === 0) return [];
   return attachments.map(function(att, idx) {
     if (!att || typeof att !== 'object') return att;
     var rawUrl = att.url || att.previewUrl || att.dataUrl || '';

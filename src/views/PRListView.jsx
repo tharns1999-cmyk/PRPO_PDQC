@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
 import { storageService } from '../services/storageService';
-
+import { sortByNewestFirst } from '../utils/sortUtils';
 const PR_TABS = [
   { id: 'ALL', label: 'ทั้งหมด', filter: () => true },
   { id: 'PENDING_REVIEW', label: 'รอตรวจสอบ (Asst. Mgr)', filter: pr => ['SUBMITTED', 'REJECTED_TO_L2'].includes(pr.status) },
@@ -215,7 +215,7 @@ export default function PRListView({
   // Combined Search & Filter Logic for Table
   const filteredPRs = useMemo(() => {
     const activeTab = PR_TABS.find(t => t.id === filterStatus) || PR_TABS[0];
-    return scopedPRs.filter(pr => {
+    const filtered = scopedPRs.filter(pr => {
       // Status filter via active tab logic
       const matchesStatus = activeTab.filter(pr);
 
@@ -232,17 +232,7 @@ export default function PRListView({
       return matchesStatus && matchesSearch;
     });
 
-    // Sort Descending by createdAt or prNo
-    return filtered.sort((a, b) => {
-      const dateA = new Date(a.createdAt || a.requestedDate || 0).getTime();
-      const dateB = new Date(b.createdAt || b.requestedDate || 0).getTime();
-      if (dateA !== dateB) return dateB - dateA;
-      const prA = String(a.prNo || '').toLowerCase();
-      const prB = String(b.prNo || '').toLowerCase();
-      if (prA < prB) return 1;
-      if (prA > prB) return -1;
-      return 0;
-    });
+    return filtered.sort(sortByNewestFirst);
   }, [scopedPRs, filterStatus, searchQuery]);
 
   // Tab Badge Counters (scoped to period & dept)
