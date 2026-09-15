@@ -29,7 +29,7 @@ const SCHEMA_DEFINITIONS = Object.freeze({
     'id', 'code', 'name', 'isActive', 'createdAt'
   ],
   [SHEET_NAMES.USERS]: [
-    'id', 'employeeId', 'username', 'password', 'email', 'name', 'employeeName', 'displayName', 
+    'id', 'employeeId', 'username', 'password', 'email', 'name', 'employeeName', 'displayName', 'position',
     'department', 'primaryDepartment', 'departments', 'allowedDepartments', 
     'roleId', 'canonicalRole', 'level', 'status', 'isActive', 'description', 'signature', 'updatedAt'
   ],
@@ -189,7 +189,27 @@ function initializeSystem() {
     console.warn(`[Initializer] Drive setup note: ${driveErr.message}`);
   }
 
-  // 4. Mark system initialized in properties
+  // 4. Seed baseline Master Data & Products (20 items: 10 PD, 10 QC)
+  try {
+    if (typeof seedProductsData === 'function') {
+      report.productsSeeded = seedProductsData();
+      console.info(`[Initializer] Seeded products: ${report.productsSeeded}`);
+    }
+  } catch (seedErr) {
+    console.warn(`[Initializer] Products seed note: ${seedErr.message}`);
+  }
+
+  // 5. Purge ALL department entity and migrate user departments
+  try {
+    if (typeof purgeAllDepartmentEntity === 'function') {
+      report.purgeAllMigration = purgeAllDepartmentEntity();
+      console.info('[Initializer] Purge ALL department migration verified.');
+    }
+  } catch (purgeErr) {
+    console.warn(`[Initializer] Purge ALL migration note: ${purgeErr.message}`);
+  }
+
+  // 6. Mark system initialized in properties
   setScriptProperty(CONFIG.PROPERTY_KEYS.SYSTEM_INITIALIZED, 'true');
 
   console.info('[Initializer] PRPO_PDQC system initialization completed successfully.');

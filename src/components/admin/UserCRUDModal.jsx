@@ -37,6 +37,7 @@ export default function UserCRUDModal({
   const [name, setName] = useState(user?.name || user?.displayName || '');
   const [employeeName, setEmployeeName] = useState(user?.employeeName || user?.name || '');
   const [username, setUsername] = useState(user?.username || '');
+  const [position, setPosition] = useState(user?.position || user?.title || '');
   const [selectedRoleId, setSelectedRoleId] = useState(normalizeRoleId(user?.roleId));
   const [primaryDept, setPrimaryDept] = useState(user?.primaryDepartment || user?.department || 'ALL');
   
@@ -135,13 +136,14 @@ export default function UserCRUDModal({
         name: name.trim(),
         employeeName: employeeName.trim() || name.trim(),
         displayName: name.trim(),
+        position: position.trim(),
         primaryDepartment: primaryDept,
         department: primaryDept,
         assignedDepartments,
         allowedDepartments: deptsToSave,
         roleId: selectedRole.id,
         positionKey: selectedRole.id,
-        title: selectedRole.title,
+        title: position.trim() || selectedRole.title,
         level: selectedRole.level,
         status,
         description: user?.description || `${selectedRole.title} ประจำแผนก ${assignedDepartments.join(', ')}`
@@ -263,6 +265,21 @@ export default function UserCRUDModal({
                 className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-slate-50/50 focus:bg-white disabled:opacity-60 transition-all font-mono"
               />
             </div>
+          </div>
+
+          {/* Position Field */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-indigo-600" />
+              <span>ตำแหน่ง (Position)</span>
+            </label>
+            <input
+              type="text"
+              value={position}
+              onChange={e => setPosition(e.target.value)}
+              placeholder="เช่น วิศวกรฝ่ายผลิต หรือ เจ้าหน้าที่จัดซื้อ"
+              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-slate-50/50 focus:bg-white transition-all"
+            />
           </div>
 
           {/* Role & Position Selection */}

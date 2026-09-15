@@ -335,98 +335,95 @@ export const storageService = {
     return isGAS();
   },
 
-  // Synchronize entire dataset from Google Sheets backend into local memory cache
+  // Subscriber pattern for Stale-While-Revalidate and real-time state synchronization
+  _listeners: new Set(),
+  subscribe(callback) {
+    if (typeof callback !== 'function') return () => {};
+    this._listeners.add(callback);
+    return () => {
+      this._listeners.delete(callback);
+    };
+  },
+  _notifySubscribers(event, data) {
+    this._listeners.forEach(cb => {
+      try {
+        cb(event, data);
+      } catch (err) {
+        console.warn('[StorageService] subscriber callback error:', err);
+      }
+    });
+  },
+
+  // Apply consolidated batch payload from apiGetInitialPayload
+  applyInitialPayload(payload) {
+    if (!payload || typeof payload !== 'object') return false;
+    if (Array.isArray(payload.products)) this.saveProducts(payload.products);
+    if (Array.isArray(payload.vendors)) this.saveVendors(payload.vendors);
+    if (Array.isArray(payload.storageLocations)) this.saveStorageLocations(payload.storageLocations);
+    if (Array.isArray(payload.usageUnits)) this.saveUsageUnits(payload.usageUnits);
+    if (Array.isArray(payload.departments)) this.saveDepartments(payload.departments);
+    if (Array.isArray(payload.users)) this.saveUsers(payload.users);
+    if (Array.isArray(payload.prs)) this.savePRs(payload.prs);
+    if (Array.isArray(payload.pos)) this.savePOs(payload.pos);
+    if (Array.isArray(payload.stockLogs)) this.saveStockLogs(payload.stockLogs);
+    if (payload.budgets && typeof payload.budgets === 'object') this.saveBudgets(payload.budgets);
+    if (Array.isArray(payload.budgetTransactions)) this.saveBudgetTransactions(payload.budgetTransactions);
+    if (Array.isArray(payload.auditLogs)) this.saveAuditLogs(payload.auditLogs);
+    if (Array.isArray(payload.notifications)) this.saveNotifications(payload.notifications);
+    if (Array.isArray(payload.signatures) && typeof this.saveSignatures === 'function') {
+      this.saveSignatures(payload.signatures);
+    }
+    return true;
+  },
+
+  // Synchronize entire dataset from Google Sheets backend into local memory cache via Batch RPC
   async syncAllFromGAS() {
     if (!isGAS()) return false;
     try {
-      console.info('[StorageService] Syncing all collections from Google Sheets backend...');
-      const results = await Promise.allSettled([
-        callGAS('apiGetProducts'),
-        callGAS('apiGetVendors'),
-        callGAS('apiGetStorageLocations'),
-        callGAS('apiGetUsageUnits'),
-        callGAS('apiGetDepartments'),
-        callGAS('apiGetUsers'),
-        callGAS('apiGetPRs'),
-        callGAS('apiGetPOs'),
-        callGAS('apiGetStockLogs'),
-        callGAS('apiGetBudgets'),
-        callGAS('apiGetBudgetTransactions'),
-        callGAS('apiGetAuditLogs'),
-        callGAS('apiGetNotifications')
-      ]);
-
-      const [
-        prodsRes,
-        vendorsRes,
-        locsRes,
-        unitsRes,
-        deptsRes,
-        usersRes,
-        prsRes,
-        posRes,
-        logsRes,
-        budgetsRes,
-        txsRes,
-        auditsRes,
-        notifsRes
-      ] = results;
-
-      if (prodsRes.status === 'fulfilled' && Array.isArray(prodsRes.value)) {
-        this.saveProducts(prodsRes.value);
+      console.info('[StorageService] Syncing all collections via Batch RPC (apiGetInitialPayload)...');
+      const payload = await callGAS('apiGetInitialPayload');
+      if (payload && typeof payload === 'object') {
+        this.applyInitialPayload(payload);
+        this._notifySubscribers('revalidate', payload);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('prpo_data_revalidated', { detail: payload }));
+        }
+        console.info('[StorageService] Google Sheets batch sync complete.');
+        return payload;
       }
-      if (vendorsRes.status === 'fulfilled' && Array.isArray(vendorsRes.value)) {
-        this.saveVendors(vendorsRes.value);
-      }
-      if (locsRes.status === 'fulfilled' && Array.isArray(locsRes.value)) {
-        this.saveStorageLocations(locsRes.value);
-      }
-      if (unitsRes.status === 'fulfilled' && Array.isArray(unitsRes.value)) {
-        this.saveUsageUnits(unitsRes.value);
-      }
-      if (deptsRes.status === 'fulfilled' && Array.isArray(deptsRes.value)) {
-        this.saveDepartments(deptsRes.value);
-      }
-      if (usersRes.status === 'fulfilled' && Array.isArray(usersRes.value)) {
-        this.saveUsers(usersRes.value);
-      }
-      if (prsRes.status === 'fulfilled' && Array.isArray(prsRes.value)) {
-        this.savePRs(prsRes.value);
-      }
-      if (posRes.status === 'fulfilled' && Array.isArray(posRes.value)) {
-        this.savePOs(posRes.value);
-      }
-      if (logsRes.status === 'fulfilled' && Array.isArray(logsRes.value)) {
-        this.saveStockLogs(logsRes.value);
-      }
-      if (budgetsRes.status === 'fulfilled' && budgetsRes.value && typeof budgetsRes.value === 'object') {
-        this.saveBudgets(budgetsRes.value);
-      }
-      if (txsRes.status === 'fulfilled' && Array.isArray(txsRes.value)) {
-        this.saveBudgetTransactions(txsRes.value);
-      }
-      if (auditsRes.status === 'fulfilled' && Array.isArray(auditsRes.value)) {
-        this.saveAuditLogs(auditsRes.value);
-      }
-      if (notifsRes.status === 'fulfilled' && Array.isArray(notifsRes.value)) {
-        this.saveNotifications(notifsRes.value);
-      }
-
-      console.info('[StorageService] Google Sheets sync complete.');
-      return true;
+      return false;
     } catch (err) {
-      console.warn('[StorageService] syncAllFromGAS error:', err.message);
+      console.warn('[StorageService] syncAllFromGAS batch error:', err.message);
       return false;
     }
   },
 
   // Initialize storage from Google Sheets backend or Local Node.js Backend with fallback to LocalStorage
+  // Supports Stale-While-Revalidate: Instant render with cached state + background sync
   async init() {
     this.hydrateFromClientStorage();
     _migrateLocalStorageCache();
 
     if (isGAS()) {
-      await this.syncAllFromGAS();
+      const hasCachedData = Boolean(
+        (_cache[STORAGE_KEYS.PRODUCTS]?.length > 0) ||
+        (_cache[STORAGE_KEYS.USERS]?.length > 0)
+      );
+
+      // Start background sync from Google Sheets via consolidated batch RPC
+      const syncPromise = this.syncAllFromGAS().then(payload => {
+        _apiReady = true;
+        return payload;
+      });
+
+      if (hasCachedData) {
+        // Stale-While-Revalidate: Return immediately to allow sub-second instant UI render
+        _apiReady = true;
+        return;
+      }
+
+      // Cold start: await single batch payload before rendering
+      await syncPromise;
       _apiReady = true;
       return;
     }
@@ -571,7 +568,17 @@ export const storageService = {
       } catch (e) {}
     }
 
-    const products = data && data.length > 0 ? data : initialProducts;
+    const inGAS = isGAS();
+    // In GAS Production mode: Google Sheet is SSOT 100% - Never fallback to initialProducts when empty
+    const products = data !== null && data !== undefined
+      ? data
+      : (inGAS ? [] : initialProducts);
+
+    if (inGAS && (!products || products.length === 0)) {
+      _resultCache.set(_cacheKey, []);
+      _dirtyKeys.delete(_cacheKey);
+      return [];
+    }
     
     let needsSave = false;
     const migrated = products.map(p => {
@@ -730,7 +737,7 @@ export const storageService = {
     this.saveProducts(updated);
 
     if (isGAS()) {
-      callGAS('apiUpsertProduct', prodObj).catch(e => console.warn('[StorageService] GAS apiUpsertProduct background error:', e.message));
+      callGAS('apiSaveMasterItem', 'Products', prodObj).catch(e => console.warn('[StorageService] GAS apiSaveMasterItem background error:', e.message));
     }
 
     return prodObj;
@@ -746,7 +753,7 @@ export const storageService = {
     this.saveProducts(filtered);
 
     if (isGAS()) {
-      callGAS('apiDeleteProduct', productId).catch(e => console.warn('[StorageService] GAS apiDeleteProduct background error:', e.message));
+      callGAS('apiDeleteMasterItem', 'Products', productId).catch(e => console.warn('[StorageService] GAS apiDeleteMasterItem background error:', e.message));
     }
 
     // Also clean up any stock logs tied to this product
@@ -820,7 +827,7 @@ export const storageService = {
     this.saveUsageUnits(units);
 
     if (isGAS()) {
-      callGAS('apiUpsertUsageUnit', updatedUnit).catch(e => console.warn('[StorageService] GAS apiUpsertUsageUnit error:', e.message));
+      callGAS('apiSaveMasterItem', 'UsageUnits', updatedUnit).catch(e => console.warn('[StorageService] GAS apiSaveMasterItem error:', e.message));
     }
 
     return updatedUnit;
@@ -831,7 +838,7 @@ export const storageService = {
     this.saveUsageUnits(filtered);
 
     if (isGAS()) {
-      callGAS('apiDeleteUsageUnit', unitId).catch(e => console.warn('[StorageService] GAS apiDeleteUsageUnit error:', e.message));
+      callGAS('apiDeleteMasterItem', 'UsageUnits', unitId).catch(e => console.warn('[StorageService] GAS apiDeleteMasterItem error:', e.message));
     }
 
     return true;
@@ -847,7 +854,12 @@ export const storageService = {
       this.saveDepartments(INITIAL_DEPARTMENTS);
       return INITIAL_DEPARTMENTS;
     }
-    return data;
+    return data.filter(d => {
+      const code = String(d?.code || '').trim().toUpperCase();
+      const id = String(d?.id || '').trim().toUpperCase();
+      const name = String(d?.name || '');
+      return code !== 'ALL' && id !== 'DEPT-ALL' && !name.includes('ส่วนกลาง') && !name.includes('ทุกฝ่าย');
+    });
   },
   saveDepartments(departments) {
     _setItem(STORAGE_KEYS.DEPARTMENTS, departments, true);
@@ -973,7 +985,7 @@ export const storageService = {
     this.saveStorageLocations(locations);
 
     if (isGAS()) {
-      callGAS('apiUpsertStorageLocation', updatedLoc).catch(e => console.warn('[StorageService] GAS apiUpsertStorageLocation error:', e.message));
+      callGAS('apiSaveMasterItem', 'StorageLocations', updatedLoc).catch(e => console.warn('[StorageService] GAS apiSaveMasterItem error:', e.message));
     }
 
     // Cascading Sync on Update: sync all products referencing this locationId
@@ -1038,7 +1050,7 @@ export const storageService = {
     this.saveStorageLocations(filtered);
 
     if (isGAS()) {
-      callGAS('apiDeleteStorageLocation', locationId).catch(e => console.warn('[StorageService] GAS apiDeleteStorageLocation error:', e.message));
+      callGAS('apiDeleteMasterItem', 'StorageLocations', locationId).catch(e => console.warn('[StorageService] GAS apiDeleteMasterItem error:', e.message));
     }
 
     return true;
@@ -1078,10 +1090,26 @@ export const storageService = {
     this.saveVendors(updated);
 
     if (isGAS()) {
-      callGAS('apiUpsertVendor', vendorObj).catch(e => console.warn('[StorageService] GAS apiUpsertVendor error:', e.message));
+      callGAS('apiSaveMasterItem', 'Vendors', vendorObj).catch(e => console.warn('[StorageService] GAS apiSaveMasterItem error:', e.message));
     }
 
     return vendorObj;
+  },
+  deleteVendor(vendorId) {
+    const targetStr = String(vendorId || '').trim().toLowerCase();
+    const current = this.getVendors();
+    const filtered = current.filter(v => {
+      const vId = String(v.id || '').trim().toLowerCase();
+      const vCode = String(v.code || '').trim().toLowerCase();
+      return vId !== targetStr && vCode !== targetStr;
+    });
+    this.saveVendors(filtered);
+
+    if (isGAS()) {
+      callGAS('apiDeleteMasterItem', 'Vendors', vendorId).catch(e => console.warn('[StorageService] GAS apiDeleteMasterItem error:', e.message));
+    }
+
+    return true;
   },
 
   // PRs (with Lazy Migration)
@@ -2113,15 +2141,21 @@ export const storageService = {
         if (budgets[code]) sanitized[code] = budgets[code];
       });
       Object.keys(budgets).forEach(code => {
-        if (!sanitized[code]) sanitized[code] = budgets[code];
+        if (code !== 'ALL' && !sanitized[code]) sanitized[code] = budgets[code];
       });
     }
     return sanitized;
   },
   saveBudgets(budgets) {
-    _setItem(STORAGE_KEYS.BUDGETS, budgets);
+    const cleanBudgets = {};
+    if (budgets && typeof budgets === 'object') {
+      Object.keys(budgets).forEach(k => {
+        if (k !== 'ALL') cleanBudgets[k] = budgets[k];
+      });
+    }
+    _setItem(STORAGE_KEYS.BUDGETS, cleanBudgets);
     if (isGAS()) {
-      callGAS('apiSaveBudgets', budgets).catch(e => console.warn('[StorageService] GAS apiSaveBudgets error:', e.message));
+      callGAS('apiSaveBudgets', cleanBudgets).catch(e => console.warn('[StorageService] GAS apiSaveBudgets error:', e.message));
     }
   },
 

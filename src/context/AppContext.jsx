@@ -385,6 +385,83 @@ export function AppProvider({ children }) {
     loadAllData();
   }, [loadAllData]);
 
+  // Subscribe to background revalidation (Stale-While-Revalidate)
+  useEffect(() => {
+    const unsub = storageService.subscribe?.((event, payload) => {
+      if (event === 'revalidate' && payload && typeof payload === 'object') {
+        if (Array.isArray(payload.products)) setProducts(getUnifiedProductList(payload.products));
+        if (Array.isArray(payload.vendors)) setVendors(payload.vendors);
+        if (Array.isArray(payload.storageLocations)) setStorageLocations(payload.storageLocations);
+        if (Array.isArray(payload.usageUnits)) setUsageUnits(payload.usageUnits);
+        if (Array.isArray(payload.departments)) setDepartments(payload.departments);
+        if (Array.isArray(payload.users) && payload.users.length > 0) {
+          setUsers(payload.users);
+          setCurrentUser(prevUser => {
+            if (!prevUser) return prevUser;
+            const fresh = payload.users.find(u => u.id === prevUser.id || u.username === prevUser.username);
+            if (fresh) {
+              const permissions = resolveUserPermissions(fresh);
+              const isAdmin = fresh.roleId === 'ADMIN' || fresh.level >= 99 || fresh.username === 'admin';
+              const cleanDepts = getUserDepartments(fresh);
+              const userDepts = cleanDepts.length > 0 ? cleanDepts : (fresh.department ? [fresh.department] : ['PD']);
+              const updatedSession = { 
+                ...prevUser, 
+                ...fresh, 
+                ...permissions, 
+                departments: userDepts,
+                assignedDepartments: fresh.assignedDepartments || userDepts,
+                allowedDepartments: fresh.allowedDepartments || userDepts,
+                primaryDepartment: fresh.primaryDepartment || userDepts[0] || 'PD',
+                department: fresh.department || userDepts[0] || 'PD',
+                role: isAdmin ? 'admin' : (fresh.roleId || 'user').toLowerCase(),
+                rolePermissions: permissions 
+              };
+              setCurrentRole(updatedSession);
+              try { localStorage.setItem('prpo_auth_session', JSON.stringify(updatedSession)); } catch {}
+              return updatedSession;
+            }
+            return prevUser;
+          });
+        }
+        if (Array.isArray(payload.prs)) {
+          const seenPRKeys = new Set();
+          const uniquePRs = payload.prs.filter(item => {
+            const idKey = item.id;
+            const noKey = item.prNo || item.prNumber;
+            if ((idKey && seenPRKeys.has(idKey)) || (noKey && seenPRKeys.has(noKey))) return false;
+            if (idKey) seenPRKeys.add(idKey);
+            if (noKey) seenPRKeys.add(noKey);
+            return true;
+          });
+          setPRs(uniquePRs);
+        }
+        if (Array.isArray(payload.pos)) {
+          const seenPOKeys = new Set();
+          const uniquePOs = payload.pos.filter(item => {
+            const idKey = item.id;
+            const noKey = item.poNo || item.poNumber;
+            if ((idKey && seenPOKeys.has(idKey)) || (noKey && seenPOKeys.has(noKey))) return false;
+            if (idKey) seenPOKeys.add(idKey);
+            if (noKey) seenPOKeys.add(noKey);
+            return true;
+          });
+          setPOs(uniquePOs);
+        }
+        if (Array.isArray(payload.stockLogs)) setStockLogs(payload.stockLogs);
+        if (Array.isArray(payload.budgetTransactions)) setBudgetTransactions(payload.budgetTransactions);
+        if (Array.isArray(payload.notifications)) {
+          setNotifications(payload.notifications);
+        }
+        const bSummary = workflowEngine.calculateBudgetSummary();
+        if (bSummary) setBudgetSummary(bSummary);
+        setIsDataLoading(false);
+      }
+    });
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
+
   // Synchronize current role to storageService without triggering circular data fetch
   useEffect(() => {
     if (currentUser) {

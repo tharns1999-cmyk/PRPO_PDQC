@@ -7,17 +7,20 @@ import { clearMockTransactions, resetMockTransactions } from '../utils/dataReset
 // API Service Layer for Data & Operations
 export const apiService = {
   // --- Audit Trail Operations ---
-  async getAuditLogs(filters) {
+  async getAuditLogs(filters, forceFetch = false) {
     if (isGAS()) {
-      try {
-        const gasLogs = await callGAS('apiGetAuditLogs');
-        if (Array.isArray(gasLogs)) {
-          storageService.saveAuditLogs(gasLogs);
-          return gasLogs;
+      if (forceFetch) {
+        try {
+          const gasLogs = await callGAS('apiGetAuditLogs');
+          if (Array.isArray(gasLogs)) {
+            storageService.saveAuditLogs(gasLogs);
+            return gasLogs;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetAuditLogs error:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetAuditLogs error:', e.message);
       }
+      return auditService.getLogs(filters);
     }
     return auditService.getLogs(filters);
   },
@@ -25,16 +28,32 @@ export const apiService = {
     return auditService.clearLogs();
   },
   // --- Data Getters ---
-  async getProducts() {
+  async getInitialPayload() {
     if (isGAS()) {
       try {
-        const data = await callGAS('apiGetProducts');
-        if (Array.isArray(data)) {
-          storageService.saveProducts(data);
-          return data;
+        const payload = await callGAS('apiGetInitialPayload');
+        if (payload && typeof payload === 'object') {
+          storageService.applyInitialPayload(payload);
+          return payload;
         }
       } catch (e) {
-        console.warn('[apiService] GAS apiGetProducts fallback:', e.message);
+        console.warn('[apiService] GAS apiGetInitialPayload error:', e.message);
+      }
+    }
+    return null;
+  },
+  async getProducts(forceFetch = false) {
+    if (isGAS()) {
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetProducts');
+          if (Array.isArray(data)) {
+            storageService.saveProducts(data);
+            return data;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetProducts fallback:', e.message);
+        }
       }
       return storageService.getProducts();
     }
@@ -52,16 +71,18 @@ export const apiService = {
     }
     return storageService.getProducts();
   },
-  async getVendors() {
+  async getVendors(forceFetch = false) {
     if (isGAS()) {
-      try {
-        const data = await callGAS('apiGetVendors');
-        if (Array.isArray(data)) {
-          storageService.saveVendors(data);
-          return data;
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetVendors');
+          if (Array.isArray(data)) {
+            storageService.saveVendors(data);
+            return data;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetVendors fallback:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetVendors fallback:', e.message);
       }
       return storageService.getVendors();
     }
@@ -79,16 +100,18 @@ export const apiService = {
     }
     return storageService.getVendors();
   },
-  async getStorageLocations() {
+  async getStorageLocations(forceFetch = false) {
     if (isGAS()) {
-      try {
-        const data = await callGAS('apiGetStorageLocations');
-        if (Array.isArray(data)) {
-          storageService.saveStorageLocations(data);
-          return data;
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetStorageLocations');
+          if (Array.isArray(data)) {
+            storageService.saveStorageLocations(data);
+            return data;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetStorageLocations fallback:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetStorageLocations fallback:', e.message);
       }
       return storageService.getStorageLocations();
     }
@@ -106,19 +129,21 @@ export const apiService = {
     }
     return storageService.getStorageLocations();
   },
-  async getUsageUnits(department) {
+  async getUsageUnits(department, forceFetch = false) {
     if (isGAS()) {
-      try {
-        const data = await callGAS('apiGetUsageUnits');
-        if (Array.isArray(data)) {
-          storageService.saveUsageUnits(data);
-          if (department && department !== 'ALL') {
-            return data.filter(u => u.department === department);
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetUsageUnits');
+          if (Array.isArray(data)) {
+            storageService.saveUsageUnits(data);
+            if (department && department !== 'ALL') {
+              return data.filter(u => u.department === department);
+            }
+            return data;
           }
-          return data;
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetUsageUnits fallback:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetUsageUnits fallback:', e.message);
       }
       return storageService.getUsageUnits(department);
     }
@@ -141,16 +166,18 @@ export const apiService = {
     }
     return storageService.getUsageUnits(department);
   },
-  async getUsers() {
+  async getUsers(forceFetch = false) {
     if (isGAS()) {
-      try {
-        const data = await callGAS('apiGetUsers');
-        if (Array.isArray(data)) {
-          storageService.saveUsers(data);
-          return data;
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetUsers');
+          if (Array.isArray(data)) {
+            storageService.saveUsers(data);
+            return data;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetUsers fallback:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetUsers fallback:', e.message);
       }
       return storageService.getUsers();
     }
@@ -168,16 +195,18 @@ export const apiService = {
     }
     return storageService.getUsers();
   },
-  async getDepartments() {
+  async getDepartments(forceFetch = false) {
     if (isGAS()) {
-      try {
-        const data = await callGAS('apiGetDepartments');
-        if (Array.isArray(data)) {
-          storageService.saveDepartments(data);
-          return data;
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetDepartments');
+          if (Array.isArray(data)) {
+            storageService.saveDepartments(data);
+            return data;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetDepartments fallback:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetDepartments fallback:', e.message);
       }
       return storageService.getDepartments();
     }
@@ -195,23 +224,25 @@ export const apiService = {
     }
     return storageService.getDepartments();
   },
-  async getPRs() {
+  async getPRs(forceFetch = false) {
     if (isGAS()) {
-      try {
-        const data = await callGAS('apiGetPRs');
-        if (Array.isArray(data)) {
-          const seen = new Set();
-          const unique = data.filter(p => {
-            const key = p.id || p.prNo;
-            if (!key || seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-          storageService.savePRs(unique);
-          return unique;
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetPRs');
+          if (Array.isArray(data)) {
+            const seen = new Set();
+            const unique = data.filter(p => {
+              const key = p.id || p.prNo;
+              if (!key || seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            storageService.savePRs(unique);
+            return unique;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetPRs fallback:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetPRs fallback:', e.message);
       }
       return storageService.getPRs();
     }
@@ -246,23 +277,25 @@ export const apiService = {
       return true;
     });
   },
-  async getPOs() {
+  async getPOs(forceFetch = false) {
     if (isGAS()) {
-      try {
-        const data = await callGAS('apiGetPOs');
-        if (Array.isArray(data)) {
-          const seen = new Set();
-          const unique = data.filter(p => {
-            const key = p.poNo || p.poNumber || p.id;
-            if (!key || seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-          storageService.savePOs(unique);
-          return unique;
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetPOs');
+          if (Array.isArray(data)) {
+            const seen = new Set();
+            const unique = data.filter(p => {
+              const key = p.poNo || p.poNumber || p.id;
+              if (!key || seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            storageService.savePOs(unique);
+            return unique;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetPOs fallback:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetPOs fallback:', e.message);
       }
       return storageService.getPOs();
     }
@@ -297,16 +330,18 @@ export const apiService = {
       return true;
     });
   },
-  async getStockLogs() {
+  async getStockLogs(forceFetch = false) {
     if (isGAS()) {
-      try {
-        const data = await callGAS('apiGetStockLogs');
-        if (Array.isArray(data)) {
-          storageService.saveStockLogs(data);
-          return data;
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetStockLogs');
+          if (Array.isArray(data)) {
+            storageService.saveStockLogs(data);
+            return data;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetStockLogs fallback:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetStockLogs fallback:', e.message);
       }
       return storageService.getStockLogs();
     }
@@ -324,16 +359,18 @@ export const apiService = {
     }
     return storageService.getStockLogs();
   },
-  async getBudgets() {
+  async getBudgets(forceFetch = false) {
     if (isGAS()) {
-      try {
-        const data = await callGAS('apiGetBudgets');
-        if (data && typeof data === 'object') {
-          storageService.saveBudgets(data);
-          return data;
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetBudgets');
+          if (data && typeof data === 'object') {
+            storageService.saveBudgets(data);
+            return data;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetBudgets fallback:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetBudgets fallback:', e.message);
       }
       return storageService.getBudgets();
     }
@@ -351,17 +388,20 @@ export const apiService = {
     }
     return storageService.getBudgets();
   },
-  async getNotifications() {
+  async getNotifications(forceFetch = false) {
     if (isGAS()) {
-      try {
-        const data = await callGAS('apiGetNotifications');
-        if (Array.isArray(data)) {
-          return data;
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetNotifications');
+          if (Array.isArray(data)) {
+            storageService.saveNotifications(data);
+            return data;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetNotifications fallback:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetNotifications fallback:', e.message);
       }
-      return [];
+      return storageService.getNotifications();
     }
     try {
       const res = await fetch('/api/notifications');
@@ -377,16 +417,18 @@ export const apiService = {
     return [];
   },
   
-  async getBudgetTransactions() {
+  async getBudgetTransactions(forceFetch = false) {
     if (isGAS()) {
-      try {
-        const data = await callGAS('apiGetBudgetTransactions');
-        if (Array.isArray(data)) {
-          storageService.saveBudgetTransactions(data);
-          return data;
+      if (forceFetch) {
+        try {
+          const data = await callGAS('apiGetBudgetTransactions');
+          if (Array.isArray(data)) {
+            storageService.saveBudgetTransactions(data);
+            return data;
+          }
+        } catch (e) {
+          console.warn('[apiService] GAS apiGetBudgetTransactions fallback:', e.message);
         }
-      } catch (e) {
-        console.warn('[apiService] GAS apiGetBudgetTransactions fallback:', e.message);
       }
       return storageService.getBudgetTransactions();
     }
@@ -1017,7 +1059,31 @@ export const apiService = {
       product.id = `PROD-${cat}-${Date.now()}`;
     }
 
-    
+    if (isGAS()) {
+      const saved = await callGAS('apiSaveMasterItem', 'Products', product);
+      const savedProduct = (saved && typeof saved === 'object' && saved.id) ? saved : product;
+      const targetId = String(savedProduct.id || '').trim().toLowerCase();
+      const targetCode = String(savedProduct.code || savedProduct.sku || '').trim().toLowerCase();
+      const updatedList = isUpdate 
+        ? products.map(p => {
+            const pId = String(p.id || '').trim().toLowerCase();
+            const pCode = String(p.code || p.sku || '').trim().toLowerCase();
+            return (pId === targetId || pCode === targetCode) ? savedProduct : p;
+          }) 
+        : [savedProduct, ...products];
+      storageService.saveProducts(updatedList);
+      
+      auditService.logAction({
+        action: isUpdate ? 'PRODUCT_UPDATED' : 'PRODUCT_CREATED',
+        actor: user || 'Admin / Master Manager',
+        department: savedProduct.category || 'PD',
+        docNo: savedProduct.code || savedProduct.id,
+        docType: 'PRODUCT',
+        details: `${isUpdate ? 'แก้ไขข้อมูลสินค้า' : 'เพิ่มสินค้าใหม่'}: [${savedProduct.code || savedProduct.sku || savedProduct.id}] ${savedProduct.name}`
+      });
+
+      return savedProduct;
+    }
 
     try {
       const url = isUpdate ? `/api/products/${encodeURIComponent(product.id)}` : '/api/products';
@@ -1084,6 +1150,32 @@ export const apiService = {
 
   async deleteProduct(productId, user = null) {
     const targetStr = String(productId || '').trim().toLowerCase();
+
+    if (isGAS()) {
+      try {
+        await callGAS('apiDeleteMasterItem', 'Products', productId);
+      } catch (e) {
+        console.warn('[apiService] GAS apiDeleteMasterItem error:', e.message);
+      }
+      const currentProducts = storageService.getProducts();
+      const filtered = currentProducts.filter(p => {
+        const pId = String(p.id || '').trim().toLowerCase();
+        const pCode = String(p.code || '').trim().toLowerCase();
+        return pId !== targetStr && pCode !== targetStr;
+      });
+      storageService.saveProducts(filtered);
+
+      auditService.logAction({
+        action: 'PRODUCT_DELETED',
+        actor: typeof user === 'object' ? (user?.name || user?.username || 'Admin') : (user || 'Admin / Master Manager'),
+        docNo: productId,
+        docType: 'PRODUCT',
+        details: `ลบรายการสินค้า: [${productId}] ออกจากระบบ`
+      });
+
+      return true;
+    }
+
     try {
       await fetch(`/api/products/${encodeURIComponent(productId)}`, { method: 'DELETE' });
     } catch (e) {
@@ -1124,7 +1216,31 @@ export const apiService = {
       vendor.id = `VEN-${Date.now()}`;
     }
 
-    
+    if (isGAS()) {
+      const saved = await callGAS('apiSaveMasterItem', 'Vendors', vendor);
+      const savedVendor = (saved && typeof saved === 'object' && saved.id) ? saved : vendor;
+      const targetId = String(savedVendor.id || '').trim().toLowerCase();
+      const targetCode = String(savedVendor.code || '').trim().toLowerCase();
+      const updatedList = isUpdate 
+        ? vendors.map(v => {
+            const vId = String(v.id || '').trim().toLowerCase();
+            const vCode = String(v.code || '').trim().toLowerCase();
+            return (vId === targetId || vCode === targetCode) ? savedVendor : v;
+          }) 
+        : [savedVendor, ...vendors];
+      storageService.saveVendors(updatedList);
+      
+      auditService.logAction({
+        action: isUpdate ? 'VENDOR_UPDATED' : 'VENDOR_CREATED',
+        actor: user || 'Admin / Vendor Manager',
+        department: savedVendor.category || 'ALL',
+        docNo: savedVendor.code || savedVendor.id,
+        docType: 'VENDOR',
+        details: `${isUpdate ? 'ปรับปรุงข้อมูลผู้ขาย' : 'เพิ่มผู้ขายรายใหม่'} "${savedVendor.name}" (${savedVendor.code || savedVendor.id})`
+      });
+
+      return savedVendor;
+    }
 
     try {
       const url = isUpdate ? `/api/vendors/${encodeURIComponent(vendor.id)}` : '/api/vendors';
@@ -1191,6 +1307,32 @@ export const apiService = {
 
   async deleteVendor(vendorId, user = null) {
     const targetStr = String(vendorId || '').trim().toLowerCase();
+
+    if (isGAS()) {
+      try {
+        await callGAS('apiDeleteMasterItem', 'Vendors', vendorId);
+      } catch (e) {
+        console.warn('[apiService] GAS apiDeleteMasterItem error:', e.message);
+      }
+      const currentVendors = storageService.getVendors();
+      const filtered = currentVendors.filter(v => {
+        const vId = String(v.id || '').trim().toLowerCase();
+        const vCode = String(v.code || '').trim().toLowerCase();
+        return vId !== targetStr && vCode !== targetStr;
+      });
+      storageService.saveVendors(filtered);
+
+      auditService.logAction({
+        action: 'VENDOR_DELETED',
+        actor: typeof user === 'object' ? (user?.name || user?.username || 'Admin') : (user || 'Admin / Master Manager'),
+        docNo: vendorId,
+        docType: 'VENDOR',
+        details: `ลบข้อมูลผู้จัดจำหน่าย "${vendorId}" ออกจากระบบ`
+      });
+
+      return true;
+    }
+
     try {
       await fetch(`/api/vendors/${encodeURIComponent(vendorId)}`, { method: 'DELETE' });
     } catch (e) {
@@ -1232,7 +1374,23 @@ export const apiService = {
       location.id = `LOC-${dept}-${Date.now().toString().slice(-6)}`;
     }
 
-    
+    if (isGAS()) {
+      const saved = await callGAS('apiSaveMasterItem', 'StorageLocations', location);
+      const savedLoc = (saved && typeof saved === 'object' && saved.id) ? saved : location;
+      const updatedList = isUpdate ? locations.map(l => l.id === location.id ? savedLoc : l) : [savedLoc, ...locations];
+      storageService.saveStorageLocations(updatedList);
+      
+      auditService.logAction({
+        action: isUpdate ? 'LOCATION_UPDATED' : 'LOCATION_CREATED',
+        actor: user || 'Admin / Warehouse Manager',
+        department: savedLoc.department || 'ALL',
+        docNo: savedLoc.id,
+        docType: 'LOCATION',
+        details: `${isUpdate ? 'แก้ไขจุดจัดเก็บ' : 'เพิ่มจุดจัดเก็บใหม่'} "${savedLoc.name}" (${savedLoc.department || 'ALL'})`
+      });
+
+      return savedLoc;
+    }
 
     try {
       const url = isUpdate ? `/api/storage-locations/${location.id}` : '/api/storage-locations';
@@ -1277,6 +1435,30 @@ export const apiService = {
   },
 
   async deleteStorageLocation(locationId, options = {}, user = null) {
+    if (isGAS()) {
+      try {
+        await callGAS('apiDeleteMasterItem', 'StorageLocations', locationId);
+      } catch (e) {
+        console.warn('[apiService] GAS apiDeleteMasterItem error:', e.message);
+      }
+      const locations = storageService.getStorageLocations();
+      const loc = locations.find(l => l.id === locationId);
+      storageService.deleteStorageLocation(locationId, options);
+
+      if (loc) {
+        auditService.logAction({
+          action: 'LOCATION_DELETED',
+          actor: user || 'Admin / Warehouse Manager',
+          department: loc.department || 'ALL',
+          docNo: loc.id,
+          docType: 'LOCATION',
+          details: `ลบจุดจัดเก็บสินค้า "${loc.name}" ออกจากระบบ${options.unlinkProducts ? ' (ปลดสินค้าที่ผูกอยู่ออก)' : options.reassignToLocationId ? ' (ย้ายสินค้าไปยังจุดจัดเก็บใหม่)' : ''}`
+        });
+      }
+
+      return true;
+    }
+
     try {
       await fetch(`/api/storage-locations/${locationId}`, { method: 'DELETE' });
     } catch (e) {}
@@ -1318,7 +1500,23 @@ export const apiService = {
       unit.id = `UNIT-${dept}-${Date.now().toString().slice(-6)}`;
     }
 
-    
+    if (isGAS()) {
+      const saved = await callGAS('apiSaveMasterItem', 'UsageUnits', unit);
+      const savedUnit = (saved && typeof saved === 'object' && saved.id) ? saved : unit;
+      const updatedList = isUpdate ? units.map(u => u.id === unit.id ? savedUnit : u) : [...units, savedUnit];
+      storageService.saveUsageUnits(updatedList);
+
+      auditService.logAction({
+        action: isUpdate ? 'USAGE_UNIT_UPDATED' : 'USAGE_UNIT_CREATED',
+        actor: user || 'Admin / Department Manager',
+        department: savedUnit.department || 'PD',
+        docNo: savedUnit.id,
+        docType: 'USAGE_UNIT',
+        details: `${isUpdate ? 'แก้ไขหน่วยเบิกใช้งาน' : 'เพิ่มหน่วยเบิกใช้งานใหม่'} "${savedUnit.name}" (${savedUnit.department})`
+      });
+
+      return savedUnit;
+    }
 
     try {
       const url = isUpdate ? `/api/usage-units/${unit.id}` : '/api/usage-units';
@@ -1363,6 +1561,30 @@ export const apiService = {
   },
 
   async deleteUsageUnit(unitId, user = null) {
+    if (isGAS()) {
+      try {
+        await callGAS('apiDeleteMasterItem', 'UsageUnits', unitId);
+      } catch (e) {
+        console.warn('[apiService] GAS apiDeleteMasterItem error:', e.message);
+      }
+      const units = storageService.getUsageUnits();
+      const unit = units.find(u => u.id === unitId);
+      storageService.deleteUsageUnit(unitId);
+
+      if (unit) {
+        auditService.logAction({
+          action: 'USAGE_UNIT_DELETED',
+          actor: user || 'Admin / Department Manager',
+          department: unit.department || 'PD',
+          docNo: unit.id,
+          docType: 'USAGE_UNIT',
+          details: `ลบหน่วยเบิกใช้งาน "${unit.name}" (${unit.department}) ออกจากระบบ`
+        });
+      }
+
+      return true;
+    }
+
     try {
       await fetch(`/api/usage-units/${unitId}`, { method: 'DELETE' });
     } catch (e) {}
@@ -1411,6 +1633,19 @@ export const apiService = {
       allowedDepartments: allowedDepts
     };
 
+    if (isGAS()) {
+      try {
+        await callGAS('apiSaveUser', userPayload);
+      } catch (e) {
+        console.warn('[apiService] GAS apiSaveUser error, trying apiUpsertUser:', e.message);
+        try {
+          await callGAS('apiUpsertUser', userPayload);
+        } catch (e2) {
+          console.warn('[apiService] GAS apiUpsertUser error:', e2.message);
+        }
+      }
+    }
+
     try {
       const url = isUpdate ? `/api/users/${user.id}` : '/api/users';
       const method = isUpdate ? 'PUT' : 'POST';
@@ -1430,7 +1665,7 @@ export const apiService = {
           department: saved.primaryDepartment || 'ALL',
           docNo: saved.id,
           docType: 'USER',
-          details: `${isUpdate ? 'แก้ไขข้อมูลผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'} "${saved.name}" (${saved.title || saved.roleId}) แผนก: ${saved.primaryDepartment} [${(saved.allowedDepartments || []).join(', ')}]`
+          details: `${isUpdate ? 'แก้ไขข้อมูลผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'} "${saved.name}" (${saved.position || saved.title || saved.roleId}) แผนก: ${saved.primaryDepartment} [${(saved.allowedDepartments || []).join(', ')}]`
         });
 
         return saved;
@@ -1447,13 +1682,20 @@ export const apiService = {
       department: saved.primaryDepartment || 'ALL',
       docNo: saved.id,
       docType: 'USER',
-      details: `${isUpdate ? 'แก้ไขข้อมูลผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'} "${saved.name}" (${saved.title || saved.roleId}) แผนก: ${saved.primaryDepartment} [${(saved.allowedDepartments || []).join(', ')}]`
+      details: `${isUpdate ? 'แก้ไขข้อมูลผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'} "${saved.name}" (${saved.position || saved.title || saved.roleId}) แผนก: ${saved.primaryDepartment} [${(saved.allowedDepartments || []).join(', ')}]`
     });
 
     return saved;
   },
 
   async deleteUser(userId, actor = null) {
+    if (isGAS()) {
+      try {
+        await callGAS('apiDeleteUser', userId);
+      } catch (e) {
+        console.warn('[apiService] GAS apiDeleteUser error:', e.message);
+      }
+    }
     try {
       await fetch(`/api/users/${userId}`, { method: 'DELETE' });
     } catch (e) {}

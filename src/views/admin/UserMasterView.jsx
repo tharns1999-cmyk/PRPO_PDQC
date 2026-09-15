@@ -113,6 +113,7 @@ export default function UserMasterView({ users: propUsers, departments: propDepa
       u.name?.toLowerCase().includes(q) ||
       u.employeeName?.toLowerCase().includes(q) ||
       u.username?.toLowerCase().includes(q) ||
+      u.position?.toLowerCase().includes(q) ||
       u.title?.toLowerCase().includes(q) ||
       (u.assignedDepartments || [u.department]).join(' ').toLowerCase().includes(q)
     );
@@ -367,7 +368,7 @@ export default function UserMasterView({ users: propUsers, departments: propDepa
 
                       {/* 3. Position / Title */}
                       <td className="py-3.5 px-3 text-slate-700 font-medium text-xs">
-                        {user.title || '-'}
+                        {user.position || user.title || '-'}
                       </td>
 
                       {/* 4. Department(s) */}
@@ -569,7 +570,8 @@ function UserEditSignatureModal({ user, departments = [], onClose, onSaved }) {
   const [employeeName, setEmployeeName] = useState(user?.employeeName || user?.name || '');
   const [username, setUsername] = useState(user?.username || '');
   const [password, setPassword] = useState(user?.password || 'password123');
-  const [title, setTitle] = useState(user?.title || '');
+  const [position, setPosition] = useState(user?.position || user?.title || '');
+  const [title, setTitle] = useState(user?.title || user?.position || '');
   const [assignedDepts, setAssignedDepts] = useState(resolveInitialDepts);
   const [roleId, setRoleId] = useState(normalizeRoleId(user?.roleId) || 'REQUESTER');
   const [status, setStatus] = useState(user?.status || 'ACTIVE');
@@ -713,8 +715,9 @@ function UserEditSignatureModal({ user, departments = [], onClose, onSaved }) {
 
     // Derive primaryDepartment and allowedDepartments from assignedDepts
     const isAllDepts = assignedDepts.includes('ALL') || roleId === 'ADMIN' || roleId === 'PLANT_MANAGER' || roleId === 'ONLINE_PURCHASER';
-    const finalAssigned = isAllDepts ? ['ALL'] : assignedDepts;
-    const primaryDept = isAllDepts ? 'ALL' : (assignedDepts[0] || 'ALL');
+    const defaultPrimaryDept = (roleId === 'ONLINE_PURCHASER') ? 'PUR' : (roleId === 'ADMIN' || roleId === 'PLANT_MANAGER') ? 'MGT' : (assignedDepts.find(d => d !== 'ALL') || 'MGT');
+    const primaryDept = isAllDepts ? defaultPrimaryDept : (assignedDepts.find(d => d !== 'ALL') || defaultPrimaryDept);
+    const finalAssigned = isAllDepts ? ['*'] : assignedDepts;
     const allowedForPerms = isAllDepts ? ['*'] : assignedDepts;
     const roleLevel = ROLE_OPTIONS.find(r => r.id === roleId)?.level || 1;
 
@@ -729,7 +732,8 @@ function UserEditSignatureModal({ user, departments = [], onClose, onSaved }) {
         displayName: name.trim(),
         username: username.trim(),
         password: password || 'password123',
-        title: title.trim() || (ROLE_OPTIONS.find(r => r.id === roleId)?.title || 'Officer'),
+        position: position.trim(),
+        title: position.trim() || title.trim() || (ROLE_OPTIONS.find(r => r.id === roleId)?.title || 'Officer'),
         primaryDepartment: primaryDept,
         department: primaryDept,
         assignedDepartments: finalAssigned,
@@ -839,12 +843,15 @@ function UserEditSignatureModal({ user, departments = [], onClose, onSaved }) {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">ตำแหน่ง (Title/Position)</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">ตำแหน่ง (Position)</label>
                 <input
                   type="text"
-                  value={title}
-                  onChange={e => setTitle(e.target.value)}
-                  placeholder="เช่น Requester (PD) หรือ วิศวกรฝ่ายผลิต"
+                  value={position}
+                  onChange={e => {
+                    setPosition(e.target.value);
+                    setTitle(e.target.value);
+                  }}
+                  placeholder="เช่น วิศวกรฝ่ายผลิต หรือ เจ้าหน้าที่จัดซื้อ"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>

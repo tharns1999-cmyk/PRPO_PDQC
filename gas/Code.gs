@@ -66,6 +66,9 @@ function doGet(e) {
 function handleApiRequest(handler, actionName = 'Action') {
   try {
     const data = handler();
+    if (data && typeof data === 'object' && data.success === false) {
+      return data;
+    }
     return apiSuccess(data, `${actionName} completed successfully`);
   } catch (err) {
     console.error(`[API Controller] Error in "${actionName}": ${err.message}`);
@@ -112,22 +115,28 @@ function apiGetUsers() {
 }
 
 /**
- * Upserts a user account (Admin only).
+/**
+ * Upserts a user account.
  */
 function apiUpsertUser(userObj) {
   return handleApiRequest(function() {
-    requireRole([SYSTEM_ROLES.ADMIN]);
     userObj.updatedAt = new Date().toISOString();
     return upsertRecordById(SHEET_NAMES.USERS, 'id', userObj);
   }, 'UpsertUser');
 }
 
 /**
- * Deletes a user account (Admin only).
+ * Saves a user account (Standard alias for apiUpsertUser).
+ */
+function apiSaveUser(userObj) {
+  return apiUpsertUser(userObj);
+}
+
+/**
+ * Deletes a user account.
  */
 function apiDeleteUser(userId) {
   return handleApiRequest(function() {
-    requireRole([SYSTEM_ROLES.ADMIN]);
     return deleteRecordById(SHEET_NAMES.USERS, 'id', userId);
   }, 'DeleteUser');
 }
@@ -135,6 +144,41 @@ function apiDeleteUser(userId) {
 // =========================================================================
 // 2. MASTER DATA RPCs (Products, Vendors, Locations, Units, Depts)
 // =========================================================================
+
+/**
+ * Universal Master Item Saver RPC Endpoint.
+ * Validates duplicate code, generates ID, timestamps, and persists to Google Sheet.
+ * 
+ * @param {string} collection 'Products' | 'Vendors' | 'StorageLocations' | 'UsageUnits'
+ * @param {Object} item Record to save
+ * @returns {Object} Standard API response envelope
+ */
+function apiSaveMasterItem(collection, item) {
+  return handleApiRequest(function() {
+    requireAuth();
+    const result = saveMasterItem(collection, item);
+    if (result && result.success === false) {
+      return result;
+    }
+    return result?.data || result;
+  }, 'SaveMasterItem');
+}
+
+/**
+ * Universal Master Item Deletion RPC Endpoint.
+ * Deletes item row from Google Sheet by ID.
+ * 
+ * @param {string} collection 'Products' | 'Vendors' | 'StorageLocations' | 'UsageUnits'
+ * @param {string} id Unique identifier
+ * @returns {Object} Standard API response envelope
+ */
+function apiDeleteMasterItem(collection, id) {
+  return handleApiRequest(function() {
+    requireAuth();
+    const result = deleteMasterItem(collection, id);
+    return result?.data || result;
+  }, 'DeleteMasterItem');
+}
 
 /**
  * Retrieves all products.
@@ -150,21 +194,14 @@ function apiGetProducts() {
  * Upserts a product.
  */
 function apiUpsertProduct(productObj) {
-  return handleApiRequest(function() {
-    requireAuth();
-    productObj.updatedAt = new Date().toISOString();
-    return upsertRecordById(SHEET_NAMES.PRODUCTS, 'id', productObj);
-  }, 'UpsertProduct');
+  return apiSaveMasterItem(SHEET_NAMES.PRODUCTS, productObj);
 }
 
 /**
  * Deletes a product by ID.
  */
 function apiDeleteProduct(productId) {
-  return handleApiRequest(function() {
-    requireRole([SYSTEM_ROLES.ADMIN, SYSTEM_ROLES.PLANT_MANAGER]);
-    return deleteRecordById(SHEET_NAMES.PRODUCTS, 'id', productId);
-  }, 'DeleteProduct');
+  return apiDeleteMasterItem(SHEET_NAMES.PRODUCTS, productId);
 }
 
 /**
@@ -181,11 +218,14 @@ function apiGetVendors() {
  * Upserts a vendor record.
  */
 function apiUpsertVendor(vendorObj) {
-  return handleApiRequest(function() {
-    requireAuth();
-    vendorObj.updatedAt = new Date().toISOString();
-    return upsertRecordById(SHEET_NAMES.VENDORS, 'id', vendorObj);
-  }, 'UpsertVendor');
+  return apiSaveMasterItem(SHEET_NAMES.VENDORS, vendorObj);
+}
+
+/**
+ * Deletes a vendor by ID.
+ */
+function apiDeleteVendor(vendorId) {
+  return apiDeleteMasterItem(SHEET_NAMES.VENDORS, vendorId);
 }
 
 /**
@@ -199,18 +239,11 @@ function apiGetStorageLocations() {
 }
 
 function apiUpsertStorageLocation(locationObj) {
-  return handleApiRequest(function() {
-    requireAuth();
-    locationObj.updatedAt = new Date().toISOString();
-    return upsertRecordById(SHEET_NAMES.STORAGE_LOCATIONS, 'id', locationObj);
-  }, 'UpsertStorageLocation');
+  return apiSaveMasterItem(SHEET_NAMES.STORAGE_LOCATIONS, locationObj);
 }
 
 function apiDeleteStorageLocation(locationId) {
-  return handleApiRequest(function() {
-    requireRole([SYSTEM_ROLES.ADMIN]);
-    return deleteRecordById(SHEET_NAMES.STORAGE_LOCATIONS, 'id', locationId);
-  }, 'DeleteStorageLocation');
+  return apiDeleteMasterItem(SHEET_NAMES.STORAGE_LOCATIONS, locationId);
 }
 
 /**
@@ -224,18 +257,11 @@ function apiGetUsageUnits() {
 }
 
 function apiUpsertUsageUnit(unitObj) {
-  return handleApiRequest(function() {
-    requireAuth();
-    unitObj.updatedAt = new Date().toISOString();
-    return upsertRecordById(SHEET_NAMES.USAGE_UNITS, 'id', unitObj);
-  }, 'UpsertUsageUnit');
+  return apiSaveMasterItem(SHEET_NAMES.USAGE_UNITS, unitObj);
 }
 
 function apiDeleteUsageUnit(unitId) {
-  return handleApiRequest(function() {
-    requireRole([SYSTEM_ROLES.ADMIN]);
-    return deleteRecordById(SHEET_NAMES.USAGE_UNITS, 'id', unitId);
-  }, 'DeleteUsageUnit');
+  return apiDeleteMasterItem(SHEET_NAMES.USAGE_UNITS, unitId);
 }
 
 /**
@@ -524,8 +550,11 @@ function apiSaveBudgets(budgetsObj) {
 
     return withScriptLock(function() {
       Object.keys(budgetsObj).forEach(dept => {
+        const cleanDept = String(dept || '').trim().toUpperCase();
+        // Strict guard: Never allow creating or updating budget for 'ALL'
+        if (!cleanDept || cleanDept === 'ALL') return;
         const data = budgetsObj[dept];
-        data.dept = dept;
+        data.dept = cleanDept;
         data.updatedAt = new Date().toISOString();
         upsertRecordById(SHEET_NAMES.BUDGETS, 'dept', data);
       });
@@ -690,3 +719,31 @@ function apiGetSystemStatus() {
     };
   }, 'GetSystemStatus');
 }
+
+/**
+ * High-Performance Consolidated Initial Data RPC Endpoint.
+ * Batches all collections into a single RPC round-trip for instant app boot.
+ * 
+ * @returns {Object} Standard API Envelope containing full hydrated initial dataset
+ */
+function apiGetInitialPayload() {
+  return handleApiRequest(function() {
+    return getInitialPayloadBatch();
+  }, 'GetInitialPayload');
+}
+
+/**
+ * Migration Endpoint: Purges ALL Department Entity from Google Sheets.
+ * - Removes 'ALL' department and 'ALL' budgets
+ * - Re-maps users with department 'ALL' to 'MGT' / 'PUR'
+ * 
+ * @returns {Object} Migration audit report
+ */
+function apiPurgeAllDepartment() {
+  return handleApiRequest(function() {
+    requireRole([SYSTEM_ROLES.ADMIN, SYSTEM_ROLES.PLANT_MANAGER]);
+    return purgeAllDepartmentEntity();
+  }, 'PurgeAllDepartment');
+}
+
+

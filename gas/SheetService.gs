@@ -349,3 +349,204 @@ function generateSequentialDocId(department, docType) {
     return `${type}-${dept}-${currentYear}-${seqStr}`;
   }, CONFIG.DEFAULTS.SCRIPT_LOCK_TIMEOUT_MS, `GenerateSequentialId_${type}_${dept}`);
 }
+
+/**
+ * High-performance batch aggregator for initial client hydration.
+ * Reads essential collections in a single RPC execution:
+ * Products, Vendors, StorageLocations, UsageUnits, Departments, Users, Budgets, Active PRs, Active POs, Signatures, Notifications.
+ * 
+ * @returns {Object} Hydrated initial payload
+ */
+function getInitialPayloadBatch() {
+  // Automatically execute purge migration once if not yet executed
+  if (getScriptProperty('ALL_DEPARTMENT_PURGED_V1') !== 'true') {
+    try {
+      if (typeof purgeAllDepartmentEntity === 'function') {
+        purgeAllDepartmentEntity();
+      }
+    } catch (migErr) {
+      console.warn('[SheetService] purgeAllDepartmentEntity note:', migErr.message);
+    }
+  }
+
+  const products = batchReadRecords(SHEET_NAMES.PRODUCTS);
+  const vendors = batchReadRecords(SHEET_NAMES.VENDORS);
+  const locations = batchReadRecords(SHEET_NAMES.STORAGE_LOCATIONS);
+  const units = batchReadRecords(SHEET_NAMES.USAGE_UNITS);
+  const rawDepartments = batchReadRecords(SHEET_NAMES.DEPARTMENTS);
+  const users = batchReadRecords(SHEET_NAMES.USERS);
+  const prs = batchReadRecords(SHEET_NAMES.PRS);
+  const pos = batchReadRecords(SHEET_NAMES.POS);
+  const stockLogs = batchReadRecords(SHEET_NAMES.STOCK_LOGS);
+  const rawBudgets = batchReadRecords(SHEET_NAMES.BUDGETS);
+  const budgetTransactions = batchReadRecords(SHEET_NAMES.BUDGET_TRANSACTIONS);
+  const auditLogs = batchReadRecords(SHEET_NAMES.AUDIT_LOGS);
+  const notifications = batchReadRecords(SHEET_NAMES.NOTIFICATIONS);
+  const signatures = batchReadRecords(SHEET_NAMES.SIGNATURES);
+
+  // Guarantee 'ALL' / 'ส่วนกลาง' is never returned as a real department
+  const departments = rawDepartments.filter(d => {
+    const code = String(d.code || '').trim().toUpperCase();
+    const id = String(d.id || '').trim().toUpperCase();
+    const name = String(d.name || '');
+    return code !== 'ALL' && id !== 'DEPT-ALL' && !name.includes('ส่วนกลาง') && !name.includes('ทุกฝ่าย');
+  });
+
+  const budgets = {};
+  rawBudgets.forEach(r => {
+    const dept = String(r.dept || '').trim().toUpperCase();
+    if (dept && dept !== 'ALL') {
+      budgets[r.dept] = r;
+    }
+  });
+
+  return {
+    products: products,
+    vendors: vendors,
+    storageLocations: locations,
+    usageUnits: units,
+    departments: departments,
+    users: users,
+    prs: prs,
+    pos: pos,
+    stockLogs: stockLogs,
+    budgets: budgets,
+    budgetTransactions: budgetTransactions,
+    auditLogs: auditLogs,
+    notifications: notifications,
+    signatures: signatures,
+    serverTime: new Date().toISOString()
+  };
+}
+
+/**
+ * Resolves standard sheet tab name from arbitrary collection key.
+ * @param {string} collection
+ * @returns {string} Standard SHEET_NAMES tab name
+ */
+function resolveMasterSheetName(collection) {
+  const norm = String(collection || '').trim().toLowerCase().replace(/[-_]/g, '');
+  if (norm === 'products' || norm === 'product') return SHEET_NAMES.PRODUCTS;
+  if (norm === 'vendors' || norm === 'vendor') return SHEET_NAMES.VENDORS;
+  if (norm === 'storagelocations' || norm === 'storagelocation' || norm === 'locations' || norm === 'location') return SHEET_NAMES.STORAGE_LOCATIONS;
+  if (norm === 'usageunits' || norm === 'usageunit' || norm === 'units' || norm === 'unit') return SHEET_NAMES.USAGE_UNITS;
+  if (norm === 'departments' || norm === 'department') return SHEET_NAMES.DEPARTMENTS;
+  if (norm === 'users' || norm === 'user') return SHEET_NAMES.USERS;
+  throw new Error(`UNKNOWN_COLLECTION: ไม่พบคอลเลกชัน "${collection}"`);
+}
+
+/**
+ * Universal Master Item Saver with Duplicate Code Validation.
+ * - Validates code uniqueness across the sheet (case-insensitive)
+ * - Auto-generates ID if new (PROD-xxxx, VEN-xxxx, etc.)
+ * - Sets createdAt / updatedAt
+ * - Inserts or updates row via upsertRecordById
+ * 
+ * @param {string} collection Collection identifier ('Products', 'Vendors', etc.)
+ * @param {Object} item Record to save
+ * @returns {Object} Saved item or error envelope
+ */
+function saveMasterItem(collection, item) {
+  if (!item || typeof item !== 'object') {
+    throw new Error('VALIDATION_ERROR: ข้อมูลที่ส่งมาไม่ถูกต้อง');
+  }
+
+  const sheetName = resolveMasterSheetName(collection);
+  const now = new Date().toISOString();
+  const rawCode = item.code || item.sku || item.vendorCode || '';
+  const itemCode = String(rawCode).trim().toUpperCase();
+
+  // Strict guard: disallow 'ALL' as department code
+  if (sheetName === SHEET_NAMES.DEPARTMENTS && itemCode === 'ALL') {
+    return {
+      success: false,
+      error: 'ไม่อนุญาตให้ใช้รหัส "ALL" เป็นแผนกจริงในระบบ',
+      message: 'ไม่อนุญาตให้ใช้รหัส "ALL" เป็นแผนกจริงในระบบ'
+    };
+  }
+
+  // 1. Duplicate code validation
+  if (itemCode) {
+    const existingRecords = batchReadRecords(sheetName);
+    const isDuplicate = existingRecords.some(r => {
+      const rId = String(r.id || '').trim();
+      const rCode = String(r.code || r.sku || r.vendorCode || '').trim().toUpperCase();
+      if (item.id && rId === String(item.id).trim()) {
+        return false;
+      }
+      return rCode === itemCode;
+    });
+
+    if (isDuplicate) {
+      return { 
+        success: false, 
+        error: 'รหัสนี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น',
+        message: 'รหัสนี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น'
+      };
+    }
+  }
+
+  // 2. Generate unique ID if new item
+  if (!item.id) {
+    const suffix = Date.now().toString().slice(-4);
+    if (sheetName === SHEET_NAMES.PRODUCTS) {
+      const cat = item.category || item.department || 'PD';
+      item.id = `PROD-${cat}-${suffix}`;
+    } else if (sheetName === SHEET_NAMES.VENDORS) {
+      item.id = `VEN-${suffix}`;
+    } else if (sheetName === SHEET_NAMES.STORAGE_LOCATIONS) {
+      const dept = item.department || 'ALL';
+      item.id = `LOC-${dept}-${suffix}`;
+    } else if (sheetName === SHEET_NAMES.USAGE_UNITS) {
+      const dept = item.department || 'PD';
+      item.id = `UNIT-${dept}-${suffix}`;
+    } else {
+      item.id = `ID-${suffix}`;
+    }
+    item.createdAt = item.createdAt || now;
+  }
+
+  item.updatedAt = now;
+  if (item.status === undefined && item.isActive === undefined) {
+    item.status = 'ACTIVE';
+    item.isActive = true;
+  }
+
+  // 3. Upsert record to Google Sheet
+  upsertRecordById(sheetName, 'id', item);
+
+  return {
+    success: true,
+    data: item,
+    message: 'บันทึกข้อมูลเรียบร้อยแล้ว'
+  };
+}
+
+/**
+ * Universal Master Item Deletion by ID.
+ * Finds the row by id (or code fallback) and deletes it from the sheet.
+ * 
+ * @param {string} collection Collection identifier ('Products', 'Vendors', etc.)
+ * @param {string} id Unique identifier to delete
+ * @returns {Object} Result object
+ */
+function deleteMasterItem(collection, id) {
+  if (!id) {
+    throw new Error('VALIDATION_ERROR: ไม่ได้ระบุ ID สำหรับการลบ');
+  }
+
+  const sheetName = resolveMasterSheetName(collection);
+  let deleted = deleteRecordById(sheetName, 'id', id);
+
+  if (!deleted && (sheetName === SHEET_NAMES.PRODUCTS || sheetName === SHEET_NAMES.VENDORS)) {
+    // Fallback: try finding by 'code'
+    deleted = deleteRecordById(sheetName, 'code', id);
+  }
+
+  return {
+    success: true,
+    data: { deleted: true, id: id, collection: sheetName },
+    message: 'ลบข้อมูลเรียบร้อยแล้ว'
+  };
+}
+

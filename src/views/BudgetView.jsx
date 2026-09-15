@@ -61,7 +61,13 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   const [deptAllocationTarget, setDeptAllocationTarget] = useState(null);
 
   const deptList = useMemo(() => {
-    return (departments && departments.length > 0) ? departments : storageService.getDepartments();
+    const raw = (departments && departments.length > 0) ? departments : storageService.getDepartments();
+    return (raw || []).filter(d => {
+      const code = String(d?.code || '').trim().toUpperCase();
+      const id = String(d?.id || '').trim().toUpperCase();
+      const name = String(d?.name || '');
+      return code !== 'ALL' && id !== 'DEPT-ALL' && !name.includes('ส่วนกลาง') && !name.includes('ทุกฝ่าย');
+    });
   }, [departments]);
 
   const deptMap = useMemo(() => {
@@ -311,12 +317,13 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
 
   const deptsToShow = useMemo(() => {
     if (selectedDept === 'ALL') {
-      return isSuperAdminOrApprover ? deptList.map(d => d.code) : userAssignedDepts;
+      return isSuperAdminOrApprover ? deptList.map(d => d.code) : userAssignedDepts.filter(c => c !== 'ALL');
     }
     if (isSuperAdminOrApprover || userAssignedDepts.includes(selectedDept)) {
       return [selectedDept];
     }
-    return userAssignedDepts.length > 0 ? [userAssignedDepts[0]] : [];
+    const filtered = userAssignedDepts.filter(c => c !== 'ALL');
+    return filtered.length > 0 ? [filtered[0]] : [];
   }, [selectedDept, isSuperAdminOrApprover, deptList, userAssignedDepts]);
 
   // Overall Statistics for deptsToShow (for Scoped / Multi-Department KPI summary)
@@ -734,7 +741,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
               >
                 {isSuperAdminOrApprover ? (
                   <>
-                    <option value="ALL">ทุกแผนก (All Depts)</option>
+                    <option value="ALL">📊 งบประมาณรวมทั้งโรงงาน (Factory Total Overview)</option>
                     {deptList.map(d => (
                       <option key={d.code} value={d.code}>{d.name} ({d.code})</option>
                     ))}
@@ -742,9 +749,9 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                 ) : (
                   <>
                     {userAssignedDepts.length > 1 && (
-                      <option value="ALL">แผนกในความดูแลทั้งหมด ({userAssignedDepts.join(', ')})</option>
+                      <option value="ALL">📊 งบประมาณรวมแผนกในความดูแล ({userAssignedDepts.filter(c => c !== 'ALL').join(', ')})</option>
                     )}
-                    {userAssignedDepts.map(code => (
+                    {userAssignedDepts.filter(code => code !== 'ALL').map(code => (
                       <option key={code} value={code}>
                         {deptMap[code]?.name || DEPARTMENTS[code]?.name || code} ({code})
                       </option>
@@ -825,49 +832,76 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
       {/* Tab 1: Bento Budget Cards */}
       {activeTab === 'overview' && (
         <div className="space-y-5">
-          {/* Top Summary KPI Strip for Scoped / Multiple Departments */}
+          {/* Top Summary KPI Strip: Factory Total Overview (Read-Only) */}
           {deptsToShow.length > 1 && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 bg-white/90 p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
-              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
-                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                  งบประมาณรวม ({deptsToShow.length} แผนก)
-                </span>
-                <span className="text-lg font-mono font-bold text-slate-900 block mt-1 tabular-nums">
-                  ฿{summaryStats.totalBase.toLocaleString()}
-                </span>
-              </div>
-              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
-                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                  ใช้จ่ายจริงรวม
-                </span>
-                <span className="text-lg font-mono font-bold text-indigo-600 block mt-1 tabular-nums">
-                  ฿{summaryStats.totalActual.toLocaleString()}
-                </span>
-              </div>
-              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
-                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                  ผูกพันรอของรวม
-                </span>
-                <span className="text-lg font-mono font-bold text-amber-600 block mt-1 tabular-nums">
-                  ฿{summaryStats.totalCommitted.toLocaleString()}
-                </span>
-              </div>
-              <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-100">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
-                    คงเหลือสุทธิ
-                  </span>
-                  <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                    summaryStats.usedPercent >= 90 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 p-5 rounded-3xl border border-slate-700/80 text-white shadow-md space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shadow-inner">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-bold text-base text-white tracking-tight">
+                        {isSuperAdminOrApprover ? 'งบประมาณรวมทั้งโรงงาน (Factory Total Overview)' : `งบประมาณรวมแผนกในความดูแล (${deptsToShow.length} แผนก)`}
+                      </h3>
+                      <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/20 border border-amber-400/30 px-2.5 py-0.5 rounded-full">
+                        🔒 Read-Only (ยอดรวมคำนวณอัตโนมัติ)
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      ยอดรวมคำนวณจากผลรวมของแผนกจริง ({deptsToShow.join(', ')}) — กรุณาเลือกดูและปรับงบที่การ์ดประจำแผนกด้านล่าง
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-mono font-bold px-3 py-1 rounded-full border ${
+                    summaryStats.usedPercent >= 90 
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' 
+                      : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                   }`}>
-                    {summaryStats.usedPercent}% ใช้ไป
+                    {summaryStats.usedPercent}% รวมใช้ไป
                   </span>
                 </div>
-                <span className={`text-lg font-mono font-bold block mt-1 tabular-nums ${
-                  summaryStats.totalRemaining < 0 ? 'text-rose-600' : 'text-emerald-600'
-                }`}>
-                  ฿{summaryStats.totalRemaining.toLocaleString()}
-                </span>
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="p-3.5 bg-white/5 hover:bg-white/10 transition-colors rounded-2xl border border-white/10">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    งบประมาณรวม ({deptsToShow.length} แผนก)
+                  </span>
+                  <span className="text-xl font-mono font-bold text-white block mt-1 tabular-nums">
+                    ฿{summaryStats.totalBase.toLocaleString()}
+                  </span>
+                </div>
+                <div className="p-3.5 bg-white/5 hover:bg-white/10 transition-colors rounded-2xl border border-white/10">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    ใช้จ่ายจริงรวม
+                  </span>
+                  <span className="text-xl font-mono font-bold text-indigo-300 block mt-1 tabular-nums">
+                    ฿{summaryStats.totalActual.toLocaleString()}
+                  </span>
+                </div>
+                <div className="p-3.5 bg-white/5 hover:bg-white/10 transition-colors rounded-2xl border border-white/10">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                    ผูกพันรอของรวม
+                  </span>
+                  <span className="text-xl font-mono font-bold text-amber-300 block mt-1 tabular-nums">
+                    ฿{summaryStats.totalCommitted.toLocaleString()}
+                  </span>
+                </div>
+                <div className="p-3.5 bg-white/5 hover:bg-white/10 transition-colors rounded-2xl border border-white/10">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                      คงเหลือสุทธิ
+                    </span>
+                  </div>
+                  <span className={`text-xl font-mono font-bold block mt-1 tabular-nums ${
+                    summaryStats.totalRemaining < 0 ? 'text-rose-400' : 'text-emerald-300'
+                  }`}>
+                    ฿{summaryStats.totalRemaining.toLocaleString()}
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -1110,7 +1144,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
 
                   <span className="px-3 py-1 bg-slate-100 rounded-xl text-xs font-semibold text-slate-700 w-fit">
                     {selectedDept === 'ALL' 
-                      ? (isSuperAdminOrApprover ? 'รวมทุกแผนก' : `รวมแผนกในความดูแล (${userAssignedDepts.join(', ')})`) 
+                      ? (isSuperAdminOrApprover ? 'งบประมาณรวมทั้งโรงงาน (Factory Total Overview)' : `รวมแผนกในความดูแล (${userAssignedDepts.filter(c => c !== 'ALL').join(', ')})`) 
                       : `แผนก ${selectedDept}`}
                   </span>
                 </div>

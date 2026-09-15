@@ -363,7 +363,7 @@ export default function ProductCRUDModal({
                     </div>
                     {isSkuDuplicate && (
                       <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1 font-medium">
-                        <span>⚠️ รหัสสินค้านี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น</span>
+                        <span>⚠️ รหัสนี้ถูกใช้งานแล้วในระบบ</span>
                         {duplicateItem && <span className="text-[11px] text-rose-500 font-normal">({duplicateItem.name})</span>}
                       </p>
                     )}

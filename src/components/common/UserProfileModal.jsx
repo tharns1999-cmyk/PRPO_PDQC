@@ -230,7 +230,7 @@ export default function UserProfileModal({
                 </span>
               </div>
               <p className="text-xs text-slate-600 mt-0.5 font-medium">
-                ตำแหน่ง: <span className="font-bold text-slate-800">{targetUser.title || targetUser.canonicalRole || 'ผู้ใช้งาน'}</span>
+                ตำแหน่ง: <span className="font-bold text-slate-800">{targetUser.position || targetUser.title || targetUser.canonicalRole || 'ผู้ใช้งาน'}</span>
                 {currentDepts.length > 1 && (
                   <span className="text-indigo-600 font-bold ml-1.5">
                     ({currentDepts.join(', ')})

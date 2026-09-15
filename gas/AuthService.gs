@@ -92,8 +92,8 @@ function getUserProfile(email) {
         email: targetEmail,
         name: 'System Administrator (Bootstrap)',
         displayName: 'System Admin',
-        department: 'ALL',
-        primaryDepartment: 'ALL',
+        department: 'MGT',
+        primaryDepartment: 'MGT',
         allowedDepartments: ['*'],
         roleId: SYSTEM_ROLES.ADMIN,
         canonicalRole: SYSTEM_ROLES.ADMIN,
@@ -171,8 +171,8 @@ function authenticateUserByPassword(username, password) {
         email: adminEmails[0] || 'admin@company.com',
         name: 'System Administrator (Bootstrap)',
         displayName: 'System Admin',
-        department: 'ALL',
-        primaryDepartment: 'ALL',
+        department: 'MGT',
+        primaryDepartment: 'MGT',
         departments: ['*'],
         allowedDepartments: ['*'],
         roleId: SYSTEM_ROLES.ADMIN,
@@ -245,17 +245,19 @@ function buildUserProfile(raw, elevateAdmin = false) {
   // Normalize allowedDepartments
   let allowedDepts = [];
   if (Array.isArray(raw.allowedDepartments)) {
-    allowedDepts = raw.allowedDepartments;
+    allowedDepts = raw.allowedDepartments.filter(d => String(d).toUpperCase() !== 'ALL');
   } else if (typeof raw.allowedDepartments === 'string') {
     try {
-      allowedDepts = JSON.parse(raw.allowedDepartments);
+      allowedDepts = JSON.parse(raw.allowedDepartments).filter(d => String(d).toUpperCase() !== 'ALL');
     } catch (e) {
-      allowedDepts = raw.allowedDepartments.split(',').map(d => d.trim()).filter(Boolean);
+      allowedDepts = raw.allowedDepartments.split(',').map(d => d.trim()).filter(d => d && d.toUpperCase() !== 'ALL');
     }
   }
 
   if (allowedDepts.length === 0) {
-    const fallbackDept = raw.primaryDepartment || raw.department || 'ALL';
+    const fallbackDept = (raw.primaryDepartment && raw.primaryDepartment !== 'ALL') 
+      ? raw.primaryDepartment 
+      : ((raw.department && raw.department !== 'ALL') ? raw.department : 'MGT');
     allowedDepts = [fallbackDept];
   }
 
@@ -280,6 +282,9 @@ function buildUserProfile(raw, elevateAdmin = false) {
     ADMIN: Boolean(isAdmin)
   };
 
+  const cleanDept = (raw.department && raw.department !== 'ALL') ? raw.department : ((roleId === 'ONLINE_PURCHASER') ? 'PUR' : 'MGT');
+  const cleanPDept = (raw.primaryDepartment && raw.primaryDepartment !== 'ALL') ? raw.primaryDepartment : cleanDept;
+
   return {
     id: raw.id || `USR-${Utilities.getUuid().slice(0, 8)}`,
     employeeId: raw.employeeId || '',
@@ -287,8 +292,8 @@ function buildUserProfile(raw, elevateAdmin = false) {
     email: (raw.email || '').trim().toLowerCase(),
     name: raw.name || raw.employeeName || raw.displayName || 'ผู้ใช้งานระบบ',
     displayName: raw.displayName || raw.name || raw.employeeName || 'User',
-    department: raw.department || raw.primaryDepartment || 'ALL',
-    primaryDepartment: raw.primaryDepartment || raw.department || 'ALL',
+    department: cleanDept,
+    primaryDepartment: cleanPDept,
     allowedDepartments: allowedDepts,
     roleId: roleId,
     canonicalRole: canonicalRole,

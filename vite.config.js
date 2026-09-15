@@ -30,8 +30,17 @@ export default defineConfig(({ mode }) => {
       outDir: isGas ? 'dist-gas' : 'dist',
       emptyOutDir: true,
       target: 'es2020',
+      minify: isGas ? 'terser' : 'esbuild',
+      terserOptions: isGas
+        ? {
+            compress: {
+              drop_console: true,
+              drop_debugger: true,
+            },
+          }
+        : undefined,
       cssCodeSplit: !isGas,
-      assetsInlineLimit: isGas ? 100000000 : 4096,
+      assetsInlineLimit: isGas ? 10240 : 4096,
       chunkSizeWarningLimit: 10000,
       sourcemap: false,
     },
