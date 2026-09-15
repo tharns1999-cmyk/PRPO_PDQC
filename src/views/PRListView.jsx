@@ -196,6 +196,15 @@ export default function PRListView({
     setCurrentPage(1);
   }, [filterStatus, deptFilter, selectedPeriod, searchQuery, pageSize]);
 
+  // Non-blocking guard: Do NOT trigger full-blocking re-fetch if PRs already exist in state
+  useEffect(() => {
+    if (!prs || prs.length === 0) {
+      if (typeof onRefresh === 'function') {
+        onRefresh(true);
+      }
+    }
+  }, []);
+
   // Department-based access check
   const accessiblePRs = useMemo(() => {
     return (prs || []).filter(pr => {

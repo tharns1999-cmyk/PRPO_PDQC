@@ -117,11 +117,17 @@ function handleApiRequest(fn, actionName, rawPayload, userContext) {
     // 3. รันฟังก์ชันพร้อมส่ง payload และ safe user
     var result = fn(payload, user);
 
-    // Write pending attachments in a single batch
+    // Write pending attachments in a single batch with direct setValues
     if (typeof _pendingAttachments !== 'undefined' && Array.isArray(_pendingAttachments) && _pendingAttachments.length > 0) {
       try {
-        if (typeof batchAppendRecords === 'function') {
-          batchAppendRecords(SHEET_NAMES.ATTACHMENTS, _pendingAttachments);
+        var attSheet = getSheet(SHEET_NAMES.ATTACHMENTS);
+        var attHeaders = getSheetHeaders(attSheet);
+        var attachmentRows = _pendingAttachments.map(function(rec) {
+          return serializeRecordToRow(rec, attHeaders);
+        });
+        if (attachmentRows.length > 0 && attachmentRows[0].length > 0) {
+          var lastRow = attSheet.getLastRow();
+          attSheet.getRange(lastRow + 1, 1, attachmentRows.length, attachmentRows[0].length).setValues(attachmentRows);
         }
       } catch (attBatchErr) {
         console.warn('[API Controller] Failed to batch write attachments: ' + attBatchErr.message);
@@ -589,6 +595,194 @@ function normalizePRsLegacyOnline(prs) {
 }
 
 /**
+ * Records an audit log entry in AuditLogs sheet with full schema & legacy compatibility.
+ * Covers both standard schema (targetRef, summary, actor, changes, createdAt)
+ * and legacy/header variants (docNo, actorName, actorRole, comment, details).
+ *
+ * @param {string} docNo Document number (e.g. "PD007/2026")
+ * @param {string} action Action name (e.g. "CREATE", "SEND_BACK", "REVIEW_APPROVED", "APPROVED")
+ * @param {string} actorName Name of actor
+ * @param {string} actorRole Role of actor
+ * @param {string} comment Reason or comment
+ * @param {string} [module='PURCHASE'] Module name
+ * @param {Object} [userObj=null] Full user context object
+ * @returns {Object} Appended audit log object
+ */
+function recordAuditLogEntry(docNo, action, actorName, actorRole, comment, module, userObj) {
+  try {
+    var opts = {};
+    if (typeof docNo === 'object' && docNo !== null) {
+      opts = docNo;
+      docNo = opts.docNo || opts.targetRef || opts.documentNo || opts.prNo || '';
+      action = opts.action;
+      actorName = opts.actorName || (opts.actor && (opts.actor.name || opts.actor.displayName || opts.actor.username)) || (typeof opts.actor === 'string' ? opts.actor : '');
+      actorRole = opts.actorRole || (opts.actor && (opts.actor.role || opts.actor.userRole || opts.actor.title)) || '';
+      comment = opts.comment || opts.summary || opts.reason || '';
+      module = opts.module || 'PURCHASE';
+      userObj = (opts.actor && typeof opts.actor === 'object') ? opts.actor : null;
+    }
+
+    var timestamp = new Date().toISOString();
+    var cleanDocNo = String(docNo || '').trim().toUpperCase();
+    var cleanAction = String(action || 'ACTION').trim();
+    var cleanActorName = String(actorName || (userObj && (userObj.name || userObj.username)) || 'ผู้ใช้งาน').trim();
+    var cleanActorRole = String(actorRole || (userObj && (userObj.role || userObj.title || userObj.canonicalRole)) || '').trim();
+    var cleanComment = String(comment || opts.summary || '').trim();
+    var summaryText = opts.summary || cleanComment || (cleanAction + ' บนเอกสาร ' + cleanDocNo);
+
+    var auditLog = {
+      id: opts.id || ('AL-' + Date.now() + '-' + Utilities.getUuid().slice(0, 4)),
+      timestamp: timestamp,
+      createdAt: timestamp,
+      action: cleanAction,
+      module: module || 'PURCHASE',
+      targetRef: cleanDocNo,
+      docNo: cleanDocNo,
+      documentNo: cleanDocNo,
+      prNo: cleanDocNo,
+      actorName: cleanActorName,
+      actorRole: cleanActorRole,
+      actor: (opts.actor && typeof opts.actor === 'object') ? opts.actor : {
+        id: (userObj && (userObj.username || userObj.id)) || 'USER',
+        name: cleanActorName,
+        role: cleanActorRole,
+        department: (userObj && userObj.department) || ''
+      },
+      summary: summaryText,
+      details: summaryText,
+      comment: cleanComment,
+      note: cleanComment,
+      reason: opts.reason || cleanComment,
+      changes: opts.changes || (cleanComment ? [{ field: 'บันทึกเหตุผล', before: '-', after: cleanComment }] : [])
+    };
+
+    var logSheet = getSheet(SHEET_NAMES.AUDIT_LOGS || 'AuditLogs');
+    var logHeaders = getSheetHeaders(logSheet);
+    var logRows = [serializeRecordToRow(auditLog, logHeaders)];
+    if (logRows.length > 0 && logRows[0].length > 0) {
+      var lastRow = logSheet.getLastRow();
+      logSheet.getRange(lastRow + 1, 1, logRows.length, logRows[0].length).setValues(logRows);
+    }
+    return auditLog;
+  } catch (err) {
+    console.warn('[recordAuditLogEntry] Error appending to AuditLogs:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Standardized central helper for recording PR Audit Logs across its lifecycle.
+ *
+ * @param {string} docNo Document number (PR No)
+ * @param {string} action Action name (CREATE, RESUBMIT, SEND_BACK, REVIEW_FORWARD, APPROVE, CANCEL)
+ * @param {Object|string} actor User context object or name
+ * @param {string} summary Description / comment for this action
+ * @param {Array} [changes] Optional array of modified fields
+ * @returns {Object} Appended audit log object
+ */
+function logPRAudit(docNo, action, actor, summary, changes) {
+  return recordAuditLogEntry({
+    targetRef: String(docNo || '').trim().toUpperCase(),
+    docNo: String(docNo || '').trim().toUpperCase(),
+    action: action,
+    module: 'PURCHASE',
+    summary: summary || '',
+    comment: summary || '',
+    actor: actor || { name: 'ผู้ใช้งานระบบ', role: '' },
+    actorName: typeof actor === 'object' ? (actor.name || actor.displayName || actor.username) : String(actor || ''),
+    actorRole: typeof actor === 'object' ? (actor.role || actor.userRole || actor.title) : '',
+    changes: changes || []
+  });
+}
+
+/**
+ * Reads, indexes, and groups AuditLogs by normalized document key (e.g. normKey(docNo)).
+ * Maps both schema-compliant fields and legacy fields to ensure timeline displays correctly.
+ *
+ * @param {Array} auditLogsList Array of raw audit log records
+ * @returns {Object} Map of normalized docKey -> Array of log event items
+ */
+function buildAuditLogsByDoc(auditLogsList) {
+  var normKey = function(val) { return String(val || '').trim().toUpperCase(); };
+  var logsByDoc = {};
+  if (!Array.isArray(auditLogsList)) return logsByDoc;
+
+  auditLogsList.forEach(function(log) {
+    if (!log) return;
+    var rawDocNo = log.docNo || log.targetRef || log.documentNo || log.prNo || log.poNo || '';
+    var keys = [];
+    if (log.targetRef) keys.push(normKey(log.targetRef));
+    if (log.docNo) keys.push(normKey(log.docNo));
+    if (log.prNo) keys.push(normKey(log.prNo));
+    if (log.poNo) keys.push(normKey(log.poNo));
+    if (log.documentNo) keys.push(normKey(log.documentNo));
+    if (keys.length === 0 && rawDocNo) keys.push(normKey(rawDocNo));
+
+    var uniqueKeys = [];
+    keys.forEach(function(k) {
+      if (k && uniqueKeys.indexOf(k) === -1) uniqueKeys.push(k);
+    });
+    if (uniqueKeys.length === 0) return;
+
+    var parsedActor = null;
+    if (typeof log.actor === 'string') {
+      try { parsedActor = JSON.parse(log.actor); } catch(e) {}
+    } else if (typeof log.actor === 'object' && log.actor !== null) {
+      parsedActor = log.actor;
+    }
+
+    var actorName = log.actorName || (parsedActor && (parsedActor.name || parsedActor.displayName || parsedActor.username)) || (typeof log.actor === 'string' && !log.actor.trim().startsWith('{') ? log.actor : '') || log.userName || log.user || 'ผู้ใช้งาน';
+    var actorRole = log.actorRole || (parsedActor && (parsedActor.role || parsedActor.title || parsedActor.position || parsedActor.userRole)) || log.userRole || log.role || '';
+    var commentText = log.comment || log.summary || log.note || log.details || log.reason || '';
+    var timestamp = log.timestamp || log.createdAt || log.date || new Date().toISOString();
+
+    var eventObj = {
+      id: log.id || ('AUD-' + Utilities.getUuid().slice(0, 8)),
+      timestamp: timestamp,
+      createdAt: timestamp,
+      date: timestamp,
+      time: timestamp,
+      action: log.action || 'ดำเนินการ',
+      title: log.action || 'ดำเนินการ',
+      type: log.action || 'ดำเนินการ',
+      docNo: rawDocNo,
+      targetRef: log.targetRef || rawDocNo,
+      actor: actorName,
+      actorName: actorName,
+      user: actorName,
+      userName: actorName,
+      by: actorName,
+      role: actorRole,
+      actorRole: actorRole,
+      userRole: actorRole,
+      comment: commentText,
+      note: commentText,
+      details: commentText,
+      description: commentText,
+      summary: commentText,
+      reason: log.reason || commentText,
+      changes: log.changes || [],
+      status: log.status || null
+    };
+
+    uniqueKeys.forEach(function(key) {
+      if (!logsByDoc[key]) logsByDoc[key] = [];
+      logsByDoc[key].push(eventObj);
+    });
+  });
+
+  Object.keys(logsByDoc).forEach(function(k) {
+    logsByDoc[k].sort(function(a, b) {
+      var tA = new Date(a.timestamp || a.createdAt || 0).getTime();
+      var tB = new Date(b.timestamp || b.createdAt || 0).getTime();
+      return tA - tB;
+    });
+  });
+
+  return logsByDoc;
+}
+
+/**
  * Retrieves all PRs.
  */
 function apiGetPRs(rawPayload, userContext) {
@@ -619,37 +813,42 @@ function apiGetPRs(rawPayload, userContext) {
     // Join AuditLogs
     var auditLogs = [];
     try { auditLogs = batchReadRecords('AuditLogs'); } catch (e) {}
-    var logsByDoc = {};
-    auditLogs.forEach(function(log) {
-      if (!log) return;
-      var key = normKey(log.docNo);
-      if (!key) return;
-      if (!logsByDoc[key]) logsByDoc[key] = [];
-      logsByDoc[key].push({
-        id: log.id,
-        timestamp: log.timestamp,
-        action: log.action,
-        actor: log.actorName || log.actor,
-        role: log.actorRole || log.role,
-        comment: log.comment || log.reason || log.details || ''
-      });
-    });
+    var logsByDoc = buildAuditLogsByDoc(auditLogs);
 
     prs.forEach(function(pr) {
       if (typeof pr.attachments === 'string') {
         try { pr.attachments = JSON.parse(pr.attachments); } catch(e) {}
       }
       var prKey = normKey(pr.prNo || pr.id || pr.docNo);
+      var kNo = normKey(pr.prNo);
+      var kId = normKey(pr.id);
+      var kDoc = normKey(pr.docNo);
       var files = attachmentsByDoc[prKey] || [];
       pr.attachments = files;
       pr.quotationFiles = files;
       pr.generalAttachments = files;
       
-      pr.timeline = logsByDoc[prKey] || [];
-      pr.approvalHistory = pr.timeline;
-      if (typeof pr.history === 'string') {
-        try { pr.history = JSON.parse(pr.history); } catch (e) {}
-      }
+      var docLogs = logsByDoc[prKey] || logsByDoc[kNo] || logsByDoc[kDoc] || logsByDoc[kId] || [];
+      var seenIds = {};
+      var sortedLogs = [];
+      docLogs.forEach(function(l) {
+        var lid = l.id || (l.timestamp + '_' + l.action);
+        if (!seenIds[lid]) {
+          seenIds[lid] = true;
+          sortedLogs.push(l);
+        }
+      });
+      sortedLogs.sort(function(a, b) {
+        var tA = new Date(a.timestamp || a.createdAt || 0).getTime();
+        var tB = new Date(b.timestamp || b.createdAt || 0).getTime();
+        return tA - tB;
+      });
+
+      pr.timeline = sortedLogs;
+      pr.activityTimeline = sortedLogs;
+      pr.history = sortedLogs;
+      pr.approvalHistory = sortedLogs;
+      pr.auditLogs = sortedLogs;
     });
 
     return normalizePRsLegacyOnline(prs);
@@ -687,7 +886,7 @@ function apiCreatePR(rawPayload, userContext) {
     // Upload any inline Base64 images and attachments to Google Drive before writing to sheet
     rawItems = processItemImages(rawItems, seqPrNo, 'PR');
     if (Array.isArray(prObj.attachments)) {
-      prObj.attachments = processDocumentAttachments(prObj.attachments, DRIVE_CATEGORIES.PR, seqPrNo, 'PR');
+      prObj.attachments = processDocumentAttachments(prObj.attachments, DRIVE_CATEGORIES.PR, seqPrNo, 'PR', true);
     }
 
     // Always stringify items before writing to PRs sheet
@@ -746,20 +945,15 @@ function apiCreatePR(rawPayload, userContext) {
 
     // 3. Write to AuditLogs
     try {
-      var auditLog = {
-        id: 'AL-' + Date.now() + '-' + Utilities.getUuid().slice(0, 4),
-        timestamp: new Date().toISOString(),
-        action: prObj.status === 'DRAFT' ? 'PR_DRAFTED' : 'PR_CREATED',
-        actorName: user.name || user.username,
-        actorRole: user.role || user.title || 'Requester',
-        department: prObj.department,
-        docNo: prObj.prNo || prObj.id,
-        docType: 'PR',
-        details: 'สร้างใบขอซื้อ ' + (prObj.prNo || prObj.id) + ' สำเร็จ',
-        comment: ''
-      };
-      batchAppendRecords('AuditLogs', [auditLog]);
-    } catch(e) {}
+      logPRAudit(
+        seqPrNo || prObj.prNo || prObj.id,
+        prObj.status === 'DRAFT' ? 'PR_DRAFTED' : 'CREATE',
+        user,
+        prObj.status === 'DRAFT' ? 'บันทึกแบบร่างใบขอซื้อ' : 'สร้างใบขอซื้อและส่งตรวจสอบ'
+      );
+    } catch(e) {
+      console.warn('AuditLog Error in apiCreatePR:', e);
+    }
 
     var returnPr = Object.assign({}, prObj);
     returnPr.items = rawItems;
@@ -844,6 +1038,18 @@ function apiSavePR(rawPayload, userContext) {
       console.warn('[apiSavePR] Warning updating PRItems: ' + e.message);
     }
 
+    // Audit log hook for apiSavePR
+    try {
+      var prNo = prObj.prNo || prObj.id;
+      if (prObj.status === 'CANCELLED') {
+        logPRAudit(prNo, 'CANCEL', user, prObj.reason || prObj.comment || 'ยกเลิกใบขอซื้อ');
+      } else if (payload && (payload.action === 'RESUBMIT' || payload.isResubmit)) {
+        logPRAudit(prNo, 'RESUBMIT', user, 'แก้ไขรายละเอียดเอกสารและส่งตรวจสอบใหม่อีกครั้ง');
+      }
+    } catch(e) {
+      console.warn('AuditLog Error in apiSavePR:', e);
+    }
+
     var returnSaved = Object.assign({}, prObj);
     returnSaved.items = rawItems;
     return returnSaved;
@@ -851,10 +1057,22 @@ function apiSavePR(rawPayload, userContext) {
 }
 
 /**
- * Updates a PR (Standard alias for apiSavePR).
+ * Updates a PR (when Requester edits/resubmits).
  */
 function apiUpdatePR(rawPayload, userContext) {
-  return apiSavePR(rawPayload, userContext);
+  return handleApiRequest(function(payload, user) {
+    var savedPr = apiSavePR(payload, userContext);
+    var targetPr = (savedPr && savedPr.data) ? savedPr.data : savedPr;
+    var prNo = (targetPr && (targetPr.prNo || targetPr.id)) || (payload && (payload.prNo || payload.id)) || '';
+    if (prNo) {
+      try {
+        logPRAudit(prNo, 'RESUBMIT', user, 'แก้ไขรายละเอียดเอกสารและส่งตรวจสอบใหม่อีกครั้ง');
+      } catch(e) {
+        console.warn('AuditLog Error in apiUpdatePR:', e);
+      }
+    }
+    return targetPr;
+  }, 'UpdatePR', rawPayload, userContext);
 }
 
 /**
@@ -884,20 +1102,15 @@ function apiReviewPR(rawPayload, userContext) {
 
     // 3. Write to AuditLogs
     try {
-      var auditLog = {
-        id: 'AL-' + Date.now() + '-' + Utilities.getUuid().slice(0, 4),
-        timestamp: new Date().toISOString(),
-        action: 'PR_REVIEWED',
-        actorName: user.name || user.username,
-        actorRole: user.role || user.title || 'Reviewer',
-        department: prObj.department,
-        docNo: prObj.prNo || prObj.id,
-        docType: 'PR',
-        details: 'ตรวจสอบใบขอซื้อ ' + (prObj.prNo || prObj.id) + ' สำเร็จ',
-        comment: prObj.comment || ''
-      };
-      batchAppendRecords('AuditLogs', [auditLog]);
-    } catch(e) {}
+      logPRAudit(
+        prObj.prNo || prObj.id,
+        'REVIEW_FORWARD',
+        user,
+        prObj.comment || (payload && payload.comment) || 'ตรวจสอบผ่าน ส่งต่อ Plant Mgr'
+      );
+    } catch(e) {
+      console.warn('AuditLog Error in apiReviewPR:', e);
+    }
 
     return result;
   }, 'ReviewPR', rawPayload, userContext);
@@ -930,27 +1143,22 @@ function apiApprovePR(rawPayload, userContext) {
 
     // 3. Write to AuditLogs
     try {
-      var auditLog = {
-        id: 'AL-' + Date.now() + '-' + Utilities.getUuid().slice(0, 4),
-        timestamp: new Date().toISOString(),
-        action: 'PR_APPROVED',
-        actorName: user.name || user.username,
-        actorRole: user.role || user.title || 'Approver',
-        department: prObj.department,
-        docNo: prObj.prNo || prObj.id,
-        docType: 'PR',
-        details: 'อนุมัติใบขอซื้อ ' + (prObj.prNo || prObj.id) + ' สำเร็จ',
-        comment: prObj.comment || ''
-      };
-      batchAppendRecords('AuditLogs', [auditLog]);
-    } catch(e) {}
+      logPRAudit(
+        prObj.prNo || prObj.id,
+        'APPROVE',
+        user,
+        prObj.comment || (payload && payload.comment) || 'อนุมัติใบขอซื้อ'
+      );
+    } catch(e) {
+      console.warn('AuditLog Error in apiApprovePR:', e);
+    }
 
     return result;
   }, 'ApprovePR', rawPayload, userContext);
 }
 
 /**
- * Rejects a PR.
+ * Rejects / Sends back a PR.
  */
 function apiRejectPR(rawPayload, userContext) {
   return handleApiRequest(function(payload, user) {
@@ -959,7 +1167,7 @@ function apiRejectPR(rawPayload, userContext) {
     prObj.department = dept;
     
     // 1. ดึงค่าเหตุผล (Reason Field Mapping & Display)
-    var actualReason = prObj.reason || prObj.comment || prObj.rejectReason || prObj.revisionReason || prObj.returnComment || '';
+    var actualReason = prObj.reason || prObj.comment || prObj.rejectReason || prObj.revisionReason || prObj.returnComment || (payload && (payload.reason || payload.comment)) || '';
     prObj.rejectReason = actualReason;
     
     // 2. Preserve status (REJECTED_TO_DRAFT, RETURNED) or default to REJECTED
@@ -982,27 +1190,20 @@ function apiRejectPR(rawPayload, userContext) {
     
     // 3. บันทึกลง AuditLogs
     try {
-      var auditLog = {
-        id: 'AL-' + new Date().getTime(),
-        timestamp: new Date().toISOString(),
-        action: 'PR_REJECTED',
-        actor: user.name || user.username,
-        department: prObj.department,
-        docNo: prObj.prNo,
-        docType: 'PR',
-        details: 'ส่งกลับ / ปฏิเสธ PR เลขที่ ' + prObj.prNo + ': ' + actualReason
-      };
-      batchAppendRecords('AuditLogs', [auditLog]);
+      logPRAudit(
+        prObj.prNo || prObj.id,
+        'SEND_BACK',
+        user,
+        actualReason || 'ส่งกลับเพื่อแก้ไข'
+      );
     } catch(e) {
       console.warn('AuditLog Error in apiRejectPR:', e);
     }
 
-    // 4. แก้ไขปัญหาหน่วงตอนส่งแจ้งเตือน
+    // 4. แจ้งเตือน (Safe wrapper)
     try {
       if (typeof UrlFetchApp !== 'undefined') {
-        // mock logic to ensure timeout is respected if someone adds a fetch later
-        // the user said: "หากใช้ UrlFetchApp.fetch() ให้ใส่ Option: muteHttpExceptions: true และจำกัดเวลาด้วย timeout: 3000"
-        // (Apps Script fetch doesn't have timeout, so we just catch errors and use muteHttpExceptions)
+        // Safe placeholder with muteHttpExceptions
       }
     } catch (notifyErr) {
       console.warn('Notification Error:', notifyErr);
@@ -1010,6 +1211,49 @@ function apiRejectPR(rawPayload, userContext) {
 
     return result;
   }, 'RejectPR', rawPayload, userContext);
+}
+
+/**
+ * Sends back / Rejects a PR (Standard alias for apiRejectPR).
+ */
+function apiSendBackPR(rawPayload, userContext) {
+  return apiRejectPR(rawPayload, userContext);
+}
+
+/**
+ * Cancels a PR and logs CANCEL action in AuditLogs.
+ */
+function apiCancelPR(rawPayload, userContext) {
+  return handleApiRequest(function(payload, user) {
+    var prObj = payload ? Object.assign({}, payload) : {};
+    var dept = prObj.department || prObj.dept || user.department || 'PD';
+    prObj.department = dept;
+    prObj.status = 'CANCELLED';
+    var actualReason = prObj.reason || prObj.comment || prObj.rejectReason || (payload && (payload.reason || payload.comment)) || '';
+    prObj.cancelledBy = prObj.cancelledBy || user.name || user.username || 'User';
+    prObj.cancelledAt = prObj.cancelledAt || new Date().toISOString();
+    prObj.updatedAt = new Date().toISOString();
+
+    ['items', 'history', 'timeline', 'activityLog', 'approvalHistory', 'comments'].forEach(function(field) {
+      if (prObj[field]) {
+        var rawVal = prObj[field];
+        if (typeof rawVal === 'string') {
+          try { rawVal = JSON.parse(rawVal); } catch (e) { rawVal = []; }
+        }
+        prObj[field] = JSON.stringify(Array.isArray(rawVal) ? rawVal : []);
+      }
+    });
+
+    var result = upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
+
+    try {
+      logPRAudit(prObj.prNo || prObj.id, 'CANCEL', user, actualReason || 'ยกเลิกใบขอซื้อ');
+    } catch(e) {
+      console.warn('AuditLog Error in apiCancelPR:', e);
+    }
+
+    return result;
+  }, 'CancelPR', rawPayload, userContext);
 }
 
 // =========================================================================
@@ -1777,37 +2021,42 @@ function apiGetBootstrapData(rawPayload, userContext) {
     // Fetch and Index AuditLogs
     var auditLogsSheet = ss.getSheetByName('AuditLogs');
     var rawAuditLogs = auditLogsSheet ? readSheetValuesAsObjects(auditLogsSheet) : [];
-    var logsByDoc = {};
-    rawAuditLogs.forEach(function(log) {
-      if (!log) return;
-      var key = normKey(log.docNo);
-      if (!key) return;
-      if (!logsByDoc[key]) logsByDoc[key] = [];
-      logsByDoc[key].push({
-        id: log.id,
-        timestamp: log.timestamp,
-        action: log.action,
-        actor: log.actorName || log.actor,
-        role: log.actorRole || log.role,
-        comment: log.comment || log.reason || log.details || ''
-      });
-    });
+    var logsByDoc = buildAuditLogsByDoc(rawAuditLogs);
 
     prs.forEach(function(pr) {
       if (typeof pr.attachments === 'string') {
         try { pr.attachments = JSON.parse(pr.attachments); } catch(e) {}
       }
       var prKey = normKey(pr.prNo || pr.id || pr.docNo);
+      var kNo = normKey(pr.prNo);
+      var kId = normKey(pr.id);
+      var kDoc = normKey(pr.docNo);
       var files = attachmentsByDoc[prKey] || [];
       pr.attachments = files;
       pr.quotationFiles = files;
       pr.generalAttachments = files;
       
-      pr.timeline = logsByDoc[prKey] || [];
-      pr.approvalHistory = pr.timeline;
-      if (typeof pr.history === 'string') {
-        try { pr.history = JSON.parse(pr.history); } catch (e) {}
-      }
+      var docLogs = logsByDoc[prKey] || logsByDoc[kNo] || logsByDoc[kDoc] || logsByDoc[kId] || [];
+      var seenIds = {};
+      var sortedLogs = [];
+      docLogs.forEach(function(l) {
+        var lid = l.id || (l.timestamp + '_' + l.action);
+        if (!seenIds[lid]) {
+          seenIds[lid] = true;
+          sortedLogs.push(l);
+        }
+      });
+      sortedLogs.sort(function(a, b) {
+        var tA = new Date(a.timestamp || a.createdAt || 0).getTime();
+        var tB = new Date(b.timestamp || b.createdAt || 0).getTime();
+        return tA - tB;
+      });
+
+      pr.timeline = sortedLogs;
+      pr.activityTimeline = sortedLogs;
+      pr.history = sortedLogs;
+      pr.approvalHistory = sortedLogs;
+      pr.auditLogs = sortedLogs;
     });
 
     var pos = poSheet ? readSheetValuesAsObjects(poSheet) : [];

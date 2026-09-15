@@ -1,4 +1,6 @@
 var _pendingAttachments = [];
+var _cachedRootFolder = null;
+var _cachedRootFolderId = null;
 
 /**
  * @file DriveService.gs
@@ -11,16 +13,22 @@ var _pendingAttachments = [];
 /**
  * Retrieves or creates the Root Folder for the ERP system.
  * Looks up by configured ID in Script Properties first, or by standard name.
+ * Caches in memory to avoid repeated Drive API round-trips.
  * 
  * @returns {GoogleAppsScript.Drive.Folder}
  */
 function getRootDriveFolder() {
+  if (_cachedRootFolder) {
+    return _cachedRootFolder;
+  }
   const props = PropertiesService.getScriptProperties();
   const folderId = props.getProperty(CONFIG.PROPERTY_KEYS.DRIVE_ROOT_FOLDER_ID);
 
   if (folderId) {
     try {
-      return DriveApp.getFolderById(folderId);
+      _cachedRootFolder = DriveApp.getFolderById(folderId);
+      _cachedRootFolderId = folderId;
+      return _cachedRootFolder;
     } catch (e) {
       console.warn(`[DriveService] Configured Root Folder ID "${folderId}" invalid. Resolving by name...`);
     }
@@ -40,6 +48,8 @@ function getRootDriveFolder() {
 
   // Persist folder ID for fast future lookups
   props.setProperty(CONFIG.PROPERTY_KEYS.DRIVE_ROOT_FOLDER_ID, rootFolder.getId());
+  _cachedRootFolder = rootFolder;
+  _cachedRootFolderId = rootFolder.getId();
   return rootFolder;
 }
 
@@ -180,7 +190,7 @@ function uploadBase64File(payload) {
   }
 
   const fileId = createdFile.getId();
-  const viewUrl = createdFile.getUrl();
+  const viewUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
   const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
   const directUrl = 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1200';
   const lh3Url = 'https://lh3.googleusercontent.com/d/' + fileId;
@@ -208,7 +218,11 @@ function uploadBase64File(payload) {
   };
 
   try {
-    appendRecord(SHEET_NAMES.ATTACHMENTS, attachmentRecord);
+    const sheet = getSheet(SHEET_NAMES.ATTACHMENTS);
+    const headers = getSheetHeaders(sheet);
+    const rowValues = [serializeRecordToRow(attachmentRecord, headers)];
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, 1, rowValues[0].length).setValues(rowValues);
     console.info(`[DriveService] File "${fileName}" uploaded successfully. ID: ${fileId}`);
   } catch (sheetErr) {
     // CRITICAL ROLLBACK: If Sheet record fails, delete the uploaded Drive file
@@ -331,11 +345,10 @@ function uploadBase64Image(base64Data, fileName, mimeType, category, docNo, docT
   var fileId = file.getId();
   var directUrl = 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1200';
   var lh3Url = 'https://lh3.googleusercontent.com/d/' + fileId;
-  var viewUrl = file.getUrl();
+  var viewUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
 
   // Accumulate in global array for batch insert later
   try {
-    if (typeof ensureAttachmentsSheet === 'function') ensureAttachmentsSheet();
     _pendingAttachments.push({
       id: 'ATT-' + Utilities.getUuid().slice(0, 8),
       fileId: fileId,
@@ -350,7 +363,7 @@ function uploadBase64Image(base64Data, fileName, mimeType, category, docNo, docT
       directUrl: directUrl,
       lh3Url: lh3Url,
       downloadUrl: 'https://drive.google.com/uc?export=download&id=' + fileId,
-      folderPath: folder.getName(),
+      folderPath: CONFIG.DEFAULTS.DRIVE_ROOT_NAME || 'PR-PO-Stock-System',
       uploadedBy: getCurrentUserEmail() || 'system',
       uploadedAt: new Date().toISOString()
     });
@@ -485,11 +498,10 @@ function processItemImages(items, docNo, docType) {
  * @param {string} [docType='PR']
  * @returns {Array<Object>}
  */
-function processDocumentAttachments(attachments, category, docNo, docType) {
-  // 1. Reconcile (remove deleted old attachments from the database)
-  if (docNo) {
+function processDocumentAttachments(attachments, category, docNo, docType, isNew) {
+  // 1. Reconcile (remove deleted old attachments from the database) - only for existing documents
+  if (docNo && !isNew) {
     try {
-      if (typeof ensureAttachmentsSheet === 'function') ensureAttachmentsSheet();
       var allAtts = batchReadRecords(SHEET_NAMES.ATTACHMENTS);
       var validKeys = {};
       if (Array.isArray(attachments)) {

@@ -22,6 +22,47 @@ export const isGAS = () => {
 };
 
 /**
+ * Recursively strips non-serializable Browser objects (File, Blob, ArrayBuffer)
+ * from any payload before sending it across the google.script.run RPC boundary.
+ * Also removes any plain-object key named "file" or "rawFile" that holds a DOM File.
+ *
+ * @param {*} data - Any value to sanitize
+ * @returns {*} A clean, JSON-serializable version of the data
+ */
+export const sanitizePayloadForGAS = (data) => {
+  if (data === null || data === undefined) return data;
+  if (data instanceof Date) return data.toISOString();
+  if (typeof File !== 'undefined' && data instanceof File) return undefined;
+  if (typeof Blob !== 'undefined' && data instanceof Blob) return undefined;
+  if (typeof ArrayBuffer !== 'undefined' && data instanceof ArrayBuffer) return undefined;
+  if (typeof data !== 'object') return data;
+
+  if (Array.isArray(data)) {
+    return data
+      .map(sanitizePayloadForGAS)
+      .filter(v => v !== undefined);
+  }
+
+  const clean = {};
+  for (const [key, value] of Object.entries(data)) {
+    // Drop browser File/Blob instances stored under any key
+    if (typeof File !== 'undefined' && value instanceof File) continue;
+    if (typeof Blob !== 'undefined' && value instanceof Blob) continue;
+    if (typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer) continue;
+    // Also drop keys literally named 'file' or 'rawFile' holding plain objects that
+    // act as wrappers around a File (e.g. { file: File, name: '...' })
+    if ((key === 'file' || key === 'rawFile') && value && typeof value === 'object' &&
+        typeof value.size === 'number' && typeof value.name === 'string' &&
+        typeof value.type === 'string') {
+      continue;
+    }
+    const sanitizedVal = sanitizePayloadForGAS(value);
+    if (sanitizedVal !== undefined) clean[key] = sanitizedVal;
+  }
+  return clean;
+};
+
+/**
  * Universal Promise wrapper for google.script.run RPC calls.
  * Automatically enriches payloads with currentUser, unwraps API envelope,
  * and triggers red modal notification on backend failure.
@@ -73,6 +114,11 @@ export const callGAS = (functionName, ...args) => {
       }
     }
 
+    // Strip all browser File/Blob/ArrayBuffer instances from every argument
+    // before crossing the google.script.run RPC boundary to prevent
+    // "Failed due to illegal value in property: file" errors.
+    const safeArgs = finalArgs.map(sanitizePayloadForGAS);
+
     window.google.script.run
       .withSuccessHandler((response) => {
         if (response && typeof response === 'object' && 'success' in response) {
@@ -96,7 +142,7 @@ export const callGAS = (functionName, ...args) => {
         modalService.error('ข้อผิดพลาดการเชื่อมต่อระบบ', errMsg);
         reject(error instanceof Error ? error : new Error(String(error)));
       })
-      [functionName](...finalArgs);
+      [functionName](...safeArgs);
   });
 };
 

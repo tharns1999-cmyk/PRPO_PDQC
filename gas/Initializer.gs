@@ -262,6 +262,9 @@ function formatHeaderRange(sheet, row, startCol, numCols) {
     .setVerticalAlignment('middle');
 }
 
+var _prItemsSheetEnsured = false;
+var _attachmentsSheetEnsured = false;
+
 /**
  * Ensures PRItems sheet tab exists with schema headers and dynamic column sync.
  * @returns {GoogleAppsScript.Spreadsheet.Sheet}
@@ -269,6 +272,9 @@ function formatHeaderRange(sheet, row, startCol, numCols) {
 function ensurePRItemsSheet() {
   const ss = getSpreadsheet();
   let sheet = ss.getSheetByName(SHEET_NAMES.PR_ITEMS);
+  if (_prItemsSheetEnsured && sheet) {
+    return sheet;
+  }
   const targetHeaders = SCHEMA_DEFINITIONS[SHEET_NAMES.PR_ITEMS];
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAMES.PR_ITEMS);
@@ -289,6 +295,7 @@ function ensurePRItemsSheet() {
       console.warn('[ensurePRItemsSheet] Header sync warning: ' + e.message);
     }
   }
+  _prItemsSheetEnsured = true;
   return sheet;
 }
 
@@ -299,6 +306,9 @@ function ensurePRItemsSheet() {
 function ensureAttachmentsSheet() {
   const ss = getSpreadsheet();
   let sheet = ss.getSheetByName(SHEET_NAMES.ATTACHMENTS);
+  if (_attachmentsSheetEnsured && sheet) {
+    return sheet;
+  }
   const targetHeaders = SCHEMA_DEFINITIONS[SHEET_NAMES.ATTACHMENTS];
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAMES.ATTACHMENTS);
@@ -319,6 +329,7 @@ function ensureAttachmentsSheet() {
       console.warn('[ensureAttachmentsSheet] Header sync warning: ' + e.message);
     }
   }
+  _attachmentsSheetEnsured = true;
   return sheet;
 }
 

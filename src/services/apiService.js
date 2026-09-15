@@ -1,4 +1,4 @@
-import { storageService, isGAS, callGAS } from './storageService';
+import { storageService, isGAS, callGAS, sanitizePayloadForGAS } from './storageService';
 import { workflowEngine } from './workflowEngine';
 import { auditService } from './auditService';
 import { modalService } from './modalService';
@@ -652,7 +652,7 @@ export const apiService = {
 
     if (isGAS()) {
       try {
-        const gasResult = await callGAS('apiCreatePR', newPR, user);
+        const gasResult = await callGAS('apiCreatePR', sanitizePayloadForGAS(newPR), sanitizePayloadForGAS(user));
         if (gasResult && typeof gasResult === 'object') {
           const finalPR = Object.assign({}, newPR, gasResult);
           if (typeof finalPR.items === 'string') {
@@ -698,7 +698,9 @@ export const apiService = {
     const updated = await workflowEngine.updatePR(prId, prData, user, isDraft);
     if (isGAS()) {
       try {
-        const gasResult = await callGAS('apiSavePR', updated, user);
+        const rpcName = !isDraft ? 'apiUpdatePR' : 'apiSavePR';
+        const payloadToSend = sanitizePayloadForGAS({ ...updated, action: !isDraft ? 'RESUBMIT' : 'UPDATE' });
+        const gasResult = await callGAS(rpcName, payloadToSend, sanitizePayloadForGAS(user));
         if (gasResult && typeof gasResult === 'object') {
           const finalPR = Object.assign({}, updated, gasResult);
           if (typeof finalPR.items === 'string') {
@@ -717,7 +719,7 @@ export const apiService = {
         }
         return updated;
       } catch (e) {
-        console.error('[apiService] GAS apiSavePR error:', e.message);
+        console.error(`[apiService] GAS updatePR error:`, e.message);
         modalService.error('แก้ไขใบขอซื้อ (PR) ไม่สำเร็จ', e.message);
         throw e;
       }
@@ -736,9 +738,9 @@ export const apiService = {
     const result = await workflowEngine.submitPR(prId, user, memoData);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePR', result, user);
+        await callGAS('apiUpdatePR', sanitizePayloadForGAS({ ...result, action: 'RESUBMIT' }), sanitizePayloadForGAS(user));
       } catch (e) {
-        console.error('[apiService] GAS apiSavePR error:', e.message);
+        console.error('[apiService] GAS submitPR error:', e.message);
         modalService.error('ยื่นส่ง PR ไม่สำเร็จ', e.message);
         throw e;
       }
@@ -758,11 +760,23 @@ export const apiService = {
     const result = await workflowEngine.updatePRStatus(prId, nextStatus, user, note);
     if (isGAS()) {
       try {
-        if (result?.pr) await callGAS('apiSavePR', result.pr, user);
+        if (result?.pr) {
+          const prPayload = sanitizePayloadForGAS({ ...result.pr, comment: note, reason: note });
+          const userPayload = sanitizePayloadForGAS(user);
+          if (nextStatus === 'REVIEWED') {
+            await callGAS('apiReviewPR', prPayload, userPayload);
+          } else if (nextStatus === 'APPROVED') {
+            await callGAS('apiApprovePR', prPayload, userPayload);
+          } else if (nextStatus === 'CANCELLED') {
+            await callGAS('apiCancelPR', prPayload, userPayload);
+          } else {
+            await callGAS('apiSavePR', prPayload, userPayload);
+          }
+        }
         if (result?.po) {
           const poList = Array.isArray(result.po) ? result.po : [result.po];
           for (const singlePo of poList) {
-            await callGAS('apiCreatePO', singlePo, user);
+            await callGAS('apiCreatePO', sanitizePayloadForGAS(singlePo), sanitizePayloadForGAS(user));
           }
         }
       } catch (e) {
@@ -798,7 +812,8 @@ export const apiService = {
     const updated = await workflowEngine.rejectPR(prId, user, reason);
     if (isGAS()) {
       try {
-        await callGAS('apiRejectPR', updated, user);
+        const payloadToSend = sanitizePayloadForGAS({ ...updated, reason, rejectReason: reason, comment: reason });
+        await callGAS('apiRejectPR', payloadToSend, sanitizePayloadForGAS(user));
       } catch (e) {
         console.error('[apiService] GAS apiRejectPR error:', e.message);
         modalService.error('ปฏิเสธ PR ไม่สำเร็จ', e.message);
@@ -820,7 +835,7 @@ export const apiService = {
     const updated = await workflowEngine.editPRItems(prId, items, user, reason);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePR', updated, user);
+        await callGAS('apiSavePR', sanitizePayloadForGAS(updated), sanitizePayloadForGAS(user));
       } catch (e) {
         console.error('[apiService] GAS apiSavePR error:', e.message);
         modalService.error('แก้ไขรายการ PR ไม่สำเร็จ', e.message);
@@ -842,9 +857,10 @@ export const apiService = {
     const cancelled = await workflowEngine.cancelPR(prId, user, reason);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePR', cancelled, user);
+        const payloadToSend = sanitizePayloadForGAS({ ...cancelled, reason, comment: reason });
+        await callGAS('apiCancelPR', payloadToSend, sanitizePayloadForGAS(user));
       } catch (e) {
-        console.error('[apiService] GAS apiSavePR error:', e.message);
+        console.error('[apiService] GAS apiCancelPR error:', e.message);
         modalService.error('ยกเลิก PR ไม่สำเร็จ', e.message);
         throw e;
       }

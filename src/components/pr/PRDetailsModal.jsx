@@ -133,29 +133,39 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
   const [isSavingItems, setIsSavingItems] = useState(false);
 
   // Safe Timeline Aggregator
-  const timelineEvents = useMemo(() => {
-    let events = [];
-    [selectedPR?.timeline, selectedPR?.approvalHistory, selectedPR?.history, selectedPR?.auditLogs, selectedPR?.activityLog].forEach(item => {
+  const timelineList = useMemo(() => {
+    let list = [];
+    const sourceArrays = [
+      selectedPR?.timeline,
+      selectedPR?.activityTimeline,
+      selectedPR?.history,
+      selectedPR?.approvalHistory,
+      selectedPR?.auditLogs,
+      selectedPR?.activityLog
+    ];
+    sourceArrays.forEach(item => {
       if (!item) return;
       if (typeof item === 'string') {
-        try { 
-          const parsed = JSON.parse(item); 
-          if (Array.isArray(parsed)) events.push(...parsed); 
-        } catch(e) {}
+        try { const p = JSON.parse(item); if (Array.isArray(p)) list.push(...p); } catch(e) {}
       } else if (Array.isArray(item)) {
-        events.push(...item);
+        list.push(...item);
       }
     });
-    // Deduplicate ตาม id หรือ timestamp+action
+    // Fallback เมื่อยังไม่มีรายการ
+    if (list.length === 0) {
+      const fallbackList = selectedPR?.timeline || selectedPR?.activityTimeline || selectedPR?.history || selectedPR?.approvalHistory || selectedPR?.activityLog || [];
+      if (Array.isArray(fallbackList)) list = [...fallbackList];
+    }
+    // กรองรายการซ้ำ
     const seen = new Set();
-    const unique = events.filter(e => {
-      const key = e.id || `${e.timestamp || e.date}-${e.action}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
+    const unique = list.filter(item => {
+      const k = item.id || `${item.timestamp || item.createdAt || item.date || item.time}-${item.action || item.title}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
       return true;
     });
-    // เรียงลำดับจากเก่าไปใหม่ (Chronological Order) สำหรับ Timeline การทำงาน
-    return unique.sort((a, b) => new Date(a.timestamp || a.date || 0) - new Date(b.timestamp || b.date || 0));
+    // เรียงจากเก่าไปใหม่ เพื่อให้เห็น Step การเดินทางของเอกสาร
+    return unique.sort((a, b) => new Date(a.timestamp || a.createdAt || a.date || a.time || 0) - new Date(b.timestamp || b.createdAt || b.date || b.time || 0));
   }, [selectedPR]);
   const canApproverEdit = currentRole.level >= 2 && ['SUBMITTED', 'REVIEWED', 'REJECTED_TO_L2'].includes(selectedPR.status);
 
@@ -946,9 +956,10 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
 
               {/* Activity Log Timeline (Collapsible & Compact) */}
               <CollapsibleActivityTimeline
-                events={timelineEvents}
+                events={timelineList}
                 title="ลำดับเหตุการณ์ (Activity Timeline)"
-                defaultExpanded={timelineEvents.length < 2}
+                defaultExpanded={true}
+                reverseOrder={false}
               />
 
             </div>

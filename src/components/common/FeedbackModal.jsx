@@ -97,9 +97,10 @@ export default function FeedbackModal() {
       handlePromptSubmit();
       return;
     }
-    setIsConfirming(true);
-    // Call the original onConfirm — it will trigger modalService.close() which
-    // resets isConfirming via the subscribe callback above
+    if (modalState.mode === 'confirm') {
+      setIsConfirming(true);
+    }
+    // Call the original onConfirm — it will trigger modalService.close()
     modalState.onConfirm();
   };
 

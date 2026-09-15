@@ -122,7 +122,7 @@ export function AppProvider({ children }) {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // ── Full Data Hydration on Mount & Refresh (Full-Stack Speed Optimization) ──
-  const loadAllData = useCallback(async () => {
+  const loadAllData = useCallback(async (silent = false) => {
     // 1. อ่านข้อมูลล่าสุดจาก localStorage มาเรนเดอร์ขึ้นหน้าจอทันที เพื่อไม่ให้หน้าจอขาวค้าง (0ms Instant Render)
     try {
       storageService.hydrateFromClientStorage?.();
@@ -162,7 +162,7 @@ export function AppProvider({ children }) {
 
     // 2. ยุบฟังก์ชันตอนเริ่มต้นระบบ ให้เรียก apiGetBootstrapData() เพียงคำขอเดียวแทนการยิงแยกย่อย
     try {
-      setIsDataLoading(true);
+      if (!silent) setIsDataLoading(true);
       const bootstrapData = await apiService.getBootstrapData();
       
       if (bootstrapData && typeof bootstrapData === 'object') {
@@ -282,7 +282,7 @@ export function AppProvider({ children }) {
     } catch (err) {
       console.error('[AppContext] Error loading bootstrap data:', err);
     } finally {
-      setIsDataLoading(false);
+      if (!silent) setIsDataLoading(false);
       setIsLoading(false);
     }
   }, []);
@@ -1312,6 +1312,7 @@ export function AppProvider({ children }) {
     notifications,
     budgetSummary,
     loadAllData,
+    fetchBootstrapData: loadAllData,
     initAppData,
     refreshData,
     fetchPRs,

@@ -87,6 +87,21 @@ export default function PRCreateView({
 }) {
   // Submission Guard to prevent duplicate submissions
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successModalInfo, setSuccessModalInfo] = useState({ title: '', message: '' });
+
+  const handleCloseSuccessModal = () => {
+    setShowSuccessModal(false);
+    // สลับหน้าไปยังหน้ารายการทันที ห้ามมี await ขวาง
+    if (typeof onNavigate === 'function') {
+      onNavigate('pr-list');
+    } else if (typeof context?.setCurrentView === 'function') {
+      context.setCurrentView('pr-list');
+    } else if (typeof context?.onNavigate === 'function') {
+      context.onNavigate('pr-list');
+    }
+  };
+
   const memoSectionRef = useRef(null);
   const memoSubjectInputRef = useRef(null);
   const context = useAppContext() || {};
@@ -1044,6 +1059,31 @@ export default function PRCreateView({
       }));
 
       const nowIso = new Date().toISOString();
+      // Helper: Extracts only serializable plain-text fields from an attachment object.
+      // Prevents "Failed due to illegal value in property: file" on google.script.run by
+      // stripping any Browser File / Blob instances that may have been captured via spread {...f}.
+      const sanitizeAttachment = (f, overrides = {}) => ({
+        id: f.id || f.fileId || '',
+        fileName: f.fileName || f.name || 'เอกสารแนบ',
+        name: f.fileName || f.name || 'เอกสารแนบ',
+        fileSize: typeof f.fileSize === 'number' ? f.fileSize : (typeof f.size === 'number' ? f.size : 0),
+        size: typeof f.size === 'number' ? f.size : 0,
+        mimeType: f.mimeType || f.type || 'application/octet-stream',
+        type: f.mimeType || f.type || 'application/octet-stream',
+        url: f.url || f.previewUrl || f.viewUrl || f.directUrl || '',
+        previewUrl: f.previewUrl || f.url || f.viewUrl || f.directUrl || '',
+        viewUrl: f.viewUrl || f.url || '',
+        directUrl: f.directUrl || '',
+        lh3Url: f.lh3Url || '',
+        fileId: f.fileId || f.id || '',
+        driveUrl: f.driveUrl || f.viewUrl || '',
+        folderPath: f.folderPath || '',
+        category: f.category || overrides.category || '01_PR_Attachments',
+        uploadedBy: typeof f.uploadedBy === 'string' ? f.uploadedBy : '',
+        uploadedAt: typeof f.uploadedAt === 'string' ? f.uploadedAt : '',
+        ...overrides
+      });
+
       const prPayload = {
         prNo: editingPR ? editingPR.prNo : nextPRNumber,
         department,
@@ -1056,16 +1096,31 @@ export default function PRCreateView({
         supplierId: vId,
         supplierName: vName,
         hasVat: currentChannel === 'SELF' ? hasVat : false,
-        specUrl: quotationFiles[0] ? quotationFiles[0].name : '',
-        quotationFiles: quotationFiles.map(f => ({ ...f, name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, url: f.url || f.previewUrl })),
-        generalAttachments: processedImageFiles.map(f => ({ ...f, name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'GENERAL' })),
-        images: processedImageFiles.map(f => ({ ...f, name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'IMAGE' })),
+        specUrl: quotationFiles[0] ? (quotationFiles[0].fileName || quotationFiles[0].name || '') : '',
+        quotationFiles: quotationFiles.map(f => sanitizeAttachment(f, { category: 'QUOTATION', type: f.mimeType || f.type || 'application/pdf' })),
+        generalAttachments: processedImageFiles.map(f => sanitizeAttachment(f, { category: 'GENERAL', type: f.mimeType || f.type || 'image/jpeg' })),
+        images: processedImageFiles.map(f => sanitizeAttachment(f, { category: 'IMAGE', type: f.mimeType || f.type || 'image/jpeg' })),
         attachments: [
-          ...quotationFiles.map(f => ({ ...f, name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'QUOTATION' })),
-          ...processedImageFiles.map(f => ({ ...f, name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, url: f.url || f.previewUrl, category: 'GENERAL' }))
+          ...quotationFiles.map(f => sanitizeAttachment(f, { category: 'QUOTATION', type: f.mimeType || f.type || 'application/pdf' })),
+          ...processedImageFiles.map(f => sanitizeAttachment(f, { category: 'GENERAL', type: f.mimeType || f.type || 'image/jpeg' }))
         ],
         note,
-        items: processedItems,
+        items: processedItems.map(item => ({
+          ...item,
+          // Strip any File/Blob from images/attachments in items as well
+          images: Array.isArray(item.images)
+            ? item.images.map(img => typeof img === 'string'
+                ? { url: img, previewUrl: img }
+                : { url: img?.url || img?.previewUrl || '', previewUrl: img?.previewUrl || img?.url || '', name: img?.name || '', fileId: img?.fileId || '', driveUrl: img?.driveUrl || '', lh3Url: img?.lh3Url || '' }
+              ).filter(img => Boolean(img.url))
+            : [],
+          attachments: Array.isArray(item.attachments)
+            ? item.attachments.map(att => typeof att === 'string'
+                ? { url: att, previewUrl: att }
+                : { url: att?.url || att?.previewUrl || '', previewUrl: att?.previewUrl || att?.url || '', name: att?.name || '', fileId: att?.fileId || '', driveUrl: att?.driveUrl || '', lh3Url: att?.lh3Url || '' }
+              ).filter(att => Boolean(att.url))
+            : []
+        })),
         financials: financialsPayload,
         totalAmount: grandTotal,
         memo: finalMemo,
@@ -1096,32 +1151,34 @@ export default function PRCreateView({
       if (newPR && context?.setPRs) {
         context.setPRs(prev => {
           if (!Array.isArray(prev)) return [newPR];
-          const exists = prev.some(p => p.id === newPR.id);
-          if (exists) return prev.map(p => p.id === newPR.id ? newPR : p);
+          const exists = prev.some(p => p.id === newPR.id || (newPR.prNo && p.prNo === newPR.prNo));
+          if (exists) return prev.map(p => (p.id === newPR.id || (newPR.prNo && p.prNo === newPR.prNo)) ? newPR : p);
           return [newPR, ...prev];
         });
       }
 
-      // Wait for user to click OK on Success Modal, then navigate instantly and sync later
       const msg = editingPR 
         ? (isDraft ? 'บันทึกแบบร่างเรียบร้อย' : 'แก้ไขและยื่นส่งใบขอซื้อ (PR) สำเร็จ')
         : (isDraft ? 'บันทึกแบบร่างสำเร็จ' : 'สร้างและยื่นส่งใบขอซื้อ (PR) สำเร็จ');
       
       setIsSubmitting(false); // Enable UI immediately
       
-      modalService.success(msg).then(() => {
-        // 1. Instant redirect
-        onNavigate('pr-list');
-        
-        // 2. Start background sync WITHOUT blocking the UI (delay to let page transition finish)
-        setTimeout(() => {
-          if (context?.fetchBootstrapData) {
-            context.fetchBootstrapData().catch(err => console.warn('Background sync error:', err));
-          } else if (onRefresh) {
-            onRefresh().catch && onRefresh().catch(err => console.warn('Background sync error:', err));
-          }
-        }, 500);
+      setSuccessModalInfo({
+        title: 'ดำเนินการสำเร็จ',
+        message: msg
       });
+      setShowSuccessModal(true);
+      
+      // Start background sync WITHOUT blocking the UI
+      setTimeout(() => {
+        if (context?.fetchBootstrapData) {
+          context.fetchBootstrapData(true).catch(err => console.warn('Background sync error:', err));
+        } else if (context?.refreshData) {
+          context.refreshData(true).catch(err => console.warn('Background sync error:', err));
+        } else if (onRefresh) {
+          onRefresh().catch && onRefresh().catch(err => console.warn('Background sync error:', err));
+        }
+      }, 500);
       
       return;
     } catch (err) {
@@ -2367,6 +2424,35 @@ export default function PRCreateView({
                 {previewImage.name}
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-emerald-100 p-6 sm:p-7 text-center space-y-4 animate-scale-in">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto shadow-sm">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-slate-900">
+                {successModalInfo.title || 'ดำเนินการสำเร็จ'}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                {successModalInfo.message || 'สร้างและยื่นส่งใบขอซื้อ (PR) สำเร็จ'}
+              </p>
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                id="pr-create-success-modal-btn"
+                onClick={handleCloseSuccessModal}
+                className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm rounded-xl shadow transition-all cursor-pointer active:scale-98"
+              >
+                ตกลง
+              </button>
+            </div>
           </div>
         </div>
       )}
