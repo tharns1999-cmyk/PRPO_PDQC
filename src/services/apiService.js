@@ -44,21 +44,72 @@ export const apiService = {
     return null;
   },
   async getBootstrapData() {
+    // 1. Ensure local client storage is hydrated before API request
+    try {
+      storageService.hydrateFromClientStorage?.();
+    } catch (e) {}
+
+    // 2. Fetch from Google Apps Script Backend
     if (isGAS()) {
       try {
         const payload = await callGAS('apiGetBootstrapData');
         if (payload && typeof payload === 'object') {
-          if (Array.isArray(payload.prs)) storageService.savePRs(payload.prs);
-          if (Array.isArray(payload.pos)) storageService.savePOs(payload.pos);
-          if (Array.isArray(payload.products)) storageService.saveProducts(payload.products);
-          if (Array.isArray(payload.stockLogs)) storageService.saveStockLogs(payload.stockLogs);
+          // Persist all returned collections in batch to localStorage
+          if (typeof storageService.applyInitialPayload === 'function') {
+            storageService.applyInitialPayload(payload);
+          } else {
+            if (Array.isArray(payload.prs)) storageService.savePRs(payload.prs);
+            if (Array.isArray(payload.pos)) storageService.savePOs(payload.pos);
+            const prods = payload.inventory || payload.products;
+            if (Array.isArray(prods)) storageService.saveProducts(prods);
+            if (Array.isArray(payload.stockLogs)) storageService.saveStockLogs(payload.stockLogs);
+            if (Array.isArray(payload.vendors)) storageService.saveVendors(payload.vendors);
+            if (Array.isArray(payload.storageLocations)) storageService.saveStorageLocations(payload.storageLocations);
+            if (Array.isArray(payload.usageUnits)) storageService.saveUsageUnits(payload.usageUnits);
+            if (Array.isArray(payload.departments)) storageService.saveDepartments(payload.departments);
+            if (Array.isArray(payload.users)) storageService.saveUsers(payload.users);
+            if (payload.budgets && typeof payload.budgets === 'object') storageService.saveBudgets(payload.budgets);
+            if (Array.isArray(payload.budgetTransactions)) storageService.saveBudgetTransactions(payload.budgetTransactions);
+            if (Array.isArray(payload.notifications)) storageService.saveNotifications(payload.notifications);
+          }
           return payload;
         }
       } catch (e) {
         console.warn('[apiService] GAS apiGetBootstrapData error:', e.message);
       }
     }
-    return null;
+
+    // 3. Fallback for local dev server / offline mode
+    try {
+      const res = await fetch('/api/bootstrap');
+      if (res.ok) {
+        const payload = await res.json();
+        if (payload && typeof payload === 'object') {
+          if (typeof storageService.applyInitialPayload === 'function') {
+            storageService.applyInitialPayload(payload);
+          }
+          return payload;
+        }
+      }
+    } catch (e) {}
+
+    // 4. Return cached dataset from storageService (localStorage)
+    const cachedProducts = storageService.getProducts() || [];
+    return {
+      prs: storageService.getPRs() || [],
+      pos: storageService.getPOs() || [],
+      inventory: cachedProducts,
+      products: cachedProducts,
+      stockLogs: storageService.getStockLogs() || [],
+      vendors: storageService.getVendors() || [],
+      storageLocations: storageService.getStorageLocations() || [],
+      usageUnits: storageService.getUsageUnits() || [],
+      departments: storageService.getDepartments() || [],
+      users: storageService.getUsers() || [],
+      budgets: storageService.getBudgets() || {},
+      budgetTransactions: storageService.getBudgetTransactions() || [],
+      notifications: storageService.getNotifications() || []
+    };
   },
   async getProducts(forceFetch = false) {
     if (isGAS()) {

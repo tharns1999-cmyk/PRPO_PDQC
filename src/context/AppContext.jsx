@@ -121,214 +121,166 @@ export function AppProvider({ children }) {
   const [selectedPOForModal, setSelectedPOForModal] = useState(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // ── Full Data Hydration on Mount & Refresh (Optimized Non-Blocking Architecture) ──
+  // ── Full Data Hydration on Mount & Refresh (Full-Stack Speed Optimization) ──
   const loadAllData = useCallback(async () => {
-    // 1. Instant ClientStorage Hydration (0ms non-blocking initial UI paint)
+    // 1. อ่านข้อมูลล่าสุดจาก localStorage มาเรนเดอร์ขึ้นหน้าจอทันที เพื่อไม่ให้หน้าจอขาวค้าง (0ms Instant Render)
     try {
       storageService.hydrateFromClientStorage?.();
-      const cachedProds = storageService.getProducts();
-      const cachedVendors = storageService.getVendors();
-      const cachedLocs = storageService.getStorageLocations();
-      const cachedUnits = storageService.getUsageUnits();
-      const cachedDepts = storageService.getDepartments();
-      const cachedUsers = storageService.getUsers();
-      const cachedPRs = storageService.getPRs();
-      const cachedPOs = storageService.getPOs();
-      const cachedLogs = storageService.getStockLogs();
-      const cachedNotifs = storageService.getNotifications();
-      const cachedTxs = storageService.getBudgetTransactions();
+      const cachedProds = storageService.getProducts() || [];
+      const cachedVendors = storageService.getVendors() || [];
+      const cachedLocs = storageService.getStorageLocations() || [];
+      const cachedUnits = storageService.getUsageUnits() || [];
+      const cachedDepts = storageService.getDepartments() || [];
+      const cachedUsers = storageService.getUsers() || [];
+      const cachedPRs = storageService.getPRs() || [];
+      const cachedPOs = storageService.getPOs() || [];
+      const cachedLogs = storageService.getStockLogs() || [];
+      const cachedNotifs = storageService.getNotifications() || [];
+      const cachedTxs = storageService.getBudgetTransactions() || [];
 
-      if (Array.isArray(cachedProds) && cachedProds.length > 0) setProducts(getUnifiedProductList(cachedProds));
-      if (Array.isArray(cachedVendors) && cachedVendors.length > 0) setVendors(cachedVendors);
-      if (Array.isArray(cachedLocs) && cachedLocs.length > 0) setStorageLocations(cachedLocs);
-      if (Array.isArray(cachedUnits) && cachedUnits.length > 0) setUsageUnits(cachedUnits);
-      if (Array.isArray(cachedDepts) && cachedDepts.length > 0) setDepartments(cachedDepts);
-      if (Array.isArray(cachedUsers) && cachedUsers.length > 0) setUsers(cachedUsers);
-      if (Array.isArray(cachedPRs) && cachedPRs.length > 0) setPRs(cachedPRs);
-      if (Array.isArray(cachedPOs) && cachedPOs.length > 0) setPOs(cachedPOs);
-      if (Array.isArray(cachedLogs) && cachedLogs.length > 0) setStockLogs(cachedLogs);
-      if (Array.isArray(cachedNotifs) && cachedNotifs.length > 0) setNotifications(cachedNotifs);
-      if (Array.isArray(cachedTxs) && cachedTxs.length > 0) setBudgetTransactions(cachedTxs);
+      if (cachedProds.length > 0) setProducts(getUnifiedProductList(cachedProds));
+      if (cachedVendors.length > 0) setVendors(cachedVendors);
+      if (cachedLocs.length > 0) setStorageLocations(cachedLocs);
+      if (cachedUnits.length > 0) setUsageUnits(cachedUnits);
+      if (cachedDepts.length > 0) setDepartments(cachedDepts);
+      if (cachedUsers.length > 0) setUsers(cachedUsers);
+      if (cachedPRs.length > 0) setPRs(cachedPRs);
+      if (cachedPOs.length > 0) setPOs(cachedPOs);
+      if (cachedLogs.length > 0) setStockLogs(cachedLogs);
+      if (cachedNotifs.length > 0) setNotifications(cachedNotifs);
+      if (cachedTxs.length > 0) setBudgetTransactions(cachedTxs);
       
       const cachedSummary = workflowEngine.calculateBudgetSummary();
       if (cachedSummary) setBudgetSummary(cachedSummary);
 
-      // If we already have cached data, unblock loader immediately
-      if (cachedProds?.length > 0 || cachedUsers?.length > 0) {
-        setIsLoading(false);
-      }
+      // Unblock UI immediately: render cached data so screen never freezes or whites out
+      setIsLoading(false);
     } catch (e) {
       console.warn('[AppContext] Instant cache hydration warning:', e);
+      setIsLoading(false);
     }
 
-    // 2. Fetch fresh Master Data from Backend (fast lightweight payload < 400ms)
+    // 2. ยุบฟังก์ชันตอนเริ่มต้นระบบ ให้เรียก apiGetBootstrapData() เพียงคำขอเดียวแทนการยิงแยกย่อย
     try {
       setIsDataLoading(true);
-      await storageService.init();
+      const bootstrapData = await apiService.getBootstrapData();
+      
+      if (bootstrapData && typeof bootstrapData === 'object') {
+        const {
+          prs: prsData,
+          pos: posData,
+          inventory: invData,
+          products: prodsData,
+          stockLogs: logsData,
+          users: usersData,
+          departments: deptsData,
+          vendors: vendorsData,
+          storageLocations: locsData,
+          usageUnits: unitsData,
+          budgetTransactions: txsData,
+          notifications: notisData
+        } = bootstrapData;
 
-      // Retrieve synchronized master data
-      const [
-        prodsData,
-        budgetsData,
-        locsData,
-        notisData,
-        vendorsData,
-        unitsData,
-        usersData,
-        deptsData
-      ] = await Promise.all([
-        apiService.getProducts(),
-        apiService.getBudgets(),
-        apiService.getStorageLocations(),
-        apiService.getNotifications(),
-        apiService.getVendors(),
-        apiService.getUsageUnits(),
-        apiService.getUsers(),
-        apiService.getDepartments()
-      ]);
-
-      if (Array.isArray(prodsData)) {
-        setProducts(getUnifiedProductList(prodsData));
-      }
-      if (Array.isArray(vendorsData)) {
-        setVendors(vendorsData);
-      }
-      if (Array.isArray(locsData)) {
-        setStorageLocations(locsData);
-      }
-      if (Array.isArray(unitsData)) {
-        setUsageUnits(unitsData);
-      }
-      if (Array.isArray(deptsData)) {
-        setDepartments(deptsData);
-      }
-      if (Array.isArray(usersData) && usersData.length > 0) {
-        setUsers(usersData);
-        setCurrentUser(prevUser => {
-          if (!prevUser) return prevUser;
-          const fresh = usersData.find(u => u.id === prevUser.id || u.username === prevUser.username);
-          if (fresh) {
-            const permissions = resolveUserPermissions(fresh);
-            const isAdmin = fresh.roleId === 'ADMIN' || fresh.level >= 99 || fresh.username === 'admin';
-            const cleanDepts = getUserDepartments(fresh);
-            const userDepts = cleanDepts.length > 0 ? cleanDepts : (fresh.department ? [fresh.department] : ['PD']);
-            const updatedSession = { 
-              ...prevUser, 
-              ...fresh, 
-              ...permissions, 
-              departments: userDepts,
-              assignedDepartments: fresh.assignedDepartments || userDepts,
-              allowedDepartments: fresh.allowedDepartments || userDepts,
-              primaryDepartment: fresh.primaryDepartment || userDepts[0] || 'PD',
-              department: fresh.department || userDepts[0] || 'PD',
-              role: isAdmin ? 'admin' : (fresh.roleId || 'user').toLowerCase(),
-              rolePermissions: permissions 
-            };
-            setCurrentRole(updatedSession);
-            try { localStorage.setItem('prpo_auth_session', JSON.stringify(updatedSession)); } catch {}
-            return updatedSession;
-          }
-          return prevUser;
-        });
-      }
-
-      if (Array.isArray(notisData) && notisData.length > 0) {
-        const localNotifs = notificationService.getAll();
-        const localReadMap = new Map();
-        localNotifs.forEach(n => {
-          if (n.isRead === true || n.read === true || n.status === 'read') {
-            localReadMap.set(n.id || n._id, true);
-          }
-        });
-
-        const merged = notisData.map(n => {
-          if (localReadMap.has(n.id || n._id)) {
-            return { ...n, isRead: true, read: true, status: 'read' };
-          }
-          return n;
-        });
-
-        setNotifications(merged);
-        notificationService.saveAll(merged);
-      } else {
-        setNotifications(notificationService.getAll());
-      }
-
-      const bSummary = workflowEngine.calculateBudgetSummary();
-      setBudgetSummary(bSummary || null);
-
-      // Unblock UI immediately after master data is ready
-      setIsDataLoading(false);
-      setIsLoading(false);
-
-      // 3. Asynchronously load heavy transactional data (PRs, POs, StockLogs, BudgetTransactions)
-      // in the background without blocking the initial screen
-      (async () => {
-        try {
-          const [bootstrapData, txsData] = await Promise.all([
-            apiService.getBootstrapData(),
-            apiService.getBudgetTransactions()
-          ]);
-          
-          if (bootstrapData) {
-            const prsData = bootstrapData.prs;
-            const posData = bootstrapData.pos;
-            const logsData = bootstrapData.stockLogs;
-            
-            if (Array.isArray(prsData)) {
-              const seenPRKeys = new Set();
-              const uniquePRs = prsData.filter(item => {
-                const idKey = item.id;
-                const noKey = item.prNo || item.prNumber;
-                if ((idKey && seenPRKeys.has(idKey)) || (noKey && seenPRKeys.has(noKey))) return false;
-                if (idKey) seenPRKeys.add(idKey);
-                if (noKey) seenPRKeys.add(noKey);
-                return true;
-              });
-              setPRs(uniquePRs);
-            }
-
-            if (Array.isArray(posData)) {
-              const seenPOKeys = new Set();
-              const uniquePOs = posData.filter(item => {
-                const idKey = item.id;
-                const noKey = item.poNo || item.poNumber;
-                if ((idKey && seenPOKeys.has(idKey)) || (noKey && seenPOKeys.has(noKey))) return false;
-                if (idKey) seenPOKeys.add(idKey);
-                if (noKey) seenPOKeys.add(noKey);
-                return true;
-              });
-              setPOs(uniquePOs);
-            }
-
-            if (Array.isArray(logsData)) {
-              const localLogs = storageService.getStockLogs() || [];
-              const seenLogIds = new Set();
-              const mergedLogs = [];
-              [...localLogs, ...logsData].forEach(l => {
-                if (l && l.id && !seenLogIds.has(l.id)) {
-                  seenLogIds.add(l.id);
-                  mergedLogs.push(l);
-                }
-              });
-              setStockLogs(mergedLogs);
-              storageService.saveStockLogs(mergedLogs);
-            }
-          }
-
-          if (Array.isArray(txsData)) {
-            setBudgetTransactions(txsData);
-          }
-
-          const updatedBSummary = workflowEngine.calculateBudgetSummary();
-          setBudgetSummary(updatedBSummary || null);
-        } catch (txErr) {
-          console.warn('[AppContext] Background transactional sync warning:', txErr);
+        const effectiveProducts = invData || prodsData;
+        if (Array.isArray(effectiveProducts)) {
+          setProducts(getUnifiedProductList(effectiveProducts));
         }
-      })();
+        if (Array.isArray(vendorsData)) {
+          setVendors(vendorsData);
+        }
+        if (Array.isArray(locsData)) {
+          setStorageLocations(locsData);
+        }
+        if (Array.isArray(unitsData)) {
+          setUsageUnits(unitsData);
+        }
+        if (Array.isArray(deptsData)) {
+          setDepartments(deptsData);
+        }
+        if (Array.isArray(prsData)) {
+          const seenPRKeys = new Set();
+          const uniquePRs = prsData.filter(item => {
+            const idKey = item.id;
+            const noKey = item.prNo || item.prNumber;
+            if ((idKey && seenPRKeys.has(idKey)) || (noKey && seenPRKeys.has(noKey))) return false;
+            if (idKey) seenPRKeys.add(idKey);
+            if (noKey) seenPRKeys.add(noKey);
+            return true;
+          });
+          setPRs(uniquePRs);
+        }
+        if (Array.isArray(posData)) {
+          const seenPOKeys = new Set();
+          const uniquePOs = posData.filter(item => {
+            const idKey = item.id;
+            const noKey = item.poNo || item.poNumber;
+            if ((idKey && seenPOKeys.has(idKey)) || (noKey && seenPOKeys.has(noKey))) return false;
+            if (idKey) seenPOKeys.add(idKey);
+            if (noKey) seenPOKeys.add(noKey);
+            return true;
+          });
+          setPOs(uniquePOs);
+        }
+        if (Array.isArray(logsData)) {
+          setStockLogs(logsData);
+        }
+        if (Array.isArray(txsData)) {
+          setBudgetTransactions(txsData);
+        }
+        if (Array.isArray(usersData) && usersData.length > 0) {
+          setUsers(usersData);
+          setCurrentUser(prevUser => {
+            if (!prevUser) return prevUser;
+            const fresh = usersData.find(u => u.id === prevUser.id || u.username === prevUser.username);
+            if (fresh) {
+              const permissions = resolveUserPermissions(fresh);
+              const isAdmin = fresh.roleId === 'ADMIN' || fresh.level >= 99 || fresh.username === 'admin';
+              const cleanDepts = getUserDepartments(fresh);
+              const userDepts = cleanDepts.length > 0 ? cleanDepts : (fresh.department ? [fresh.department] : ['PD']);
+              const updatedSession = { 
+                ...prevUser, 
+                ...fresh, 
+                ...permissions, 
+                departments: userDepts,
+                assignedDepartments: fresh.assignedDepartments || userDepts,
+                allowedDepartments: fresh.allowedDepartments || userDepts,
+                primaryDepartment: fresh.primaryDepartment || userDepts[0] || 'PD',
+                department: fresh.department || userDepts[0] || 'PD',
+                role: isAdmin ? 'admin' : (fresh.roleId || 'user').toLowerCase(),
+                rolePermissions: permissions 
+              };
+              setCurrentRole(updatedSession);
+              try { localStorage.setItem('prpo_auth_session', JSON.stringify(updatedSession)); } catch {}
+              return updatedSession;
+            }
+            return prevUser;
+          });
+        }
+        if (Array.isArray(notisData) && notisData.length > 0) {
+          const localNotifs = notificationService.getAll();
+          const localReadMap = new Map();
+          localNotifs.forEach(n => {
+            if (n.isRead === true || n.read === true || n.status === 'read') {
+              localReadMap.set(n.id || n._id, true);
+            }
+          });
+          const merged = notisData.map(n => {
+            if (localReadMap.has(n.id || n._id)) {
+              return { ...n, isRead: true, read: true, status: 'read' };
+            }
+            return n;
+          });
+          setNotifications(merged);
+          notificationService.saveAll(merged);
+        } else {
+          setNotifications(notificationService.getAll());
+        }
 
+        const bSummary = workflowEngine.calculateBudgetSummary();
+        setBudgetSummary(bSummary || null);
+      }
     } catch (err) {
-      console.error('[AppContext] Error loading all data from backend:', err);
+      console.error('[AppContext] Error loading bootstrap data:', err);
     } finally {
       setIsDataLoading(false);
       setIsLoading(false);

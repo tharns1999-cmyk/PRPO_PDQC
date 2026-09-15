@@ -262,11 +262,36 @@ function apiSaveMasterItem(collectionOrPayload, itemOrUser, userContext) {
       targetItem.createdAt = new Date().toISOString();
     }
 
-    var result = saveMasterItem(targetCollection, targetItem);
-    if (result && typeof result === 'object' && result.success === false) {
-      return result;
+    var sheetName = resolveMasterSheetName(targetCollection);
+    var targetCode = String(targetItem.code || targetItem.sku || targetItem.vendorCode || '').trim().toUpperCase();
+    if (sheetName === SHEET_NAMES.DEPARTMENTS && targetCode === 'ALL') {
+      throw new Error('VALIDATION_ERROR: ไม่อนุญาตให้ใช้รหัส "ALL" เป็นแผนกจริงในระบบ');
     }
-    return (result && result.data !== undefined) ? result.data : result;
+
+    // Auto-generate ID if new item
+    if (!targetItem.id) {
+      var suffix = Date.now().toString().slice(-4);
+      if (sheetName === SHEET_NAMES.PRODUCTS) {
+        var cat = targetItem.category || targetItem.department || 'PD';
+        targetItem.id = 'PROD-' + cat + '-' + suffix;
+      } else if (sheetName === SHEET_NAMES.VENDORS) {
+        targetItem.id = 'VEN-' + suffix;
+      } else if (sheetName === SHEET_NAMES.STORAGE_LOCATIONS) {
+        targetItem.id = 'LOC-' + (targetItem.department || 'ALL') + '-' + suffix;
+      } else if (sheetName === SHEET_NAMES.USAGE_UNITS) {
+        targetItem.id = 'UNIT-' + (targetItem.department || 'PD') + '-' + suffix;
+      } else {
+        targetItem.id = 'ID-' + suffix;
+      }
+    }
+    if (targetItem.status === undefined && targetItem.isActive === undefined) {
+      targetItem.status = 'ACTIVE';
+      targetItem.isActive = true;
+    }
+
+    // High-speed RAM array search + batch write
+    var saved = upsertRecordFast(sheetName, 'id', targetItem);
+    return saved;
   }, 'SaveMasterItem', rawPayload, rawUser);
 }
 
@@ -606,8 +631,8 @@ function apiCreatePR(rawPayload, userContext) {
       prObj.subtotal = prObj.subtotal || total;
     }
 
-    // 1. Write to PRs sheet
-    appendRecord(SHEET_NAMES.PRS, prObj);
+    // 1. Write to PRs sheet (Search RAM index first, then batch write)
+    upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
 
     // 2. Write individual items to PRItems sheet immediately with real Drive URLs & IDs
     try {
@@ -725,9 +750,7 @@ function apiSavePR(rawPayload, userContext) {
             updatedAt: prObj.updatedAt
           };
         });
-        itemRows.forEach(function(row) {
-          upsertRecordFast(SHEET_NAMES.PR_ITEMS, 'id', row);
-        });
+        batchUpsertRecordsFast(SHEET_NAMES.PR_ITEMS, 'id', itemRows);
       }
     } catch (e) {
       console.warn('[apiSavePR] Warning updating PRItems: ' + e.message);
@@ -880,7 +903,7 @@ function apiCreatePO(rawPayload, userContext) {
       }
     });
 
-    appendRecord(SHEET_NAMES.POS, poObj);
+    upsertRecordFast(SHEET_NAMES.POS, 'id', poObj);
     return poObj;
   }, 'CreatePO', rawPayload, userContext);
 }
@@ -1294,14 +1317,18 @@ function apiGetBudgets(rawPayload, userContext) {
 function apiSaveBudgets(budgetsObj, userContext) {
   return handleApiRequest(function(payload, user) {
     var targetBudgets = (typeof payload === 'object' && payload !== null) ? payload : {};
+    var budgetList = [];
     Object.keys(targetBudgets).forEach(function(dept) {
       var cleanDept = String(dept || '').trim().toUpperCase();
       if (!cleanDept || cleanDept === 'ALL') return;
       var data = targetBudgets[dept] || {};
       data.dept = cleanDept;
       data.updatedAt = new Date().toISOString();
-      upsertRecordById(SHEET_NAMES.BUDGETS, 'dept', data);
+      budgetList.push(data);
     });
+    if (budgetList.length > 0) {
+      batchUpsertRecordsFast(SHEET_NAMES.BUDGETS, 'dept', budgetList);
+    }
     return targetBudgets;
   }, 'SaveBudgets', budgetsObj, userContext);
 }
@@ -1486,53 +1513,225 @@ function apiPurgeAllDepartment(rawPayload, userContext) {
 }
 
 /**
- * Fast Bootstrap Data Payload for frontend initial load
+ * High-Performance Sheet Values to Objects Parser in RAM.
+ * Reads 2D getValues() array, strictly maps header rows, auto-parses JSON fields,
+ * formats ISO dates, and casts identifiers to string without repeated sheet calls.
+ * 
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @returns {Array<Object>}
+ */
+function readSheetValuesAsObjects(sheet) {
+  if (!sheet) return [];
+  var dataRange = sheet.getDataRange();
+  var values = dataRange.getValues();
+  if (!values || values.length <= 1) return [];
+
+  var headers = values[0].map(function(h) { return String(h || '').trim(); });
+  var records = [];
+
+  for (var r = 1; r < values.length; r++) {
+    var row = values[r];
+    var isEmpty = true;
+    for (var c = 0; c < row.length; c++) {
+      if (row[c] !== '' && row[c] !== null && row[c] !== undefined) {
+        isEmpty = false;
+        break;
+      }
+    }
+    if (isEmpty) continue;
+
+    var record = {};
+    for (var c = 0; c < headers.length; c++) {
+      var header = headers[c];
+      if (!header) continue;
+      var val = row[c];
+
+      if (typeof isIdentifierColumn === 'function' && isIdentifierColumn(header)) {
+        val = (val !== null && val !== undefined) ? String(val).trim() : '';
+      } else if (typeof val === 'string' && val.length > 1) {
+        var trimmed = val.trim();
+        if ((trimmed.charAt(0) === '{' && trimmed.charAt(trimmed.length - 1) === '}') ||
+            (trimmed.charAt(0) === '[' && trimmed.charAt(trimmed.length - 1) === ']')) {
+          try { val = JSON.parse(trimmed); } catch (e) {}
+        }
+      } else if (val instanceof Date) {
+        val = val.toISOString();
+      }
+      record[header] = val;
+    }
+    records.push(record);
+  }
+  return records;
+}
+
+/**
+ * Fast Bootstrap Data Payload for frontend initial load.
+ * Opens Google Spreadsheet ONCE, reads PRs, POs, and Inventory/Products via .getDataRange().getValues(),
+ * converts 2D arrays to JSON in RAM, and returns all collections in a single unified response.
  */
 function apiGetBootstrapData(rawPayload, userContext) {
   return handleApiRequest(function(payload, user) {
-    var prs = normalizePRsLegacyOnline(batchReadRecords(SHEET_NAMES.PRS));
-    var pos = batchReadRecords(SHEET_NAMES.POS);
-    var products = batchReadRecords(SHEET_NAMES.PRODUCTS);
-    var stockLogs = batchReadRecords(SHEET_NAMES.STOCK_LOGS);
-    
+    // 1. Open Spreadsheet ONCE
+    var ss = getSpreadsheet();
+
+    // 2. Fetch sheet tabs
+    var prSheet = ss.getSheetByName(SHEET_NAMES.PRS) || ss.getSheetByName('PRs');
+    var poSheet = ss.getSheetByName(SHEET_NAMES.POS) || ss.getSheetByName('POs');
+    var invSheet = ss.getSheetByName('Inventory') || ss.getSheetByName(SHEET_NAMES.PRODUCTS) || ss.getSheetByName('Products');
+    var logsSheet = ss.getSheetByName(SHEET_NAMES.STOCK_LOGS) || ss.getSheetByName('StockLogs');
+    var venSheet = ss.getSheetByName(SHEET_NAMES.VENDORS) || ss.getSheetByName('Vendors');
+    var locSheet = ss.getSheetByName(SHEET_NAMES.STORAGE_LOCATIONS) || ss.getSheetByName('StorageLocations');
+    var unitSheet = ss.getSheetByName(SHEET_NAMES.USAGE_UNITS) || ss.getSheetByName('UsageUnits');
+    var deptSheet = ss.getSheetByName(SHEET_NAMES.DEPARTMENTS) || ss.getSheetByName('Departments');
+    var userSheet = ss.getSheetByName(SHEET_NAMES.USERS) || ss.getSheetByName('Users');
+    var budSheet = ss.getSheetByName(SHEET_NAMES.BUDGETS) || ss.getSheetByName('Budgets');
+    var txSheet = ss.getSheetByName(SHEET_NAMES.BUDGET_TRANSACTIONS) || ss.getSheetByName('BudgetTransactions');
+    var notifSheet = ss.getSheetByName(SHEET_NAMES.NOTIFICATIONS) || ss.getSheetByName('Notifications');
+
+    // 3. Read .getDataRange().getValues() and convert to JSON in RAM
+    var prs = prSheet ? readSheetValuesAsObjects(prSheet) : [];
+    if (typeof normalizePRsLegacyOnline === 'function') {
+      prs = normalizePRsLegacyOnline(prs);
+    }
+    var pos = poSheet ? readSheetValuesAsObjects(poSheet) : [];
+    var inventory = invSheet ? readSheetValuesAsObjects(invSheet) : [];
+    var stockLogs = logsSheet ? readSheetValuesAsObjects(logsSheet) : [];
+    var vendors = venSheet ? readSheetValuesAsObjects(venSheet) : [];
+    var storageLocations = locSheet ? readSheetValuesAsObjects(locSheet) : [];
+    var usageUnits = unitSheet ? readSheetValuesAsObjects(unitSheet) : [];
+    var rawDepartments = deptSheet ? readSheetValuesAsObjects(deptSheet) : [];
+    var users = userSheet ? readSheetValuesAsObjects(userSheet) : [];
+    var rawBudgets = budSheet ? readSheetValuesAsObjects(budSheet) : [];
+    var budgetTransactions = txSheet ? readSheetValuesAsObjects(txSheet) : [];
+    var rawNotifications = notifSheet ? readSheetValuesAsObjects(notifSheet) : [];
+
+    var departments = rawDepartments.filter(function(d) {
+      var code = String(d.code || '').trim().toUpperCase();
+      var id = String(d.id || '').trim().toUpperCase();
+      var name = String(d.name || '');
+      return code !== 'ALL' && id !== 'DEPT-ALL' && name.indexOf('ส่วนกลาง') === -1 && name.indexOf('ทุกฝ่าย') === -1;
+    });
+
+    var budgets = {};
+    rawBudgets.forEach(function(r) {
+      var dept = String(r.dept || '').trim().toUpperCase();
+      if (dept && dept !== 'ALL') {
+        budgets[r.dept] = r;
+      }
+    });
+
+    var notifications = rawNotifications.filter(function(n) {
+      if (!n.targetRole || n.targetRole === 'ALL') return true;
+      if (!user) return false;
+      if (user.isAdmin) return true;
+      var roleStr = String(n.targetRole).toUpperCase();
+      return roleStr === String(user.canonicalRole).toUpperCase() ||
+             roleStr === String(user.role).toUpperCase() ||
+             roleStr === String(user.roleId).toUpperCase();
+    });
+
+    // 4. Return all collections in a single Response
     return {
       prs: prs,
       pos: pos,
-      products: products,
-      stockLogs: stockLogs
+      inventory: inventory,
+      products: inventory, // alias so code expecting products or inventory works seamlessly
+      stockLogs: stockLogs,
+      vendors: vendors,
+      storageLocations: storageLocations,
+      usageUnits: usageUnits,
+      departments: departments,
+      users: users,
+      budgets: budgets,
+      budgetTransactions: budgetTransactions,
+      notifications: notifications,
+      serverTime: new Date().toISOString()
     };
   }, 'GetBootstrapData', rawPayload, userContext);
 }
 
 /**
- * Fast RAM Array Indexing Upsert for High-Volume Sheets (PRs, POs)
+ * Fast RAM Array Indexing Upsert for High-Volume Sheets (PRs, POs, Master Data).
+ * Loads sheet once into RAM array, finds target index in memory,
+ * and executes a single batch write (setValues) without redundant lookups.
  */
 function upsertRecordFast(sheetName, idField, record) {
   var targetId = record[idField];
   if (!targetId) throw new Error('VALIDATION_ERROR: Missing idField');
   var sheet = getSheet(sheetName);
-  var dataRange = sheet.getDataRange();
-  var values = dataRange.getValues();
-  if (values.length === 0) throw new Error('SCHEMA_ERROR: Sheet empty');
+  var values = sheet.getDataRange().getValues(); // Load into RAM array
+  if (!values || values.length === 0) throw new Error('SCHEMA_ERROR: Sheet empty');
   
   var headers = values[0].map(function(h) { return String(h).trim(); });
   var idColIndex = headers.indexOf(idField);
-  if (idColIndex === -1) throw new Error('SCHEMA_ERROR: Header not found');
+  if (idColIndex === -1) throw new Error('SCHEMA_ERROR: Header "' + idField + '" not found in ' + sheetName);
   
+  // 1. ค้นหา index ใน Array บน RAM ก่อน
   var rowIndexToUpdate = -1;
+  var targetStr = String(targetId).trim().toLowerCase();
   for (var i = 1; i < values.length; i++) {
-    if (String(values[i][idColIndex]).trim() === String(targetId).trim()) {
+    if (String(values[i][idColIndex]).trim().toLowerCase() === targetStr) {
       rowIndexToUpdate = i + 1; // 1-based index
       break;
     }
   }
   
   var rowValues = serializeRecordToRow(record, headers);
+  // 2. ค่อยสั่งเขียนช่วงข้อมูล (Batch write via setValues)
   if (rowIndexToUpdate !== -1) {
     sheet.getRange(rowIndexToUpdate, 1, 1, headers.length).setValues([rowValues]);
   } else {
-    sheet.appendRow(rowValues);
+    sheet.getRange(values.length + 1, 1, 1, headers.length).setValues([rowValues]);
   }
   SpreadsheetApp.flush();
   return record;
 }
+
+/**
+ * Fast Batch Upsert for Multiple Records using RAM Indexing.
+ * Reads sheet once into RAM, finds all indices in memory,
+ * and writes updates and appended rows in batch.
+ */
+function batchUpsertRecordsFast(sheetName, idField, records) {
+  if (!records || records.length === 0) return [];
+  var sheet = getSheet(sheetName);
+  var values = sheet.getDataRange().getValues(); // Load into RAM array
+  if (!values || values.length === 0) throw new Error('SCHEMA_ERROR: Sheet empty');
+  
+  var headers = values[0].map(function(h) { return String(h).trim(); });
+  var idColIndex = headers.indexOf(idField);
+  if (idColIndex === -1) throw new Error('SCHEMA_ERROR: Header "' + idField + '" not found in ' + sheetName);
+  
+  // 1. ค้นหา index ใน Array บน RAM ก่อน โดยสร้าง Map
+  var ramIndexMap = {};
+  for (var i = 1; i < values.length; i++) {
+    var cellVal = String(values[i][idColIndex]).trim().toLowerCase();
+    if (cellVal) {
+      ramIndexMap[cellVal] = i + 1; // 1-based index
+    }
+  }
+  
+  var newRows = [];
+  records.forEach(function(rec) {
+    var recId = rec[idField];
+    var serialized = serializeRecordToRow(rec, headers);
+    var key = recId ? String(recId).trim().toLowerCase() : '';
+    if (key && ramIndexMap[key]) {
+      var rowIdx = ramIndexMap[key];
+      // ค่อยสั่งเขียนช่วงข้อมูลเฉพาะแถวที่มีการอัปเดต
+      sheet.getRange(rowIdx, 1, 1, headers.length).setValues([serialized]);
+    } else {
+      newRows.push(serialized);
+    }
+  });
+  
+  // 2. สั่งเขียนช่วงข้อมูลส่วนแถวใหม่ทั้งหมดในคำสั่งเดียว (Batch write)
+  if (newRows.length > 0) {
+    var startRow = values.length + 1;
+    sheet.getRange(startRow, 1, newRows.length, headers.length).setValues(newRows);
+  }
+  
+  SpreadsheetApp.flush();
+  return records;
+}
+
