@@ -17,6 +17,7 @@ import { sanitizeExternalUrl, getProductUrl } from '../utils/urlHelper';
 import { getNextPRNumber } from '../utils/idGenerator';
 import { safeStringCompare } from '../utils/formatters';
 import { resolveDriveImageUrl, handleDriveImageError, getDriveFileViewUrl } from '../utils/driveHelper';
+import { compressImage, compressImageFile, getBase64SizeBytes, MAX_IMAGE_SIZE_BYTES } from '../utils/fileUtils';
 
 /**
  * Deduplicate Master Data & Inventory list for product dropdowns/comboboxes
@@ -670,27 +671,46 @@ export default function PRCreateView({
     }
   };
 
-  const processItemImageFiles = (index, files) => {
+  const processItemImageFiles = async (index, files) => {
     const validFiles = Array.from(files || []).filter(file => file.type?.startsWith('image/') || /\.(jpe?g|png|gif|webp|svg)$/i.test(file.name));
     if (!validFiles.length) return;
 
-    const filePromises = validFiles.map(file => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          resolve({
-            name: file.name,
-            size: file.size,
-            type: file.type || 'image/jpeg',
-            previewUrl: e.target.result,
-            url: e.target.result
+    try {
+      const filePromises = validFiles.map(async (file) => {
+        try {
+          // Automatic Client-Side Image Compression: Max 1280px, quality 0.7-0.75, < 150 KB
+          const comp = await compressImageFile(file, {
+            maxWidth: 1280,
+            maxHeight: 1280,
+            quality: 0.75,
+            maxSizeBytes: MAX_IMAGE_SIZE_BYTES
           });
-        };
-        reader.readAsDataURL(file);
+          return {
+            name: file.name,
+            size: comp.size,
+            type: comp.type || 'image/jpeg',
+            previewUrl: comp.previewUrl,
+            url: comp.url
+          };
+        } catch (compErr) {
+          console.warn('[PRCreateView] Image compression fallback to FileReader:', compErr);
+          return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              resolve({
+                name: file.name,
+                size: file.size,
+                type: file.type || 'image/jpeg',
+                previewUrl: e.target.result,
+                url: e.target.result
+              });
+            };
+            reader.readAsDataURL(file);
+          });
+        }
       });
-    });
 
-    Promise.all(filePromises).then(newImages => {
+      const newImages = await Promise.all(filePromises);
       setPrItems(prev => {
         const updated = [...prev];
         const current = updated[index];
@@ -702,7 +722,9 @@ export default function PRCreateView({
         };
         return updated;
       });
-    });
+    } catch (err) {
+      console.error('[PRCreateView] Error processing item images:', err);
+    }
   };
 
   const handleItemImageUpload = (index, event) => {
@@ -966,6 +988,61 @@ export default function PRCreateView({
         contactPerson: matchedHeaderVendor.contactPerson || ''
       } : null;
 
+      // Ensure all images are compressed to < 150 KB and <= 1280px before entering PR payload
+      const processedItems = await Promise.all(itemsFormatted.map(async (item) => {
+        if (!item.images || !item.images.length) return item;
+        const compressedImgs = await Promise.all(item.images.map(async (img) => {
+          const rawUrl = img.previewUrl || img.url || '';
+          if (rawUrl.startsWith('data:image/') && getBase64SizeBytes(rawUrl) > MAX_IMAGE_SIZE_BYTES) {
+            try {
+              const res = await compressImage(rawUrl, {
+                maxWidth: 1280,
+                maxHeight: 1280,
+                quality: 0.75,
+                maxSizeBytes: MAX_IMAGE_SIZE_BYTES
+              });
+              return {
+                ...img,
+                url: res.dataUrl,
+                previewUrl: res.dataUrl,
+                size: res.size
+              };
+            } catch (err) {
+              console.warn('[PRCreateView] Item image compression guard error:', err);
+            }
+          }
+          return img;
+        }));
+        return {
+          ...item,
+          images: compressedImgs,
+          attachments: compressedImgs
+        };
+      }));
+
+      const processedImageFiles = await Promise.all(imageFiles.map(async (f) => {
+        const rawUrl = f.previewUrl || f.url || '';
+        if (rawUrl.startsWith('data:image/') && getBase64SizeBytes(rawUrl) > MAX_IMAGE_SIZE_BYTES) {
+          try {
+            const res = await compressImage(rawUrl, {
+              maxWidth: 1280,
+              maxHeight: 1280,
+              quality: 0.75,
+              maxSizeBytes: MAX_IMAGE_SIZE_BYTES
+            });
+            return {
+              ...f,
+              previewUrl: res.dataUrl,
+              url: res.dataUrl,
+              size: res.size
+            };
+          } catch (err) {
+            console.warn('[PRCreateView] Attachment image compression guard error:', err);
+          }
+        }
+        return f;
+      }));
+
       const nowIso = new Date().toISOString();
       const prPayload = {
         prNo: editingPR ? editingPR.prNo : nextPRNumber,
@@ -981,14 +1058,14 @@ export default function PRCreateView({
         hasVat: currentChannel === 'SELF' ? hasVat : false,
         specUrl: quotationFiles[0] ? quotationFiles[0].name : '',
         quotationFiles: quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl })),
-        generalAttachments: imageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'GENERAL' })),
-        images: imageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'IMAGE' })),
+        generalAttachments: processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'GENERAL' })),
+        images: processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'IMAGE' })),
         attachments: [
           ...quotationFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/pdf', previewUrl: f.previewUrl, category: 'QUOTATION' })),
-          ...imageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'GENERAL' }))
+          ...processedImageFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'image/jpeg', previewUrl: f.previewUrl, category: 'GENERAL' }))
         ],
         note,
-        items: itemsFormatted,
+        items: processedItems,
         financials: financialsPayload,
         totalAmount: grandTotal,
         memo: finalMemo,

@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { UploadCloud, File as FileIcon, X, Image as ImageIcon } from 'lucide-react';
+import { compressImageFile } from '../../utils/fileUtils';
 
 export default function FileUploader({ 
   label, 
@@ -36,10 +37,39 @@ export default function FileUploader({
     }
   };
 
-  const handleFiles = (newFiles) => {
-    const validFiles = newFiles.map(file => {
-      // Create local preview URL
-      const previewUrl = URL.createObjectURL(file);
+  const handleFiles = async (newFiles) => {
+    const validFilesPromises = Array.from(newFiles).map(async (file) => {
+      const isImg = file.type ? file.type.startsWith('image/') : /\.(jpe?g|png|webp|gif)$/i.test(file.name);
+      if (isImg) {
+        try {
+          const comp = await compressImageFile(file, {
+            maxWidth: 1280,
+            maxHeight: 1280,
+            quality: 0.75,
+            maxSizeBytes: 150 * 1024
+          });
+          return {
+            file,
+            id: Math.random().toString(36).substring(7),
+            name: file.name,
+            size: comp.size,
+            type: comp.type || 'image/jpeg',
+            previewUrl: comp.previewUrl,
+            url: comp.previewUrl,
+            dataUrl: comp.previewUrl,
+            isImage: true
+          };
+        } catch (err) {
+          console.warn('[FileUploader] Auto compression fallback:', err);
+        }
+      }
+
+      // Non-image (e.g. PDF) or compression fallback
+      let previewUrl = '';
+      try {
+        previewUrl = URL.createObjectURL(file);
+      } catch (_) {}
+
       return {
         file,
         id: Math.random().toString(36).substring(7),
@@ -47,23 +77,28 @@ export default function FileUploader({
         size: file.size,
         type: file.type,
         previewUrl,
-        isImage: file.type.startsWith('image/')
+        url: previewUrl,
+        isImage: Boolean(file.type && file.type.startsWith('image/'))
       };
     });
+
+    const validFiles = await Promise.all(validFilesPromises);
 
     if (multiple) {
       setFiles(prev => [...prev, ...validFiles]);
     } else {
-      // If not multiple, revoke old URL and replace
-      if (files.length > 0 && files[0].previewUrl) URL.revokeObjectURL(files[0].previewUrl);
+      // If not multiple, revoke old URL if it was a blob URL and replace
+      if (files.length > 0 && files[0].previewUrl && files[0].previewUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(files[0].previewUrl); } catch (_) {}
+      }
       setFiles([validFiles[0]]);
     }
   };
 
   const removeFile = (idToRemove) => {
     const fileToRemove = files.find(f => f.id === idToRemove);
-    if (fileToRemove && fileToRemove.previewUrl) {
-      URL.revokeObjectURL(fileToRemove.previewUrl);
+    if (fileToRemove && fileToRemove.previewUrl && fileToRemove.previewUrl.startsWith('blob:')) {
+      try { URL.revokeObjectURL(fileToRemove.previewUrl); } catch (_) {}
     }
     setFiles(prev => prev.filter(f => f.id !== idToRemove));
   };
