@@ -1,0 +1,8 @@
+# Ignore build and deployment artifacts from AI indexing and context
+dist-gas/
+gas-deploy/
+dist/
+playwright-report/
+test-results/
+blob-report/
+node_modules/

@@ -2147,10 +2147,16 @@ export const storageService = {
 
       const pCode = String(m.itemCode || m.productCode || m.code || '').trim().toUpperCase();
       const pId = String(m.productId || '').trim().toUpperCase();
-      const prodIdx = products.findIndex(p => 
-        (pCode && String(p.code || '').trim().toUpperCase() === pCode) ||
-        (pId && String(p.id || '').trim().toUpperCase() === pId)
-      );
+      const mDept = m.department || m.dept || '';
+      const prodIdx = products.findIndex(p => {
+        if (pId && String(p.id || '').trim().toUpperCase() === pId) return true;
+        if (pCode && String(p.code || '').trim().toUpperCase() === pCode) {
+          if (!mDept) return true;
+          return matchDepartment(p.department || p.category, mDept);
+        }
+        return false;
+      });
+
 
       const prod = prodIdx !== -1 ? products[prodIdx] : null;
       let ratio = Number(m.conversionRatio || prod?.conversionRatio || prod?.conversionRate || 1);
@@ -2234,7 +2240,11 @@ export const storageService = {
         if (!lDoc || !docQuery || lDoc !== docQuery) return false;
         const lPId = String(l.productId || '').trim().toUpperCase();
         const lPCode = String(l.productCode || l.itemCode || '').trim().toUpperCase();
-        return (pId && (lPId === pId || lPCode === pId)) || (pCode && (lPCode === pCode || lPId === pCode));
+        const lDept = String(l.department || '').trim().toUpperCase();
+        if (mDept && lDept && !matchDepartment(lDept, mDept)) return false;
+        if (pId && lPId) return lPId === pId;
+        return Boolean(pCode && lPCode === pCode);
+
       });
 
       if (existingIdx !== -1) {

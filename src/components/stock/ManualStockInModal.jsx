@@ -66,8 +66,12 @@ export default function ManualStockInModal({ products = [], currentRole, onClose
         date: timestamp,
         productId: selectedProductId,
         productCode: selectedProduct?.code || '',
+        productName: selectedProduct?.name || '',
+        name: selectedProduct?.name || '',
+        department: selectedProduct?.department || selectedProduct?.category || currentRole?.department || 'PD',
         type: 'IN',
         docNo,
+        documentNo: docNo,
         qty: qtyNum,
         balance: newBalance,
         user: `${currentRole.name} (${currentRole.title})`,
@@ -75,6 +79,7 @@ export default function ManualStockInModal({ products = [], currentRole, onClose
         isManual: true,
         reason
       });
+
 
       storageService.saveProducts(allProducts);
       storageService.saveStockLogs(stockLogs);

@@ -181,13 +181,6 @@
         "note": "[ONLINE CLAIM RESOLVED] จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿285 เข้าแผนก | [ร้าน เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ]:  โดย คุณนัท จัดซื้อ",
         "type": "CLAIM_RESOLUTION",
         "channel": "ONLINE"
-      },
-      {
-        "action": "CLAIM_SETTLED",
-        "title": "จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿285 เข้าแผนก",
-        "user": "คุณนัท จัดซื้อ",
-        "timestamp": "14/9/2569 18:34:10",
-        "note": "จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿285 เข้าแผนก | "
       }
     ],
     "subStatus": "ORDERED_PENDING_DELIVERY",
@@ -328,31 +321,37 @@
       }
     ],
     "refundAmount": 285,
-    "totalRefunded": 570,
+    "totalRefunded": 285,
     "storeClaims": {
       "Shopee_เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ": {
         "status": "RESOLVED",
         "isResolved": true,
         "type": "REFUND",
+        "actionType": "REFUND",
+        "resolutionType": "REFUND",
         "refundAmount": 285,
-        "replacementTrackingNo": "",
+        "note": "[ร้าน เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ]: ",
         "newTrackingNo": "",
-        "note": "",
+        "replacementTrackingNo": "",
         "expectedDate": "",
-        "resolvedAt": "2026-09-14T11:34:10.417Z",
-        "resolvedBy": "คุณนัท จัดซื้อ"
+        "resolvedAt": "2026-09-14T11:34:10.487Z",
+        "resolvedBy": "คุณนัท จัดซื้อ",
+        "storeName": "เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ"
       },
       "เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ": {
         "status": "RESOLVED",
         "isResolved": true,
         "type": "REFUND",
+        "actionType": "REFUND",
+        "resolutionType": "REFUND",
         "refundAmount": 285,
-        "replacementTrackingNo": "",
+        "note": "[ร้าน เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ]: ",
         "newTrackingNo": "",
-        "note": "",
+        "replacementTrackingNo": "",
         "expectedDate": "",
-        "resolvedAt": "2026-09-14T11:34:10.417Z",
-        "resolvedBy": "คุณนัท จัดซื้อ"
+        "resolvedAt": "2026-09-14T11:34:10.487Z",
+        "resolvedBy": "คุณนัท จัดซื้อ",
+        "storeName": "เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ"
       }
     },
     "hasDispute": false,
@@ -363,63 +362,6 @@
       "note": "[ร้าน เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ]: ",
       "resolvedAt": "2026-09-14T11:34:10.493Z",
       "resolvedBy": "คุณนัท จัดซื้อ"
-    },
-    "timeline": [
-      {
-        "action": "แปลง PR เป็น PO และออกใบสั่งซื้ออัตโนมัติ",
-        "user": "คุณประเสริฐ ยิ่งยง",
-        "role": "Plant Manager (PD, QC, ALL)",
-        "timestamp": "14/9/2569 18:02:53",
-        "note": "อนุมัติสร้างเอกสาร PO เลขที่ PO-PD-2026-001"
-      },
-      {
-        "action": "ปรับปรุงราคาซื้อจริง",
-        "user": "คุณนัท จัดซื้อ",
-        "role": "Online Purchaser",
-        "timestamp": "14/9/2569 18:03:15",
-        "note": "จัดซื้อปรับราคา PT02 จาก ฿339.00 เป็น ฿285.00"
-      },
-      {
-        "action": "รับทราบและสั่งซื้อออนไลน์แล้ว (Online Order Placed)",
-        "user": "คุณนัท จัดซื้อ",
-        "role": "Online Purchaser",
-        "timestamp": "14/9/2569 18:03:15",
-        "note": "สั่งซื้อจาก: เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ — ส่งต่อให้แผนกต้นทางตรวจรับและปิด PO | ปรับปรุงยอดสั่งซื้อจริง: [Part B: เดิม 8 @ ฿339 -> สั่งจริง 8 @ ฿285]"
-      },
-      {
-        "action": "ตรวจรับสินค้าแยกรอบ (GRN: GRN-PO-PD-2026-001-01)",
-        "user": "สิรภัทร แจ่มมิน (Requester (PD))",
-        "timestamp": "14/9/2569 18:13:12",
-        "note": "บันทึกการตรวจรับรอบที่ 1 สถานะเอกสาร: PARTIALLY_RECEIVED_IN_CLAIM"
-      },
-      {
-        "action": "[ONLINE CLAIM] แจ้งปัญหาสินค้าสั่งซื้อออนไลน์",
-        "date": "14/9/2569 18:13:12",
-        "timestamp": "14/9/2569 18:13:12",
-        "user": "สิรภัทร แจ่มมิน",
-        "userId": "REQUESTER_PD",
-        "role": "Requester (PD)",
-        "note": "[ONLINE CLAIM] แจ้งปัญหา: ร้านส่งของไม่ครบตามกล่อง (ขาดส่ง) | Part B: ยอดขาดส่ง 1 กล่อง โดย สิรภัทร แจ่มมิน",
-        "type": "PO_CLAIM",
-        "channel": "ONLINE"
-      },
-      {
-        "action": "ดำเนินการเคลม (Resolution)",
-        "user": "คุณนัท จัดซื้อ",
-        "userId": "ONLINE_PURCHASER",
-        "role": "Online Purchaser",
-        "timestamp": "14/9/2569 18:34:10",
-        "note": "[ONLINE CLAIM RESOLVED] จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿285 เข้าแผนก | [ร้าน เ้เ้เ้เ้เ้เ้เ้เ้เ้เ้้เ้เ้เ]:  โดย คุณนัท จัดซื้อ",
-        "type": "CLAIM_RESOLUTION",
-        "channel": "ONLINE"
-      },
-      {
-        "action": "CLAIM_SETTLED",
-        "title": "จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿285 เข้าแผนก",
-        "actor": "คุณนัท จัดซื้อ",
-        "timestamp": "2026-09-14T11:34:10.527Z",
-        "note": ""
-      }
-    ]
+    }
   }
 ]

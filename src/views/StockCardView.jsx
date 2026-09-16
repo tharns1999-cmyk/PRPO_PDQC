@@ -12,7 +12,7 @@ import EmptyState from '../components/common/EmptyState';
 import { storageService } from '../services/storageService';
 import { modalService } from '../services/modalService';
 import Pagination from '../components/common/Pagination';
-import { getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
+import { getUserDepartments, canAccessDepartmentData, matchDepartment } from '../utils/permissions';
 import { safeStringCompare } from '../utils/formatters';
 
 export default function StockCardView({ 
@@ -127,16 +127,25 @@ export default function StockCardView({
             if (match) qPoStem = match[1].toLowerCase();
           }
           matchesDoc = stockLogs.some(l => {
-            const pId = String(l.productId || '').trim().toLowerCase();
-            const pCode = String(l.productCode || '').trim().toLowerCase();
-            const thisPId = String(p.id || '').trim().toLowerCase();
-            const thisPCode = String(p.code || '').trim().toLowerCase();
-            if (pId !== thisPId && pCode !== thisPCode) return false;
+            const thisPId = String(p.id || '').trim();
+            const thisPDept = String(p.department || p.category || '').trim();
+            const thisPCode = String(p.code || p.sku || '').trim();
+
+            if (l.department && thisPDept && !matchDepartment(l.department, thisPDept)) return false;
+
+            let isProdMatch = false;
+            if (thisPId && l.productId) {
+              isProdMatch = String(l.productId).trim() === thisPId;
+            } else {
+              isProdMatch = matchDepartment(l.department, thisPDept) && String(l.productCode || l.code || '').trim() === thisPCode;
+            }
+            if (!isProdMatch) return false;
 
             const docNo = String(l.documentNo || l.docNo || l.grnNo || l.grNumber || '').toLowerCase();
             const poNo = String(l.poNo || l.poNumber || l.refPo || '').toLowerCase();
             return docNo.includes(q) || poNo.includes(q) || docNo.includes(qPoStem) || poNo.includes(qPoStem);
           });
+
         }
         const matchesSearch = !q || 
           (p.name && p.name.toLowerCase().includes(q)) || 
@@ -183,11 +192,22 @@ export default function StockCardView({
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
-      const recentOuts = stockLogs.filter(log =>
-        log.productId === prod.id &&
-        log.type === 'OUT' &&
-        new Date(log.date) >= thirtyDaysAgo
-      );
+      const pId = String(prod.id || '').trim();
+      const pDept = String(prod.department || prod.category || '').trim();
+      const pCode = String(prod.code || prod.sku || '').trim();
+
+      const recentOuts = stockLogs.filter(log => {
+        if (log.type !== 'OUT') return false;
+        if (log.department && pDept && !matchDepartment(log.department, pDept)) return false;
+        if (pId && log.productId) {
+          if (String(log.productId).trim() !== pId) return false;
+        } else {
+          if (!matchDepartment(log.department, pDept) || String(log.productCode || log.code || '').trim() !== pCode) return false;
+        }
+        const logD = log.date || log.timestamp;
+        return logD && new Date(logD) >= thirtyDaysAgo;
+      });
+
 
       const totalOutQty = recentOuts.reduce((sum, l) => sum + (l.qty || 0), 0);
       const avgDailyUsage = totalOutQty / 30;
@@ -789,8 +809,11 @@ export default function StockCardView({
           product={selectedProduct}
           stockLogs={stockLogs}
           pos={pos}
+          currentUser={currentRole}
+          currentRole={currentRole}
           onClose={() => setSelectedProduct(null)}
         />
+
       )}
 
       {/* Product Remark Drawer */}

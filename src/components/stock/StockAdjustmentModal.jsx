@@ -75,8 +75,12 @@ export default function StockAdjustmentModal({ products = [], currentRole, onClo
         date: timestamp,
         productId: selectedProductId,
         productCode: selectedProduct.code || '',
+        productName: selectedProduct.name || '',
+        name: selectedProduct.name || '',
+        department: selectedProduct.department || selectedProduct.category || currentRole?.department || 'PD',
         type: actionType,
         docNo,
+        documentNo: docNo,
         qty: qtyNum,
         balance: newBalance,
         user: `${currentRole.name} (${currentRole.title})`,
@@ -84,6 +88,7 @@ export default function StockAdjustmentModal({ products = [], currentRole, onClo
         isManual: true,
         reason
       });
+
 
       storageService.saveProducts(allProducts);
       storageService.saveStockLogs(stockLogs);

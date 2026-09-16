@@ -53,15 +53,16 @@ describe('Performance & Atomic Response Architecture (<2s SLA)', () => {
 
     it('strictly preserves Row 1 Header when clearing data rows (uses row 2 down)', () => {
       const sheetServiceContent = fs.readFileSync(path.join(gasDir, 'SheetService.gs'), 'utf8');
-      const driveServiceContent = fs.readFileSync(path.join(gasDir, 'DriveService.gs'), 'utf8');
+      // After lean refactoring: DriveService.gs was merged into Code.gs
+      const codeGsContent = fs.readFileSync(path.join(gasDir, 'Code.gs'), 'utf8');
 
       // Check SheetService.gs
       expect(sheetServiceContent).toContain('sheet.getRange(2, 1, lastRow - 1,');
       expect(sheetServiceContent).not.toMatch(/sheet\.clearContent\s*\(\s*\)/);
 
-      // Check DriveService.gs (Attachment reconciliation)
-      expect(driveServiceContent).toContain('attSheet.getRange(2, 1, lastR - 1, lastC).clearContent()');
-      expect(driveServiceContent).not.toMatch(/attSheet\.clearContent\s*\(\s*\)/);
+      // Check Code.gs (Attachment reconciliation — merged from DriveService.gs)
+      expect(codeGsContent).toContain('attSheet.getRange(2, 1, lastR - 1, lastC).clearContent()');
+      expect(codeGsContent).not.toMatch(/attSheet\.clearContent\s*\(\s*\)\s*;/);
     });
 
     it('verifies packageUpdatedPR helper exists and is used in Code.gs', () => {

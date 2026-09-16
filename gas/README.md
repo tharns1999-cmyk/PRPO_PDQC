@@ -4,19 +4,14 @@
 
 ---
 
-## 1. โครงสร้างไฟล์บริการ (Modular Architecture)
+## 1. โครงสร้างไฟล์บริการ (Consolidated Lean Architecture)
 
 ```
 📁 gas/
 ├── 📄 appsscript.json        # GAS Manifest (V8 Engine, Timezone Asia/Bangkok, OAuth Scopes, WebApp Config)
-├── 📄 Config.gs               # จุดศูนย์รวม Constants, Sheet Names (17 แท็บ), Drive Categories, Script Properties
-├── 📄 AuthService.gs          # ระบบยืนยันตัวตน Session.getActiveUser().getEmail() และ Server-side RBAC สองชั้น
-├── 📄 LockService.gs          # กลไก Mutex Concurrency (ScriptLock) สำหรับป้องกัน Race Condition
-├── 📄 SheetService.gs         # Batch Database Service (CRUD แบบความเร็วสูง, Header Mapping, Sequential Counter)
-├── 📄 DriveService.gs         # จัดการอัปโหลดไฟล์ Base64, Folder Hierarchy อัตโนมัติ, Rollback เมื่อเขียนชีตล้มเหลว
-├── 📄 Initializer.gs          # ฟังก์ชัน Production Initializer สร้าง 17 แท็บ, Headers สไตล์ Slate-800, โฟลเดอร์ Drive
-├── 📄 MigrationService.gs    # ระบบ Seed Master Data และ Migrate ประวัติ PO เดิม (pos.json 258KB) เข้าสู่ระบบ
-├── 📄 Code.gs                 # จุดเชื่อมต่อหลัก: doGet() ให้บริการ SPA Web App และ RPC API Endpoints
+├── 📄 Config.gs               # จุดศูนย์รวม Constants, Sheet Names, Drive Config, Script Properties, Department & Permission Helpers
+├── 📄 SheetService.gs         # Concurrency Locking (Mutex), Database CRUD, Header Enforcement, Schema Initializer & Migration
+├── 📄 Code.gs                 # จุดเชื่อมต่อหลัก: doGet() ให้บริการ SPA Web App, RPC Router, Auth & Drive APIs
 └── 📄 README.md               # คู่มือการติดตั้ง การตั้งค่า Script Properties และการ Deploy
 ```
 

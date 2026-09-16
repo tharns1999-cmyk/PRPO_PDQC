@@ -1,5 +1,6 @@
 import { storageService } from './storageService';
 import { workflowEngine } from './workflowEngine';
+import { matchDepartment, isMultiDeptUser } from '../utils/permissions';
 
 /**
  * A. Canonical GRN Number Generator
@@ -396,6 +397,7 @@ export const warehouseService = {
       productId: product.id,
       productCode: product.code,
       name: product.name,
+      department: product.department || product.category || 'PD',
       qty: stockVal,
       balance: stockVal,
       unit: product.stockUnit || product.unit || 'ชิ้น',
@@ -425,26 +427,41 @@ export const warehouseService = {
   /**
    * Get movement logs for a given product with self-healing migration
    */
-  getStockMovementLogs(product, externalLogs = null) {
+  getStockMovementLogs(product, externalLogs = null, currentUser = null) {
     if (!product) return [];
     const sourceLogs = Array.isArray(externalLogs) && externalLogs.length > 0 
       ? externalLogs 
       : (storageService.getStockLogs() || []);
 
-    const pId = String(product.id || '').trim().toLowerCase();
-    const pCode = String(product.code || '').trim().toLowerCase();
-    const pName = String(product.name || '').trim().toLowerCase();
+    const targetProductId = String(product.id || '').trim();
+    const targetDept = String(product.department || product.category || '').trim();
+    const targetCode = String(product.code || product.sku || '').trim();
+
+    const userDept = currentUser ? String(currentUser.department || currentUser.primaryDepartment || '').trim() : '';
+    const isMultiDept = currentUser ? isMultiDeptUser(currentUser) : true;
 
     const matched = sourceLogs.filter(l => {
       if (!l) return false;
-      const logPId = String(l.productId || '').trim().toLowerCase();
-      const logPCode = String(l.productCode || '').trim().toLowerCase();
-      const logPName = String(l.name || '').trim().toLowerCase();
-      return (
-        (pId && (logPId === pId || logPCode === pId)) ||
-        (pCode && (logPCode === pCode || logPId === pCode)) ||
-        (pName && logPName === pName)
-      );
+
+      // 0. User Department Protection Guard
+      if (userDept && !isMultiDept && !matchDepartment(l.department || targetDept, userDept)) {
+        return false;
+      }
+
+      // Department consistency guard
+      if (l.department && targetDept && !matchDepartment(l.department, targetDept)) {
+        return false;
+      }
+
+      // 1. Primary match by Product ID
+      if (targetProductId && l.productId) {
+        return String(l.productId).trim() === targetProductId;
+      }
+
+      // 2. Fallback: Both department and code
+      const isSameDept = matchDepartment(l.department || targetDept, targetDept);
+      const isSameCode = String(l.productCode || l.code || l.sku || '').trim() === targetCode;
+      return isSameDept && isSameCode;
     });
 
     const stockVal = Number(product.stockBalance ?? product.stock ?? product.qty) || 0;
@@ -457,6 +474,7 @@ export const warehouseService = {
 
     return matched;
   },
+
 
   generateGRNNumber(poNumber, roundNumber = 1) {
     return generateGRNNumber(poNumber, roundNumber);

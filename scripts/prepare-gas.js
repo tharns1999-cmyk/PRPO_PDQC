@@ -26,14 +26,9 @@ const SRC_DIST_GAS_DIR = path.join(ROOT_DIR, 'dist-gas');
 const STAGING_DIR = path.join(ROOT_DIR, 'gas-deploy');
 
 const REQUIRED_GS_FILES = [
-  'AuthService.gs',
-  'Code.gs',
   'Config.gs',
-  'DriveService.gs',
-  'Initializer.gs',
-  'LockService.gs',
-  'MigrationService.gs',
-  'SheetService.gs'
+  'SheetService.gs',
+  'Code.gs'
 ];
 
 function formatBytes(bytes) {

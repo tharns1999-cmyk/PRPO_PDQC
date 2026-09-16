@@ -18,6 +18,7 @@ import { getValidConversionRate, toStockQuantity, toStockUnitCost } from '../../
 import AttachmentViewerModal from '../../components/common/AttachmentViewerModal';
 import { driveService } from '../../services/driveService';
 import LoadingOverlay from '../../components/common/LoadingOverlay.jsx';
+import { matchDepartment } from '../../utils/permissions';
 
 /**
  * Helper to resiliently resolve refund quantity and amount
@@ -731,7 +732,13 @@ export default function ReceivingModal({
         const allProducts = storageService.getProducts() || [];
         const vendorName = targetPO.vendorName || targetPO.vendor?.name || 'ผู้จำหน่าย';
         const movementsToEmit = stockItemsToReceive.map(it => {
-          const matchedProd = allProducts.find(p => p.id === it.productId || p.code === it.code);
+          const matchedProd = allProducts.find(p => {
+            if (it.productId && p.id === it.productId) return true;
+            if (it.code && p.code === it.code) {
+              return matchDepartment(p.department || p.category, targetPO.department);
+            }
+            return false;
+          });
           const curBal = Number(matchedProd?.stockBalance || 0);
           const newBal = curBal + it.quantity;
 
@@ -739,12 +746,13 @@ export default function ReceivingModal({
             id: `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
             timestamp: formatLocalTimestamp(), // เวลาไทย UTC+7
             date: formatLocalTimestamp(),
-            productId: String(it.productId || '').trim(),
-            productCode: String(it.code || it.productId || '').trim(),
-            sku: String(it.code || it.productId || '').trim(),
-            itemCode: String(it.code || it.productId || '').trim(),
+            productId: String(matchedProd?.id || it.productId || '').trim(),
+            productCode: String(matchedProd?.code || it.code || it.productId || '').trim(),
+            sku: String(matchedProd?.code || it.code || it.productId || '').trim(),
+            itemCode: String(matchedProd?.code || it.code || it.productId || '').trim(),
             productName: it.name,
             name: it.name,
+
             type: 'IN', // รับเข้า (+IN)
             docType: 'GRN',
             docNo: grnNumber, // เช่น GRN-PO-PD-2026-003-01

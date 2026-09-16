@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { apiService } from '../services/apiService';
 import { ISSUE_LOCATIONS, ISSUE_LOCATION_CONFIG } from '../config/constants';
-import { hasDepartmentAccess, getUserAccessibleDepartments } from '../utils/permissions';
+import { hasDepartmentAccess, getUserAccessibleDepartments, matchDepartment } from '../utils/permissions';
 import { 
   SendToBack, CheckCircle2, AlertCircle, AlertTriangle, 
   PackageCheck, Layers, MapPin, Clock, ArrowRight,
@@ -266,10 +266,15 @@ export default function QuickIssueView({
       .filter(log => {
         if (log.type !== 'OUT') return false;
         if (currentRole.canViewAllDepts) return true;
-        const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
-        return prod ? prod.category === currentRole.department : true;
+        if (log.department) return matchDepartment(log.department, currentRole.department);
+        const prod = products.find(p => {
+          if (log.productId && p.id === log.productId) return true;
+          return p.code === log.productCode && matchDepartment(p.department || p.category, currentRole.department);
+        });
+        return prod ? matchDepartment(prod.department || prod.category, currentRole.department) : true;
       })
       .slice(0, 6);
+
   }, [stockLogs, products, currentRole]);
 
   const handleQuickQty = (amount) => {
@@ -342,19 +347,30 @@ export default function QuickIssueView({
 
     // Role department permission filter
     logs = logs.filter(log => {
-      const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
-      const prodCat = prod?.category || prod?.department || log.department;
+      const logDept = log.department;
+      if (logDept) return hasDepartmentAccess(user, logDept);
+      const prod = products.find(p => {
+        if (log.productId && p.id === log.productId) return true;
+        return p.code === log.productCode;
+      });
+      const prodCat = prod?.category || prod?.department || logDept;
       return hasDepartmentAccess(user, prodCat);
     });
 
     // UI Department filter
     if (statsDeptFilter !== 'ALL') {
       logs = logs.filter(log => {
-        const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
-        const prodCat = prod?.category || prod?.department || log.department;
-        return prodCat === statsDeptFilter;
+        const logDept = log.department;
+        if (logDept) return matchDepartment(logDept, statsDeptFilter);
+        const prod = products.find(p => {
+          if (log.productId && p.id === log.productId) return true;
+          return p.code === log.productCode;
+        });
+        const prodCat = prod?.category || prod?.department || logDept;
+        return matchDepartment(prodCat, statsDeptFilter);
       });
     }
+
 
     // Unit filter
     if (statsUnitFilter !== 'ALL') {
@@ -555,10 +571,17 @@ export default function QuickIssueView({
     displayedUnits.forEach(u => { counts[u.name] = 0; });
     stockLogs.forEach(log => {
       if (log.type === 'OUT') {
-        const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
-        const prodCat = prod?.category || prod?.department || log.department;
+        const logDept = log.department;
+        let prodCat = logDept;
+        if (!prodCat) {
+          const prod = products.find(p => {
+            if (log.productId && p.id === log.productId) return true;
+            return p.code === log.productCode;
+          });
+          prodCat = prod?.category || prod?.department;
+        }
         if (!hasDepartmentAccess(user, prodCat)) return;
-        if (statsDeptFilter !== 'ALL' && prodCat !== statsDeptFilter) return;
+        if (statsDeptFilter !== 'ALL' && !matchDepartment(prodCat, statsDeptFilter)) return;
 
         const u = getLogUnit(log);
         if (counts[u] !== undefined) {

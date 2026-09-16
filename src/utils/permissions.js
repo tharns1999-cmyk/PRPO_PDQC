@@ -186,3 +186,26 @@ export function getUserAccessibleDepartments(user, availableDepartments = null) 
 
   return allDepts;
 }
+
+/**
+ * Checks if a user has access across multiple departments.
+ * Returns true if admin, manager, plant manager, purchaser, or user with >1 depts / 'ALL' / '*'.
+ * @param {Object} user
+ * @returns {boolean}
+ */
+export function isMultiDeptUser(user) {
+  if (!user) return false;
+  const userDepts = getUserDepartments(user);
+  const userRoleStr = String(user.role || user.roleId || user.role_id || user.id || '').toUpperCase();
+  return (
+    userDepts.length > 1 ||
+    ['ADMIN', 'ASST_MANAGER', 'PLANT_MANAGER', 'MANAGER', 'PURCHASER'].includes(userRoleStr) ||
+    userDepts.includes('ALL') ||
+    userDepts.includes('BOTH') ||
+    userDepts.includes('*') ||
+    Boolean(user.canViewAllDepts) ||
+    user.isAdmin === true ||
+    userRoleStr === 'ADMIN'
+  );
+}
+

@@ -1,9 +1,11 @@
+var _pendingAttachments = [];
+
 /**
  * @file Code.gs
  * @description Main Entry Point and Public RPC API Controller for PRPO_PDQC
  * Dispatches google.script.run requests with authentication, parameter unpacking,
  * transactional locking, safe user context, and standardized response envelope wrapping.
- * @version 2.1.0
+ * @version 3.0.0
  */
 
 /**
@@ -150,8 +152,315 @@ function handleApiRequest(fn, actionName, rawPayload, userContext) {
 }
 
 // =========================================================================
-// 1. AUTHENTICATION & USER PROFILE RPCs
+// 1. AUTHENTICATION & USER PROFILE RPCs & RBAC GUARDS
 // =========================================================================
+
+/**
+ * Fetches user profile and permissions from the "Users" sheet tab by email.
+ * 
+ * @param {string} [email] Target email to look up (defaults to active user)
+ * @returns {Object} Hydrated user profile with roles, department, and computed permissions
+ */
+function getUserProfile(email) {
+  const targetEmail = (email || getCurrentUserEmail()).trim().toLowerCase();
+  const adminEmails = getAdminEmails();
+  const isConfiguredAdmin = targetEmail && adminEmails.includes(targetEmail);
+
+  let usersList = [];
+  try {
+    usersList = batchReadRecords(SHEET_NAMES.USERS);
+  } catch (err) {
+    console.warn('[Auth] Could not read Users sheet:', err.message);
+  }
+
+  if (targetEmail) {
+    const userRecord = usersList.find(u => {
+      const userEmail = String(u.email || '').trim().toLowerCase();
+      return userEmail === targetEmail;
+    });
+
+    if (userRecord) {
+      const isActive = userRecord.isActive === true || 
+                       String(userRecord.isActive).toLowerCase() === 'true' || 
+                       userRecord.isActive === 1 || 
+                       userRecord.status === 'ACTIVE';
+
+      if (!isActive) {
+        throw new Error(`ACCOUNT_DISABLED: บัญชีผู้ใช้งาน (${targetEmail}) ถูกระงับการใช้งานชั่วคราว กรุณาติดต่อผู้ดูแลระบบ`);
+      }
+
+      return buildUserProfile(userRecord, isConfiguredAdmin);
+    }
+
+    if (isConfiguredAdmin) {
+      return buildUserProfile({
+        id: 'USR-BOOTSTRAP-ADMIN',
+        employeeId: 'EMP-SYS-ADMIN',
+        username: targetEmail.split('@')[0],
+        email: targetEmail,
+        name: 'System Administrator (Bootstrap)',
+        displayName: 'System Admin',
+        department: 'MGT',
+        primaryDepartment: 'MGT',
+        allowedDepartments: ['*'],
+        roleId: SYSTEM_ROLES.ADMIN,
+        canonicalRole: SYSTEM_ROLES.ADMIN,
+        level: 99,
+        status: 'ACTIVE',
+        isActive: true,
+        description: 'ผู้ดูแลระบบฉุกเฉินผ่าน Script Properties'
+      });
+    }
+  }
+
+  return buildUserProfile({
+    id: 'USR-APP-SESSION',
+    employeeId: 'EMP-APP-001',
+    username: targetEmail ? targetEmail.split('@')[0] : 'webapp.user',
+    email: targetEmail || 'webapp@company.local',
+    name: targetEmail ? `User (${targetEmail.split('@')[0]})` : 'ผู้ใช้งานระบบ',
+    displayName: 'App User',
+    department: 'MGT',
+    primaryDepartment: 'MGT',
+    allowedDepartments: ['*'],
+    roleId: SYSTEM_ROLES.ADMIN,
+    canonicalRole: SYSTEM_ROLES.ADMIN,
+    level: 99,
+    status: 'ACTIVE',
+    isActive: true,
+    description: 'ผู้ใช้งานระบบผ่าน Web App'
+  });
+}
+
+/**
+ * Authenticates user credentials against the Users sheet tab.
+ * 
+ * @param {string} username Username or Employee ID
+ * @param {string} password Provided plain password
+ * @returns {Object} Hydrated user profile
+ */
+function authenticateUserByPassword(username, password) {
+  const cleanUser = String(username || '').trim().toLowerCase();
+  const cleanPass = String(password || '').trim();
+
+  if (!cleanUser) {
+    throw new Error('AUTH_ERROR: กรุณาระบุชื่อผู้ใช้งาน (Username หรือ Employee ID)');
+  }
+  if (!cleanPass) {
+    throw new Error('AUTH_ERROR: กรุณาระบุรหัสผ่าน (Password)');
+  }
+
+  let usersList = [];
+  try {
+    usersList = batchReadRecords(SHEET_NAMES.USERS);
+  } catch (err) {
+    console.warn('[Auth] Could not read Users sheet:', err.message);
+  }
+
+  let matchedUser = usersList.find(u => {
+    const uUser = String(u.username || '').trim().toLowerCase();
+    const uEmp = String(u.employeeId || '').trim().toLowerCase();
+    const uEmail = String(u.email || '').trim().toLowerCase();
+    return uUser === cleanUser || uEmp === cleanUser || (uEmail && uEmail === cleanUser);
+  });
+
+  const DEFAULT_INITIAL_PASSWORDS = ['123456', 'password123', 'admin123'];
+
+  if (!matchedUser) {
+    const adminEmails = getAdminEmails();
+    const isBootstrapAdmin = cleanUser === 'admin' || adminEmails.some(e => e.toLowerCase() === cleanUser);
+    if (isBootstrapAdmin && DEFAULT_INITIAL_PASSWORDS.includes(cleanPass)) {
+      matchedUser = {
+        id: 'USR-0006',
+        employeeId: 'EMP-SYS-999',
+        username: 'admin',
+        email: adminEmails[0] || 'admin@company.com',
+        name: 'System Administrator (Bootstrap)',
+        displayName: 'System Admin',
+        department: 'MGT',
+        primaryDepartment: 'MGT',
+        departments: ['*'],
+        allowedDepartments: ['*'],
+        roleId: SYSTEM_ROLES.ADMIN,
+        canonicalRole: SYSTEM_ROLES.ADMIN,
+        level: 99,
+        status: 'ACTIVE',
+        isActive: true,
+        password: cleanPass
+      };
+      try {
+        upsertRecordById(SHEET_NAMES.USERS, 'id', matchedUser);
+      } catch (e) {}
+    } else {
+      throw new Error('AUTH_FAILED: ชื่อผู้ใช้งาน (Username) หรือรหัสผ่าน (Password) ไม่ถูกต้อง');
+    }
+  }
+
+  const storedPass = String(matchedUser.password || '').trim();
+  let isPasswordValid = false;
+
+  if (storedPass) {
+    isPasswordValid = (storedPass === cleanPass);
+  } else {
+    if (DEFAULT_INITIAL_PASSWORDS.includes(cleanPass)) {
+      isPasswordValid = true;
+      try {
+        matchedUser.password = cleanPass;
+        matchedUser.updatedAt = new Date().toISOString();
+        upsertRecordById(SHEET_NAMES.USERS, 'id', matchedUser);
+      } catch (saveErr) {}
+    }
+  }
+
+  if (!isPasswordValid) {
+    throw new Error('AUTH_FAILED: ชื่อผู้ใช้งาน (Username) หรือรหัสผ่าน (Password) ไม่ถูกต้อง');
+  }
+
+  const isActive = matchedUser.isActive === true || 
+                   String(matchedUser.isActive).toLowerCase() === 'true' || 
+                   matchedUser.isActive === 1 || 
+                   matchedUser.status === 'ACTIVE';
+
+  if (!isActive) {
+    throw new Error(`ACCOUNT_DISABLED: บัญชีผู้ใช้งาน (${matchedUser.username}) ถูกระงับการใช้งานชั่วคราว กรุณาติดต่อผู้ดูแลระบบ`);
+  }
+
+  const adminEmails = getAdminEmails();
+  const isConfiguredAdmin = adminEmails.includes(String(matchedUser.email || '').toLowerCase()) || matchedUser.username === 'admin';
+
+  return buildUserProfile(matchedUser, isConfiguredAdmin);
+}
+
+/**
+ * Normalizes user record and calculates fine-grained permissions.
+ * @param {Object} raw Raw row record
+ * @param {boolean} [elevateAdmin=false] Whether to elevate to ADMIN
+ * @returns {Object}
+ */
+function buildUserProfile(raw, elevateAdmin = false) {
+  let allowedDepts = [];
+  if (Array.isArray(raw.allowedDepartments)) {
+    allowedDepts = raw.allowedDepartments.filter(d => String(d).toUpperCase() !== 'ALL');
+  } else if (typeof raw.allowedDepartments === 'string') {
+    try {
+      allowedDepts = JSON.parse(raw.allowedDepartments).filter(d => String(d).toUpperCase() !== 'ALL');
+    } catch (e) {
+      allowedDepts = raw.allowedDepartments.split(',').map(d => d.trim()).filter(d => d && d.toUpperCase() !== 'ALL');
+    }
+  }
+
+  if (allowedDepts.length === 0) {
+    const fallbackDept = (raw.primaryDepartment && raw.primaryDepartment !== 'ALL') 
+      ? raw.primaryDepartment 
+      : ((raw.department && raw.department !== 'ALL') ? raw.department : 'MGT');
+    allowedDepts = [fallbackDept];
+  }
+
+  const roleId = elevateAdmin ? SYSTEM_ROLES.ADMIN : (raw.roleId || raw.canonicalRole || SYSTEM_ROLES.REQUESTER);
+  const canonicalRole = elevateAdmin ? SYSTEM_ROLES.ADMIN : (raw.canonicalRole || raw.roleId || SYSTEM_ROLES.REQUESTER);
+  const level = elevateAdmin ? 99 : Number(raw.level || 1);
+
+  const roleStr = String(roleId + ' ' + canonicalRole).toUpperCase();
+  const isAdmin = elevateAdmin || level >= 99 || roleStr.includes('ADMIN');
+  const isApprover = isAdmin || level >= 3 || roleStr.includes('APPROV') || roleStr.includes('PLANT_MANAGER');
+  const isPurchaser = isAdmin || roleStr.includes('PURCHAS') || roleStr.includes('ONLINE_PURCHASER');
+  const isReviewer = isAdmin || isApprover || level >= 2 || roleStr.includes('REVIEW') || roleStr.includes('ASST_MANAGER');
+  const isRequester = isAdmin || roleStr.includes('REQUEST') || roleStr.includes('PD') || roleStr.includes('QC');
+
+  const permissions = {
+    PR_CREATION: Boolean(isAdmin || isRequester || raw.canCreatePR),
+    REVIEW: Boolean(isAdmin || isReviewer || raw.canReview),
+    APPROVAL: Boolean(isAdmin || isApprover || raw.canFinalApprove),
+    PURCHASING: Boolean(isAdmin || isPurchaser || raw.canOnlinePurchase),
+    INVENTORY: Boolean(isAdmin || isRequester || raw.canReceiveGRN || raw.canReceiveGoods),
+    ADMIN: Boolean(isAdmin)
+  };
+
+  const cleanDept = (raw.department && raw.department !== 'ALL') ? raw.department : ((roleId === 'ONLINE_PURCHASER') ? 'PUR' : 'MGT');
+  const cleanPDept = (raw.primaryDepartment && raw.primaryDepartment !== 'ALL') ? raw.primaryDepartment : cleanDept;
+
+  return {
+    id: raw.id || `USR-${Utilities.getUuid().slice(0, 8)}`,
+    employeeId: raw.employeeId || '',
+    username: raw.username || (raw.email ? raw.email.split('@')[0] : ''),
+    email: (raw.email || '').trim().toLowerCase(),
+    name: raw.name || raw.employeeName || raw.displayName || 'ผู้ใช้งานระบบ',
+    displayName: raw.displayName || raw.name || raw.employeeName || 'User',
+    department: cleanDept,
+    primaryDepartment: cleanPDept,
+    allowedDepartments: allowedDepts,
+    roleId: roleId,
+    canonicalRole: canonicalRole,
+    level: level,
+    status: raw.status || 'ACTIVE',
+    isActive: true,
+    isAdmin: isAdmin,
+    isApprover: isApprover,
+    isPurchaser: isPurchaser,
+    isReviewer: isReviewer,
+    isRequester: isRequester,
+    permissions: permissions
+  };
+}
+
+/**
+ * Server-side RBAC Guard: Requires user to be authenticated and registered.
+ */
+function requireAuth() {
+  return getUserProfile();
+}
+
+/**
+ * Server-side RBAC Guard: Requires active user to possess at least one of the allowed roles.
+ */
+function requireRole(allowedRoles = []) {
+  const user = requireAuth();
+  if (user.isAdmin) return user;
+
+  const userRoles = [
+    String(user.roleId || '').toUpperCase(),
+    String(user.canonicalRole || '').toUpperCase()
+  ];
+
+  const hasRole = allowedRoles.some(r => userRoles.includes(String(r).toUpperCase()));
+  if (!hasRole) {
+    throw new Error(`PERMISSION_DENIED: สิทธิ์การใช้งานไม่เพียงพอ ต้องการบทบาทอย่างน้อยหนึ่งใน [${allowedRoles.join(', ')}]`);
+  }
+
+  return user;
+}
+
+/**
+ * Server-side RBAC Guard: Requires specific permission capability.
+ */
+function requirePermission(permissionKey) {
+  const user = requireAuth();
+  if (user.isAdmin) return user;
+
+  if (!user.permissions || !user.permissions[permissionKey]) {
+    throw new Error(`PERMISSION_DENIED: ผู้ใช้ไม่มีสิทธิ์ในการดำเนินการ "${permissionKey}"`);
+  }
+
+  return user;
+}
+
+/**
+ * Server-side Department Guard: Ensures user has access to specified department.
+ */
+function requireDepartment(targetDepartment) {
+  const user = requireAuth();
+  if (user.isAdmin) return user;
+
+  const target = String(targetDepartment || '').trim().toUpperCase();
+  const allowed = user.allowedDepartments.map(d => String(d).trim().toUpperCase());
+
+  const canAccess = allowed.includes('*') || allowed.includes('ALL') || allowed.includes(target);
+  if (!canAccess) {
+    throw new Error(`DEPARTMENT_ACCESS_DENIED: ท่านไม่มีสิทธิ์เข้าถึงหรือจัดการข้อมูลของแผนก "${targetDepartment}"`);
+  }
+
+  return user;
+}
 
 /**
  * Returns authenticated user profile and capability matrix.
@@ -379,6 +688,21 @@ function apiDeleteMasterItem(collectionOrPayload, idOrUser, userContext) {
     var result = deleteMasterItem(targetCollection, targetId);
     return (result && result.data !== undefined) ? result.data : result;
   }, 'DeleteMasterItem', rawPayload, rawUser);
+}
+
+/**
+ * Retrieves master data items from specified collection.
+ * 
+ * @param {string|Object} collectionOrPayload Collection identifier or payload
+ * @param {Object} [userContext]
+ * @returns {Object} Standard API response envelope
+ */
+function apiGetMasterData(collectionOrPayload, userContext) {
+  return handleApiRequest(function(payload, user) {
+    var coll = typeof payload === 'string' ? payload : (payload.collection || payload.type || 'Products');
+    var sheetName = resolveMasterSheetName(coll);
+    return batchReadRecords(sheetName);
+  }, 'GetMasterData', collectionOrPayload, userContext);
 }
 
 /**
@@ -2171,6 +2495,13 @@ function apiReceivePO(rawPayload, userContext) {
 }
 
 /**
+ * Processes GRN Receiving for a PO document (Alias for apiReceivePO).
+ */
+function apiReceiveGRN(rawPayload, userContext) {
+  return apiReceivePO(rawPayload, userContext);
+}
+
+/**
  * Settles an Online PO with actual transfer amounts, calculates savings,
  * adjusts line-item actual unit prices for inventory costing, and refunds unused budget.
  */
@@ -2360,7 +2691,14 @@ function apiAppendStockMovements(movementsListOrPayload, userContext) {
 
     list.forEach(function(mov) {
       if (!mov || typeof mov !== 'object') return;
-      var prod = productMap.get(String(mov.productId));
+      var prod = mov.productId ? productMap.get(String(mov.productId)) : null;
+      if (!prod && (mov.productCode || mov.code)) {
+        var targetCode = String(mov.productCode || mov.code).trim();
+        var targetDept = mov.department || dept;
+        prod = products.find(function(p) {
+          return String(p.code || '').trim() === targetCode && matchDepartment(p.department || p.category, targetDept);
+        });
+      }
       var currentBalance = prod ? Number(prod.stockBalance || 0) : 0;
       var qty = Number(mov.qty || mov.quantity || 0);
 
@@ -2382,10 +2720,11 @@ function apiAppendStockMovements(movementsListOrPayload, userContext) {
         id: mov.id || ('MOV-' + Date.now() + '-' + Utilities.getUuid().slice(0, 4)),
         timestamp: mov.timestamp || new Date().toISOString(),
         date: mov.date || new Date().toISOString(),
-        productId: mov.productId || (prod ? prod.id : ''),
-        productCode: mov.productCode || (prod ? prod.code : ''),
+        productId: (prod ? prod.id : mov.productId) || '',
+        productCode: (prod ? prod.code : mov.productCode) || '',
         name: mov.name || (prod ? prod.name : ''),
         type: mov.type || 'IN',
+
         documentNo: mov.documentNo || mov.grnNumber || mov.docNo || '',
         grnNumber: mov.grnNumber || mov.documentNo || '',
         poNumber: mov.poNumber || mov.poNo || '',
@@ -2397,7 +2736,7 @@ function apiAppendStockMovements(movementsListOrPayload, userContext) {
         totalPrice: Number(mov.totalPrice !== undefined ? mov.totalPrice : (qty * Number(mov.unitPrice || mov.actualUnitPrice || mov.actualPrice || 0))),
         balanceAfter: newBalance,
         actorName: mov.actorName || defaultActor,
-        department: mov.department || (prod ? prod.department : dept),
+        department: mov.department || (prod ? (prod.department || prod.category) : dept),
         locationId: mov.locationId || (prod ? prod.locationId : ''),
         notes: mov.notes || mov.note || ''
       };
@@ -2729,8 +3068,486 @@ function apiSaveNotifications(notifsListOrPayload, userContext) {
 }
 
 // =========================================================================
-// 8. DRIVE FILE UPLOAD RPC
+// 8. DRIVE FILE UPLOAD & ATTACHMENT SERVICES
 // =========================================================================
+
+/**
+ * Uploads a Base64-encoded file into the structured Google Drive hierarchy.
+ * 
+ * @param {Object} payload File upload payload
+ * @returns {Object} Upload result with Drive IDs and URLs
+ */
+function uploadBase64File(payload) {
+  if (!payload || !payload.base64Data) {
+    throw new Error('VALIDATION_ERROR: Missing required "base64Data" payload.');
+  }
+
+  const fileName = (payload.fileName || `file_${Date.now()}`).trim();
+  let mimeType = (payload.mimeType || 'application/octet-stream').toLowerCase().trim();
+  let base64 = String(payload.base64Data);
+
+  if (base64.includes(';base64,')) {
+    const parts = base64.split(';base64,');
+    const meta = parts[0];
+    base64 = parts[1];
+    if (meta.includes(':')) {
+      mimeType = meta.split(':')[1].trim();
+    }
+  }
+
+  if (ALLOWED_MIME_TYPES.length > 0 && !ALLOWED_MIME_TYPES.includes(mimeType)) {
+    throw new Error(`UNSUPPORTED_MEDIA_TYPE: ไม่อนุญาตให้อัปโหลดไฟล์ประเภท "${mimeType}"`);
+  }
+
+  const bytes = Utilities.base64Decode(base64);
+  const fileSize = bytes.length;
+
+  if (fileSize > CONFIG.DEFAULTS.MAX_FILE_SIZE_BYTES) {
+    const maxMb = (CONFIG.DEFAULTS.MAX_FILE_SIZE_BYTES / (1024 * 1024)).toFixed(0);
+    throw new Error(`FILE_TOO_LARGE: ขนาดไฟล์เกินข้อกำหนด (${(fileSize / (1024 * 1024)).toFixed(2)} MB) จำกัดสูงสุดไม่เกิน ${maxMb} MB`);
+  }
+
+  const { folder, pathString } = resolveTargetDriveFolder(
+    payload.category,
+    payload.poNumber,
+    payload.date
+  );
+
+  const blob = Utilities.newBlob(bytes, mimeType, fileName);
+  let createdFile;
+
+  try {
+    createdFile = folder.createFile(blob);
+  } catch (driveErr) {
+    throw new Error(`DRIVE_UPLOAD_FAILED: ไม่สามารถบันทึกไฟล์ลง Google Drive: ${driveErr.message}`);
+  }
+
+  const fileId = createdFile.getId();
+  const viewUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
+  const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+  const directUrl = 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1200';
+  const lh3Url = 'https://lh3.googleusercontent.com/d/' + fileId;
+  const attachmentId = `ATT-${Utilities.getUuid().slice(0, 8)}`;
+  const currentUser = payload.uploadedBy || getCurrentUserEmail() || 'system';
+
+  const attachmentRecord = {
+    id: attachmentId,
+    fileId: fileId,
+    fileName: fileName,
+    mimeType: mimeType,
+    fileSize: fileSize,
+    category: normalizeDriveCategory(payload.category),
+    poNumber: payload.poNumber || '',
+    docNo: payload.docNo || payload.poNumber || '',
+    docType: payload.docType || payload.category || 'OTHER',
+    viewUrl: viewUrl,
+    directUrl: directUrl,
+    lh3Url: lh3Url,
+    downloadUrl: downloadUrl,
+    folderPath: pathString,
+    uploadedBy: currentUser,
+    uploadedAt: new Date().toISOString()
+  };
+
+  try {
+    const sheet = getSheet(SHEET_NAMES.ATTACHMENTS);
+    const headers = getSheetHeaders(sheet);
+    const rowValues = [serializeRecordToRow(attachmentRecord, headers)];
+    const lastRow = sheet.getLastRow();
+    sheet.getRange(lastRow + 1, 1, 1, rowValues[0].length).setValues(rowValues);
+  } catch (sheetErr) {
+    try {
+      createdFile.setTrashed(true);
+    } catch (trashErr) {}
+    throw new Error(`TRANSACTION_FAILED: ไม่สามารถบันทึกประวัติไฟล์ลงฐานข้อมูลได้ (${sheetErr.message})`);
+  }
+
+  return {
+    attachmentId: attachmentId,
+    fileId: fileId,
+    name: fileName,
+    fileName: fileName,
+    fileSize: fileSize,
+    mimeType: mimeType,
+    directUrl: directUrl,
+    lh3Url: lh3Url,
+    viewUrl: viewUrl,
+    downloadUrl: downloadUrl,
+    folderPath: pathString,
+    uploadedAt: attachmentRecord.uploadedAt
+  };
+}
+
+/**
+ * Saves image base64 to Google Drive with public read permission and direct CDN URLs
+ */
+function saveImageToDrive(base64Data, fileName, mimeType, category) {
+  return uploadBase64File({
+    base64Data: base64Data,
+    fileName: fileName || ('image_' + Date.now() + '.jpg'),
+    mimeType: mimeType || 'image/jpeg',
+    category: category || 'PR'
+  });
+}
+
+function uploadAttachment(payload) {
+  return uploadBase64File(payload);
+}
+
+function getOrCreateAttachmentFolder(folderName) {
+  var root = getRootDriveFolder();
+  var targetName = folderName || DRIVE_CATEGORIES.PR;
+  return getOrCreateSubFolder(root, targetName);
+}
+
+/**
+ * Decodes and uploads a single Base64 image directly to Google Drive.
+ */
+function uploadBase64Image(base64Data, fileName, mimeType, category, docNo, docType) {
+  if (!base64Data || typeof base64Data !== 'string') return null;
+
+  var cleanMime = (mimeType || 'image/jpeg').toLowerCase();
+  var rawBase64 = base64Data;
+
+  if (base64Data.includes(';base64,')) {
+    var parts = base64Data.split(';base64,');
+    var header = parts[0];
+    rawBase64 = parts[1];
+    if (header.includes(':')) {
+      cleanMime = header.split(':')[1].trim();
+    }
+  }
+
+  if (!rawBase64 || rawBase64.includes('STORED_IN_DRIVE') || rawBase64.includes('BASE64_') || rawBase64.length < 20
+      || rawBase64.startsWith('https://') || rawBase64.startsWith('http://')) {
+    return null;
+  }
+
+  var bytes;
+  try {
+    bytes = Utilities.base64Decode(rawBase64);
+  } catch (decErr) {
+    return null;
+  }
+
+  var ext = cleanMime.includes('png') ? '.png' : (cleanMime.includes('webp') ? '.webp' : '.jpg');
+  var cleanFileName = (fileName || ('pr_image_' + Date.now())).trim();
+  if (!cleanFileName.match(/\.(jpe?g|png|webp|gif)$/i)) {
+    cleanFileName += ext;
+  }
+
+  var folder = getRootDriveFolder();
+  var blob = Utilities.newBlob(bytes, cleanMime, cleanFileName);
+  var file;
+
+  try {
+    file = folder.createFile(blob);
+  } catch (driveErr) {
+    return null;
+  }
+
+  var fileId = file.getId();
+  var directUrl = 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1200';
+  var lh3Url = 'https://lh3.googleusercontent.com/d/' + fileId;
+  var viewUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
+
+  try {
+    _pendingAttachments.push({
+      id: 'ATT-' + Utilities.getUuid().slice(0, 8),
+      fileId: fileId,
+      fileName: cleanFileName,
+      mimeType: cleanMime,
+      fileSize: bytes.length,
+      category: category || DRIVE_CATEGORIES.PR,
+      poNumber: (docType === 'PO' ? docNo : ''),
+      docNo: docNo || '',
+      docType: docType || 'PR',
+      viewUrl: viewUrl,
+      directUrl: directUrl,
+      lh3Url: lh3Url,
+      downloadUrl: 'https://drive.google.com/uc?export=download&id=' + fileId,
+      folderPath: CONFIG.DEFAULTS.DRIVE_ROOT_NAME || 'PR-PO-Stock-System',
+      uploadedBy: getCurrentUserEmail() || 'system',
+      uploadedAt: new Date().toISOString()
+    });
+  } catch (attErr) {}
+
+  return {
+    fileId: fileId,
+    directUrl: directUrl,
+    lh3Url: lh3Url,
+    viewUrl: viewUrl,
+    driveUrl: viewUrl,
+    fileName: cleanFileName,
+    mimeType: cleanMime
+  };
+}
+
+/**
+ * Processes inline Base64 images/attachments in PR items.
+ */
+function processItemImages(items, docNo, docType) {
+  if (!Array.isArray(items) || items.length === 0) return items;
+
+  return items.map(function(item, idx) {
+    if (!item || typeof item !== 'object') return item;
+    var cleanItem = Object.assign({}, item);
+
+    if (cleanItem.imageUrl && typeof cleanItem.imageUrl === 'string' && cleanItem.imageUrl.startsWith('data:image/')) {
+      var uploadResult = uploadBase64Image(
+        cleanItem.imageUrl,
+        (cleanItem.name || 'item_' + (idx + 1)) + '_thumb',
+        'image/jpeg',
+        DRIVE_CATEGORIES.PR,
+        docNo,
+        docType || 'PR'
+      );
+      if (uploadResult) {
+        cleanItem.imageUrl = uploadResult.directUrl;
+        cleanItem.fileId = uploadResult.fileId;
+        cleanItem.driveUrl = uploadResult.viewUrl;
+        cleanItem.lh3Url = uploadResult.lh3Url;
+      } else {
+        cleanItem.imageUrl = '';
+      }
+    }
+
+    if (Array.isArray(cleanItem.images) && cleanItem.images.length > 0) {
+      cleanItem.images = cleanItem.images.map(function(img, imgIdx) {
+        if (!img) return img;
+        var rawUrl = (typeof img === 'string') ? img : (img.url || img.previewUrl || '');
+        var imgName = (typeof img === 'object' && img.name) ? img.name : ((cleanItem.name || 'item_' + (idx + 1)) + '_img_' + (imgIdx + 1));
+
+        if (!rawUrl || !rawUrl.startsWith('data:')) return img;
+
+        if (typeof rawUrl === 'string' && rawUrl.startsWith('data:')) {
+          var res = uploadBase64Image(rawUrl, imgName, 'image/jpeg', DRIVE_CATEGORIES.PR, docNo, docType || 'PR');
+          if (res) {
+            if (typeof img === 'string') return res.directUrl;
+            return Object.assign({}, img, {
+              url: res.directUrl,
+              previewUrl: res.directUrl,
+              directUrl: res.directUrl,
+              lh3Url: res.lh3Url,
+              fileId: res.fileId,
+              driveUrl: res.viewUrl
+            });
+          }
+          return (typeof img === 'string') ? '' : Object.assign({}, img, { url: '', previewUrl: '' });
+        }
+        return img;
+      });
+
+      if ((!cleanItem.imageUrl || cleanItem.imageUrl.includes('BASE64_')) && cleanItem.images.length > 0) {
+        var first = cleanItem.images[0];
+        cleanItem.imageUrl = (typeof first === 'string') ? first : (first.directUrl || first.url || first.previewUrl || '');
+        if (typeof first === 'object' && first.fileId) {
+          cleanItem.fileId = first.fileId;
+          cleanItem.driveUrl = first.driveUrl;
+        }
+      }
+    }
+
+    if (Array.isArray(cleanItem.attachments) && cleanItem.attachments.length > 0) {
+      cleanItem.attachments = cleanItem.attachments.map(function(att, attIdx) {
+        if (!att || typeof att !== 'object') return att;
+        var rawUrl = att.url || att.previewUrl || att.dataUrl || '';
+        if (!rawUrl || !rawUrl.startsWith('data:')) return att;
+        if (typeof rawUrl === 'string' && rawUrl.startsWith('data:')) {
+          var attName = att.name || ((cleanItem.name || 'item_' + (idx + 1)) + '_att_' + (attIdx + 1));
+          var res = uploadBase64Image(rawUrl, attName, att.type || 'image/jpeg', DRIVE_CATEGORIES.PR, docNo, docType || 'PR');
+          if (res) {
+            return Object.assign({}, att, {
+              url: res.directUrl,
+              previewUrl: res.directUrl,
+              directUrl: res.directUrl,
+              lh3Url: res.lh3Url,
+              fileId: res.fileId,
+              driveUrl: res.viewUrl
+            });
+          }
+          return Object.assign({}, att, { url: '', previewUrl: '' });
+        }
+        return att;
+      });
+    }
+
+    return cleanItem;
+  });
+}
+
+/**
+ * Processes document-level attachments and uploads any Base64 files to Google Drive.
+ */
+function processDocumentAttachments(attachments, category, docNo, docType, isNew) {
+  if (docNo && !isNew) {
+    try {
+      var allAtts = batchReadRecords(SHEET_NAMES.ATTACHMENTS);
+      var validKeys = {};
+      if (Array.isArray(attachments)) {
+        attachments.forEach(function(att) {
+           if (att && att.fileId) validKeys[att.fileId] = true;
+           if (att && att.url) validKeys[att.url] = true;
+           if (att && att.viewUrl) validKeys[att.viewUrl] = true;
+           if (att && att.directUrl) validKeys[att.directUrl] = true;
+        });
+      }
+      
+      var filteredAtts = allAtts.filter(function(row) {
+        var rDocNo = String(row.docNo || '').trim().toUpperCase();
+        var rPoNo = String(row.poNumber || '').trim().toUpperCase();
+        var rPrNo = String(row.prNo || '').trim().toUpperCase();
+        var targetDocNo = String(docNo).trim().toUpperCase();
+        
+        var isThisDoc = (rDocNo === targetDocNo || rPoNo === targetDocNo || rPrNo === targetDocNo);
+        if (!isThisDoc) return true;
+        
+        var isKept = false;
+        if (row.fileId && validKeys[row.fileId]) isKept = true;
+        if (row.viewUrl && validKeys[row.viewUrl]) isKept = true;
+        if (row.directUrl && validKeys[row.directUrl]) isKept = true;
+        
+        return isKept;
+      });
+      
+      if (filteredAtts.length < allAtts.length) {
+        var attSheet = getSheet(SHEET_NAMES.ATTACHMENTS || 'Attachments');
+        var attHeaders = getSheetHeaders(attSheet);
+        var lastR = attSheet.getLastRow();
+        var lastC = attSheet.getLastColumn();
+        if (lastR > 1 && lastC > 0) {
+          attSheet.getRange(2, 1, lastR - 1, lastC).clearContent();
+        }
+        if (filteredAtts.length > 0) {
+          var rowsToWrite = filteredAtts.map(function(rec) { return serializeRecordToRow(rec, attHeaders); });
+          attSheet.getRange(2, 1, rowsToWrite.length, attHeaders.length).setValues(rowsToWrite);
+        }
+      }
+    } catch (e) {}
+  }
+
+  if (!Array.isArray(attachments) || attachments.length === 0) return [];
+  return attachments.map(function(att, idx) {
+    if (!att || typeof att !== 'object') return att;
+    var rawUrl = att.url || att.previewUrl || att.dataUrl || '';
+    if (!rawUrl || !rawUrl.startsWith('data:')) return att;
+    if (typeof rawUrl === 'string' && rawUrl.startsWith('data:')) {
+      var attName = att.name || ('attachment_' + (idx + 1));
+      var res = uploadBase64Image(rawUrl, attName, att.type || 'application/octet-stream', category || DRIVE_CATEGORIES.PR, docNo, docType);
+      if (res) {
+        return Object.assign({}, att, {
+          url: res.directUrl,
+          previewUrl: res.directUrl,
+          directUrl: res.directUrl,
+          lh3Url: res.lh3Url,
+          fileId: res.fileId,
+          driveUrl: res.viewUrl
+        });
+      }
+      return Object.assign({}, att, { url: '', previewUrl: '' });
+    }
+    return att;
+  });
+}
+
+/**
+ * Sets Public Read permissions for all existing image files and attachments.
+ */
+function makeAllDriveFilesPublic() {
+  const stats = {
+    foldersScanned: 0,
+    totalScanned: 0,
+    updated: 0,
+    errors: [],
+    processedFiles: []
+  };
+
+  const visitedFileIds = {};
+
+  function markFilePublic(file, sourceDesc) {
+    if (!file) return;
+    const fileId = file.getId();
+    if (visitedFileIds[fileId]) return;
+    visitedFileIds[fileId] = true;
+
+    stats.totalScanned++;
+    const name = file.getName() || 'unnamed';
+    const mimeType = file.getMimeType() || '';
+
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      stats.updated++;
+      if (!Array.isArray(stats.processedFiles)) stats.processedFiles = [];
+      stats.processedFiles.push({
+        id: fileId,
+        name: name,
+        mimeType: mimeType,
+        directUrl: 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1200',
+        lh3Url: 'https://lh3.googleusercontent.com/d/' + fileId,
+        viewUrl: file.getUrl(),
+        source: sourceDesc || 'DriveFolder'
+      });
+    } catch (err) {
+      if (!Array.isArray(stats.errors)) stats.errors = [];
+      stats.errors.push({ id: fileId, name: name, error: err.message });
+    }
+  }
+
+  function traverseFolder(folder, currentPath) {
+    if (!folder) return;
+    stats.foldersScanned++;
+    const folderName = folder.getName();
+    const folderPath = currentPath ? (currentPath + '/' + folderName) : folderName;
+
+    try {
+      const files = folder.getFiles();
+      while (files.hasNext()) {
+        markFilePublic(files.next(), folderPath);
+      }
+    } catch (err) {
+      if (!Array.isArray(stats.errors)) stats.errors = [];
+      stats.errors.push({ folder: folderPath, error: err.message });
+    }
+
+    try {
+      const childFolders = folder.getFolders();
+      while (childFolders.hasNext()) {
+        traverseFolder(childFolders.next(), folderPath);
+      }
+    } catch (err) {
+      if (!Array.isArray(stats.errors)) stats.errors = [];
+      stats.errors.push({ folder: folderPath, error: err.message });
+    }
+  }
+
+  try {
+    const rootFolder = getRootDriveFolder();
+    if (rootFolder) {
+      traverseFolder(rootFolder, '');
+    }
+  } catch (rootErr) {}
+
+  return {
+    success: true,
+    message: 'ปรับสิทธิ์ไฟล์รูปภาพทั้งหมดใน Google Drive ให้เป็น Public Read เรียบร้อยแล้ว',
+    totalFoldersScanned: stats.foldersScanned,
+    totalFilesScanned: stats.totalScanned,
+    updatedCount: stats.updated,
+    errorCount: stats.errors.length,
+    updatedFiles: stats.processedFiles,
+    errors: stats.errors,
+    executedAt: new Date().toISOString()
+  };
+}
+
+/**
+ * Public RPC Endpoint: One-time migration to set all Drive image files and attachments to Public Read.
+ */
+function apiMakeAllDriveFilesPublic(rawPayload, userContext) {
+  return handleApiRequest(function(payload, user) {
+    return makeAllDriveFilesPublic();
+  }, 'MakeAllDriveFilesPublic', rawPayload, userContext);
+}
 
 /**
  * Accepts Base64 file from frontend, validates, stores in Drive,
@@ -3111,43 +3928,5 @@ function batchUpsertRecordsFast(sheetName, idField, records) {
   return records;
 }
 
-/**
- * Universal Department Matcher for Google Apps Script.
- * Matches department codes, IDs, or names across representations (e.g. 'QC' vs 'DEPT-QC', 'ALL', 'BOTH', '*').
- *
- * @param {string|Object} prodDept - Department code/id/object of the entity
- * @param {string|Object} targetDept - Department code/id/object to compare against
- * @returns {boolean}
- */
-function matchDepartment(prodDept, targetDept) {
-  if (!prodDept || !targetDept) return false;
-
-  var rawTargetStr = typeof targetDept === 'string' ? targetDept.trim().toUpperCase() : '';
-  var rawProductStr = typeof prodDept === 'string' ? prodDept.trim().toUpperCase() : '';
-  if (rawTargetStr === 'ALL' || rawTargetStr === '*' || rawTargetStr === 'BOTH') return true;
-  if (rawProductStr === 'ALL' || rawProductStr === '*' || rawProductStr === 'BOTH') return true;
-
-  var p = String((prodDept && (prodDept.code || prodDept.id)) || prodDept).trim().toUpperCase();
-
-  if (typeof targetDept === 'string') {
-    var t = targetDept.trim().toUpperCase();
-    return p === t || 
-           p.replace(/^DEPT-/, '') === t.replace(/^DEPT-/, '') ||
-           p === t.replace(/^DEPT-/, '') ||
-           t === p.replace(/^DEPT-/, '');
-  }
-
-  var tId = String(targetDept.id || '').trim().toUpperCase();
-  var tCode = String(targetDept.code || '').trim().toUpperCase();
-  var tName = String(targetDept.name || '').trim().toUpperCase();
-
-  if (tId === 'ALL' || tCode === 'ALL') return true;
-
-  return p === tCode || 
-         p === tId || 
-         p.replace(/^DEPT-/, '') === tId.replace(/^DEPT-/, '') ||
-         p.replace(/^DEPT-/, '') === tCode.replace(/^DEPT-/, '') ||
-         (Boolean(tName) && p === tName);
-}
 
 

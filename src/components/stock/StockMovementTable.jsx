@@ -2,6 +2,8 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { History, ArrowDownRight, ArrowUpRight, X, MapPin, Search, Calendar, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import Portal from '../common/Portal';
 import { storageService, normalizeDocNumber } from '../../services/storageService';
+import { AppContext } from '../../context/AppContext';
+import { matchDepartment, isMultiDeptUser } from '../../utils/permissions';
 
 /**
  * Resilient Date Parser for diverse stock log formats
@@ -90,6 +92,8 @@ export default function StockMovementTable({
   product,
   stockLogs = [],
   pos = [],
+  currentUser: propCurrentUser,
+  currentRole: propCurrentRole,
   onClose,
   initialFilterType,
   filterType: controlledFilterType
@@ -103,6 +107,10 @@ export default function StockMovementTable({
   const [pageSize, setPageSize] = useState(10); // 10-15 rows per page
   const [activeNoteModal, setActiveNoteModal] = useState(null); // Full Note modal state
   const selectedProduct = product || propSelectedProduct;
+
+  // Retrieve contextual user for department scoping guard
+  const appContext = React.useContext(AppContext) || {};
+  const effectiveUser = propCurrentUser || propCurrentRole || appContext.currentUser || appContext.currentRole || null;
 
   // Retrieve pos list from props or storageService as a safe fallback
   const resolvedPOs = useMemo(() => {
@@ -124,35 +132,42 @@ export default function StockMovementTable({
     }
   }, [stockLogs]);
 
-  // Resiliently match logs for this product across id, code, and legacy sku (Defensive Matching)
+  // Strict Product Scoping & User Department Isolation Guard
   const rawProductLogs = useMemo(() => {
     if (!selectedProduct) return [];
-    const pId = String(selectedProduct.id || '').trim();
-    const pCode = String(selectedProduct.code || selectedProduct.sku || '').trim().toLowerCase();
-    const pName = String(selectedProduct.name || '').trim().toLowerCase();
+    const targetProductId = String(selectedProduct.id || '').trim();
+    const targetDept = String(selectedProduct.department || selectedProduct.category || '').trim();
+    const targetCode = String(selectedProduct.code || selectedProduct.sku || '').trim();
 
-    return resolvedStockLogs.filter(m => {
-      if (!m) return false;
-      const matchId = m.productId && String(m.productId).trim() === pId;
-      const matchCode = m.productCode && (
-        String(m.productCode).trim().toLowerCase() === pCode
-      );
-      const matchLegacySku = m.sku && (
-        String(m.sku).trim().toLowerCase() === pCode
-      );
-      const matchItemCode = m.itemCode && (
-        String(m.itemCode).trim().toLowerCase() === pCode
-      );
-      const matchName = pName && (
-        (m.name && String(m.name).trim().toLowerCase() === pName) ||
-        (m.productName && String(m.productName).trim().toLowerCase() === pName)
-      );
-      const matchCrossId = (pId && String(m.productCode || m.sku || '').trim().toLowerCase() === pId.toLowerCase()) ||
-                           (pCode && String(m.productId || '').trim().toLowerCase() === pCode);
+    const userDept = String(effectiveUser?.department || effectiveUser?.primaryDepartment || '').trim();
+    const isMultiDept = effectiveUser ? isMultiDeptUser(effectiveUser) : true;
 
-      return matchId || matchCode || matchLegacySku || matchItemCode || matchName || matchCrossId;
+    return resolvedStockLogs.filter(log => {
+      if (!log) return false;
+
+      // 0. User Department Protection Guard:
+      // If user is a single department user, log must match user's department
+      if (userDept && !isMultiDept && !matchDepartment(log.department || targetDept, userDept)) {
+        return false;
+      }
+
+      // Department consistency guard: If log has department and target has department, they must match
+      if (log.department && targetDept && !matchDepartment(log.department, targetDept)) {
+        return false;
+      }
+
+      // 1. ตรวจสอบด้วย Product ID คอลัมน์หลัก (แม่นยำสูงสุด)
+      if (targetProductId && log.productId) {
+        return String(log.productId).trim() === targetProductId;
+      }
+
+      // 2. Fallback: ถ้า log เก่าไม่มี productId ให้ตรวจสอบทั้ง Department และ Code คู่กันเสมอ
+      const isSameDept = matchDepartment(log.department || targetDept, targetDept);
+      const isSameCode = String(log.productCode || log.code || log.sku || '').trim() === targetCode;
+
+      return isSameDept && isSameCode;
     });
-  }, [resolvedStockLogs, selectedProduct]);
+  }, [resolvedStockLogs, selectedProduct, effectiveUser]);
 
   // Self-Healing Data (Migration): If product.stock > 0 but movement logs are empty,
   // auto-generate the initial balance log and persist it so stock and history reconcile
@@ -171,6 +186,7 @@ export default function StockMovementTable({
         productId: selectedProduct.id,
         productCode: selectedProduct.code,
         name: selectedProduct.name,
+        department: selectedProduct.department || selectedProduct.category || 'PD',
         type: 'IN',
         documentNo: 'INITIAL-BALANCE',
         docNo: 'INITIAL-BALANCE',
@@ -199,13 +215,17 @@ export default function StockMovementTable({
     const stockVal = Number(selectedProduct.stockBalance ?? selectedProduct.stock ?? selectedProduct.qty) || 0;
     if (stockVal > 0 && rawProductLogs.length === 0) {
       const allLogs = storageService.getStockLogs() || [];
-      const pId = String(selectedProduct.id || '').trim().toLowerCase();
-      const pCode = String(selectedProduct.code || '').trim().toLowerCase();
+      const targetProductId = String(selectedProduct.id || '').trim();
+      const targetDept = String(selectedProduct.department || selectedProduct.category || '').trim();
+      const targetCode = String(selectedProduct.code || selectedProduct.sku || '').trim();
+
       const hasAny = allLogs.some(l => {
         if (!l) return false;
-        const lpId = String(l.productId || '').trim().toLowerCase();
-        const lpCode = String(l.productCode || '').trim().toLowerCase();
-        return (pId && (lpId === pId || lpCode === pId)) || (pCode && (lpCode === pCode || lpId === pCode));
+        if (l.department && targetDept && !matchDepartment(l.department, targetDept)) return false;
+        if (targetProductId && l.productId) {
+          return String(l.productId).trim() === targetProductId;
+        }
+        return matchDepartment(l.department, targetDept) && String(l.productCode || l.code || '').trim() === targetCode;
       });
 
       if (!hasAny) {
@@ -218,6 +238,7 @@ export default function StockMovementTable({
           productId: selectedProduct.id,
           productCode: selectedProduct.code,
           name: selectedProduct.name,
+          department: selectedProduct.department || selectedProduct.category || 'PD',
           type: 'IN',
           documentNo: 'INITIAL-BALANCE',
           docNo: 'INITIAL-BALANCE',
@@ -246,6 +267,7 @@ export default function StockMovementTable({
       }
     }
   }, [selectedProduct, rawProductLogs.length]);
+
 
   // Helper for 3 Months Date Boundary (current month + 2 previous months)
   const isWithinLast3Months = useCallback((rawDate) => {

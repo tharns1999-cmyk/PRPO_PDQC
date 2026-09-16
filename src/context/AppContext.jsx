@@ -1301,6 +1301,7 @@ export function AppProvider({ children }) {
           productId: prod.id,
           productCode: prod.code,
           name: prod.name,
+          department: prod.department || prod.category || tDept || 'PD',
           type: 'IN',
           documentNo: grNumber,
           docNo: docNo,
