@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Database, Plus, Edit3, Trash2, Building2, Search, X, MapPin, Boxes, DoorClosed, UserCheck, RotateCcw, Shield } from 'lucide-react';
 import ProductCRUDModal from '../components/admin/ProductCRUDModal';
@@ -17,9 +17,9 @@ import { modalService } from '../services/modalService';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/common/Pagination';
-import { getUserDepartments, canAccessDepartmentData, isDepartmentMatch } from '../utils/permissions';
+import { getUserDepartments, canAccessDepartmentData, isDepartmentMatch, matchDepartment } from '../utils/permissions';
 
-export { MASTER_DATA_TABS, normalizeTabId, isTabActive, isDepartmentMatch };
+export { MASTER_DATA_TABS, normalizeTabId, isTabActive, isDepartmentMatch, matchDepartment };
 
 // ── Permanent Blacklist Guard against Test / Mock Artifacts ──
 export const DUMMY_BLACKLIST = new Set(['P01', 'P02', 'PROD-01', 'PROD-02']);
@@ -39,9 +39,12 @@ export const deduplicateMasterData = (list = []) => {
     if (!item) return;
     const actual = item.product || item.item || item;
     if (isBlacklistedProduct(actual)) return;
-    const key = String(actual.code || actual.id || '').trim().toUpperCase();
-    if (key && !map.has(key)) {
-      map.set(key, actual);
+    const dept = String(actual.department || actual.category || actual.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+    const code = String(actual.code || actual.sku || actual.vendorCode || '').trim().toUpperCase();
+    const id = String(actual.id || '').trim().toUpperCase();
+    const uniqueKey = id ? id : (code ? `${dept}_${code}` : Math.random());
+    if (uniqueKey && !map.has(uniqueKey)) {
+      map.set(uniqueKey, actual);
     }
   });
   return Array.from(map.values());
@@ -364,14 +367,18 @@ function MasterDataContent({
   const [unitSearch, setUnitSearch] = useState('');
   const [unitDeptFilter, setUnitDeptFilter] = useState(initialDeptFilter);
 
-  // Sync department filters whenever active user switches
+  const prevUserIdRef = useRef(targetUserObj?.id);
+  // Sync department filters ONLY when active user identity actually switches
   useEffect(() => {
-    const nextDefault = isDeptRestricted ? userPrimaryDept : 'ALL';
-    setProdCategoryFilter(nextDefault);
-    setVendorDeptFilter(nextDefault);
-    setLocDeptFilter(nextDefault);
-    setUnitDeptFilter(nextDefault);
-  }, [targetUserObj?.id, targetUserObj?.username, isDeptRestricted, userPrimaryDept]);
+    if (prevUserIdRef.current !== targetUserObj?.id) {
+      prevUserIdRef.current = targetUserObj?.id;
+      const nextDefault = isDeptRestricted ? userPrimaryDept : 'ALL';
+      setProdCategoryFilter(nextDefault);
+      setVendorDeptFilter(nextDefault);
+      setLocDeptFilter(nextDefault);
+      setUnitDeptFilter(nextDefault);
+    }
+  }, [targetUserObj?.id, isDeptRestricted, userPrimaryDept]);
   const [deptSearch, setDeptSearch] = useState('');
   const [deptStatusFilter, setDeptStatusFilter] = useState('ALL');
   const [userSearch, _setUserSearch] = useState('');
@@ -414,7 +421,7 @@ function MasterDataContent({
     productsList.forEach(p => {
       const itemDept = p.department || p.category;
       const matchesDeptRole = canAccessDepartmentData(targetUserObj, itemDept);
-      const matchesCategory = prodCategoryFilter === 'ALL' || isDepartmentMatch(itemDept, prodCategoryFilter);
+      const matchesCategory = matchDepartment(itemDept, prodCategoryFilter);
       if (matchesDeptRole && matchesCategory) {
         const isItemInactive = p.isActive === false || String(p.isActive).toUpperCase() === 'FALSE' || String(p.status || '').toUpperCase() === 'INACTIVE';
         const isItemActive = (p.isActive === true || String(p.isActive).toUpperCase() === 'TRUE' || String(p.status || '').toUpperCase() === 'ACTIVE') && !isItemInactive;
@@ -439,9 +446,9 @@ function MasterDataContent({
   // Filtered Products
   const filteredProducts = useMemo(() => {
     return productsList.filter(p => {
-      const itemDept = p.department || p.category;
+      const itemDept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
       const matchesDeptRole = canAccessDepartmentData(targetUserObj, itemDept);
-      const matchesCategory = prodCategoryFilter === 'ALL' || isDepartmentMatch(itemDept, prodCategoryFilter);
+      const matchesCategory = matchDepartment(itemDept, prodCategoryFilter);
       
       const isItemInactive = p.isActive === false || String(p.isActive).toUpperCase() === 'FALSE' || String(p.status || '').toUpperCase() === 'INACTIVE';
       const isItemActive = (p.isActive === true || String(p.isActive).toUpperCase() === 'TRUE' || String(p.status || '').toUpperCase() === 'ACTIVE') && !isItemInactive;
@@ -455,10 +462,10 @@ function MasterDataContent({
 
       const q = prodSearch.trim().toLowerCase();
       const matchesSearch = !q || (
-        p.code?.toLowerCase().includes(q) ||
-        p.name?.toLowerCase().includes(q) ||
-        p.category?.toLowerCase().includes(q) ||
-        p.locationName?.toLowerCase().includes(q)
+        String(p.code ?? '').toLowerCase().includes(q) ||
+        String(p.name ?? '').toLowerCase().includes(q) ||
+        String(p.category || p.department || '').toLowerCase().includes(q) ||
+        String(p.locationName ?? '').toLowerCase().includes(q)
       );
       return matchesDeptRole && matchesCategory && matchesStatus && matchesSearch;
     });
@@ -721,24 +728,26 @@ function MasterDataContent({
     if (!confirmed) return;
 
     // 1. Optimistically mutate React state immediately so the row disappears without reload
+    const targetDept = String(prod.department || prod.category || prod.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
     setProductsList(prev => deduplicateMasterData(prev.filter(p => {
       const pId = String(p.id || '').trim().toLowerCase();
+      if (pId && prodId) return pId !== prodId.toLowerCase() && !isBlacklistedProduct(p);
       const pCode = String(p.code || '').trim().toLowerCase();
-      return pId !== prodId.toLowerCase() && pCode !== prodCode.toLowerCase() && !isBlacklistedProduct(p);
+      const pDept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+      return !(pCode === prodCode.toLowerCase() && pDept === targetDept) && !isBlacklistedProduct(p);
     })));
 
     // 2. Local Storage Persistence: update localStorage and purge stock logs
     if (storageService.deleteProduct) {
       storageService.deleteProduct(prod.id || prod.code);
-      if (prod.code && prod.code !== prod.id) {
-        storageService.deleteProduct(prod.code);
-      }
     } else {
       const localProds = storageService.getProducts();
       const updatedLocal = deduplicateMasterData(localProds.filter(p => {
         const pId = String(p.id || '').trim().toLowerCase();
+        if (pId && prodId) return pId !== prodId.toLowerCase() && !isBlacklistedProduct(p);
         const pCode = String(p.code || '').trim().toLowerCase();
-        return pId !== prodId.toLowerCase() && pCode !== prodCode.toLowerCase() && !isBlacklistedProduct(p);
+        const pDept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+        return !(pCode === prodCode.toLowerCase() && pDept === targetDept) && !isBlacklistedProduct(p);
       }));
       storageService.saveProducts(updatedLocal);
     }
@@ -747,14 +756,8 @@ function MasterDataContent({
     try {
       if (onDeleteProduct) {
         await onDeleteProduct(prod.id || prod.code);
-        if (prod.code && prod.code !== prod.id) {
-          await onDeleteProduct(prod.code).catch(() => {});
-        }
       } else {
         await apiService.deleteProduct(prod.id || prod.code, currentRole);
-        if (prod.code && prod.code !== prod.id) {
-          await apiService.deleteProduct(prod.code, currentRole).catch(() => {});
-        }
       }
     } catch (err) {
       console.warn('[MasterData] Backend deleteProduct fallback:', err);
@@ -776,18 +779,23 @@ function MasterDataContent({
       const updated = { ...prod, isActive: false, status: 'INACTIVE' };
 
       // 1. Optimistically mutate local state
+      const targetDept = String(prod.department || prod.category || prod.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
       setProductsList(prev => deduplicateMasterData(prev.map(p => {
         const pId = String(p.id || '').trim().toLowerCase();
+        if (pId && prodId) return pId === prodId.toLowerCase() ? updated : p;
         const pCode = String(p.code || '').trim().toLowerCase();
-        return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
+        const pDept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+        return (pCode === prodCode.toLowerCase() && pDept === targetDept) ? updated : p;
       })));
 
       // 2. Persist to storageService / localStorage
       const localProds = storageService.getProducts();
       const updatedLocal = deduplicateMasterData(localProds.map(p => {
         const pId = String(p.id || '').trim().toLowerCase();
+        if (pId && prodId) return pId === prodId.toLowerCase() ? updated : p;
         const pCode = String(p.code || '').trim().toLowerCase();
-        return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
+        const pDept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+        return (pCode === prodCode.toLowerCase() && pDept === targetDept) ? updated : p;
       }));
       storageService.saveProducts(updatedLocal);
 
@@ -830,18 +838,23 @@ function MasterDataContent({
     const updated = { ...prod, isActive: true, status: 'ACTIVE' };
 
     // 1. Optimistically mutate local state
+    const targetDept = String(prod.department || prod.category || prod.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
     setProductsList(prev => deduplicateMasterData(prev.map(p => {
       const pId = String(p.id || '').trim().toLowerCase();
+      if (pId && prodId) return pId === prodId.toLowerCase() ? updated : p;
       const pCode = String(p.code || '').trim().toLowerCase();
-      return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
+      const pDept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+      return (pCode === prodCode.toLowerCase() && pDept === targetDept) ? updated : p;
     })));
 
     // 2. Persist to storageService / localStorage
     const localProds = storageService.getProducts();
     const updatedLocal = deduplicateMasterData(localProds.map(p => {
       const pId = String(p.id || '').trim().toLowerCase();
+      if (pId && prodId) return pId === prodId.toLowerCase() ? updated : p;
       const pCode = String(p.code || '').trim().toLowerCase();
-      return (pId === prodId.toLowerCase() || pCode === prodCode.toLowerCase()) ? updated : p;
+      const pDept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+      return (pCode === prodCode.toLowerCase() && pDept === targetDept) ? updated : p;
     }));
     storageService.saveProducts(updatedLocal);
 
@@ -896,18 +909,24 @@ function MasterDataContent({
     });
     if (!confirmed) return;
 
+    const targetDept = String(vendor.department || vendor.dept || vendor.category || '').replace(/^DEPT-/, '').trim().toUpperCase();
+
     // 1. Optimistic React state update
     setVendorsList(prev => prev.filter(v => {
       const vId = String(v.id || '').trim().toLowerCase();
+      if (vId && vendorId) return vId !== vendorId.toLowerCase();
       const vCode = String(v.code || '').trim().toLowerCase();
-      return vId !== vendorId.toLowerCase() && vCode !== vendorCode.toLowerCase();
+      const vDept = String(v.department || v.dept || v.category || '').replace(/^DEPT-/, '').trim().toUpperCase();
+      return !(vCode === vendorCode.toLowerCase() && (vDept === targetDept || vDept === 'ALL' || targetDept === 'ALL'));
     }));
 
     // 2. Local Storage Persistence
     const localVendors = storageService.getVendors().filter(v => {
       const vId = String(v.id || '').trim().toLowerCase();
+      if (vId && vendorId) return vId !== vendorId.toLowerCase();
       const vCode = String(v.code || '').trim().toLowerCase();
-      return vId !== vendorId.toLowerCase() && vCode !== vendorCode.toLowerCase();
+      const vDept = String(v.department || v.dept || v.category || '').replace(/^DEPT-/, '').trim().toUpperCase();
+      return !(vCode === vendorCode.toLowerCase() && (vDept === targetDept || vDept === 'ALL' || targetDept === 'ALL'));
     });
     storageService.saveVendors(localVendors);
 
@@ -1226,7 +1245,7 @@ function MasterDataContent({
                   {deptFilterOptions.map(cat => {
                     const isTabSelected = cat.code === 'ALL'
                       ? prodCategoryFilter === 'ALL'
-                      : (prodCategoryFilter !== 'ALL' && isDepartmentMatch(cat.code || cat.id, prodCategoryFilter));
+                      : (prodCategoryFilter !== 'ALL' && matchDepartment(cat.code || cat.id, prodCategoryFilter));
                     return (
                       <button
                         key={cat.code || cat.id}
@@ -2072,15 +2091,17 @@ function MasterDataContent({
           storageLocations={locsList}
           currentRole={effectiveRole}
           currentUser={effectiveUser}
+          defaultCategory={prodCategoryFilter !== 'ALL' ? prodCategoryFilter : undefined}
+          lockedCategory={isDeptRestricted ? userPrimaryDept : undefined}
           onClose={() => { setShowProdModal(false); setEditProd(null); }}
           onRefresh={onRefresh}
           onSaved={(saved) => {
-            setProductsList(prev => prev.map(p => (p.id === saved.id || (saved.code && p.code === saved.code)) ? saved : p));
+            setProductsList(prev => prev.map(p => (p.id === saved.id || (saved.code && p.code === saved.code && matchDepartment(p.department || p.category, saved.department || saved.category))) ? saved : p));
             if (onSaveProduct) onSaveProduct(saved);
             if (onRefresh) onRefresh();
           }}
           onCreated={(created) => {
-            setProductsList(prev => [created, ...prev.filter(p => p.id !== created.id && p.code !== created.code)]);
+            setProductsList(prev => [created, ...prev.filter(p => !(p.id === created.id || (p.code === created.code && matchDepartment(p.department || p.category, created.department || created.category))))]);
             if (onSaveProduct) onSaveProduct(created);
             if (onRefresh) onRefresh();
           }}
@@ -2098,12 +2119,18 @@ function MasterDataContent({
           onClose={() => { setShowVendorModal(false); setEditVendor(null); }}
           onRefresh={onRefresh}
           onSaved={(saved) => {
-            setVendorsList(prev => prev.map(v => (v.id === saved.id || (saved.code && v.code === saved.code)) ? saved : v));
+            setVendorsList(prev => prev.map(v => {
+              const isSameScope = matchDepartment(v.department || 'ALL', saved.department || 'ALL');
+              return (v.id === saved.id || (saved.code && v.code === saved.code && isSameScope)) ? saved : v;
+            }));
             if (onSaveVendor) onSaveVendor(saved);
             if (onRefresh) onRefresh();
           }}
           onCreated={(created) => {
-            setVendorsList(prev => [created, ...prev.filter(v => v.id !== created.id && v.code !== created.code)]);
+            setVendorsList(prev => [created, ...prev.filter(v => {
+              const isSameScope = matchDepartment(v.department || 'ALL', created.department || 'ALL');
+              return !(v.id === created.id || (v.code === created.code && isSameScope));
+            })]);
             if (onSaveVendor) onSaveVendor(created);
             if (onRefresh) onRefresh();
           }}

@@ -4,6 +4,7 @@ import { auditService } from './auditService';
 import { modalService } from './modalService';
 import { PO_STATUS } from '../config/constants';
 import { clearMockTransactions, resetMockTransactions } from '../utils/dataResetHelper';
+import { matchDepartment } from '../utils/permissions';
 
 // API Service Layer for Data & Operations
 export const apiService = {
@@ -1131,6 +1132,36 @@ export const apiService = {
     return updated;
   },
 
+  // Online PO Settlement & Cost Reconciliation
+  async settlePO(poId, settlementData, user) {
+    const updated = await workflowEngine.settlePO(poId, settlementData, user);
+    if (isGAS()) {
+      try {
+        const gasResult = await callGAS('apiSettlePO', sanitizePayloadForGAS({
+          poId,
+          ...settlementData
+        }), sanitizePayloadForGAS(user));
+        if (gasResult && gasResult.success && gasResult.data) {
+          return gasResult.data;
+        }
+      } catch (e) {
+        console.error('[apiService] GAS apiSettlePO error:', e.message);
+        modalService.error('ปิดยอดจ่ายจริงไม่สำเร็จ', e.message);
+        throw e;
+      }
+    }
+    try {
+      await fetch(`/api/pos/${poId}/settle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...settlementData, user })
+      });
+    } catch (e) {
+      console.warn('[apiService] Backend POST /api/pos/:id/settle fallback:', e.message);
+    }
+    return updated;
+  },
+
   // Partial or Full goods receiving — handles PARTIAL → CLOSED transitions
   async receiveGoods(poId, receivingItems, user, note = '', options = {}) {
     const grNumber = options.grNumber || options.grId || `GR-${poId}-${Date.now()}`;
@@ -1204,45 +1235,120 @@ export const apiService = {
     return workflowEngine.shortClosePO(poId, reason, user);
   },
 
-  // --- Quick Issue Stock (เบิกจ่าย) ---
-  async quickIssueStock(productId, issueQty, user, note = '', issueUnit = '') {
-    const updatedProduct = await workflowEngine.quickIssueStock(productId, issueQty, user, note, issueUnit);
+  // --- Quick Issue Stock (เบิกจ่ายสินค้า) ---
+  async issueStock(payload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('VALIDATION_ERROR: ข้อมูลการเบิกจ่ายไม่ถูกต้อง');
+    }
+
+    const productId = payload.productId || payload.id;
+    const rawQty = payload.quantity !== undefined ? payload.quantity : (payload.qty !== undefined ? payload.qty : payload.issueQty);
+    const quantity = Math.abs(Number(rawQty));
+    if (isNaN(quantity) || quantity <= 0) {
+      throw new Error('จำนวนที่เบิกจ่ายไม่ถูกต้อง');
+    }
+
+    const productCode = payload.productCode || payload.code || payload.sku;
+    const department = payload.department || payload.category;
+    const issuedTo = payload.issuedTo || payload.issueUnit || payload.unitName || '';
+    const reason = payload.reason || payload.note || 'เบิกจ่ายด่วน';
+    const requesterId = payload.requesterId || payload.userId || (payload.user && (payload.user.id || payload.user.username)) || '';
+    const requesterName = payload.requesterName || payload.userName || (payload.user && (payload.user.name || payload.user.displayName)) || issuedTo || '';
+    const user = payload.user || { id: requesterId, name: requesterName, department };
+
+    let gasResult = null;
+    if (isGAS()) {
+      try {
+        const gasPayload = {
+          productId,
+          productCode,
+          department,
+          quantity,
+          issuedTo,
+          reason,
+          requesterId,
+          requesterName
+        };
+        gasResult = await callGAS('apiIssueStock', gasPayload);
+      } catch (gasErr) {
+        console.error('[apiService] apiIssueStock GAS error:', gasErr);
+        throw gasErr;
+      }
+    }
+
+    // Update workflow engine & storageService for immediate local state
+    const updatedProduct = await workflowEngine.quickIssueStock(
+      productId,
+      quantity,
+      user,
+      reason,
+      issuedTo
+    );
+
+    // Sync with local express backend if in dev/express mode
     try {
-      if (updatedProduct) {
+      if (updatedProduct && !isGAS()) {
         await fetch(`/api/products/${productId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updatedProduct)
-        });
+        }).catch(() => {});
       }
       const logs = storageService.getStockLogs();
-      if (logs && logs.length > 0) {
+      if (logs && logs.length > 0 && !isGAS()) {
         await fetch('/api/stock-logs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(logs)
-        });
+        }).catch(() => {});
       }
     } catch (e) {
-      console.warn('[apiService] quickIssueStock backend sync warning:', e.message);
+      console.warn('[apiService] issueStock backend sync warning:', e.message);
     }
 
     try {
-      const pName = updatedProduct?.name || productId;
+      const pName = updatedProduct?.name || gasResult?.updatedProduct?.name || productId;
       const pUnit = updatedProduct?.stockUnit || updatedProduct?.unit || 'ชิ้น';
-      const uUnit = issueUnit ? ` ให้${issueUnit}` : '';
+      const uUnit = issuedTo ? ` ให้${issuedTo}` : '';
       auditService.logAction({
         action: 'STOCK_ISSUE',
         actor: user,
-        department: updatedProduct?.category || 'PD',
-        docNo: updatedProduct?.code || productId,
+        department: updatedProduct?.category || department || 'PD',
+        docNo: updatedProduct?.code || productCode || productId,
         docType: 'STOCK',
-        details: `เบิกจ่ายพัสดุ: ${pName} จำนวน ${issueQty} ${pUnit}${uUnit}`
+        details: `เบิกจ่ายพัสดุ: ${pName} จำนวน ${quantity} ${pUnit}${uUnit}`
       });
     } catch (auditErr) {
-      console.warn('[apiService] quickIssueStock audit error:', auditErr);
+      console.warn('[apiService] issueStock audit error:', auditErr);
     }
-    return updatedProduct;
+
+    const latestLogs = storageService.getStockLogs();
+    const finalLog = gasResult?.logEntry || (latestLogs && latestLogs[0]);
+
+    return {
+      success: true,
+      updatedProduct: gasResult?.updatedProduct || updatedProduct,
+      product: gasResult?.updatedProduct || updatedProduct,
+      logEntry: finalLog
+    };
+  },
+
+  async quickIssueStock(productId, issueQty, user, note = '', issueUnit = '') {
+    const products = storageService.getProducts();
+    const prod = products.find(p => p.id === productId || p.code === productId);
+    const payload = {
+      productId: prod?.id || productId,
+      productCode: prod?.code,
+      department: prod?.department || prod?.category || user?.department,
+      quantity: issueQty,
+      issuedTo: issueUnit,
+      reason: note,
+      requesterId: user?.id || user?.username,
+      requesterName: user?.name,
+      user
+    };
+    const res = await this.issueStock(payload);
+    return res.updatedProduct || res.product;
   },
 
   // --- Master Data CRUD ---
@@ -1250,22 +1356,24 @@ export const apiService = {
     const products = await this.getProducts();
     const isUpdate = Boolean(product.id && product._mode !== 'CREATE');
     const targetCode = String(product.code || product.sku || '').trim().toUpperCase();
+    const rawCat = product.category || product.department || 'PD';
+    const cat = String(rawCat).replace(/^DEPT-/, '').trim().toUpperCase() || 'PD';
+    product.category = cat;
+    product.department = cat;
+    product.dept = cat;
 
     if (targetCode) {
       const isDuplicate = products.some(p => {
         const pId = String(p.id || '').trim();
         const pCode = String(p.code || p.sku || '').trim().toUpperCase();
         if (isUpdate && product.id && pId === String(product.id).trim()) return false;
-        return pCode === targetCode;
+        const isSameDept = matchDepartment(p.department || p.category || p.dept, cat);
+        return isSameDept && pCode === targetCode;
       });
       if (isDuplicate) {
         throw new Error(`รหัสสินค้านี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น (${targetCode})`);
       }
     }
-
-    const cat = product.category || product.department || 'PD';
-    product.category = cat;
-    product.department = cat;
 
     if (!product.id) {
       product.id = `PROD-${cat}-${Date.now()}`;
@@ -1280,7 +1388,8 @@ export const apiService = {
         ? products.map(p => {
             const pId = String(p.id || '').trim().toLowerCase();
             const pCode = String(p.code || p.sku || '').trim().toLowerCase();
-            return (pId === targetId || pCode === targetCode) ? savedProduct : p;
+            const isSameDept = matchDepartment(p.department || p.category || p.dept, cat);
+            return (pId === targetId || (isSameDept && pCode === targetCode)) ? savedProduct : p;
           }) 
         : [savedProduct, ...products];
       storageService.saveProducts(updatedList);
@@ -1313,7 +1422,8 @@ export const apiService = {
           ? products.map(p => {
               const pId = String(p.id || '').trim().toLowerCase();
               const pCode = String(p.code || '').trim().toLowerCase();
-              return (pId === targetId || pCode === targetCode) ? saved : p;
+              const isSameDept = matchDepartment(p.department || p.category || p.dept, cat);
+              return (pId === targetId || (isSameDept && pCode === targetCode)) ? saved : p;
             }) 
           : [saved, ...products];
         storageService.saveProducts(updatedList);
@@ -1339,7 +1449,8 @@ export const apiService = {
       const idx = products.findIndex(p => {
         const pId = String(p.id || '').trim().toLowerCase();
         const pCode = String(p.code || '').trim().toLowerCase();
-        return (targetId && pId === targetId) || (targetCode && pCode === targetCode);
+        const isSameDept = matchDepartment(p.department || p.category || p.dept, cat);
+        return (targetId && pId === targetId) || (isSameDept && targetCode && pCode === targetCode);
       });
       if (idx !== -1) products[idx] = { ...products[idx], ...product };
       else products.unshift(product);
@@ -1416,9 +1527,15 @@ export const apiService = {
     const vendors = await this.getVendors();
     const isUpdate = Boolean(vendor.id);
     const targetCode = String(vendor.code || vendor.vendorCode || vendor.id || '').trim().toUpperCase();
-
+    const targetDept = String(vendor.department || 'ALL').trim().toUpperCase();
     if (targetCode) {
-      const isDuplicate = vendors.some(v => String(v.id || '') !== String(vendor.id || '') && String(v.code || v.vendorCode || v.id || '').trim().toUpperCase() === targetCode);
+      const isDuplicate = vendors.some(v => {
+        if (String(v.id || '') === String(vendor.id || '')) return false;
+        const vCode = String(v.code || v.vendorCode || v.id || '').trim().toUpperCase();
+        if (vCode !== targetCode) return false;
+        const vDept = String(v.department || 'ALL').trim().toUpperCase();
+        return (targetDept === 'ALL' || vDept === 'ALL' || matchDepartment(vDept, targetDept));
+      });
       if (isDuplicate) {
         throw new Error(`รหัสผู้ขาย "${targetCode}" มีอยู่ในระบบแล้ว กรุณาระบุรหัสผู้ขายอื่น`);
       }
@@ -1437,7 +1554,9 @@ export const apiService = {
         ? vendors.map(v => {
             const vId = String(v.id || '').trim().toLowerCase();
             const vCode = String(v.code || '').trim().toLowerCase();
-            return (vId === targetId || vCode === targetCode) ? savedVendor : v;
+            const vDept = String(v.department || 'ALL').trim().toUpperCase();
+            const isSameScope = (targetDept === 'ALL' || vDept === 'ALL' || matchDepartment(vDept, targetDept));
+            return (vId === targetId || (isSameScope && vCode === targetCode)) ? savedVendor : v;
           }) 
         : [savedVendor, ...vendors];
       storageService.saveVendors(updatedList);
@@ -1470,7 +1589,9 @@ export const apiService = {
           ? vendors.map(v => {
               const vId = String(v.id || '').trim().toLowerCase();
               const vCode = String(v.code || '').trim().toLowerCase();
-              return (vId === targetId || vCode === targetCode) ? saved : v;
+              const vDept = String(v.department || 'ALL').trim().toUpperCase();
+              const isSameScope = (targetDept === 'ALL' || vDept === 'ALL' || matchDepartment(vDept, targetDept));
+              return (vId === targetId || (isSameScope && vCode === targetCode)) ? saved : v;
             }) 
           : [saved, ...vendors];
         storageService.saveVendors(updatedList);
@@ -1496,7 +1617,9 @@ export const apiService = {
       const idx = vendors.findIndex(v => {
         const vId = String(v.id || '').trim().toLowerCase();
         const vCode = String(v.code || '').trim().toLowerCase();
-        return (targetId && vId === targetId) || (targetCode && vCode === targetCode);
+        const vDept = String(v.department || 'ALL').trim().toUpperCase();
+        const isSameScope = (targetDept === 'ALL' || vDept === 'ALL' || matchDepartment(vDept, targetDept));
+        return (targetId && vId === targetId) || (isSameScope && targetCode && vCode === targetCode);
       });
       if (idx !== -1) vendors[idx] = vendor;
       else vendors.unshift(vendor);

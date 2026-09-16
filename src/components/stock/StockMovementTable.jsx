@@ -62,8 +62,41 @@ export const formatDateTimeThai = (raw) => {
   }
 };
 
-export default function StockMovementTable({ selectedProduct: propSelectedProduct, product, stockLogs = [], pos = [], onClose }) {
-  const [filterType, setFilterType] = useState('ALL'); // ALL, IN, OUT
+/**
+ * Movement Type Classifier Helpers
+ */
+export const isStockIn = (log) => {
+  if (!log) return false;
+  const type = String(log.type || '').trim().toUpperCase();
+  if (['OUT', 'ISSUE', 'DISPATCH', 'CONSUME', 'REDUCE', 'ADJUST_OUT'].includes(type)) {
+    return false;
+  }
+  const qty = Number(log.changeQty ?? (log.changeQty === undefined ? (log.quantity ?? log.qty) : 0) ?? 0);
+  return ['IN', 'RECEIVE', 'GRN', 'PURCHASE', 'ADJUST_IN', 'IN_NG'].includes(type) || qty > 0;
+};
+
+export const isStockOut = (log) => {
+  if (!log) return false;
+  const type = String(log.type || '').trim().toUpperCase();
+  if (['IN', 'RECEIVE', 'GRN', 'PURCHASE', 'ADJUST_IN', 'IN_NG'].includes(type)) {
+    return false;
+  }
+  const qty = Number(log.changeQty ?? (log.changeQty === undefined ? -(log.quantity ?? log.qty) : 0) ?? 0);
+  return ['OUT', 'ISSUE', 'DISPATCH', 'CONSUME', 'REDUCE', 'ADJUST_OUT'].includes(type) || qty < 0;
+};
+
+export default function StockMovementTable({
+  selectedProduct: propSelectedProduct,
+  product,
+  stockLogs = [],
+  pos = [],
+  onClose,
+  initialFilterType,
+  filterType: controlledFilterType
+}) {
+  const [internalFilterType, setInternalFilterType] = useState(initialFilterType || 'ALL'); // ALL, IN, OUT
+  const filterType = controlledFilterType !== undefined ? controlledFilterType : internalFilterType;
+  const setFilterType = (val) => setInternalFilterType(val);
   const [timeFilter, setTimeFilter] = useState('3M'); // 3M (3 เดือนล่าสุด), ALL (ทั้งหมด)
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -242,8 +275,13 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
 
     // 2. Filter by criteria
     return sorted.filter(log => {
-      // Type Filter
-      if (filterType !== 'ALL' && log.type !== filterType) return false;
+      // Type Filter (Supports ALL, IN, +IN, OUT, -OUT, ISSUE, GRN)
+      const activeTab = String(filterType || 'ALL').toUpperCase();
+      if (activeTab.includes('OUT')) {
+        if (!isStockOut(log)) return false;
+      } else if (activeTab.includes('IN')) {
+        if (!isStockIn(log)) return false;
+      }
 
       // Time Range Filter (3M: 3 เดือนล่าสุด)
       if (timeFilter === '3M') {
@@ -256,10 +294,10 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
 
       const q = searchQuery.trim().toLowerCase();
       const normDoc = normalizeDocNumber(log).toLowerCase();
-      const rawDoc = String(log.documentNo || log.docNo || log.grnNo || log.grNumber || '').toLowerCase();
+      const rawDoc = String(log.documentNo || log.docNo || log.referenceDoc || log.id || log.grnNo || log.grNumber || '').toLowerCase();
       const parentPo = String(log.refPo || log.poNumber || log.poNo || '').toLowerCase();
-      const user = String(log.user || log.actorName || '').toLowerCase();
-      const note = String(log.note || log.notes || log.remark || log.remarks || '').toLowerCase();
+      const user = String(log.user || log.actorName || log.issuedTo || log.requester || '').toLowerCase();
+      const note = String(log.note || log.notes || log.remark || log.remarks || log.reason || '').toLowerCase();
 
       // Stem matching for PO numbers
       let qPoStem = q;
@@ -497,7 +535,7 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
                   type="button"
                   onClick={() => { setFilterType('IN'); setCurrentPage(1); }}
                   className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    filterType === 'IN' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                    filterType === 'IN' || filterType === '+IN' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   +IN (รับเข้า)
@@ -506,7 +544,7 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
                   type="button"
                   onClick={() => { setFilterType('OUT'); setCurrentPage(1); }}
                   className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    filterType === 'OUT' ? 'bg-rose-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
+                    filterType === 'OUT' || filterType === '-OUT' ? 'bg-rose-600 text-white shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   -OUT (เบิกจ่าย)
@@ -592,7 +630,8 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
                 ) : (
                   visibleLogs.map(log => {
                     const purchase = purchaseDetailMap.get(log.id) || { poNumber: '-', totalPurchaseAmount: '-', avgUnitPrice: '-' };
-                    const isIncoming = log.type === 'IN' || log.type === 'IN_NG';
+                    const isIncoming = isStockIn(log);
+                    const isNg = String(log.type || '').toUpperCase() === 'IN_NG';
                     const rawDate = log.timestamp || log.displayDate || log.date || log.createdAt;
                     const normalizedDocNo = normalizeDocNumber(log) || log.docNo || log.documentNo || log.grnNo || log.grnNumber || log.grNumber || '-';
                     const rawNote = log.notes || log.note || log.remark || log.remarks || '';
@@ -608,13 +647,13 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
 
                         {/* 2. Type */}
                         <td className="py-3 px-3 whitespace-nowrap">
-                          {log.type === 'IN' ? (
-                            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 font-bold px-2.5 py-0.5 rounded-full text-[10px] border border-emerald-200">
-                              <ArrowDownRight className="w-3 h-3 text-emerald-600" /> IN
-                            </span>
-                          ) : log.type === 'IN_NG' ? (
+                          {isNg ? (
                             <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 font-bold px-2.5 py-0.5 rounded-full text-[10px] border border-amber-200">
                               <ArrowDownRight className="w-3 h-3 text-amber-600" /> IN (NG)
+                            </span>
+                          ) : isIncoming ? (
+                            <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 font-bold px-2.5 py-0.5 rounded-full text-[10px] border border-emerald-200">
+                              <ArrowDownRight className="w-3 h-3 text-emerald-600" /> IN
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 font-bold px-2.5 py-0.5 rounded-full text-[10px] border border-rose-200">
@@ -642,7 +681,9 @@ export default function StockMovementTable({ selectedProduct: propSelectedProduc
                         <td className={`py-3 px-3 text-right font-mono font-bold tabular-nums whitespace-nowrap ${
                           isIncoming ? 'text-emerald-700' : 'text-rose-700'
                         }`}>
-                          {isIncoming ? `+${Number(log.quantity ?? log.qty ?? 0).toLocaleString()}` : `-${Number(log.quantity ?? log.qty ?? 0).toLocaleString()}`}
+                          {isIncoming
+                            ? `+${Math.abs(Number(log.changeQty ?? log.quantity ?? log.qty ?? 0)).toLocaleString()}`
+                            : `-${Math.abs(Number(log.changeQty ?? log.quantity ?? log.qty ?? 0)).toLocaleString()}`}
                         </td>
 
                         {/* 5. Balance */}

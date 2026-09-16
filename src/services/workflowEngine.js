@@ -2109,7 +2109,7 @@ export const workflowEngine = {
       const prod = prodIndex !== -1 ? products[prodIndex] : null;
       const sUnit = prod?.stockUnit || prod?.unit || poItem.stockUnit || poItem.unit || 'ชิ้น';
       const pUnit = prod?.purchaseUnit || prod?.unit || poItem.purchaseUnit || sUnit;
-      const itemUnitPrice = Number(poItem.actUnitPrice ?? poItem.actualPrice ?? poItem.price ?? prod?.price) || 0;
+      const itemUnitPrice = Number(poItem.actualUnitPrice ?? poItem.actUnitPrice ?? poItem.actualPrice ?? poItem.price ?? prod?.price) || 0;
       const stockUnitPrice = itemUnitPrice > 0 && rate > 0 ? (itemUnitPrice / rate) : (Number(prod?.price) || 0);
 
       // 1. Process Normal (Good) Receipt if quantity > 0
@@ -3295,5 +3295,96 @@ export const workflowEngine = {
     }
 
     return product;
+  },
+
+  // ─── Online PO Settlement & Cost Reconciliation ───────────────────────────
+  async settlePO(poId, settlementData, user) {
+    const pos = storageService.getPOs();
+    const po = pos.find(p => String(p.id) === String(poId) || String(p.poNo) === String(poId));
+    if (!po) throw new Error('ไม่พบใบสั่งซื้อ');
+
+    const originalTotal = Number(po.grandTotal || po.totalAmount || po.subtotal || 0);
+    const actualTotal = Number(settlementData.actualTotalAmount !== undefined ? settlementData.actualTotalAmount : settlementData.actualTotal || 0);
+    if (isNaN(actualTotal) || actualTotal < 0) {
+      throw new Error('ยอดเงินจ่ายจริงไม่ถูกต้อง');
+    }
+
+    const savings = originalTotal - actualTotal;
+    const costRatio = originalTotal > 0 ? (actualTotal / originalTotal) : 1;
+    let items = Array.isArray(po.items) ? [...po.items] : [];
+    const actualItems = settlementData.actualItems || items;
+
+    items = items.map((item, idx) => {
+      const explicitActual = Array.isArray(actualItems) && actualItems[idx];
+      const basePrice = Number(item.price || item.unitPrice || item.estimatedPrice || 0);
+      const unitPrice = explicitActual && explicitActual.actualUnitPrice !== undefined
+        ? Number(explicitActual.actualUnitPrice)
+        : Math.round((basePrice * costRatio) * 100) / 100;
+      return {
+        ...item,
+        actualPrice: unitPrice,
+        actualUnitPrice: unitPrice,
+        unitPrice: unitPrice
+      };
+    });
+
+    po.items = items;
+    po.actualTotalAmount = actualTotal;
+    po.savingsAmount = savings;
+    po.settlementStatus = 'SETTLED';
+    po.settlementNote = settlementData.settlementNote || settlementData.note || '';
+    po.settlementProofUrl = settlementData.settlementProofUrl || settlementData.proofUrl || '';
+    po.settledBy = user?.name || settlementData.settledBy || 'Purchaser';
+    po.settledAt = new Date().toISOString();
+    po.actualItems = actualItems;
+    po.updatedAt = new Date().toISOString();
+
+    if (!Array.isArray(po.activityLog)) po.activityLog = [];
+    po.activityLog.push({
+      action: 'PO_SETTLED',
+      date: new Date().toLocaleString('th-TH'),
+      timestamp: new Date().toISOString(),
+      user: po.settledBy,
+      role: user?.title || user?.role || 'จัดซื้อ',
+      note: `ปิดยอดจ่ายจริง (Online Settlement): ยอดอนุมัติ ฿${originalTotal.toLocaleString()} | ยอดจ่ายจริง ฿${actualTotal.toLocaleString()}${savings > 0 ? ` | ประหยัดงบ ฿${savings.toLocaleString()}` : ''}${po.settlementNote ? ` | ${po.settlementNote}` : ''}`
+    });
+
+    // Refund department budget if savings > 0
+    if (savings > 0) {
+      const dept = (po.department || user?.department || 'PD').toUpperCase();
+      const budgets = storageService.getBudgets();
+      if (!budgets[dept]) budgets[dept] = { monthlyBudget: 0, spent: 0, actualExpense: 0, pending: 0, variance: 0, history: {}, refundCredits: {} };
+      const curSpent = Number(budgets[dept].spent ?? budgets[dept].actualExpense ?? 0);
+      const newSpent = Math.max(0, curSpent - savings);
+      budgets[dept].spent = newSpent;
+      budgets[dept].actualExpense = newSpent;
+      const monthly = Number(budgets[dept].monthlyBudget || 0);
+      budgets[dept].variance = monthly - newSpent;
+      budgets[dept].remainingBudget = monthly - newSpent;
+      const poMonth = po.issueDate ? po.issueDate.substring(0, 7) : `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      if (!budgets[dept].refundCredits) budgets[dept].refundCredits = {};
+      budgets[dept].refundCredits[poMonth] = Math.round(((budgets[dept].refundCredits[poMonth] || 0) + savings) * 100) / 100;
+      storageService.saveBudgets(budgets);
+
+      storageService.appendBudgetTransaction({
+        id: `BTX-SAVINGS-${Date.now()}`,
+        date: new Date().toISOString().replace('T', ' ').slice(0, 19),
+        createdAt: new Date().toISOString(),
+        dept,
+        type: 'BUDGET_ROLLBACK',
+        typeLabel: 'คืนงบประมาณจากการประหยัด (Procurement Savings)',
+        previousAmount: curSpent,
+        newAmount: newSpent,
+        amount: savings,
+        delta: savings,
+        actor: user?.name || 'Purchaser',
+        refDocNo: po.poNo || po.id,
+        note: `คืนงบประมาณจากการปิดยอดจ่ายจริง (Online Settlement) PO ${po.poNo || po.id} (ประหยัด ฿${savings.toLocaleString()})`,
+        targetMonth: poMonth
+      });
+    }
+
+    storageService.savePOs(pos);
+    return po;
   }
 };

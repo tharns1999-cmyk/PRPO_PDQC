@@ -10,11 +10,12 @@ import {
   ExternalLink, ShoppingCart, X, FileText, 
   CheckCircle2, Store, Truck, AlertOctagon,
   Camera, Trash2, ShieldAlert, Check, Package,
-  ArrowLeft
+  ArrowLeft, Receipt
 } from 'lucide-react';
 import PrintablePO from './PrintablePO';
 import AttachmentViewerModal from '../common/AttachmentViewerModal';
 import CollapsibleActivityTimeline from '../common/CollapsibleActivityTimeline';
+import POSettlementModal from './POSettlementModal';
 import { generatePoPdf } from '../../utils/generatePoPdf';
 import { sanitizeExternalUrl, getProductUrl } from '../../utils/urlHelper';
 import ReceivingModal, { resolveRefundedQtyAndAmount } from '../../views/inventory/ReceivingModal';
@@ -73,6 +74,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
 
   const [isReceiving, setIsReceiving] = useState(false);
   const [showReceivingModal, setShowReceivingModal] = useState(false);
+  const [showSettlementModal, setShowSettlementModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Unified View-Swapping State: 'DETAIL' | 'CLAIM'
   const [activeView, setActiveView] = useState(initialView);
@@ -498,6 +500,14 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
   );
   const TERMINAL_PO_STATUSES = ['CLOSED', 'CANCELLED', 'RECEIVED', 'COMPLETED', 'COMPLETED_WITH_REFUND'];
   const isReceivable = !TERMINAL_PO_STATUSES.includes(selectedPO.status) && ['ISSUED', 'ORDERED', 'ORDERED_PENDING_DELIVERY', 'PARTIAL', 'IN_DELIVERY'].includes(selectedPO.status);
+
+  // ─── Online PO Settlement Permission Guard ───
+  const canSettlePO = !isPlantManager && 
+    (isPurchaser || role === 'admin' || currentRole?.id === 'ADMIN' || currentRole?.canOnlinePurchase);
+  const hasSettlement = Boolean(
+    selectedPO.settlementStatus === 'SETTLED' || 
+    (selectedPO.actualTotalAmount !== undefined && selectedPO.actualTotalAmount !== null && selectedPO.actualTotalAmount !== '')
+  );
 
   // ─── Claim Permission Guard ───
   // Whether the current user can file a claim (report problem) on this PO
@@ -1424,6 +1434,47 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                           </div>
                         );
                       })()}
+
+                      {/* Online Settlement Breakdown */}
+                      {hasSettlement && (
+                        <div className="bg-emerald-50/90 border border-emerald-300 rounded-lg p-2.5 mt-2 space-y-1.5 text-xs">
+                          <div className="text-[11px] font-bold text-emerald-900 flex items-center justify-between">
+                            <span className="flex items-center gap-1">
+                              <Receipt className="w-3.5 h-3.5 text-emerald-700" />
+                              สรุปการปิดยอดจ่ายจริง (Settlement):
+                            </span>
+                            {selectedPO.savingsAmount > 0 && (
+                              <span className="text-emerald-700 font-bold font-mono">
+                                +คืนงบ ฿{Number(selectedPO.savingsAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-700 flex items-center justify-between gap-1 flex-wrap pt-1 border-t border-emerald-200/70">
+                            <span>ยอดอนุมัติ: ฿{grandTotalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            <span className="text-slate-400">→</span>
+                            <span className="font-bold text-emerald-900">
+                              จ่ายจริง: ฿{Number(selectedPO.actualTotalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          {selectedPO.settlementNote && (
+                            <div className="text-[11px] text-emerald-800 pt-0.5">
+                              <span className="font-semibold">หมายเหตุ:</span> {selectedPO.settlementNote}
+                            </div>
+                          )}
+                          {selectedPO.settlementProofUrl && (
+                            <div className="pt-0.5">
+                              <a 
+                                href={selectedPO.settlementProofUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline"
+                              >
+                                <ExternalLink className="w-3 h-3" /> ดูหลักฐาน/สลิปโอนเงิน
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1581,6 +1632,19 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
 
                 {/* Right: Prioritized Action Buttons */}
                 <div className="flex items-center gap-2.5 ml-auto flex-wrap">
+                  {/* Settlement Button */}
+                  {canSettlePO && !['CANCELLED'].includes(selectedPO.status) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSettlementModal(true)}
+                      className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                      title="บันทึกยอดซื้อจริง คืนงบประมาณ และคำนวณราคาทุนสต็อก"
+                    >
+                      <Receipt className="w-3.5 h-3.5" />
+                      <span>{hasSettlement ? 'แก้ไขยอดจ่ายจริง' : 'บันทึกยอดซื้อจริง'}</span>
+                    </button>
+                  )}
+
                   {/* Purchaser Action: Mark Ordered */}
                   {!isPlantManager && (selectedPO.status === 'ISSUED' || selectedPO.status === 'IN_PROGRESS_ONLINE') &&
                     (isPurchaser || role === 'admin' || currentRole?.id === 'ADMIN' || currentRole?.canOnlinePurchase) && (
@@ -1658,6 +1722,20 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
           url={viewingAttachment.url}
           title={viewingAttachment.title}
           onClose={() => setViewingAttachment(null)}
+        />
+      )}
+
+      {/* POSettlementModal */}
+      {showSettlementModal && (
+        <POSettlementModal
+          po={selectedPO}
+          currentUser={currentUser || currentRole}
+          onClose={() => setShowSettlementModal(false)}
+          onSuccess={(updatedPO) => {
+            setShowSettlementModal(false);
+            if (context?.updatePO) context.updatePO(selectedPO.id, updatedPO);
+            if (onRefresh) onRefresh(updatedPO);
+          }}
         />
       )}
     </>

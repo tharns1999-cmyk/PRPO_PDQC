@@ -8,7 +8,8 @@ import {
   Store, X, Building2, Phone, User, FileText, 
   MapPin, Hash, Check, Sparkles, AlertTriangle 
 } from 'lucide-react';
-import { getUserDepartments } from '../../utils/permissions';
+import { getUserDepartments, matchDepartment } from '../../utils/permissions';
+import { generateNextVendorCode } from '../../utils/idGenerator';
 
 export default function VendorCRUDModal({ 
   vendor, 
@@ -57,6 +58,13 @@ export default function VendorCRUDModal({
 
   const isSingleLockedDept = !canSelectAll && selectableDepts.length === 1;
   const lockedDept = isSingleLockedDept ? selectableDepts[0]?.code : null;
+
+  const [selectedDept, setSelectedDept] = useState(() => {
+    const rawCurrentDept = editVendor?.department || lockedDept || (canSelectAll ? 'ALL' : (selectableDepts[0]?.code || 'ALL'));
+    return (rawCurrentDept === 'BOTH' || !rawCurrentDept) ? 'ALL' : rawCurrentDept;
+  });
+  const currentDeptScope = lockedDept || selectedDept || 'ALL';
+
   const vendorCodeInputRef = useRef(null);
   const [vendorCode, setVendorCode] = useState(() => {
     if (editVendor?.code !== undefined && editVendor?.code !== null) return String(editVendor.code);
@@ -74,14 +82,15 @@ export default function VendorCRUDModal({
     const map = new Map();
     [...fromStorage, ...fromContext, ...fromProps].forEach(v => {
       if (v) {
-        const key = String(v.id || v.code || v.vendorCode || Math.random());
+        const vDept = v.department || 'ALL';
+        const key = v.id ? String(v.id) : `${vDept}_${v.code || v.vendorCode || Math.random()}`;
         map.set(key, v);
       }
     });
     return Array.from(map.values());
   }, [vendors, context?.vendors]);
 
-  // Duplicate Vendor Code Check with Duplicate Vendor Name Resolution (Safe String Casting Guard)
+  // Duplicate Vendor Code Check scoped by department
   const duplicateVendor = useMemo(() => {
     const cleanVendorCode = String(vendorCode || '').trim().toUpperCase();
     if (!cleanVendorCode) return null;
@@ -90,15 +99,22 @@ export default function VendorCRUDModal({
       const vId = String(v.id || '').trim();
       const vCode = String(v.code || '').trim().toUpperCase();
       const editVendorId = editVendor ? String(editVendor.id || '').trim() : '';
-      const editVendorCode = editVendor ? String(editVendor.code || '').trim().toUpperCase() : '';
+      const editVendorCode = editVendor ? String(editVendor.code || editVendor.vendorCode || '').trim().toUpperCase() : '';
 
       if (editVendor && ((editVendorId && vId === editVendorId) || (editVendorCode && vCode === editVendorCode))) {
         return false;
       }
+
+      // Check department scope:
+      // If current is 'ALL' or existing is 'ALL', or both belong to same department
+      const vDept = String(v.department || 'ALL').trim().toUpperCase();
+      const isSameDeptScope = (currentDeptScope === 'ALL' || vDept === 'ALL' || matchDepartment(vDept, currentDeptScope));
+      if (!isSameDeptScope) return false;
+
       const existingCode = String(v.code || v.vendorCode || v.id || '').trim().toUpperCase();
       return existingCode === cleanVendorCode;
     }) || null;
-  }, [vendorCode, allVendors, editVendor]);
+  }, [vendorCode, allVendors, editVendor, currentDeptScope]);
 
   const isVendorCodeDuplicate = Boolean(duplicateVendor);
   const isCodeDuplicate = isVendorCodeDuplicate;
@@ -116,8 +132,8 @@ export default function VendorCRUDModal({
       modalService.error(
         'รหัสผู้ขายนี้ถูกใช้งานแล้วในระบบ',
         duplicateVendor
-          ? `รหัส "${cleanVendorCode}" ซ้ำกับผู้ขาย: ${duplicateVendor.name}`
-          : 'กรุณาระบุรหัสผู้ขายใหม่ที่ไม่ซ้ำกับรายอื่น'
+          ? `รหัส "${cleanVendorCode}" ซ้ำกับผู้ขาย: ${duplicateVendor.name} (แผนก: ${duplicateVendor.department || 'ALL'})`
+          : `กรุณาระบุรหัสผู้ขายใหม่ที่ไม่ซ้ำในแผนก ${currentDeptScope}`
       );
       vendorCodeInputRef.current?.focus();
       return;
@@ -213,11 +229,27 @@ export default function VendorCRUDModal({
                     <label className="text-xs font-semibold text-slate-700">
                       รหัสผู้ขาย (Vendor Code) <span className="text-rose-500">*</span>
                     </label>
-                    {isVendorCodeDuplicate && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse">
-                        <AlertTriangle className="w-3 h-3 text-rose-500" /> รหัสซ้ำ!
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {!editVendor && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = generateNextVendorCode(allVendors, currentDeptScope);
+                            setVendorCode(next);
+                          }}
+                          className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+                          title="รันรหัสผู้ขายอัตโนมัติตามแผนก"
+                        >
+                          <Sparkles className="w-3 h-3 text-amber-500" />
+                          <span>รันรหัสอัตโนมัติ ({generateNextVendorCode(allVendors, currentDeptScope)})</span>
+                        </button>
+                      )}
+                      {isVendorCodeDuplicate && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse">
+                          <AlertTriangle className="w-3 h-3 text-rose-500" /> รหัสซ้ำ!
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="relative">
                     <div className={`absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none ${
@@ -230,7 +262,7 @@ export default function VendorCRUDModal({
                       name="code"
                       value={vendorCode}
                       onChange={e => setVendorCode(String(e.target.value ?? ''))}
-                      placeholder="เช่น VND-TH-001"
+                      placeholder="เช่น VND-01 หรือ VND-TH-001"
                       required
                       className={`w-full h-11 pl-10 pr-3 border rounded-xl text-xs font-mono font-bold uppercase tracking-wide placeholder:font-normal placeholder:text-slate-400 focus:outline-none transition-all ${
                         isVendorCodeDuplicate 
@@ -241,7 +273,7 @@ export default function VendorCRUDModal({
                   </div>
                   {isVendorCodeDuplicate && (
                     <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1 font-medium">
-                      <span>⚠️</span> รหัสนี้ถูกใช้งานแล้วในระบบ {duplicateVendor ? `(${duplicateVendor.name})` : ''}
+                      <span>⚠️</span> รหัสนี้ถูกใช้งานแล้วในแผนก {currentDeptScope} {duplicateVendor ? `(${duplicateVendor.name})` : ''}
                     </p>
                   )}
                 </div>
@@ -262,7 +294,8 @@ export default function VendorCRUDModal({
                       </div>
                       <select
                         name="department"
-                        defaultValue={dept}
+                        value={selectedDept}
+                        onChange={e => setSelectedDept(e.target.value)}
                         className="w-full h-11 pl-10 pr-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer"
                       >
                         {canSelectAll && <option value="ALL">ใช้ร่วมกันทุกแผนก (ALL)</option>}
@@ -396,3 +429,5 @@ export default function VendorCRUDModal({
     document.body
   );
 }
+
+export { generateNextVendorCode };

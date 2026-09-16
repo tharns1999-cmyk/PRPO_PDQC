@@ -639,12 +639,45 @@ export async function generatePoPdf(po) {
     x: 480, y: rowY - 55, size: 10, font: boldFont, color: rgb(0.1, 0.5, 0.3) 
   });
 
-  // 7. กล่อง Digital Approval Stamp 4 ช่อง (Continuous Table Layout)
-  const stampBoxY = 55;
+  // 7. กล่อง Digital Approval Stamp 4 ช่อง (Continuous Table Layout) & Settlement Box
   const stampBoxHeight = 90;
   const totalStampWidth = width - 100;
   const stampWidth = totalStampWidth / 4;
   const isCompleted = ['completed', 'CLOSED', 'RECEIVED'].includes(po?.status);
+
+  const financialBottomY = rowY - 55;
+  const hasSettlement = Boolean(
+    po?.settlementStatus === 'SETTLED' ||
+    (po?.actualTotalAmount !== undefined && po?.actualTotalAmount !== null && po?.actualTotalAmount !== '' && Number(po?.actualTotalAmount) >= 0)
+  );
+  const actualTotal = hasSettlement ? Number(po.actualTotalAmount || 0) : grandTotal;
+  const savingsAmount = hasSettlement
+    ? (po.savingsAmount !== undefined ? Number(po.savingsAmount) : (grandTotal - actualTotal))
+    : 0;
+
+  let activePage = page;
+  let stampBoxY = 55;
+  let settlementBoxY = 152;
+
+  if (hasSettlement) {
+    if (financialBottomY < 234) {
+      activePage = pdfDoc.addPage([595.28, 841.89]);
+      settlementBoxY = height - 120;
+      stampBoxY = settlementBoxY - stampBoxHeight - 16;
+    } else {
+      activePage = page;
+      stampBoxY = 55;
+      settlementBoxY = 152;
+    }
+  } else {
+    if (financialBottomY < 165) {
+      activePage = pdfDoc.addPage([595.28, 841.89]);
+      stampBoxY = height - 150;
+    } else {
+      activePage = page;
+      stampBoxY = 55;
+    }
+  }
 
   // Fetch users with signatures
   let users = [];
@@ -848,8 +881,107 @@ export async function generatePoPdf(po) {
     }
   ];
 
+  // ── Actual Settlement Summary Box (If PO has settled actual amount) ──
+  if (hasSettlement) {
+    const settlementBoxHeight = 46;
+    const boxX = 50;
+    const boxWidth = totalStampWidth;
+
+    activePage.drawRectangle({
+      x: boxX,
+      y: settlementBoxY,
+      width: boxWidth,
+      height: settlementBoxHeight,
+      color: rgb(0.95, 0.98, 0.96),
+      borderColor: rgb(0.05, 0.55, 0.3),
+      borderWidth: 1
+    });
+
+    const title = normalizeThaiText('สรุปการตรวจรับและปิดยอดจ่ายจริง (Actual Settlement Summary)');
+    activePage.drawText(title, {
+      x: boxX + 10,
+      y: settlementBoxY + settlementBoxHeight - 13,
+      size: 8.5,
+      font: boldFont,
+      color: rgb(0.05, 0.45, 0.25)
+    });
+
+    if (savingsAmount > 0) {
+      const badgeText = normalizeThaiText('[ คืนงบประมาณแล้ว ]');
+      const badgeWidth = boldFont.widthOfTextAtSize(badgeText, 7.5);
+      activePage.drawText(badgeText, {
+        x: boxX + boxWidth - badgeWidth - 10,
+        y: settlementBoxY + settlementBoxHeight - 13,
+        size: 7.5,
+        font: boldFont,
+        color: rgb(0.05, 0.5, 0.25)
+      });
+    }
+
+    const colW = (boxWidth - 20) / 3;
+    const dataY = settlementBoxY + 16;
+    const labelY = settlementBoxY + 28;
+
+    activePage.drawText(normalizeThaiText('ยอดอนุมัติเดิม (Approved Total):'), {
+      x: boxX + 10,
+      y: labelY,
+      size: 7,
+      font: customFont,
+      color: rgb(0.35, 0.4, 0.45)
+    });
+    activePage.drawText(`฿${grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, {
+      x: boxX + 10,
+      y: dataY,
+      size: 8.5,
+      font: boldFont,
+      color: rgb(0.15, 0.2, 0.25)
+    });
+
+    activePage.drawText(normalizeThaiText('ยอดจ่ายจริง (Actual Payment):'), {
+      x: boxX + 10 + colW,
+      y: labelY,
+      size: 7,
+      font: customFont,
+      color: rgb(0.35, 0.4, 0.45)
+    });
+    activePage.drawText(`฿${actualTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, {
+      x: boxX + 10 + colW,
+      y: dataY,
+      size: 8.5,
+      font: boldFont,
+      color: rgb(0.05, 0.45, 0.25)
+    });
+
+    activePage.drawText(normalizeThaiText('ส่วนต่างงบ (Savings / Variance):'), {
+      x: boxX + 10 + (colW * 2),
+      y: labelY,
+      size: 7,
+      font: customFont,
+      color: rgb(0.35, 0.4, 0.45)
+    });
+    const savingsStr = `${savingsAmount >= 0 ? '+' : ''}฿${savingsAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    activePage.drawText(savingsStr, {
+      x: boxX + 10 + (colW * 2),
+      y: dataY,
+      size: 8.5,
+      font: boldFont,
+      color: savingsAmount >= 0 ? rgb(0.05, 0.5, 0.25) : rgb(0.7, 0.3, 0.1)
+    });
+
+    if (po?.settlementNote) {
+      const noteStr = normalizeThaiText(`หมายเหตุ: ${po.settlementNote}`);
+      activePage.drawText(noteStr, {
+        x: boxX + 10,
+        y: settlementBoxY + 5,
+        size: 6.5,
+        font: customFont,
+        color: rgb(0.4, 0.45, 0.5)
+      });
+    }
+  }
+
   // Draw full-width Header Background
-  page.drawRectangle({
+  activePage.drawRectangle({
     x: 50,
     y: stampBoxY + stampBoxHeight - 18,
     width: totalStampWidth,
@@ -858,7 +990,7 @@ export async function generatePoPdf(po) {
   });
 
   // Draw Outer Box
-  page.drawRectangle({
+  activePage.drawRectangle({
     x: 50,
     y: stampBoxY,
     width: totalStampWidth,
@@ -868,7 +1000,7 @@ export async function generatePoPdf(po) {
   });
 
   // Draw Header Bottom Border
-  page.drawLine({
+  activePage.drawLine({
     start: { x: 50, y: stampBoxY + stampBoxHeight - 18 },
     end: { x: 50 + totalStampWidth, y: stampBoxY + stampBoxHeight - 18 },
     thickness: 1,
@@ -878,7 +1010,7 @@ export async function generatePoPdf(po) {
   // Draw Vertical Separators
   for (let i = 1; i <= 3; i++) {
     const lineX = 50 + (i * stampWidth);
-    page.drawLine({
+    activePage.drawLine({
       start: { x: lineX, y: stampBoxY },
       end: { x: lineX, y: stampBoxY + stampBoxHeight },
       thickness: 1,
@@ -893,7 +1025,7 @@ export async function generatePoPdf(po) {
     // Centered Role Text
     const roleText = normalizeThaiText(s.role);
     const roleWidth = boldFont.widthOfTextAtSize(roleText, 8);
-    page.drawText(roleText, { 
+    activePage.drawText(roleText, { 
       x: boxX + (stampWidth - roleWidth) / 2, 
       y: stampBoxY + stampBoxHeight - 13, 
       size: 8, 
@@ -905,7 +1037,7 @@ export async function generatePoPdf(po) {
     if (s.sigImg && s.isSigned) {
       const sigWidth = 78;
       const sigHeight = 28;
-      page.drawImage(s.sigImg, {
+      activePage.drawImage(s.sigImg, {
         x: boxX + (stampWidth - sigWidth) / 2,
         y: stampBoxY + 40,
         width: sigWidth,
@@ -917,7 +1049,7 @@ export async function generatePoPdf(po) {
     const displayName = s.name.startsWith('(') ? s.name : `( ${s.name} )`;
     const nameText = normalizeThaiText(displayName);
     const nameWidth = customFont.widthOfTextAtSize(nameText, 8);
-    page.drawText(nameText, { 
+    activePage.drawText(nameText, { 
       x: boxX + (stampWidth - nameWidth) / 2, 
       y: stampBoxY + 18, 
       size: 8, 
@@ -929,7 +1061,7 @@ export async function generatePoPdf(po) {
     if (s.time !== '-') {
       const timeText = normalizeThaiText(s.time);
       const timeWidth = customFont.widthOfTextAtSize(timeText, 7);
-      page.drawText(timeText, { 
+      activePage.drawText(timeText, { 
         x: boxX + (stampWidth - timeWidth) / 2, 
         y: stampBoxY + 6, 
         size: 7, 
@@ -938,6 +1070,19 @@ export async function generatePoPdf(po) {
       });
     }
   });
+
+  // Confirmation note under Column 4 (Receiver stamp)
+  if (hasSettlement) {
+    const confirmNote = normalizeThaiText(`* ยืนยันยอดตรวจรับและจ่ายจริง ฿${actualTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    const col4X = 50 + (3 * stampWidth);
+    activePage.drawText(confirmNote, {
+      x: col4X + 4,
+      y: stampBoxY - 11,
+      size: 7.5,
+      font: boldFont,
+      color: rgb(0.05, 0.45, 0.25)
+    });
+  }
 
   const pdfBytes = await pdfDoc.save();
   const blob = new Blob([pdfBytes], { type: 'application/pdf' });

@@ -7,8 +7,7 @@ import { workflowEngine } from '../services/workflowEngine';
 import { authService, DEFAULT_EMPLOYEE_ACCOUNTS } from '../services/authService';
 import { resolveUserPermissions } from '../config/constants';
 import { modalService } from '../services/modalService';
-import { generateGRNNumber } from '../services/warehouseService';
-import { getUserDepartments } from '../utils/permissions';
+import { getUserDepartments, matchDepartment } from '../utils/permissions';
 import { getUnifiedProductList } from '../views/PRCreateView';
 import { normalizeRole, useAuth } from './AuthContext';
 
@@ -181,9 +180,15 @@ export function AppProvider({ children }) {
           notifications: notisData
         } = bootstrapData;
 
-        const effectiveProducts = invData || prodsData;
-        if (Array.isArray(effectiveProducts)) {
-          setProducts(getUnifiedProductList(effectiveProducts));
+        // Prioritize master products list (prodsData), enrich with inventory stock (invData)
+        const prodsList = Array.isArray(prodsData) && prodsData.length > 0
+          ? prodsData
+          : (Array.isArray(invData) ? invData : []);
+        const invList = Array.isArray(invData) ? invData : [];
+        if (prodsList.length > 0) {
+          const unified = getUnifiedProductList(prodsList, invList);
+          setProducts(unified);
+          storageService.saveProducts(unified);
         }
         if (Array.isArray(vendorsData)) {
           setVendors(vendorsData);
@@ -345,7 +350,7 @@ export function AppProvider({ children }) {
   useEffect(() => {
     const unsub = storageService.subscribe?.((event, payload) => {
       if (event === 'revalidate' && payload && typeof payload === 'object') {
-        if (Array.isArray(payload.products)) setProducts(getUnifiedProductList(payload.products));
+        if (Array.isArray(payload.products)) setProducts(getUnifiedProductList(payload.products, payload.inventory || []));
         if (Array.isArray(payload.vendors)) setVendors(payload.vendors);
         if (Array.isArray(payload.storageLocations)) setStorageLocations(payload.storageLocations);
         if (Array.isArray(payload.usageUnits)) setUsageUnits(payload.usageUnits);
@@ -975,32 +980,52 @@ export function AppProvider({ children }) {
   }, [currentRole, loadAllData]);
 
   const handleSaveProduct = useCallback(async (product) => {
-    const targetId = String(product.id || '').trim().toLowerCase();
-    const targetCode = String(product.code || '').trim().toLowerCase();
+    const rawCat = product.category || product.department || 'PD';
+    const cleanDept = String(rawCat).replace(/^DEPT-/, '').trim().toUpperCase() || 'PD';
+    const normalizedProduct = {
+      ...product,
+      category: cleanDept,
+      department: cleanDept,
+      dept: cleanDept
+    };
+
+    const targetId = String(normalizedProduct.id || '').trim().toLowerCase();
+    const targetCode = String(normalizedProduct.code || '').trim().toLowerCase();
+    const targetDept = cleanDept;
+
     setProducts(prev => {
       const idx = prev.findIndex(p => {
         const pId = String(p.id || '').trim().toLowerCase();
+        // Priority 1: Match by item.id
+        if (targetId && pId) return pId === targetId;
+        // Priority 2: Match by item.code strictly within the same department
         const pCode = String(p.code || '').trim().toLowerCase();
-        return (targetId && pId === targetId) || (targetCode && pCode === targetCode);
+        const pDept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+        return targetCode && pCode === targetCode && (!targetDept || !pDept || pDept === targetDept);
       });
       if (idx !== -1) {
         const next = [...prev];
-        next[idx] = { ...next[idx], ...product };
+        next[idx] = { ...next[idx], ...normalizedProduct };
         return next;
       }
-      return [product, ...prev];
+      return [normalizedProduct, ...prev];
     });
-    const saved = await apiService.saveProduct(product, currentRole);
+    const saved = await apiService.saveProduct(normalizedProduct, currentRole);
     setTimeout(() => { loadAllData(true); }, 1500);
     return saved;
   }, [currentRole, loadAllData]);
 
-  const handleDeleteProduct = useCallback(async (productId) => {
+  const handleDeleteProduct = useCallback(async (productId, productDept = null) => {
     const targetStr = String(productId || '').trim().toLowerCase();
+    const cleanDept = productDept ? String(productDept).replace(/^DEPT-/, '').trim().toUpperCase() : null;
     setProducts(prev => prev.filter(p => {
       const pId = String(p.id || '').trim().toLowerCase();
+      // Primary matching by item.id ALWAYS:
+      if (pId) return pId !== targetStr;
       const pCode = String(p.code || '').trim().toLowerCase();
-      return pId !== targetStr && pCode !== targetStr;
+      const pDept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+      if (cleanDept && pDept && pDept !== cleanDept) return true;
+      return pCode !== targetStr;
     }));
     const result = await apiService.deleteProduct(productId, currentRole);
     setTimeout(() => { loadAllData(true); }, 1500);
@@ -1010,11 +1035,17 @@ export function AppProvider({ children }) {
   const handleSaveVendor = useCallback(async (vendor) => {
     const targetId = String(vendor.id || '').trim().toLowerCase();
     const targetCode = String(vendor.code || '').trim().toLowerCase();
+    const targetDept = String(vendor.department || vendor.dept || vendor.category || '').replace(/^DEPT-/, '').trim().toUpperCase();
+
     setVendors(prev => {
       const idx = prev.findIndex(v => {
         const vId = String(v.id || '').trim().toLowerCase();
+        // Priority 1: Match by vendor.id
+        if (targetId && vId) return vId === targetId;
+        // Priority 2: Match by vendor.code within same department scope
         const vCode = String(v.code || '').trim().toLowerCase();
-        return (targetId && vId === targetId) || (targetCode && vCode === targetCode);
+        const vDept = String(v.department || v.dept || v.category || '').replace(/^DEPT-/, '').trim().toUpperCase();
+        return targetCode && vCode === targetCode && (!targetDept || !vDept || vDept === targetDept || vDept === 'ALL' || targetDept === 'ALL');
       });
       if (idx !== -1) {
         const next = [...prev];
@@ -1218,18 +1249,27 @@ export function AppProvider({ children }) {
 
       const tId = String(item.productId || item.id || '').trim().toLowerCase();
       const tCode = String(item.code || item.productCode || '').trim().toLowerCase();
+      const tDept = String(item.department || item.category || item.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
       const tName = String(item.name || '').trim().toLowerCase();
 
       const prodIdx = prods.findIndex(p => {
         if (!p) return false;
         const pId = String(p.id || '').trim().toLowerCase();
+        // Priority 1: Match by ID
+        if (tId && pId && pId === tId) return true;
+
+        const pDept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+        const isSameDept = !tDept || !pDept || pDept === tDept;
+
+        // Priority 2: Match by Code (scoped to department)
         const pCode = String(p.code || '').trim().toLowerCase();
+        if (tCode && pCode && pCode === tCode && isSameDept) return true;
+
+        // Priority 3: Match by Name (scoped to department)
         const pName = String(p.name || '').trim().toLowerCase();
-        return (
-          (tId && (pId === tId || pCode === tId)) ||
-          (tCode && (pCode === tCode || pId === tCode)) ||
-          (tName && pName === tName)
-        );
+        if (tName && pName && pName === tName && isSameDept) return true;
+
+        return false;
       });
 
       if (prodIdx !== -1) {
@@ -1326,6 +1366,125 @@ export function AppProvider({ children }) {
     };
   }, [currentRole, loadAllData]);
 
+  // ── Stock Issue Mutation (Optimistic Update + Storage Sync + Backend RPC) ──
+  const handleIssueStock = useCallback(async (payload) => {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('ข้อมูลการเบิกจ่ายไม่ถูกต้อง');
+    }
+
+    const productId = payload.productId || payload.id;
+    const rawQty = payload.quantity !== undefined ? payload.quantity : (payload.qty !== undefined ? payload.qty : payload.issueQty);
+    const issueQty = Math.abs(Number(rawQty));
+    if (isNaN(issueQty) || issueQty <= 0) {
+      throw new Error('จำนวนที่ต้องการเบิกต้องมากกว่า 0');
+    }
+
+    const productCode = payload.productCode || payload.code || payload.sku;
+    const department = payload.department || payload.category;
+    const issuedTo = payload.issuedTo || payload.issueUnit || payload.unitName || '';
+    const reason = payload.reason || payload.note || 'เบิกจ่ายด่วน';
+    const requester = payload.user || currentUser || currentRole;
+
+    // 1. ค้นหาสินค้าใน State products ปัจจุบัน
+    const currentProds = storageService.getProducts();
+    let targetIndex = currentProds.findIndex(p => p.id === productId);
+    if (targetIndex === -1 && productCode) {
+      targetIndex = currentProds.findIndex(p =>
+        String(p.code).trim() === String(productCode).trim() &&
+        (!department || matchDepartment(p.department || p.category, department))
+      );
+    }
+    if (targetIndex === -1) {
+      throw new Error('ไม่พบสินค้านี้ในระบบเพื่อตัดสต็อก');
+    }
+
+    const currentProd = currentProds[targetIndex];
+    const currentBalance = Number(currentProd.stockBalance || 0);
+    const sUnit = currentProd.stockUnit || currentProd.unit || 'ชิ้น';
+
+    if (currentBalance < issueQty) {
+      throw new Error(`จำนวนคงเหลือไม่พอเบิก (มี ${currentBalance} ${sUnit}, ต้องการเบิก ${issueQty} ${sUnit})`);
+    }
+
+    const newBalance = Math.round((currentBalance - issueQty) * 10000) / 10000;
+    const nowIso = new Date().toISOString();
+    const updatedProd = {
+      ...currentProd,
+      stockBalance: newBalance,
+      currentStock: newBalance,
+      updatedAt: nowIso
+    };
+
+    const logId = `LOG-${department || updatedProd.department || 'PD'}-${Date.now()}`;
+    const logEntry = {
+      id: logId,
+      timestamp: nowIso,
+      date: nowIso,
+      type: 'ISSUE',
+      productId: updatedProd.id,
+      productCode: updatedProd.code,
+      productName: updatedProd.name,
+      name: updatedProd.name,
+      department: department || updatedProd.department || 'PD',
+      changeQty: -issueQty,
+      qty: issueQty,
+      unit: sUnit,
+      balanceAfter: newBalance,
+      balance: newBalance,
+      issuedTo: issuedTo || '',
+      issueUnit: issuedTo || '',
+      reason: reason || 'เบิกจ่ายด่วน',
+      note: reason || 'เบิกจ่ายด่วน',
+      actorId: requester?.id || requester?.username || '',
+      actorName: requester?.name || requester?.username || issuedTo || ''
+    };
+
+    // 2. Optimistic Update ใน State ทันที
+    const updatedProdsList = [...currentProds];
+    updatedProdsList[targetIndex] = updatedProd;
+    setProducts(updatedProdsList);
+
+    const currentLogs = storageService.getStockLogs();
+    const updatedLogsList = [logEntry, ...currentLogs];
+    setStockLogs(updatedLogsList);
+
+    // 3. บันทึกลง Local Cache (storageService) ทันที ป้องกัน background sync ดึงค่าย้อนกลับ
+    storageService.saveProducts(updatedProdsList);
+    storageService.saveStockLogs(updatedLogsList);
+
+    // 4. เรียก API หลังบ้าน (GAS / Backend)
+    try {
+      const apiPayload = {
+        productId: updatedProd.id,
+        productCode: updatedProd.code,
+        department: updatedProd.department || department || 'PD',
+        quantity: issueQty,
+        issuedTo,
+        reason,
+        requesterId: requester?.id || requester?.username || '',
+        requesterName: requester?.name || '',
+        user: requester
+      };
+      await apiService.issueStock(apiPayload);
+    } catch (err) {
+      console.warn('[AppContext] issueStock backend RPC warning:', err.message);
+      if (err.message && err.message.includes('ไม่พอ')) {
+        throw err;
+      }
+    }
+
+    const toastMsg = `เบิกจ่ายสำเร็จ! ยอดคงเหลือ: ${newBalance} ${sUnit}`;
+
+    return {
+      success: true,
+      updatedProduct: updatedProd,
+      product: updatedProd,
+      logEntry,
+      newBalance,
+      message: toastMsg
+    };
+  }, [currentUser, currentRole]);
+
   const handleMarkNotificationAsRead = useCallback(async (id) => {
     setNotifications(prev => prev.map(n => (n.id === id || n._id === id) ? { ...n, isRead: true, read: true, status: 'read' } : n));
     if (notificationService?.markAsRead) {
@@ -1392,6 +1551,9 @@ export function AppProvider({ children }) {
     recordGoodsReceipt: handleRecordGoodsReceipt,
     rollbackBudget: handleRollbackBudget,
     receiveToStock: handleReceiveToStock,
+    issueStock: handleIssueStock,
+    handleIssueStock,
+    quickIssueStock: handleIssueStock,
     saveProduct: handleSaveProduct,
     updateProduct: handleSaveProduct,
     deleteProduct: handleDeleteProduct,
@@ -1483,6 +1645,7 @@ export function AppProvider({ children }) {
     handleRecordGoodsReceipt,
     handleRollbackBudget,
     handleReceiveToStock,
+    handleIssueStock,
     handleMarkNotificationAsRead,
     handleClearNotifications,
     preselectedProduct,

@@ -27,21 +27,37 @@ import { isDepartmentMatch } from '../utils/permissions';
 export const getUnifiedProductList = (products = [], inventory = []) => {
   const productMap = new Map();
 
-  // 1. นำ Master Data สินค้าตั้งต้นใส่ Map
+  // 1. นำ Master Data สินค้าตั้งต้นใส่ Map โดยใช้ item.id เป็น Unique Key หลักเสมอ
   (Array.isArray(products) ? products : []).forEach(p => {
     if (!p) return;
     const raw = p.product || p.item || p;
-    const key = String(raw.code || raw.id || '').trim().toUpperCase();
-    if (!key) return;
 
     // ข้ามสินค้าที่ปิดใช้งาน หรืออยู่ใน Blacklist ขยะ
-    if (raw.isActive === false || raw.status === 'INACTIVE') return;
-    if (['P01', 'P02', 'PROD-01', 'PROD-02'].includes(key)) return;
+    const isInactive = raw.isActive === false || String(raw.isActive).toUpperCase() === 'FALSE' || String(raw.status || '').toUpperCase() === 'INACTIVE';
+    if (isInactive) return;
+
+    // Safe fallback for Department (checks department, category, dept, or PROD-[DEPT]- prefix in id)
+    const rawDept = String(raw.department || raw.category || raw.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+    const idMatch = String(raw.id || '').match(/^PROD-([A-Za-z]+)-/i);
+    const dept = rawDept || (idMatch ? idMatch[1].toUpperCase() : 'PD');
+    const rawId = raw.id !== undefined && raw.id !== null ? String(raw.id).trim() : '';
+    const rawCode = raw.code !== undefined && raw.code !== null ? String(raw.code).trim() : '';
+
+    // Composite key scoped by department ensures PD 1 and QC 1 never collide,
+    // while duplicate codes within the same department are cleanly unified for dropdowns.
+    const key = rawCode ? `${dept}_${rawCode.toUpperCase()}` : (rawId ? rawId.toUpperCase() : '');
+    if (!key) return;
+
+    const upperCode = rawCode.toUpperCase();
+    const upperId = rawId.toUpperCase();
+    if (['P01', 'P02', 'PROD-01', 'PROD-02'].includes(upperCode) || ['P01', 'P02', 'PROD-01', 'PROD-02'].includes(upperId) || ['P01', 'P02', 'PROD-01', 'PROD-02'].includes(key)) return;
 
     const itemObj = { ...raw };
     if (itemObj.id !== undefined && itemObj.id !== null) itemObj.id = String(itemObj.id).trim();
     if (itemObj.code !== undefined && itemObj.code !== null) itemObj.code = String(itemObj.code).trim();
     if (itemObj.name !== undefined && itemObj.name !== null) itemObj.name = String(itemObj.name).trim();
+    if (dept && !itemObj.department) itemObj.department = dept;
+    if (dept && !itemObj.category) itemObj.category = dept;
 
     if (!productMap.has(key)) {
       productMap.set(key, itemObj);
@@ -51,12 +67,24 @@ export const getUnifiedProductList = (products = [], inventory = []) => {
   // 2. ดึงข้อมูลสต็อกคงเหลือและ ROP จาก Inventory มาประกบ (Enrich Data) โดยไม่สร้างรายการใหม่
   (Array.isArray(inventory) ? inventory : []).forEach(inv => {
     if (!inv) return;
-    const key = String(inv.code || inv.productId || inv.id || '').trim().toUpperCase();
-    if (!key) return;
+    const invDept = String(inv.department || inv.category || inv.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+    const invId = (inv.productId || inv.id) ? String(inv.productId || inv.id).trim().toUpperCase() : '';
+    const invCode = inv.code ? String(inv.code).trim().toUpperCase() : '';
 
-    if (productMap.has(key)) {
-      const existing = productMap.get(key);
-      productMap.set(key, {
+    // Match by ID first, then by dept_code
+    let matchKey = null;
+    if (invId && productMap.has(invId)) {
+      matchKey = invId;
+    } else if (invCode) {
+      const composite = `${invDept}_${invCode}`;
+      if (productMap.has(composite)) {
+        matchKey = composite;
+      }
+    }
+
+    if (matchKey && productMap.has(matchKey)) {
+      const existing = productMap.get(matchKey);
+      productMap.set(matchKey, {
         ...existing,
         stock: inv.stock ?? inv.remainingQty ?? inv.quantity ?? existing.stock ?? 0,
         rop: inv.rop ?? inv.minStock ?? inv.reorderPoint ?? existing.rop ?? 0,

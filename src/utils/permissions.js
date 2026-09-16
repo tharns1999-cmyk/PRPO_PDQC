@@ -1,5 +1,3 @@
-import { storageService } from '../services/storageService';
-
 /**
  * Permission and Department Access Control Utilities
  * Supports multi-department access, wildcard (* or ALL), and backward compatibility.
@@ -64,43 +62,47 @@ export function getUserDepartments(user) {
 }
 
 /**
- * Department Matching Helper
- * Robustly matches department codes or IDs across representations:
+ * Universal Department Normalizer & Matcher (matchDepartment)
+ * Robustly matches department codes, IDs, or names across representations:
  * e.g. 'QC' vs 'DEPT-QC', objects { id, code, name }, case-insensitively.
- * @param {string|Object} productDept - The product's department (e.g. 'QC', 'DEPT-QC', or category)
+ * @param {string|Object} prodDept - The product's department (e.g. 'QC', 'DEPT-QC', or category)
  * @param {string|Object} targetDept - The target department to compare against (e.g. 'DEPT-QC', 'QC', or dept object)
  * @returns {boolean}
  */
-export const isDepartmentMatch = (productDept, targetDept) => {
-  if (!productDept || !targetDept) return false;
+export const matchDepartment = (prodDept, targetDept) => {
+  if (!prodDept || !targetDept) return false;
 
   const rawTargetStr = typeof targetDept === 'string' ? targetDept.trim().toUpperCase() : '';
-  const rawProductStr = typeof productDept === 'string' ? productDept.trim().toUpperCase() : '';
+  const rawProductStr = typeof prodDept === 'string' ? prodDept.trim().toUpperCase() : '';
   if (rawTargetStr === 'ALL' || rawTargetStr === '*' || rawTargetStr === 'BOTH') return true;
   if (rawProductStr === 'ALL' || rawProductStr === '*' || rawProductStr === 'BOTH') return true;
 
-  const pDept = String(productDept?.code || productDept?.id || productDept).trim().toUpperCase();
+  const p = String(prodDept?.code || prodDept?.id || prodDept).trim().toUpperCase();
 
-  // กรณี targetDept เป็น String (เช่น 'QC', 'DEPT-QC')
+  // หาก targetDept เป็น String (เช่น 'QC', 'DEPT-QC')
   if (typeof targetDept === 'string') {
-    const tDept = targetDept.trim().toUpperCase();
-    return pDept === tDept || 
-           pDept.replace(/^DEPT-/, '') === tDept.replace(/^DEPT-/, '') ||
-           tDept.includes(pDept) || 
-           pDept.includes(tDept);
+    const t = targetDept.trim().toUpperCase();
+    return p === t || 
+           p.replace(/^DEPT-/, '') === t.replace(/^DEPT-/, '') ||
+           p === t.replace(/^DEPT-/, '') ||
+           t === p.replace(/^DEPT-/, '');
   }
 
-  // กรณี targetDept เป็น Object แผนก { id, code, name }
-  const deptId = String(targetDept.id || '').trim().toUpperCase();
-  const deptCode = String(targetDept.code || '').trim().toUpperCase();
-  const deptName = String(targetDept.name || '').trim().toUpperCase();
+  // หาก targetDept เป็น Object แผนก { id, code, name }
+  const tId = String(targetDept.id || '').trim().toUpperCase();
+  const tCode = String(targetDept.code || '').trim().toUpperCase();
+  const tName = String(targetDept.name || '').trim().toUpperCase();
 
-  return pDept === deptCode || 
-         pDept === deptId || 
-         pDept.replace(/^DEPT-/, '') === deptId.replace(/^DEPT-/, '') ||
-         (Boolean(deptName) && pDept === deptName) ||
-         (Boolean(deptCode) && pDept.replace(/^DEPT-/, '') === deptCode.replace(/^DEPT-/, ''));
+  if (tId === 'ALL' || tCode === 'ALL') return true;
+
+  return p === tCode || 
+         p === tId || 
+         p.replace(/^DEPT-/, '') === tId.replace(/^DEPT-/, '') ||
+         p.replace(/^DEPT-/, '') === tCode.replace(/^DEPT-/, '') ||
+         (Boolean(tName) && p === tName);
 };
+
+export const isDepartmentMatch = matchDepartment;
 
 /**
  * Checks if a user can access data scoped to a target department.

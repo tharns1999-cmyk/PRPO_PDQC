@@ -54,7 +54,9 @@ const SCHEMA_DEFINITIONS = Object.freeze({
     'items', 'subtotal', 'vat', 'grandTotal', 'isOnline', 'isClosed', 
     'claimStatus', 'ngItems', 'reviewedBy', 'reviewedAt', 'approvedBy', 
     'approvedAt', 'receivedBy', 'receiverName', 'receiverId', 'receivedAt', 
-    'receiverRole', 'receiverSignature', 'receivingInfo', 'activityLog', 
+    'receiverRole', 'receiverSignature', 'receivingInfo', 'actualTotalAmount', 
+    'savingsAmount', 'settlementStatus', 'settlementNote', 'settlementProofUrl', 
+    'settledBy', 'settledAt', 'actualItems', 'activityLog', 
     'createdAt', 'completedAt', 'updatedAt'
   ],
   [SHEET_NAMES.STOCK_LOGS]: [

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Clock, ShoppingCart, AlertTriangle, DollarSign, ArrowUpRight } from 'lucide-react';
-import { hasDepartmentAccess } from '../../utils/permissions';
+import { hasDepartmentAccess, matchDepartment } from '../../utils/permissions';
 
 export default function KPICards({
   prs = [],
@@ -11,10 +11,19 @@ export default function KPICards({
   onNavigate,
   onQuickPR,
   lowStockCount: propLowStockCount,
-  lowStockItems: propLowStockItems
+  lowStockItems: propLowStockItems,
+  activeDept = 'ALL'
 }) {
-  const accessiblePRs = prs.filter(p => hasDepartmentAccess(currentRole, p.department));
-  const accessiblePOs = pos.filter(p => hasDepartmentAccess(currentRole, p.department));
+  const filterDept = activeDept && activeDept !== 'ALL' ? activeDept : null;
+
+  const accessiblePRs = prs.filter(p => {
+    if (filterDept) return matchDepartment(p.department, filterDept);
+    return hasDepartmentAccess(currentRole, p.department);
+  });
+  const accessiblePOs = pos.filter(p => {
+    if (filterDept) return matchDepartment(p.department, filterDept);
+    return hasDepartmentAccess(currentRole, p.department);
+  });
 
   const pendingPRs = accessiblePRs.filter(p => ['SUBMITTED', 'REVIEWED', 'REJECTED_TO_L2'].includes(p.status)).length;
   const activePOs = accessiblePOs.filter(p => ['ISSUED', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL', 'IN_PROGRESS_ONLINE', 'CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(p.status)).length;
@@ -48,7 +57,9 @@ export default function KPICards({
       };
     }).filter(item => {
       if (!item || item.isInactive || !item.name || item.name === 'สินค้าไม่มีชื่อ') return false;
-      const deptMatch = currentRole?.canViewAllDepts || currentRole?.department === 'ALL' || !currentRole?.department || item.category === currentRole?.department || item.department === currentRole?.department;
+      const deptMatch = filterDept 
+        ? matchDepartment(item.department || item.category, filterDept)
+        : (currentRole?.canViewAllDepts || currentRole?.department === 'ALL' || !currentRole?.department || item.category === currentRole?.department || item.department === currentRole?.department);
       return deptMatch && item.rop > 0 && item.stock <= item.rop;
     });
 
@@ -57,15 +68,23 @@ export default function KPICards({
 
   const lowStockCount = propLowStockCount !== undefined ? propLowStockCount : lowStockItems.length;
 
-  const assigned = Array.isArray(currentRole?.assignedDepartments) ? currentRole.assignedDepartments : [];
-  const hasAll = currentRole?.roleId === 'ADMIN' || currentRole?.roleId === 'PLANT_MANAGER' || (currentRole?.level && currentRole.level >= 3) || currentRole?.department === 'ALL' || assigned.includes('ALL') || assigned.includes('*');
+  const assigned = Array.isArray(currentRole?.assignedDepartments)
+    ? currentRole.assignedDepartments
+    : (Array.isArray(currentRole?.departments) ? currentRole.departments : []);
+  const roleUpper = String(currentRole?.role || currentRole?.roleId || '').toUpperCase();
+  const hasAll = ['ADMIN', 'PLANT_MANAGER'].includes(roleUpper) || (currentRole?.level && currentRole.level >= 3) || currentRole?.department === 'ALL' || assigned.includes('ALL') || assigned.includes('*');
   const userDepts = hasAll ? Object.keys(budgetSummary || {}) : (assigned.length > 0 ? assigned : [currentRole?.department || 'PD']);
+
+  const targetDepts = filterDept
+    ? [filterDept]
+    : userDepts;
 
   let totalSpent = 0;
   let totalAllocated = 0;
 
-  userDepts.forEach(d => {
-    const deptInfo = budgetSummary?.[d];
+  targetDepts.forEach(d => {
+    // Look up budget either directly or with department matching
+    const deptInfo = budgetSummary?.[d] || Object.entries(budgetSummary || {}).find(([k]) => matchDepartment(k, d))?.[1];
     if (deptInfo) {
       totalSpent += (deptInfo.actualSpent || 0) + (deptInfo.committed || 0);
       totalAllocated += deptInfo.allocated || 0;
@@ -73,7 +92,9 @@ export default function KPICards({
   });
 
   const budgetPercent = totalAllocated > 0 ? Math.round((totalSpent / totalAllocated) * 100) : 0;
-  const budgetLabel = hasAll ? 'รวมทุกแผนก' : (userDepts.length > 1 ? `ฝ่าย ${userDepts.join(', ')}` : `ฝ่าย ${userDepts[0]}`);
+  const budgetLabel = filterDept
+    ? (matchDepartment(filterDept, 'PD') ? 'ฝ่ายผลิต (PD)' : (matchDepartment(filterDept, 'QC') ? 'ฝ่ายควบคุมคุณภาพ (QC)' : `ฝ่าย ${filterDept}`))
+    : (hasAll ? 'รวมทุกแผนก' : (userDepts.length > 1 ? `ฝ่าย ${userDepts.join(', ')}` : `ฝ่าย ${userDepts[0]}`));
 
   const handleLowStockClick = () => {
     if (lowStockCount > 0 && lowStockItems[0] && onQuickPR) {

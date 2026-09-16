@@ -12,7 +12,8 @@ import SearchableSelect from '../common/SearchableSelect';
 import StorageLocationCRUDModal from './StorageLocationCRUDModal';
 import DeleteLocationModal from './DeleteLocationModal';
 import { useAppContext } from '../../context/AppContext';
-import { getUserDepartments, canAccessDepartmentData, isDepartmentMatch } from '../../utils/permissions';
+import { getUserDepartments, canAccessDepartmentData, isDepartmentMatch, matchDepartment } from '../../utils/permissions';
+import { generateNextProductCode } from '../../utils/idGenerator';
 
 const COMMON_PURCHASE_UNITS = ['ถัง (200L)', 'แกลลอน (20L)', 'ลัง', 'กล่อง', 'ถุง', 'ม้วน', 'ชุด', 'ชิ้น'];
 const COMMON_STOCK_UNITS = ['ลิตร', 'มล.', 'กก.', 'กรัม', 'ชิ้น', 'คู่', 'แผ่น', 'ม้วน', 'ขวด', 'กระป๋อง'];
@@ -26,6 +27,8 @@ export default function ProductCRUDModal({
   storageLocations = [],
   currentRole,
   currentUser,
+  lockedCategory: propLockedCategory,
+  defaultCategory,
   onClose,
   onRefresh,
   onSaved,
@@ -67,7 +70,7 @@ export default function ProductCRUDModal({
 
   const hasMultipleAllowedDepts = !canSelectAll && selectableDepts.length > 1;
   const isSingleLockedDept = !canSelectAll && selectableDepts.length === 1;
-  const lockedCategory = isSingleLockedDept ? (selectableDepts[0]?.code || (selectableDepts[0]?.id ? String(selectableDepts[0].id).replace(/^DEPT-/, '') : 'PD')) : null;
+  const lockedCategory = propLockedCategory || (isSingleLockedDept ? (selectableDepts[0]?.code || (selectableDepts[0]?.id ? String(selectableDepts[0].id).replace(/^DEPT-/, '') : 'PD')) : null);
 
   const skuInputRef = useRef(null);
   const [itemCode, setItemCode] = useState(() => {
@@ -77,10 +80,11 @@ export default function ProductCRUDModal({
     return '';
   });
   const [category, setCategory] = useState(() => {
-    if (editProd?.category) return editProd.category;
-    if (editProd?.department) return editProd.department;
-    if (lockedCategory) return lockedCategory;
-    if (selectableDepts.length > 0) return selectableDepts[0].code;
+    if (editProd?.category) return String(editProd.category).replace(/^DEPT-/, '').trim().toUpperCase();
+    if (editProd?.department) return String(editProd.department).replace(/^DEPT-/, '').trim().toUpperCase();
+    if (lockedCategory) return String(lockedCategory).replace(/^DEPT-/, '').trim().toUpperCase();
+    if (defaultCategory) return String(defaultCategory).replace(/^DEPT-/, '').trim().toUpperCase();
+    if (selectableDepts.length > 0) return String(selectableDepts[0].code || selectableDepts[0].id).replace(/^DEPT-/, '').trim().toUpperCase();
     return 'PD';
   });
   const [purchaseUnit, setPurchaseUnit] = useState(editProd?.purchaseUnit || editProd?.unit || 'ชิ้น');
@@ -102,6 +106,9 @@ export default function ProductCRUDModal({
     }
   }, [storageLocations]);
 
+  // Current working department for this modal session
+  const currentDept = lockedCategory || category || editProd?.category || editProd?.department || defaultCategory || 'PD';
+
   // Combined master products from props, context, and storageService/localStorage for complete duplicate guard
   const allProducts = useMemo(() => {
     const fromProps = Array.isArray(products) ? products : [];
@@ -110,50 +117,54 @@ export default function ProductCRUDModal({
     const map = new Map();
     [...fromStorage, ...fromContext, ...fromProps].forEach(p => {
       if (p) {
-        const key = String(p.id || p.code || p.sku || Math.random());
+        const pDept = p.department || p.category || '';
+        const key = p.id ? String(p.id) : `${pDept}_${p.code || p.sku || Math.random()}`;
         map.set(key, p);
       }
     });
     return Array.from(map.values());
   }, [products, context?.products]);
 
-  // Real-time Frontend SKU Duplicate Validation
+  // Real-time Frontend SKU Duplicate Validation (Scoped to Department)
   const isSkuDuplicate = useMemo(() => {
     const inputCode = String(itemCode || '').trim().toLowerCase();
     if (!inputCode) return false;
-    if (!isEditMode) {
-      return allProducts.some(p => {
-        if (!p) return false;
-        return String(p.code || p.sku || p.id || '').trim().toLowerCase() === inputCode;
-      });
-    } else {
-      const editProdId = String(editProd?.id || '').trim().toLowerCase();
-      const editProdCode = String(editProd?.code || editProd?.sku || '').trim().toLowerCase();
-      return allProducts.some(p => {
-        if (!p) return false;
+
+    return allProducts.some(p => {
+      if (!p) return false;
+      // 1. ข้ามรายการที่กำลังแก้ไขอยู่
+      if (isEditMode) {
+        const editProdId = String(editProd?.id || '').trim().toLowerCase();
         const pId = String(p.id || '').trim().toLowerCase();
-        const pCode = String(p.code || p.sku || p.id || '').trim().toLowerCase();
-        if ((editProdId && pId === editProdId) || (editProdCode && pCode === editProdCode)) return false;
-        return pCode === inputCode;
-      });
-    }
-  }, [itemCode, isEditMode, allProducts, editProd]);
+        if (editProdId && pId === editProdId) return false;
+      }
+
+      // 2. ต้องเป็นแผนกเดียวกันก่อน ถึงจะนำมาเช็กรหัสซ้ำ
+      const isSameDept = matchDepartment(p.department || p.category, currentDept);
+      if (!isSameDept) return false;
+
+      // 3. ตรวจสอบรหัสสินค้าว่าตรงกันหรือไม่
+      const existingCode = String(p.code || p.sku || '').trim().toLowerCase();
+      return existingCode === inputCode;
+    });
+  }, [itemCode, currentDept, isEditMode, allProducts, editProd]);
 
   const duplicateItem = useMemo(() => {
     if (!isSkuDuplicate) return null;
     const inputCode = String(itemCode || '').trim().toLowerCase();
     return allProducts.find(p => {
       if (!p) return false;
-      const pId = String(p.id || '').trim().toLowerCase();
-      const pCode = String(p.code || p.sku || p.id || '').trim().toLowerCase();
       if (isEditMode) {
         const editProdId = String(editProd?.id || '').trim().toLowerCase();
-        const editProdCode = String(editProd?.code || editProd?.sku || '').trim().toLowerCase();
-        if ((editProdId && pId === editProdId) || (editProdCode && pCode === editProdCode)) return false;
+        const pId = String(p.id || '').trim().toLowerCase();
+        if (editProdId && pId === editProdId) return false;
       }
-      return pCode === inputCode;
+      const isSameDept = matchDepartment(p.department || p.category, currentDept);
+      if (!isSameDept) return false;
+      const existingCode = String(p.code || p.sku || '').trim().toLowerCase();
+      return existingCode === inputCode;
     }) || null;
-  }, [isSkuDuplicate, itemCode, isEditMode, allProducts, editProd]);
+  }, [isSkuDuplicate, itemCode, currentDept, isEditMode, allProducts, editProd]);
 
   const isCodeDuplicate = isSkuDuplicate;
 
@@ -209,8 +220,8 @@ export default function ProductCRUDModal({
       modalService.error(
         'รหัสสินค้านี้มีอยู่ในระบบแล้ว',
         duplicateItem 
-          ? `รหัส "${cleanSku}" ซ้ำกับสินค้า: ${duplicateItem.name} กรุณาใช้รหัสอื่น`
-          : '⚠️ รหัสสินค้านี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น'
+          ? `รหัส "${cleanSku}" ซ้ำกับสินค้าในแผนก ${currentDept}: ${duplicateItem.name} กรุณาใช้รหัสอื่น`
+          : `⚠️ รหัสสินค้านี้มีอยู่ในระบบแล้วในแผนก ${currentDept} กรุณาใช้รหัสอื่น`
       );
       skuInputRef.current?.focus();
       return;
@@ -224,11 +235,16 @@ export default function ProductCRUDModal({
       const convRate = Number(formData.get('conversionRate')) || Number(conversionRate) || 1;
       const selectedLoc = locsList.find(l => l.id === selectedLocationId);
 
+      const rawCategory = lockedCategory || category || formData.get('category') || 'PD';
+      const cleanDeptCode = String(rawCategory).replace(/^DEPT-/, '').trim().toUpperCase() || 'PD';
+
       const prodObj = {
         id: editProd?.id ? String(editProd.id) : '',
         code: String(formData.get('code') || itemCode || '').trim().toUpperCase(),
         name: String(formData.get('name') || '').trim(),
-        category: lockedCategory || category || formData.get('category'),
+        category: cleanDeptCode,
+        department: cleanDeptCode,
+        dept: cleanDeptCode,
         purchaseUnit: pUnit,
         stockUnit: sUnit,
         conversionRate: convRate > 0 ? convRate : 1,
@@ -240,8 +256,8 @@ export default function ProductCRUDModal({
         supplierId: selectedSupplierId || null,
         locationId: selectedLocationId || null,
         locationName: selectedLoc ? selectedLoc.name : (selectedLocationId ? selectedLocationId : null),
-        isActive: editProd?.isActive !== undefined ? editProd.isActive : true,
-        status: editProd?.status || (editProd?.isActive === false ? 'INACTIVE' : 'ACTIVE'),
+        isActive: editProd?.isActive !== undefined ? (editProd.isActive === true || String(editProd.isActive).toUpperCase() === 'TRUE') : true,
+        status: editProd?.status || ((editProd?.isActive === false || String(editProd?.isActive).toUpperCase() === 'FALSE') ? 'INACTIVE' : 'ACTIVE'),
         isEdit: isEditMode,
         _mode: isEditMode ? 'EDIT' : 'CREATE'
       };
@@ -336,11 +352,27 @@ export default function ProductCRUDModal({
                         <span>รหัสสินค้า (SKU / Item Code)</span>
                         <span className="text-rose-500">*</span>
                       </label>
-                      {isSkuDuplicate && (
-                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse">
-                          <AlertTriangle className="w-3 h-3 text-rose-500" /> รหัสซ้ำ!
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {!isEditMode && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = generateNextProductCode(allProducts, currentDept);
+                              setItemCode(next);
+                            }}
+                            className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer transition-colors"
+                            title="รันรหัสสินค้าอัตโนมัติตามแผนก"
+                          >
+                            <Sparkles className="w-3 h-3 text-amber-500" />
+                            <span>รันรหัสอัตโนมัติ ({generateNextProductCode(allProducts, currentDept)})</span>
+                          </button>
+                        )}
+                        {isSkuDuplicate && (
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse">
+                            <AlertTriangle className="w-3 h-3 text-rose-500" /> รหัสซ้ำ!
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="relative flex rounded-xl shadow-2xs">
                       <span className={`inline-flex items-center px-3 rounded-l-xl border border-r-0 text-xs font-mono font-bold select-none transition-colors ${
@@ -353,7 +385,7 @@ export default function ProductCRUDModal({
                         name="code"
                         value={itemCode}
                         onChange={e => setItemCode(String(e.target.value ?? ''))}
-                        placeholder="เช่น PD-OIL-068"
+                        placeholder="เช่น 1 หรือ PD-OIL-068"
                         required
                         className={`w-full h-10 px-3.5 border rounded-r-xl text-xs sm:text-sm font-mono font-bold uppercase tracking-wide placeholder:font-normal placeholder:text-slate-400 focus:outline-none transition-all ${
                           isSkuDuplicate 
@@ -364,7 +396,7 @@ export default function ProductCRUDModal({
                     </div>
                     {isSkuDuplicate && (
                       <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1 font-medium">
-                        <span>⚠️ รหัสนี้ถูกใช้งานแล้วในระบบ</span>
+                        <span>⚠️ รหัสนี้ถูกใช้งานแล้วในแผนก {currentDept}</span>
                         {duplicateItem && <span className="text-[11px] text-rose-500 font-normal">({duplicateItem.name})</span>}
                       </p>
                     )}
@@ -773,3 +805,5 @@ export default function ProductCRUDModal({
     document.body
   );
 }
+
+export { generateNextProductCode };

@@ -3,6 +3,7 @@ import { initialProducts, initialVendors, initialStorageLocations, initialPRs, i
 import { DEFAULT_EMPLOYEE_ACCOUNTS } from './authService.js';
 import { modalService } from './modalService.js';
 import { normalizePR, normalizePO } from '../utils/dataNormalizer.js';
+import { matchDepartment } from '../utils/permissions.js';
 const DATA_VERSION = 'prpo_clean_v16_empty_state';
 const API_URL = '/api/storage';
 
@@ -740,11 +741,12 @@ export const storageService = {
       return item;
     });
 
-    // Strip duplicate codes, keeping the most complete record
+    // Strip duplicate codes per department, keeping the most complete record
     const deduped = [];
     const seenCodes = new Set();
     migrated.forEach(p => {
-      const codeKey = (p.code || p.id || '').toUpperCase();
+      const dept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+      const codeKey = p.id ? String(p.id).toUpperCase() : `${dept}_${String(p.code || '').trim().toUpperCase()}`;
       if (!seenCodes.has(codeKey)) {
         seenCodes.add(codeKey);
         deduped.push(p);
@@ -766,12 +768,15 @@ export const storageService = {
     const map = new Map();
     sanitized.forEach(item => {
       const actual = item.product || item.item || item;
-      const key = String(actual.code || actual.id || '').trim().toUpperCase();
-      if (key && !map.has(key)) {
+      const dept = String(actual.department || actual.category || actual.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+      const code = String(actual.code || actual.sku || '').trim().toUpperCase();
+      const id = String(actual.id || '').trim().toUpperCase();
+      const uniqueKey = id ? id : (code ? `${dept}_${code}` : Math.random());
+      if (uniqueKey && !map.has(uniqueKey)) {
         const pUom = actual.purchaseUom || actual.purchaseUnit || actual.unit || 'ชิ้น';
         const bUom = actual.baseUom || actual.stockUnit || actual.unit || 'ชิ้น';
         const convRatio = Number(actual.conversionRatio ?? actual.conversionRate ?? 1) > 0 ? Number(actual.conversionRatio ?? actual.conversionRate ?? 1) : 1;
-        map.set(key, {
+        map.set(uniqueKey, {
           ...actual,
           id: actual.id !== undefined && actual.id !== null ? String(actual.id) : '',
           code: actual.code !== undefined && actual.code !== null ? String(actual.code) : '',
@@ -796,10 +801,14 @@ export const storageService = {
     const isEdit = mode === 'EDIT' || prodObj._mode === 'EDIT' || (Boolean(prodObj.isEdit) && Boolean(prodObj.id));
     const targetId = String(prodObj.id || '').trim().toLowerCase();
     const targetCode = String(prodObj.code || prodObj.sku || '').trim().toLowerCase();
+    const prodDept = String(prodObj.department || prodObj.category || prodObj.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
 
-    // In CREATE mode, check if code already exists
+    // In CREATE mode, check if code already exists in the same department
     if (!isEdit && targetCode) {
-      const duplicate = products.find(p => String(p.code || p.sku || '').trim().toLowerCase() === targetCode);
+      const duplicate = products.find(p => {
+        const isSameDept = matchDepartment(p.department || p.category || p.dept, prodDept);
+        return isSameDept && String(p.code || p.sku || '').trim().toLowerCase() === targetCode;
+      });
       if (duplicate) {
         throw new Error(`รหัสสินค้านี้มีอยู่ในระบบแล้ว กรุณาใช้รหัสอื่น (${targetCode})`);
       }
@@ -808,8 +817,9 @@ export const storageService = {
     const idx = products.findIndex(p => {
       const pId = String(p.id || '').trim().toLowerCase();
       const pCode = String(p.code || p.sku || '').trim().toLowerCase();
+      const isSameDept = matchDepartment(p.department || p.category || p.dept, prodDept);
       if (isEdit) {
-        return (targetId && pId === targetId) || (targetCode && pCode === targetCode);
+        return (targetId && pId === targetId) || (isSameDept && targetCode && pCode === targetCode);
       }
       return targetId && pId === targetId;
     });
@@ -829,13 +839,20 @@ export const storageService = {
 
     return prodObj;
   },
-  deleteProduct(productId) {
+  deleteProduct(productId, department = null) {
     const targetStr = String(productId || '').trim().toLowerCase();
+    const targetDept = department ? String(department).replace(/^DEPT-/, '').trim().toUpperCase() : null;
     const current = this.getProducts();
     const filtered = current.filter(p => {
+      if (isBlacklistedProduct(p)) return false;
       const pId = String(p.id || '').trim().toLowerCase();
+      if (pId && pId === targetStr) return false;
       const pCode = String(p.code || '').trim().toLowerCase();
-      return pId !== targetStr && pCode !== targetStr && !isBlacklistedProduct(p);
+      const pDept = String(p.department || p.category || p.dept || '').replace(/^DEPT-/, '').trim().toUpperCase();
+      if (pCode && pCode === targetStr) {
+        if (!targetDept || !pDept || pDept === targetDept) return false;
+      }
+      return true;
     });
     this.saveProducts(filtered);
 
@@ -1161,11 +1178,14 @@ export const storageService = {
     if (!vendorObj || typeof vendorObj !== 'object') return null;
     const vendors = this.getVendors();
     const targetId = String(vendorObj.id || '').trim().toLowerCase();
-    const targetCode = String(vendorObj.code || '').trim().toLowerCase();
+    const targetCode = String(vendorObj.code || vendorObj.vendorCode || '').trim().toLowerCase();
+    const targetDept = String(vendorObj.department || 'ALL').trim().toUpperCase();
     const idx = vendors.findIndex(v => {
       const vId = String(v.id || '').trim().toLowerCase();
-      const vCode = String(v.code || '').trim().toLowerCase();
-      return (targetId && vId === targetId) || (targetCode && vCode === targetCode);
+      const vCode = String(v.code || v.vendorCode || '').trim().toLowerCase();
+      const vDept = String(v.department || 'ALL').trim().toUpperCase();
+      const isSameScope = (targetDept === 'ALL' || vDept === 'ALL' || matchDepartment(vDept, targetDept));
+      return (targetId && vId === targetId) || (isSameScope && targetCode && vCode === targetCode);
     });
     let updated;
     if (idx !== -1) {

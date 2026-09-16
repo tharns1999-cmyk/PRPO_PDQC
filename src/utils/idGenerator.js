@@ -1,3 +1,5 @@
+import { matchDepartment } from './permissions.js';
+
 /**
  * Document ID & Sequence Generator with Dynamic Max-ID Scanner and Collision Guard
  * 
@@ -124,3 +126,47 @@ export const getNextPONumber = (allPOs = [], department = 'PD', year = 2026, off
 
 // Export generateNextPOId as alias to getNextPONumber for full backward compatibility
 export const generateNextPOId = getNextPONumber;
+
+/**
+ * Calculate next Product SKU / Item Code scoped by department
+ * @param {Array} products - List of product objects
+ * @param {string} currentDept - Target department code (e.g. 'PD', 'QC')
+ * @returns {string} Next unique numeric code string (e.g. '1', '2')
+ */
+export const generateNextProductCode = (products = [], currentDept = 'PD') => {
+  const deptProducts = (products || []).filter(p => p && matchDepartment(p.department || p.category || p.dept, currentDept));
+  const nextNumber = deptProducts.reduce((max, p) => {
+    const num = parseInt(p.code || p.sku, 10);
+    return !isNaN(num) && num > max ? num : max;
+  }, 0) + 1;
+  return String(nextNumber);
+};
+
+export const generateNextCode = generateNextProductCode;
+
+/**
+ * Calculate next Vendor Code scoped by department
+ * @param {Array} vendors - List of vendor objects
+ * @param {string} department - Target department scope (e.g. 'ALL', 'PD', 'QC')
+ * @returns {string} Next unique vendor code (e.g. 'VND-01', 'VND-QC-01')
+ */
+export const generateNextVendorCode = (vendors = [], department = 'ALL') => {
+  const currentDept = (department || 'ALL').toUpperCase().trim();
+  const deptVendors = (vendors || []).filter(v => {
+    if (!v) return false;
+    const vDept = (v.department || 'ALL').toUpperCase().trim();
+    if (currentDept === 'ALL' || vDept === 'ALL') return true;
+    return matchDepartment(vDept, currentDept);
+  });
+
+  const numbers = deptVendors.map(v => {
+    const code = String(v.code || v.vendorCode || '').trim();
+    const match = code.match(/(\d+)$/);
+    return match ? parseInt(match[1], 10) : 0;
+  }).filter(n => !isNaN(n) && n > 0);
+
+  const nextNumber = (numbers.length > 0 ? Math.max(...numbers) : 0) + 1;
+  const prefix = currentDept === 'ALL' ? 'VND' : `VND-${currentDept}`;
+  return `${prefix}-${String(nextNumber).padStart(2, '0')}`;
+};
+

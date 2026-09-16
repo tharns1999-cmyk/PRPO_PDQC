@@ -588,7 +588,19 @@ export default function POListView({ pos = EMPTY_ARRAY, departments: propDepartm
 
                       {/* Col 5: ยอดรวมสุทธิ */}
                       <td className="w-[14%] min-w-[120px] px-4 py-3.5 text-right align-middle whitespace-nowrap font-mono font-bold text-slate-800 text-sm sm:text-base tabular-nums">
-                        ฿{(po.grandTotal || po.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        <div className="flex flex-col items-end">
+                          <span>
+                            ฿{(po.actualTotalAmount !== undefined && po.actualTotalAmount !== null && po.actualTotalAmount !== ''
+                              ? Number(po.actualTotalAmount)
+                              : (po.grandTotal || po.subtotal || 0)
+                            ).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                          {po.settlementStatus === 'SETTLED' && (
+                            <span className="text-[10px] text-emerald-700 font-sans font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 mt-0.5">
+                              {Number(po.savingsAmount) > 0 ? `ประหยัด ฿${Number(po.savingsAmount).toLocaleString()}` : 'ปิดยอดแล้ว'}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Col 6: สถานะ */}

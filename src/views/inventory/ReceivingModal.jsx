@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { 
   Package, Download, AlertTriangle, CheckCircle2, 
   X, UploadCloud, Trash2, Camera, FileText, ArrowLeft,
-  Check, Truck, AlertOctagon
+  Check, Truck, AlertOctagon, Receipt
 } from 'lucide-react';
 import { recordGoodsReceipt as recordGoodsReceiptFn } from '../../context/ProcurementContext';
 import { useAuth } from '../../context/AuthContext';
@@ -952,6 +952,14 @@ export default function ReceivingModal({
             receiverName: receiverName,
             receivedAt: receivedAtIso,
             receivingInfo: receivingMetadata,
+            actualTotalAmount: finalTargetPO.actualTotalAmount,
+            savingsAmount: finalTargetPO.savingsAmount,
+            settlementStatus: finalTargetPO.settlementStatus,
+            settlementNote: finalTargetPO.settlementNote,
+            settlementProofUrl: finalTargetPO.settlementProofUrl,
+            settledBy: finalTargetPO.settledBy,
+            settledAt: finalTargetPO.settledAt,
+            actualItems: finalTargetPO.actualItems,
             prId: finalTargetPO.prId,
             prNo: finalTargetPO.prNo,
             prNumber: finalTargetPO.prNumber,
@@ -1058,6 +1066,25 @@ export default function ReceivingModal({
                 <div className="font-bold text-emerald-800">สินค้าทุกรายการได้รับการตรวจรับหรือเคลมชดเชยครบถ้วนแล้ว (100% Accounted)</div>
                 <div className="text-emerald-700 text-[11px] mt-0.5">
                   รายการสินค้าในใบสั่งซื้อนี้รับเข้าคลังครบถ้วนหรือได้รับการชดเชยเงินคืนแล้ว สามารถกดปุ่ม &quot;ยืนยันปิดงานใบสั่งซื้อ (Finalize PO)&quot; ด้านล่างเพื่อบันทึกปิดงานสมบูรณ์
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Online Settlement Notification Banner */}
+          {targetPO.settlementStatus === 'SETTLED' && (
+            <div className="bg-emerald-50/90 border border-emerald-300 rounded-xl p-3 flex items-start gap-2.5 text-xs text-emerald-950 shadow-2xs">
+              <Receipt className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="font-bold text-emerald-900 flex items-center justify-between">
+                  <span>ใบสั่งซื้อนี้ปิดยอดจ่ายจริงแล้ว (Online Settled)</span>
+                  <span className="font-mono text-emerald-800 font-black">
+                    จ่ายจริง: ฿{Number(targetPO.actualTotalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="text-emerald-700 text-[11px] mt-0.5">
+                  ราคาทุนสต็อกจะถูกบันทึกลง StockLogs ตามมูลค่าจ่ายจริงที่คำนวณไว้
+                  {targetPO.savingsAmount > 0 && ` (ประหยัด ฿${Number(targetPO.savingsAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })} คืนงบประมาณแล้ว)`}
                 </div>
               </div>
             </div>

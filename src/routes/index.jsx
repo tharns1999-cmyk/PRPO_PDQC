@@ -106,14 +106,15 @@ function SafeFallbackRedirect() {
 // ── View Wrapper Components (Inject exact props from Context) ──
 
 function DashboardRoute() {
-  const { prs, pos, products, budgetSummary, currentRole, onNavigate, handleQuickPR, handleOpenPRById, handleOpenPOById, isLoading, isDataLoading } = useAppContext();
+  const { prs, pos, products, budgetSummary, currentRole, currentUser, onNavigate, handleQuickPR, handleOpenPRById, handleOpenPOById, isLoading, isDataLoading } = useAppContext();
   return (
     <DashboardView
       prs={prs}
       pos={pos}
       products={products}
-      budgetSummary={budgetSummary?.current}
+      budgetSummary={budgetSummary?.current || budgetSummary}
       currentRole={currentRole}
+      currentUser={currentUser || currentRole}
       onNavigate={onNavigate}
       onQuickPR={handleQuickPR}
       onOpenPR={handleOpenPRById}
@@ -205,7 +206,7 @@ function StockCardRoute() {
 }
 
 function QuickIssueRoute() {
-  const { products, stockLogs, currentRole, currentUser, usageUnits, departments, refreshData } = useAppContext();
+  const { products, stockLogs, currentRole, currentUser, usageUnits, departments, refreshData, handleIssueStock } = useAppContext();
   return (
     <QuickIssueView
       products={products}
@@ -215,6 +216,7 @@ function QuickIssueRoute() {
       usageUnits={usageUnits}
       departments={departments}
       onRefresh={refreshData}
+      onIssueStock={handleIssueStock}
     />
   );
 }

@@ -209,6 +209,15 @@ export default function PrintablePO({ po }) {
 
   const grandTotal = hasVat ? parseFloat((subtotal + vatAmount).toFixed(2)) : subtotal;
 
+  const hasSettlement = Boolean(
+    po.settlementStatus === 'SETTLED' ||
+    (po.actualTotalAmount !== undefined && po.actualTotalAmount !== null && po.actualTotalAmount !== '' && Number(po.actualTotalAmount) >= 0)
+  );
+  const actualTotal = hasSettlement ? Number(po.actualTotalAmount || 0) : grandTotal;
+  const savingsAmount = hasSettlement
+    ? (po.savingsAmount !== undefined ? Number(po.savingsAmount) : (grandTotal - actualTotal))
+    : 0;
+
   // Online PO & Store Resolution (Directive 1 & 2)
   const isOnline = Boolean(
     po.purchaseChannel === 'ONLINE' || 
@@ -371,8 +380,8 @@ export default function PrintablePO({ po }) {
         </thead>
         <tbody style={{ display: 'table-row-group' }}>
           {(po.items || []).map((item, index) => {
-            const itemQty = Number(item.actualQty ?? item.qty ?? item.purchaseQty) || 0;
-            const itemPrice = Number(item.actualPrice ?? item.price ?? item.unitPrice ?? item.estimatedPrice) || 0;
+            const itemQty = Number(item.originalPurchaseQty ?? item.orderedQty ?? item.qty ?? item.purchaseQty ?? item.actualQty) || 0;
+            const itemPrice = Number(item.originalEstimatedPrice ?? item.price ?? item.unitPrice ?? item.actualPrice ?? item.estimatedPrice) || 0;
             const itemTotal = itemQty * itemPrice;
 
             return (
@@ -473,6 +482,44 @@ export default function PrintablePO({ po }) {
             </div>
           </div>
         </div>
+
+        {/* Actual Settlement Summary Box (Rendered when PO has settled actual amount) */}
+        {hasSettlement && (
+          <div
+            className="settlement-summary-box border border-emerald-600 bg-emerald-50/50 rounded p-2.5 my-3 break-inside-avoid print:break-inside-avoid text-xs"
+            style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}
+          >
+            <div className="flex items-center justify-between font-bold text-emerald-900 border-b border-emerald-200 pb-1 mb-1.5">
+              <span>{cleanThaiText('สรุปการตรวจรับและปิดยอดจ่ายจริง (Actual Settlement Summary)')}</span>
+              {savingsAmount > 0 && (
+                <span className="text-[11px] bg-emerald-700 text-white px-2 py-0.2 rounded font-sans font-medium">
+                  {cleanThaiText('คืนงบประมาณแล้ว')}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-2 font-mono text-[11px] text-slate-800">
+              <div>
+                <span className="text-slate-500 block font-sans text-[10px]">{cleanThaiText('ยอดอนุมัติเดิม (Approved Total):')}</span>
+                <span className="font-bold">฿{grandTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block font-sans text-[10px]">{cleanThaiText('ยอดจ่ายจริง (Actual Payment):')}</span>
+                <span className="font-bold text-emerald-800">฿{actualTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block font-sans text-[10px]">{cleanThaiText('ส่วนต่างงบ (Savings / Variance):')}</span>
+                <span className={`font-bold ${savingsAmount >= 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {savingsAmount >= 0 ? '+' : ''}฿{savingsAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+            {po.settlementNote && (
+              <div className="mt-1.5 pt-1 border-t border-emerald-100 text-[10px] text-slate-600 font-sans">
+                <strong>{cleanThaiText('หมายเหตุการปิดยอด: ')}</strong>{cleanThaiText(po.settlementNote)}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Electronic Approvals & Acknowledgement */}
         <table 
@@ -604,6 +651,11 @@ export default function PrintablePO({ po }) {
                     <p className="text-xs text-slate-600">( ........................................... )</p>
                     <p className="text-[11px] text-slate-400 mt-1">วันที่ ..... / ..... / .........</p>
                   </>
+                )}
+                {hasSettlement && (
+                  <p className="text-[10px] font-bold text-emerald-800 mt-1 font-mono">
+                    {cleanThaiText(`* ยืนยันยอดตรวจรับและจ่ายจริง ฿${actualTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)}
+                  </p>
                 )}
               </div>
             </td>

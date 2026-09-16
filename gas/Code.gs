@@ -275,7 +275,11 @@ function apiSaveMasterItem(collectionOrPayload, itemOrUser, userContext) {
     targetItem = targetItem ? Object.assign({}, targetItem) : {};
 
     // Fallback department
-    targetItem.department = targetItem.department || targetItem.dept || user.department || 'PD';
+    var rawDept = targetItem.department || targetItem.dept || targetItem.category || user.department || 'PD';
+    var cleanDept = String(rawDept).replace(/^DEPT-/, '').trim().toUpperCase() || 'PD';
+    targetItem.department = cleanDept;
+    targetItem.category = cleanDept;
+    targetItem.dept = cleanDept;
     targetItem.updatedAt = new Date().toISOString();
     if (!targetItem.createdAt && !targetItem.id) {
       targetItem.createdAt = new Date().toISOString();
@@ -306,6 +310,36 @@ function apiSaveMasterItem(collectionOrPayload, itemOrUser, userContext) {
     if (targetItem.status === undefined && targetItem.isActive === undefined) {
       targetItem.status = 'ACTIVE';
       targetItem.isActive = true;
+    }
+
+    // Uniqueness validation for PRODUCTS and VENDORS scoped by Department
+    if ((sheetName === SHEET_NAMES.PRODUCTS || sheetName === SHEET_NAMES.VENDORS) && targetCode) {
+      var existingItems = batchReadRecords(sheetName) || [];
+      var isDuplicate = existingItems.some(function(existing) {
+        if (!existing) return false;
+        if (targetItem.id && String(existing.id).trim().toLowerCase() === String(targetItem.id).trim().toLowerCase()) {
+          return false;
+        }
+        var existingCode = String(existing.code || existing.sku || existing.vendorCode || '').trim().toUpperCase();
+        if (!existingCode || existingCode !== targetCode) {
+          return false;
+        }
+
+        if (sheetName === SHEET_NAMES.PRODUCTS) {
+          var existingDept = existing.department || existing.category || existing.dept || 'PD';
+          var itemDept = targetItem.department || targetItem.category || targetItem.dept || 'PD';
+          return matchDepartment(existingDept, itemDept);
+        } else {
+          var exDept = String(existing.department || 'ALL').trim().toUpperCase();
+          var itDept = String(targetItem.department || 'ALL').trim().toUpperCase();
+          return (exDept === 'ALL' || itDept === 'ALL' || matchDepartment(exDept, itDept));
+        }
+      });
+
+      if (isDuplicate) {
+        var entityName = (sheetName === SHEET_NAMES.PRODUCTS) ? 'สินค้า' : 'ผู้ขาย';
+        throw new Error('VALIDATION_ERROR: รหัส' + entityName + ' "' + targetCode + '" ซ้ำกับข้อมูลในแผนก ' + cleanDept);
+      }
     }
 
     // High-speed RAM array search + batch write
@@ -1464,7 +1498,10 @@ function ensurePOSheetHeaders(sheet) {
   if (lastCol === 0) return;
   var headerValues = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   var headers = headerValues.map(function(h) { return String(h).trim(); });
-  var REQUIRED_RECEIVING_HEADERS = ['receivedBy', 'receiverName', 'receiverId', 'receivedAt', 'receiverRole', 'receiverSignature', 'receivingInfo'];
+  var REQUIRED_RECEIVING_HEADERS = [
+    'receivedBy', 'receiverName', 'receiverId', 'receivedAt', 'receiverRole', 'receiverSignature', 'receivingInfo',
+    'actualTotalAmount', 'savingsAmount', 'settlementStatus', 'settlementNote', 'settlementProofUrl', 'settledBy', 'settledAt', 'actualItems'
+  ];
   var missing = [];
   REQUIRED_RECEIVING_HEADERS.forEach(function(col) {
     if (headers.indexOf(col) === -1) {
@@ -1658,7 +1695,23 @@ function packageUpdatedPO(poObj) {
     packaged.receivingInfo.receiverRole = packaged.receiverRole;
   }
 
-  // 5. Attach up-to-date AuditLogs for this PO if poNo is present
+  // 5. Harmonize Online PO Settlement Fields
+  if (typeof packaged.actualItems === 'string') {
+    try { packaged.actualItems = JSON.parse(packaged.actualItems); } catch(e) { packaged.actualItems = null; }
+  }
+  packaged.actualTotalAmount = (packaged.actualTotalAmount !== undefined && packaged.actualTotalAmount !== null && packaged.actualTotalAmount !== '')
+    ? Number(packaged.actualTotalAmount)
+    : null;
+  packaged.savingsAmount = (packaged.savingsAmount !== undefined && packaged.savingsAmount !== null && packaged.savingsAmount !== '')
+    ? Number(packaged.savingsAmount)
+    : null;
+  packaged.settlementStatus = packaged.settlementStatus || (packaged.actualTotalAmount !== null ? 'SETTLED' : 'UNSETTLED');
+  packaged.settlementNote = packaged.settlementNote || '';
+  packaged.settlementProofUrl = packaged.settlementProofUrl || '';
+  packaged.settledBy = packaged.settledBy || '';
+  packaged.settledAt = packaged.settledAt || '';
+
+  // 6. Attach up-to-date AuditLogs for this PO if poNo is present
   var docNo = packaged.poNo || packaged.id;
   if (docNo) {
     try {
@@ -1999,6 +2052,53 @@ function apiReceivePO(rawPayload, userContext) {
       poObj.claimData = JSON.stringify(poObj.claimData);
     }
 
+    // ── 9.5 Handle On-the-spot Settlement if provided during receiving ──────
+    if (payload.actualTotalAmount !== undefined && payload.actualTotalAmount !== null && payload.actualTotalAmount !== '') {
+      var grandTot = Number(poObj.grandTotal || poObj.totalAmount || 0);
+      var actTot = Number(payload.actualTotalAmount);
+      var sav = grandTot - actTot;
+      poObj.actualTotalAmount = actTot;
+      poObj.savingsAmount = sav;
+      poObj.settlementStatus = 'SETTLED';
+      poObj.settlementNote = payload.settlementNote || poObj.settlementNote || '';
+      poObj.settlementProofUrl = payload.settlementProofUrl || poObj.settlementProofUrl || '';
+      poObj.settledBy = user.employeeName || user.name || user.username || 'Receiver';
+      poObj.settledAt = new Date().toISOString();
+
+      var ratio = grandTot > 0 ? (actTot / grandTot) : 1;
+      var rawItems = poObj.items;
+      if (typeof rawItems === 'string') {
+        try { rawItems = JSON.parse(rawItems); } catch(e) { rawItems = []; }
+      }
+      if (Array.isArray(rawItems)) {
+        rawItems.forEach(function(it) {
+          var bp = Number(it.price || it.unitPrice || it.estimatedPrice || 0);
+          it.actualPrice = Math.round((bp * ratio) * 100) / 100;
+          it.actualUnitPrice = it.actualPrice;
+          it.unitPrice = it.actualPrice;
+        });
+        poObj.items = JSON.stringify(rawItems);
+        poObj.actualItems = JSON.stringify(rawItems);
+      }
+
+      if (sav > 0) {
+        try {
+          var txObj = {
+            dept: dept,
+            amount: sav,
+            refundAmount: sav,
+            type: 'BUDGET_ROLLBACK',
+            docType: 'PO',
+            docNo: poObj.poNo || poObj.id,
+            note: 'คืนงบประมาณจากการปิดยอดจ่ายจริงในการตรวจรับ PO ' + (poObj.poNo || poObj.id) + ' (ประหยัด ฿' + sav.toLocaleString() + ')'
+          };
+          apiAppendBudgetTransaction(txObj, userContext);
+        } catch(bErr) {
+          console.warn('[apiReceivePO] Settlement budget refund warning: ' + bErr.message);
+        }
+      }
+    }
+
     // ── 9. Atomic write to POs sheet ─────────────────────────────────────────
     var updatedPO = upsertRecordFast(SHEET_NAMES.POS, 'id', poObj);
     console.log('[apiReceivePO] PO "' + (poObj.poNo || poId) + '" written to sheet. Status: ' + poObj.status + (incomingGrn ? ' | GRN: ' + incomingGrn : ''));
@@ -2068,6 +2168,108 @@ function apiReceivePO(rawPayload, userContext) {
 
     return packageUpdatedPO(updatedPO);
   }, 'ReceivePO', rawPayload, userContext);
+}
+
+/**
+ * Settles an Online PO with actual transfer amounts, calculates savings,
+ * adjusts line-item actual unit prices for inventory costing, and refunds unused budget.
+ */
+function apiSettlePO(rawPayload, userContext) {
+  return handleApiRequest(function(payload, user) {
+    var poId = payload.poId || payload.id || payload.poNo;
+    if (!poId) throw new Error('VALIDATION_ERROR: Missing poId for settlement');
+
+    var allPOs = batchReadRecords(SHEET_NAMES.POS);
+    var targetPO = null;
+    for (var i = 0; i < allPOs.length; i++) {
+      if (String(allPOs[i].id) === String(poId) || String(allPOs[i].poNo) === String(poId)) {
+        targetPO = allPOs[i];
+        break;
+      }
+    }
+    if (!targetPO) throw new Error('NOT_FOUND: PO "' + poId + '" not found');
+
+    var originalTotal = Number(targetPO.grandTotal || targetPO.totalAmount || targetPO.subtotal || 0);
+    var actualTotal = Number(payload.actualTotalAmount !== undefined ? payload.actualTotalAmount : payload.actualTotal);
+    if (isNaN(actualTotal) || actualTotal < 0) {
+      throw new Error('VALIDATION_ERROR: Invalid actualTotalAmount');
+    }
+
+    var savings = originalTotal - actualTotal;
+
+    // Parse items
+    var items = targetPO.items;
+    if (typeof items === 'string') {
+      try { items = JSON.parse(items); } catch(e) { items = []; }
+    }
+    if (!Array.isArray(items)) items = [];
+
+    // Calculate actualUnitPrice per item based on actual ratio or explicit actualItems
+    var costRatio = originalTotal > 0 ? (actualTotal / originalTotal) : 1;
+    var actualItems = payload.actualItems;
+    if (typeof actualItems === 'string') {
+      try { actualItems = JSON.parse(actualItems); } catch(e) { actualItems = null; }
+    }
+
+    items.forEach(function(item, idx) {
+      var explicitActual = Array.isArray(actualItems) && actualItems[idx];
+      var basePrice = Number(item.price || item.unitPrice || item.estimatedPrice || 0);
+      var unitPrice = explicitActual && explicitActual.actualUnitPrice !== undefined
+        ? Number(explicitActual.actualUnitPrice)
+        : Math.round((basePrice * costRatio) * 100) / 100;
+      
+      item.actualPrice = unitPrice;
+      item.actualUnitPrice = unitPrice;
+      item.unitPrice = unitPrice;
+    });
+
+    targetPO.actualTotalAmount = actualTotal;
+    targetPO.savingsAmount = savings;
+    targetPO.settlementStatus = 'SETTLED';
+    targetPO.settlementNote = payload.settlementNote || payload.note || '';
+    targetPO.settlementProofUrl = payload.settlementProofUrl || payload.proofUrl || '';
+    targetPO.settledBy = user.employeeName || user.name || user.username || 'Purchaser';
+    targetPO.settledAt = new Date().toISOString();
+    targetPO.actualItems = JSON.stringify(actualItems || items);
+    targetPO.items = JSON.stringify(items);
+    targetPO.updatedAt = new Date().toISOString();
+
+    // If savings > 0, automatically refund department budget
+    if (savings > 0) {
+      var dept = targetPO.department || user.department || 'PD';
+      try {
+        var txObj = {
+          dept: dept,
+          amount: savings,
+          refundAmount: savings,
+          type: 'BUDGET_ROLLBACK',
+          docType: 'PO',
+          docNo: targetPO.poNo || targetPO.id,
+          note: 'คืนงบประมาณจากการปิดยอดจ่ายจริง (Online Settlement) PO ' + (targetPO.poNo || targetPO.id) + ' (ประหยัด ฿' + savings.toLocaleString() + ')'
+        };
+        apiAppendBudgetTransaction(txObj, userContext);
+      } catch (bErr) {
+        console.warn('[apiSettlePO] Budget refund warning: ' + bErr.message);
+      }
+    }
+
+    // Record AuditLog
+    try {
+      recordAuditLogEntry({
+        docNo: targetPO.poNo || targetPO.id,
+        targetRef: targetPO.poNo || targetPO.id,
+        action: 'PO_SETTLED',
+        actor: user,
+        comment: 'ปิดยอดจ่ายจริง (Online Settlement): ยอดอนุมัติ ฿' + originalTotal.toLocaleString() + ' | ยอดจ่ายจริง ฿' + actualTotal.toLocaleString() + (savings > 0 ? (' | ประหยัดงบ ฿' + savings.toLocaleString()) : '') + (targetPO.settlementNote ? (' | ' + targetPO.settlementNote) : ''),
+        status: targetPO.status
+      });
+    } catch (auditErr) {
+      console.warn('[apiSettlePO] AuditLog warning: ' + auditErr.message);
+    }
+
+    var updatedPO = upsertRecordFast(SHEET_NAMES.POS, 'id', targetPO);
+    return packageUpdatedPO(updatedPO);
+  }, 'SettlePO', rawPayload, userContext);
 }
 
 /**
@@ -2191,8 +2393,8 @@ function apiAppendStockMovements(movementsListOrPayload, userContext) {
         qty: qty,
         unit: mov.unit || mov.stockUnit || (prod ? prod.stockUnit : 'ชิ้น'),
         conversionRate: Number(mov.conversionRate || 1),
-        unitPrice: Number(mov.unitPrice || 0),
-        totalPrice: Number(mov.totalPrice || (qty * Number(mov.unitPrice || 0))),
+        unitPrice: Number(mov.unitPrice !== undefined ? mov.unitPrice : (mov.actualUnitPrice !== undefined ? mov.actualUnitPrice : (mov.actualPrice || 0))),
+        totalPrice: Number(mov.totalPrice !== undefined ? mov.totalPrice : (qty * Number(mov.unitPrice || mov.actualUnitPrice || mov.actualPrice || 0))),
         balanceAfter: newBalance,
         actorName: mov.actorName || defaultActor,
         department: mov.department || (prod ? prod.department : dept),
@@ -2226,16 +2428,177 @@ function apiReceiveStock(rawPayload, userContext) {
 }
 
 /**
- * Issues stock from inventory (Atomic Response).
+ * Ensures StockLogs sheet contains all required standard header columns.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function ensureStockLogSheetHeaders(sheet) {
+  var REQUIRED_HEADERS = [
+    'id', 'timestamp', 'type', 'productId', 'productCode', 'productName',
+    'department', 'changeQty', 'balanceAfter', 'issuedTo', 'reason', 'actorId', 'actorName'
+  ];
+
+  if (!sheet) return;
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+
+  if (lastRow === 0 || lastCol === 0) {
+    sheet.getRange(1, 1, 1, REQUIRED_HEADERS.length).setValues([REQUIRED_HEADERS]);
+    return;
+  }
+
+  var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+    return String(h || '').trim();
+  });
+
+  var missingHeaders = REQUIRED_HEADERS.filter(function(h) {
+    return existingHeaders.indexOf(h) === -1;
+  });
+
+  if (missingHeaders.length > 0) {
+    var startCol = existingHeaders.length + 1;
+    sheet.getRange(1, startCol, 1, missingHeaders.length).setValues([missingHeaders]);
+  }
+}
+
+/**
+ * Issues stock from inventory (Atomic Script-Locked Real-time Deduction).
+ * Accurately updates stockBalance in Products sheet and records entry in StockLogs sheet.
  */
 function apiIssueStock(rawPayload, userContext) {
-  return handleApiRequest(function(payload, user) {
-    var items = Array.isArray(payload) ? payload : (payload.items || payload.movements || [payload]);
-    items.forEach(function(it) { if (it && typeof it === 'object') it.type = 'OUT'; });
-    var res = apiAppendStockMovements(items, userContext);
-    var data = (res && res.data) ? res.data : res;
-    return { success: true, data: data };
-  }, 'IssueStock', rawPayload, userContext);
+  var lock = LockService.getScriptLock();
+  try {
+    // ล็อกระบบป้องกันการแย่งเขียนข้อมูล (Timeout 15 วินาที)
+    lock.waitLock(15000);
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var prodSheet = ss.getSheetByName(SHEET_NAMES.PRODUCTS || 'Products');
+    var logSheet = ss.getSheetByName(SHEET_NAMES.STOCK_LOGS || 'StockLogs');
+    
+    if (!prodSheet || !logSheet) throw new Error("ไม่พบชีต Products หรือ StockLogs");
+
+    var payload = rawPayload;
+    if (typeof rawPayload === 'string') {
+      try { payload = JSON.parse(rawPayload); } catch (e) { payload = {}; }
+    }
+    payload = payload || {};
+    if (Array.isArray(payload)) payload = payload[0] || {};
+
+    var user = userContext || payload.currentUser || payload.user || {};
+    var productId = payload.productId || payload.id;
+    var productCode = payload.productCode || payload.code || payload.sku;
+    var department = payload.department || payload.category || (user && user.department);
+    var quantity = payload.quantity !== undefined ? payload.quantity : (payload.qty || payload.issueQty);
+    var issuedTo = payload.issuedTo || payload.issueUnit || payload.unitName || '';
+    var reason = payload.reason || payload.note || 'เบิกจ่ายด่วน';
+    var requesterId = payload.requesterId || payload.userId || (user && (user.id || user.username)) || '';
+    var requesterName = payload.requesterName || payload.userName || (user && (user.name || user.displayName)) || issuedTo || '';
+
+    var issueQty = Math.abs(Number(quantity));
+    if (isNaN(issueQty) || issueQty <= 0) throw new Error("จำนวนที่เบิกจ่ายไม่ถูกต้อง");
+
+    // 1. ค้นหาสินค้าในชีต Products ด้วย ID เป็นหลัก (Fallback ด้วย Code + แผนก)
+    var prodData = prodSheet.getDataRange().getValues();
+    var prodHeaders = prodData[0].map(function(h) { return String(h || '').trim(); });
+    var idIdx = prodHeaders.indexOf('id');
+    var codeIdx = prodHeaders.indexOf('code');
+    var deptIdx = prodHeaders.indexOf('department');
+    if (deptIdx === -1) deptIdx = prodHeaders.indexOf('category');
+    var balanceIdx = prodHeaders.indexOf('stockBalance');
+    var nameIdx = prodHeaders.indexOf('name');
+    var updateIdx = prodHeaders.indexOf('updatedAt');
+
+    var targetRowIndex = -1;
+    for (var i = 1; i < prodData.length; i++) {
+      var row = prodData[i];
+      // ค้นหาด้วย id ก่อน
+      if (productId && String(row[idIdx]).trim() === String(productId).trim()) {
+        targetRowIndex = i + 1;
+        break;
+      }
+      // Fallback ด้วย Department + Code
+      if (department && productCode && 
+          matchDepartment(row[deptIdx], department) && 
+          String(row[codeIdx]).trim() === String(productCode).trim()) {
+        targetRowIndex = i + 1;
+        break;
+      }
+    }
+
+    if (targetRowIndex === -1) throw new Error("ไม่พบสินค้านี้ในระบบเพื่อตัดสต็อก");
+
+    // 2. คำนวณยอดสต็อกใหม่
+    var currentRow = prodData[targetRowIndex - 1];
+    var currentBalance = Number(currentRow[balanceIdx] || 0);
+    if (currentBalance < issueQty) {
+      throw new Error("จำนวนคงเหลือไม่พอเบิก (มี " + currentBalance + ", ต้องการเบิก " + issueQty + ")");
+    }
+    var newBalance = Math.round((currentBalance - issueQty) * 10000) / 10000;
+
+    // อัปเดต stockBalance และ updatedAt ลงใน Products
+    prodSheet.getRange(targetRowIndex, balanceIdx + 1).setValue(newBalance);
+    if (updateIdx !== -1) {
+      prodSheet.getRange(targetRowIndex, updateIdx + 1).setValue(new Date().toISOString());
+    }
+
+    // 3. บันทึกแถวใหม่ลงในชีต StockLogs
+    ensureStockLogSheetHeaders(logSheet);
+    var logHeaders = logSheet.getDataRange().getValues()[0].map(function(h) { return String(h || '').trim(); });
+    var logId = 'LOG-' + (department || 'PD') + '-' + Date.now();
+    var nowIso = new Date().toISOString();
+    var logRecord = {
+      id: logId,
+      timestamp: nowIso,
+      date: nowIso,
+      type: 'ISSUE', // บันทึกสถานะการเบิกจ่าย
+      productId: String(currentRow[idIdx] || productId || ''),
+      productCode: String(currentRow[codeIdx] || productCode || ''),
+      productName: String(currentRow[nameIdx] || ''),
+      name: String(currentRow[nameIdx] || ''),
+      department: department || (deptIdx !== -1 ? currentRow[deptIdx] : 'PD'),
+      changeQty: -issueQty, // ติดลบสำหรับตัดสต็อก
+      qty: issueQty,
+      unit: (prodHeaders.indexOf('stockUnit') !== -1 ? currentRow[prodHeaders.indexOf('stockUnit')] : '') || 
+            (prodHeaders.indexOf('unit') !== -1 ? currentRow[prodHeaders.indexOf('unit')] : 'ชิ้น') || 'ชิ้น',
+      balanceAfter: newBalance,
+      balance: newBalance,
+      issuedTo: issuedTo || '',
+      reason: reason || 'เบิกจ่ายด่วน',
+      notes: reason || 'เบิกจ่ายด่วน',
+      actorId: requesterId || '',
+      actorName: requesterName || issuedTo || ''
+    };
+
+    var newLogRow = logHeaders.map(function(header) {
+      var val = logRecord[header];
+      return val !== undefined ? val : '';
+    });
+    var nextRow = logSheet.getLastRow() + 1;
+    logSheet.getRange(nextRow, 1, 1, newLogRow.length).setValues([newLogRow]);
+
+    var updatedProductObj = {};
+    for (var c = 0; c < prodHeaders.length; c++) {
+      updatedProductObj[prodHeaders[c]] = currentRow[c];
+    }
+    updatedProductObj.id = currentRow[idIdx];
+    updatedProductObj.stockBalance = newBalance;
+    updatedProductObj.updatedAt = nowIso;
+
+    return {
+      success: true,
+      data: {
+        updatedProduct: updatedProductObj,
+        logEntry: logRecord
+      },
+      updatedProduct: updatedProductObj,
+      logEntry: logRecord
+    };
+
+  } catch (error) {
+    return { success: false, error: error.message, message: error.message };
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
 }
 
 // =========================================================================
@@ -2747,4 +3110,44 @@ function batchUpsertRecordsFast(sheetName, idField, records) {
   
   return records;
 }
+
+/**
+ * Universal Department Matcher for Google Apps Script.
+ * Matches department codes, IDs, or names across representations (e.g. 'QC' vs 'DEPT-QC', 'ALL', 'BOTH', '*').
+ *
+ * @param {string|Object} prodDept - Department code/id/object of the entity
+ * @param {string|Object} targetDept - Department code/id/object to compare against
+ * @returns {boolean}
+ */
+function matchDepartment(prodDept, targetDept) {
+  if (!prodDept || !targetDept) return false;
+
+  var rawTargetStr = typeof targetDept === 'string' ? targetDept.trim().toUpperCase() : '';
+  var rawProductStr = typeof prodDept === 'string' ? prodDept.trim().toUpperCase() : '';
+  if (rawTargetStr === 'ALL' || rawTargetStr === '*' || rawTargetStr === 'BOTH') return true;
+  if (rawProductStr === 'ALL' || rawProductStr === '*' || rawProductStr === 'BOTH') return true;
+
+  var p = String((prodDept && (prodDept.code || prodDept.id)) || prodDept).trim().toUpperCase();
+
+  if (typeof targetDept === 'string') {
+    var t = targetDept.trim().toUpperCase();
+    return p === t || 
+           p.replace(/^DEPT-/, '') === t.replace(/^DEPT-/, '') ||
+           p === t.replace(/^DEPT-/, '') ||
+           t === p.replace(/^DEPT-/, '');
+  }
+
+  var tId = String(targetDept.id || '').trim().toUpperCase();
+  var tCode = String(targetDept.code || '').trim().toUpperCase();
+  var tName = String(targetDept.name || '').trim().toUpperCase();
+
+  if (tId === 'ALL' || tCode === 'ALL') return true;
+
+  return p === tCode || 
+         p === tId || 
+         p.replace(/^DEPT-/, '') === tId.replace(/^DEPT-/, '') ||
+         p.replace(/^DEPT-/, '') === tCode.replace(/^DEPT-/, '') ||
+         (Boolean(tName) && p === tName);
+}
+
 

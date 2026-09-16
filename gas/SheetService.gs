@@ -541,7 +541,7 @@ function saveMasterItem(collection, item) {
     };
   }
 
-  // 1. Duplicate code validation
+  // 1. Duplicate code validation scoped by department
   if (itemCode) {
     const existingRecords = batchReadRecords(sheetName);
     const isDuplicate = existingRecords.some(r => {
@@ -550,7 +550,20 @@ function saveMasterItem(collection, item) {
       if (item.id && rId === String(item.id).trim()) {
         return false;
       }
-      return rCode === itemCode;
+      if (rCode !== itemCode) return false;
+
+      // Department scope check for Products and Vendors
+      if (sheetName === SHEET_NAMES.PRODUCTS) {
+        const isSameDept = matchDepartment(r.department || r.category || r.dept, item.department || item.category || item.dept);
+        return isSameDept;
+      } else if (sheetName === SHEET_NAMES.VENDORS) {
+        const rDept = String(r.department || 'ALL').trim().toUpperCase();
+        const itemDept = String(item.department || 'ALL').trim().toUpperCase();
+        const isSameScope = (rDept === 'ALL' || itemDept === 'ALL' || matchDepartment(rDept, itemDept));
+        return isSameScope;
+      }
+
+      return true;
     });
 
     if (isDuplicate) {
@@ -625,4 +638,39 @@ function deleteMasterItem(collection, id) {
     message: 'ลบข้อมูลเรียบร้อยแล้ว'
   };
 }
+
+/**
+ * Ensures StockLogs sheet contains all required standard header columns.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function ensureStockLogSheetHeaders(sheet) {
+  var REQUIRED_HEADERS = [
+    'id', 'timestamp', 'type', 'productId', 'productCode', 'productName',
+    'department', 'changeQty', 'balanceAfter', 'issuedTo', 'reason', 'actorId', 'actorName'
+  ];
+
+  if (!sheet) return;
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+
+  if (lastRow === 0 || lastCol === 0) {
+    sheet.getRange(1, 1, 1, REQUIRED_HEADERS.length).setValues([REQUIRED_HEADERS]);
+    return;
+  }
+
+  var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+    return String(h || '').trim();
+  });
+
+  var missingHeaders = REQUIRED_HEADERS.filter(function(h) {
+    return existingHeaders.indexOf(h) === -1;
+  });
+
+  if (missingHeaders.length > 0) {
+    var startCol = existingHeaders.length + 1;
+    sheet.getRange(1, startCol, 1, missingHeaders.length).setValues([missingHeaders]);
+  }
+}
+
 

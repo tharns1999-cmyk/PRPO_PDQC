@@ -72,7 +72,8 @@ export default function QuickIssueView({
   currentUser: propCurrentUser,
   onRefresh,
   onNavigate,
-  onQuickPR
+  onQuickPR,
+  onIssueStock
 }) {
   const user = useMemo(() => propCurrentUser || currentRole || {}, [propCurrentUser, currentRole]);
 
@@ -306,11 +307,28 @@ export default function QuickIssueView({
     setIsSubmitting(true);
     try {
       const fullNote = `[${productionUnit}] ${reason}${note.trim() ? ` — ${note.trim()}` : ''}`;
-      await apiService.quickIssueStock(selectedProdId, qtyNumber, currentRole, fullNote, productionUnit);
+      const payload = {
+        productId: selectedProduct.id,
+        productCode: selectedProduct.code,
+        department: selectedProduct.department || selectedProduct.category || user?.department || 'PD',
+        quantity: qtyNumber,
+        issuedTo: productionUnit,
+        reason: fullNote,
+        requesterId: user?.id || user?.username,
+        requesterName: user?.name,
+        user
+      };
+
+      if (onIssueStock) {
+        await onIssueStock(payload);
+      } else {
+        await apiService.issueStock(payload);
+      }
+
       setSuccessMsg(`เบิกสินค้า [${selectedProduct.name}] สำหรับ ${productionUnit} จำนวน ${qtyNumber} ${sUnit} สำเร็จ! ยอดสต็อกตัดจ่ายเรียบร้อย`);
       setIssueQty(1);
       setNote('');
-      onRefresh();
+      if (onRefresh) onRefresh();
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
