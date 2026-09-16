@@ -2473,36 +2473,144 @@ function apiReceivePO(rawPayload, userContext) {
     poObj.createdAt = poObj.createdAt || new Date().toISOString();
     poObj.updatedAt = new Date().toISOString();
 
+    // Read old items to compute delta
+    var oldItemsMap = {};
+    if (livePO && typeof livePO.items === 'string') {
+      try {
+        var parsedOldItems = JSON.parse(livePO.items);
+        parsedOldItems.forEach(function(oldIt) {
+          oldItemsMap[oldIt.productId || oldIt.id || oldIt.code] = Number(oldIt.receivedQty || 0);
+        });
+      } catch(e) {}
+    }
+
     // Status: Partial vs Full Receiving Logic
     var rawItemsForPartial = payload.items || poObj.items;
     if (typeof rawItemsForPartial === 'string') {
       try { rawItemsForPartial = JSON.parse(rawItemsForPartial); } catch(e) { rawItemsForPartial = []; }
     }
+    
     var isPartial = false;
+    var stockMovements = [];
+    var productCostUpdates = {};
+
     if (Array.isArray(rawItemsForPartial)) {
       for (var pIdx = 0; pIdx < rawItemsForPartial.length; pIdx++) {
         var it = rawItemsForPartial[pIdx];
-        var q = Number(it.quantity || 0);
-        var rQ = Number(it.receivedQty || 0);
-        var remQ = it.remainingQty !== undefined ? Number(it.remainingQty) : (q - rQ);
+        var q = Number(it.quantity || it.orderedQty || 0);
+        var newTotalReceived = Number(it.receivedQty || 0);
+        var oldReceived = oldItemsMap[it.productId || it.id || it.code] || 0;
+        
+        var roundReceiveQty = Math.max(0, newTotalReceived - oldReceived);
+        var remQ = Math.max(0, q - newTotalReceived);
         
         it.quantity = q;
-        it.receivedQty = rQ;
+        it.receivedQty = newTotalReceived;
         it.remainingQty = remQ;
 
-        if (remQ > 0 || String(it.lastAction) === 'SEPARATE' || String(it.lastAction) === 'CLAIM') {
+        if (remQ > 0) {
           isPartial = true;
+        }
+
+        // Write StockLogs with real delta qty and calculate moving average
+        if (roundReceiveQty > 0) {
+          var convRate = Number(it.conversionRate || it.conversionRatio || 1);
+          var deltaQty = roundReceiveQty * convRate;
+          
+          var unitPrice = Number(it.price || it.unitPrice || it.actualPrice || it.actUnitPrice || 0);
+          var baseUnitCost = unitPrice / (convRate > 0 ? convRate : 1);
+          
+          var movId = 'MOV-' + Date.now() + '-' + Math.floor(Math.random()*1000);
+          stockMovements.push({
+            id: movId,
+            timestamp: new Date().toISOString(),
+            date: new Date().toISOString(),
+            productId: it.productId || it.id || '',
+            productCode: it.code || '',
+            sku: it.code || '',
+            productName: it.name || '',
+            type: 'IN',
+            docType: 'GRN',
+            docNo: incomingGrn || poObj.poNo || poId,
+            poNo: poObj.poNo || poId,
+            quantity: deltaQty,
+            qty: deltaQty,
+            receivedQty: roundReceiveQty,
+            unit: it.stockUnit || it.baseUom || 'ชิ้น',
+            baseUom: it.stockUnit || it.baseUom || 'ชิ้น',
+            purchaseUnit: it.purchaseUnit || it.purchaseUom || 'ชิ้น',
+            conversionRate: convRate,
+            unitPrice: baseUnitCost,
+            baseUnitCost: baseUnitCost,
+            totalAmount: deltaQty * baseUnitCost,
+            totalPrice: deltaQty * baseUnitCost,
+            actorName: user ? (user.name || user.employeeName) : 'System',
+            department: dept,
+            notes: 'ตรวจรับสินค้า PO ' + (poObj.poNo || poId)
+          });
+          
+          if (it.productId || it.code) {
+             productCostUpdates[it.productId || it.code] = {
+                deltaQty: deltaQty,
+                baseUnitCost: baseUnitCost
+             };
+          }
         }
       }
       poObj.items = rawItemsForPartial; // Will be stringified later
     }
 
     if (isPartial) {
-      poObj.status = 'PARTIAL_RECEIVED';
+      poObj.status = 'WAITING_DELIVERY_ROUND_2';
       poObj.receiptRound = (Number(poObj.receiptRound) || 1) + 1;
     } else {
-      if (!poObj.status || poObj.status === 'GOODS_RECEIVED' || poObj.status === 'PARTIAL_RECEIVED') {
-        poObj.status = 'CLOSED'; // Default full-receipt -> CLOSED
+      poObj.status = 'COMPLETED';
+    }
+
+    // Write to StockLogs and Update Moving Average Cost
+    if (stockMovements.length > 0) {
+      try {
+        var stockSheet = getSheet(SHEET_NAMES.STOCK_LOGS);
+        if (stockSheet) {
+          var stockHeaders = getSheetHeaders(stockSheet);
+          var stockRows = stockMovements.map(function(mov) {
+             return serializeRecordToRow(mov, stockHeaders);
+          });
+          if (stockRows.length > 0) {
+             stockSheet.getRange(stockSheet.getLastRow() + 1, 1, stockRows.length, stockRows[0].length).setValues(stockRows);
+          }
+        }
+      } catch (err) {
+        console.warn('[apiReceivePO] Failed to write to StockLogs: ' + err.message);
+      }
+      
+      try {
+        var products = batchReadRecords(SHEET_NAMES.PRODUCTS);
+        products.forEach(function(prod) {
+           var key = prod.id;
+           var codeKey = prod.code;
+           var updateInfo = productCostUpdates[key] || productCostUpdates[codeKey];
+           
+           if (updateInfo) {
+              var currentStock = Number(prod.stockBalance || 0);
+              // Ensure we don't calculate with negative stock balance initially
+              currentStock = Math.max(0, currentStock); 
+              var currentAvgCost = Number(prod.avgCost || prod.price || 0);
+              
+              var totalCurrentValue = currentStock * currentAvgCost;
+              var newIncomingValue = updateInfo.deltaQty * updateInfo.baseUnitCost;
+              var newTotalStock = currentStock + updateInfo.deltaQty;
+              
+              if (newTotalStock > 0) {
+                 prod.avgCost = (totalCurrentValue + newIncomingValue) / newTotalStock;
+              }
+              prod.stockBalance = newTotalStock;
+              
+              upsertRecordFast(SHEET_NAMES.PRODUCTS, 'id', prod);
+           }
+        });
+      } catch (err) {
+        console.warn('[apiReceivePO] Failed to update Products avgCost: ' + err.message);
       }
     }
 

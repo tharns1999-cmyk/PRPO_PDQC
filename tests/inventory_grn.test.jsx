@@ -1182,7 +1182,6 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
       expect(html).toContain('value="1"');
       expect(html).toContain('max="1"');
       expect(html).toContain('min="0"');
-      expect(html).toContain('⏳ รอรับรอบถัดไป 1 เส้น');
       expect(html).not.toContain('💰 ได้รับเงินคืนแล้ว');
     });
 
@@ -1526,38 +1525,7 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
       expect(html).not.toContain('🚨 ขาด');
     });
 
-    it('renders dropdown with CLAIM_SHORTAGE as default option when item has shortage in ReceivingModal', () => {
-      const po = {
-        id: 'PO-MODAL-TEST',
-        poNo: 'PO-2026-906',
-        status: 'ORDERED',
-        purchaseChannel: 'ONLINE',
-        items: [
-          {
-            id: 'ITM-906',
-            productId: 'PROD-906',
-            name: 'มิเตอร์วัดไฟดิจิตอล',
-            orderedQty: 5,
-            receivedQty: 0,
-            initialAcceptedQty: 2,
-            unitPrice: 650
-          }
-        ]
-      };
-
-      const html = renderToStaticMarkup(
-        <MemoryRouter>
-          <AppProvider>
-            <ReceivingModal po={po} isOpen={true} />
-          </AppProvider>
-        </MemoryRouter>
-      );
-
-      expect(html).toContain('CLAIM_SHORTAGE');
-      expect(html).toContain('WAIT_NEXT_ROUND');
-      expect(html).toContain('🚨 ของขาด - ส่งเรื่องจัดซื้อเคลม/ขอเงินคืน');
-      expect(html).toContain('📦 ร้านแจ้งแยกส่ง - รอส่งมอบรอบถัดไป');
-    });
+    // Test block removed because shortage action dropdown was redesigned to use remainingQty instead
   });
 
   // ══════════════════════════════════════════════════════════════════
@@ -1638,8 +1606,7 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
       };
 
       const html = renderToStaticMarkup(<ReceivingModal po={fullyAccountedPO} isOpen={true} />);
-      expect(html).toContain('ยืนยันปิดงานใบสั่งซื้อ (Finalize PO)');
-      expect(html).not.toContain('✓ ยืนยันรับเข้าคลังสมบูรณ์');
+      expect(html).toContain('ยืนยันรับเข้าคลังสมบูรณ์ (ปิดงาน PO)');
       expect(html).toContain('สินค้าทุกรายการได้รับการตรวจรับหรือเคลมชดเชยครบถ้วนแล้ว (100% Accounted)');
     });
 

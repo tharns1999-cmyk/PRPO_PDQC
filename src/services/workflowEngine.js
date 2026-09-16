@@ -2708,7 +2708,8 @@ export const workflowEngine = {
     const po = pos.find(p => p.id === poId);
     if (!po) throw new Error('ไม่พบใบสั่งซื้อ');
 
-    const channel = po.purchaseChannel === 'ONLINE' ? 'ONLINE' : 'SELF-BUY';
+    const isSelfProcurement = po.procurementType === 'INTERNAL' || po.channel === 'DIRECT' || po.purchaseChannel === 'SELF';
+    const channel = isSelfProcurement ? 'SELF-BUY' : 'ONLINE';
     const timestamp = new Date().toLocaleString('th-TH');
 
     po.status = 'CLAIM_REPORTED';
@@ -2765,7 +2766,7 @@ export const workflowEngine = {
         refDocType: 'PO',
         refDocId: po.id,
         department: po.department,
-        targetRoles: [requesterRole, 'ASST_MANAGER', 'ADMIN'],
+        targetRoles: ['REQUESTER'],
         amount: po.grandTotal,
         actor: user.name
       });

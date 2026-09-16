@@ -55,7 +55,9 @@ export const resolveRefundedQtyAndAmount = (item, po) => {
     refunded = Number(item?.damagedQty || item?.shortageQty || Math.max(0, ordered - accumulated));
   }
 
-  const remainingToReceive = Math.max(0, ordered - accumulated - refunded);
+  const remainingToReceive = item?.remainingQty !== undefined 
+    ? Number(item.remainingQty) 
+    : Math.max(0, ordered - accumulated - refunded);
 
   const itemUnitPrice = Number(item?.actualPrice ?? item?.actUnitPrice ?? item?.unitPrice ?? item?.price ?? 0);
   let refundAmt = Number(item?.refundAmount || 0);
@@ -165,10 +167,10 @@ export default function ReceivingModal({
     const initial = {};
     (targetPO.items || []).forEach((item, idx) => {
       const lineKey = getLineKey(item, idx);
-      const { remainingToReceive } = resolveRefundedQtyAndAmount(item, targetPO);
+      const remainingQty = Math.max(0, Number(item.quantity || item.orderedQty || 0) - Number(item.receivedQty || item.accumulatedReceived || 0));
 
       initial[lineKey] = {
-        acceptedQty: remainingToReceive === 0 ? 0 : (item.initialAcceptedQty !== undefined ? item.initialAcceptedQty : (item.inspectQty !== undefined ? item.inspectQty : remainingToReceive)),
+        acceptedQty: remainingQty === 0 ? 0 : remainingQty,
         damagedQty: 0,
         shortageAction: item.shortageAction || 'CLAIM_SHORTAGE', // Default: CLAIM_SHORTAGE เพื่อป้องกันการเสียสิทธิ์เคลม
         shortageReason: item.shortageReason || (item.shortageAction === 'WAIT_NEXT_ROUND' ? 'SPLIT_SHIPMENT' : 'VENDOR_SHORTAGE'),
@@ -185,10 +187,10 @@ export default function ReceivingModal({
     const initial = {};
     targetPO.items.forEach((item, idx) => {
       const lineKey = getLineKey(item, idx);
-      const { remainingToReceive } = resolveRefundedQtyAndAmount(item, targetPO);
+      const remainingQty = Math.max(0, Number(item.quantity || item.orderedQty || 0) - Number(item.receivedQty || item.accumulatedReceived || 0));
 
       initial[lineKey] = {
-        acceptedQty: remainingToReceive === 0 ? 0 : (item.initialAcceptedQty !== undefined ? item.initialAcceptedQty : (item.inspectQty !== undefined ? item.inspectQty : remainingToReceive)),
+        acceptedQty: remainingQty === 0 ? 0 : remainingQty,
         damagedQty: 0,
         shortageAction: item.shortageAction || 'CLAIM_SHORTAGE',
         shortageReason: item.shortageReason || (item.shortageAction === 'WAIT_NEXT_ROUND' ? 'SPLIT_SHIPMENT' : 'VENDOR_SHORTAGE'),
@@ -232,10 +234,12 @@ export default function ReceivingModal({
 
       const isRowLocked = remainingToReceive === 0;
 
+      const remainingQty = Math.max(0, Number(item.quantity || item.orderedQty || 0) - Number(item.receivedQty || item.accumulatedReceived || 0));
+
       const rawAccepted = state.acceptedQty === '' ? '' : state.acceptedQty;
       const parsedAccepted = rawAccepted === '' ? 0 : Number(rawAccepted);
       const safeAccepted = isNaN(parsedAccepted) ? 0 : Math.max(0, parsedAccepted);
-      const acceptedQty = isRowLocked ? 0 : Math.min(remainingToReceive, safeAccepted);
+      const acceptedQty = isRowLocked ? 0 : Math.min(remainingQty, safeAccepted);
 
       const rawDamaged = state.damagedQty === '' ? '' : state.damagedQty;
       const parsedDamaged = rawDamaged === '' ? 0 : Number(rawDamaged);
@@ -271,7 +275,8 @@ export default function ReceivingModal({
         refundAmount,
         refundAmountFormatted,
         remainingToReceive,
-        remainingReceivable: remainingToReceive,
+        remainingReceivable: remainingQty,
+        remainingQty,
         isRowLocked,
         isStoreRefunded,
         isReplacement,
@@ -282,7 +287,7 @@ export default function ReceivingModal({
         shortageQty,
         hasShortage,
         hasDamage,
-        rawAcceptedInput: isRowLocked ? 0 : (rawAccepted !== undefined ? rawAccepted : remainingToReceive),
+        rawAcceptedInput: isRowLocked ? 0 : (rawAccepted !== undefined ? rawAccepted : remainingQty),
         rawDamagedInput: isRowLocked ? 0 : (rawDamaged !== undefined ? rawDamaged : 0),
         shortageAction,
         shortageReason,
@@ -339,6 +344,10 @@ export default function ReceivingModal({
   }, [computedItems]);
 
   const totalAcceptedQty = summary.totalAccepted;
+
+  const currentRound = (targetPO.grnHistory && targetPO.grnHistory.length > 0) 
+    ? targetPO.grnHistory.length + 1 
+    : (Number(targetPO.receivedQty || 0) > 0 || (targetPO.items || []).some(it => Number(it.receivedQty || it.accumulatedReceived || 0) > 0) ? 2 : 1);
 
   // Handler: Update item accepted quantity
   const handleAcceptedQtyChange = (key, value) => {
@@ -1106,7 +1115,7 @@ export default function ReceivingModal({
                 <span>รายการสินค้าที่ตรวจรับ ({computedItems.length} รายการ)</span>
               </span>
               <span className="text-xs text-slate-500 font-mono">
-                รอบตรวจรับที่ <strong className="font-bold text-slate-800">{(targetPO.grnHistory?.length || 0) + 1}</strong>
+                รอบตรวจรับที่ <strong className="font-bold text-slate-800">{currentRound}</strong>
               </span>
             </div>
 
@@ -1125,14 +1134,17 @@ export default function ReceivingModal({
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {computedItems.map((item, idx) => {
                     // Mathematical calculation of remaining pending quantity for next delivery round:
-                    // [Total Ordered Qty] - [Already Received in prior rounds] - [Refunded] - [Current user accepted input in this round]
-                    const ordered = Number(item.orderedQty ?? item.quantity ?? item.ordered ?? 0);
-                    const alreadyReceived = Number(item.alreadyReceived ?? item.accumulated ?? item.receivedQty ?? 0);
-                    const refunded = Number(item.refunded ?? item.refundedQty ?? 0);
+                    const orderedQty = Number(item.quantity || item.orderedQty || 0);
+                    const previouslyReceived = Number(item.receivedQty || item.alreadyReceived || 0);
+                    const remainingBeforeRound = Math.max(0, orderedQty - previouslyReceived);
+                    
                     const rawAccepted = item.rawAcceptedInput !== undefined ? item.rawAcceptedInput : item.acceptedQty;
                     const parsedAccepted = rawAccepted === '' ? 0 : Number(rawAccepted);
-                    const currentAcceptedInput = isNaN(parsedAccepted) ? 0 : Math.max(0, parsedAccepted);
-                    const pendingNextRound = Math.max(0, ordered - alreadyReceived - refunded - (item.isRowLocked ? 0 : currentAcceptedInput));
+                    const currentReceiveInput = isNaN(parsedAccepted) ? remainingBeforeRound : Math.max(0, parsedAccepted);
+
+                    // ยอดรวมหลังรับรอบนี้
+                    const totalReceivedAfterThis = previouslyReceived + (item.isRowLocked ? 0 : currentReceiveInput);
+                    const remainingAfterThis = Math.max(0, orderedQty - totalReceivedAfterThis);
 
                     return (
                       <tr 
@@ -1218,7 +1230,7 @@ export default function ReceivingModal({
                               <input
                                 type="number"
                                 min="0"
-                                max={item.remainingReceivable}
+                                max={remainingBeforeRound}
                                 value={item.isRowLocked ? 0 : item.rawAcceptedInput}
                                 disabled={item.isRowLocked}
                                 onChange={(e) => handleAcceptedQtyChange(item.key, e.target.value)}
@@ -1236,13 +1248,9 @@ export default function ReceivingModal({
                                   <span className="text-xs text-amber-600 font-medium whitespace-nowrap">
                                     📦 รอรับของทดแทน {item.remainingToReceive} {item.pUnit}
                                   </span>
-                                ) : item.isSplitShipment && item.remainingToReceive > 0 ? (
+                                ) : remainingAfterThis > 0 ? (
                                   <span className="text-xs text-amber-600 font-medium whitespace-nowrap">
-                                    ⏳ รอรับรอบถัดไป {item.remainingToReceive} {item.pUnit}
-                                  </span>
-                                ) : pendingNextRound > 0 ? (
-                                  <span className="text-xs text-amber-600 font-medium whitespace-nowrap">
-                                    ⏳ รอรับรอบถัดไป {pendingNextRound} {item.pUnit}
+                                    ⏳ รอรับรอบถัดไป {remainingAfterThis} {item.pUnit}
                                   </span>
                                 ) : null
                               ) : null}
@@ -1257,7 +1265,7 @@ export default function ReceivingModal({
                               <input
                                 type="number"
                                 min="0"
-                                max={item.remainingReceivable}
+                                max={item.remainingQty}
                                 value={item.isRowLocked ? 0 : item.rawDamagedInput}
                                 disabled={item.isRowLocked}
                                 onChange={(e) => handleDamagedQtyChange(item.key, e.target.value)}
@@ -1294,11 +1302,11 @@ export default function ReceivingModal({
                                 ✓ ตรวจรับครบแล้วในรอบก่อน
                               </span>
                             )
-                          ) : item.hasShortage ? (
+                          ) : remainingAfterThis > 0 ? (
                             <div className="flex flex-col gap-1.5 w-full">
                               <div className="flex items-center">
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold font-mono bg-amber-100 text-amber-900 border border-amber-300">
-                                  ขาด {item.shortageQty} {item.pUnit}
+                                  ขาด {remainingAfterThis} {item.pUnit}
                                 </span>
                               </div>
                               <select
@@ -1318,7 +1326,7 @@ export default function ReceivingModal({
                           ) : (
                             <div className="h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1.5 w-full justify-center">
                               <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                              <span>ครบสมบูรณ์</span>
+                              <span>✓ ครบสมบูรณ์</span>
                             </div>
                           )}
                         </td>
@@ -1450,7 +1458,7 @@ export default function ReceivingModal({
             <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50/80 text-indigo-800 text-xs font-medium mb-4">
               <div className="flex items-center gap-2">
                 <Truck className="w-4 h-4 text-indigo-600 shrink-0" />
-                <span>พัสดุทยอยส่ง — บันทึกรับรอบที่ {(targetPO.grnHistory?.length || 0) + 1} และรอพัสดุส่งรอบถัดไป</span>
+                <span>พัสดุทยอยส่ง — บันทึกรับรอบที่ {currentRound} และรอพัสดุส่งรอบถัดไป</span>
               </div>
               <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto font-mono">
                 <span className="text-indigo-700">รับเข้าสต็อก:</span>
@@ -1488,8 +1496,8 @@ export default function ReceivingModal({
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>✓ เอกสารนี้ตรวจรับเข้าคลังครบเรียบร้อยแล้ว (ปิด PO แล้ว)</span>
             </div>
-          ) : isFullyAccounted ? (
-            /* กรณีสินค้าทุกรายการตรวจรับหรือเคลมชดเชยครบถ้วนแล้ว (Finalize PO): ปุ่มสีเขียว Emerald */
+          ) : (isFullyAccounted || summary.isFullyAccepted) ? (
+            /* กรณีสินค้าทุกรายการตรวจรับหรือเคลมชดเชยครบถ้วนแล้ว: ปุ่มสีเขียว Emerald */
             <button
               type="button"
               onClick={handleConfirmReceiving}
@@ -1497,18 +1505,7 @@ export default function ReceivingModal({
               className="h-9 px-5 rounded-lg text-white text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-98 transition-all flex items-center gap-2 shadow-xs cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>✓ ยืนยันปิดงานใบสั่งซื้อ (Finalize PO)</span>
-            </button>
-          ) : summary.isFullyAccepted ? (
-            /* กรณีรับครบ 100%: ปุ่มสีเขียว Emerald */
-            <button
-              type="button"
-              onClick={handleConfirmReceiving}
-              disabled={isSubmitting || isUploading}
-              className="h-9 px-5 rounded-lg text-white text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-98 transition-all flex items-center gap-2 shadow-xs cursor-pointer"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>✓ ยืนยันรับเข้าคลังสมบูรณ์</span>
+              <span>✓ ยืนยันรับเข้าคลังสมบูรณ์ (ปิดงาน PO)</span>
             </button>
           ) : summary.isClaimRequired ? (
             /* กรณีมีสินค้าชำรุด หรือขาดส่งแจ้งเคลม: ปุ่มสีส้ม Amber */
@@ -1530,7 +1527,7 @@ export default function ReceivingModal({
               className="h-9 px-5 rounded-lg text-white text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 active:scale-98 transition-all flex items-center gap-2 shadow-xs cursor-pointer"
             >
               <Truck className="w-4 h-4" />
-              <span>📦 ยืนยันรับพัสดุ (รอบที่ {(targetPO.grnHistory?.length || 0) + 1})</span>
+              <span>📦 ยืนยันรับพัสดุ (รอบที่ {currentRound})</span>
             </button>
           )}
         </div>

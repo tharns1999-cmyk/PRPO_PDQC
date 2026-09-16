@@ -135,7 +135,7 @@ export default function TaskCard({ task, activeTab, currentRole, onClick, onReor
         : `${task.items[0].name} (+${task.items.length - 1} รายการ)`)
     : (isPR ? 'ใบขอซื้อ' : 'ใบสั่งซื้อ'));
 
-  const isPartialPO = !isPR && task.status === 'PARTIAL_RECEIVED' && (activeTab === 'todo' || activeTab === 'action');
+  const isPartialPO = !isPR && ['PARTIAL', 'PARTIAL_RECEIVED', 'WAITING_DELIVERY_ROUND_2'].includes(task.status) && (activeTab === 'todo' || activeTab === 'action');
   if (isPartialPO) {
     const remainingCount = (task.items || []).filter(it => {
        const q = Number(it.quantity || 0);
@@ -286,7 +286,7 @@ export default function TaskCard({ task, activeTab, currentRole, onClick, onReor
               type="button"
               className="h-8 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 whitespace-nowrap cursor-pointer"
             >
-              <span>ตรวจรับรอบถัดไป</span>
+              <span>ตรวจรับรอบ 2 / เคลม</span>
               <span className="text-xs">➔</span>
             </button>
           </div>

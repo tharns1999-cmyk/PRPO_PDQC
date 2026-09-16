@@ -499,7 +499,15 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
     (Number(currentRole?.level) === 1 && (currentRole?.department === 'ALL' || currentRole?.department === selectedPO.department))
   );
   const TERMINAL_PO_STATUSES = ['CLOSED', 'CANCELLED', 'RECEIVED', 'COMPLETED', 'COMPLETED_WITH_REFUND'];
-  const isReceivable = !TERMINAL_PO_STATUSES.includes(selectedPO.status) && ['ISSUED', 'ORDERED', 'ORDERED_PENDING_DELIVERY', 'PARTIAL', 'IN_DELIVERY'].includes(selectedPO.status);
+  const hasRemainingItems = (selectedPO?.items || []).some(item => {
+    const qty = Number(item.orderedQty ?? item.quantity ?? item.purchaseQty ?? item.qty ?? 0);
+    const rcv = Number(item.receivedQty ?? item.goodQty ?? item.accumulatedReceived ?? 0);
+    const rem = item.remainingQty !== undefined ? Number(item.remainingQty) : Math.max(0, qty - rcv);
+    return rem > 0;
+  });
+  const isReceivable = !TERMINAL_PO_STATUSES.includes(selectedPO.status) && 
+    ['ISSUED', 'ORDERED', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'SHIPPED', 'PARTIAL', 'PARTIAL_RECEIVED', 'WAITING_DELIVERY_ROUND_2'].includes(selectedPO.status) &&
+    hasRemainingItems;
 
   // ─── Online PO Settlement Permission Guard ───
   const canSettlePO = !isPlantManager && 
@@ -778,14 +786,23 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                   รายการสินค้าในเอกสาร ({selectedPO.items?.length || 0} รายการ)
                 </span>
                 <div className="divide-y divide-slate-100">
-                  {selectedPO.items?.map((item, idx) => (
+                  {selectedPO.items?.map((item, idx) => {
+                    const ordered = Number(item.qty || item.actualQty || item.purchaseQty || item.orderedQty || 0);
+                    const received = Number(item.receivedQty || item.goodQty || item.accumulatedReceived || 0);
+                    const damaged = Number(item.damagedQty || 0);
+                    const remainingQty = Math.max(0, ordered - received);
+                    const claimableQty = remainingQty + damaged;
+                    
+                    if (claimableQty <= 0) return null;
+                    
+                    return (
                     <div key={idx} className="flex justify-between items-center text-slate-600 py-1">
                       <span className="truncate max-w-sm"><strong className="font-mono text-slate-800">[{item.code || '-'}]</strong> {item.name}</span>
                       <span className="font-mono shrink-0 ml-2 font-semibold text-slate-700">
-                        {item.qty || item.actualQty || item.purchaseQty || 1} {item.unit || item.purchaseUnit || 'ชิ้น'}
+                        {claimableQty} {item.unit || item.purchaseUnit || 'ชิ้น'} <span className="text-[10px] text-slate-400 font-sans">(ค้างรับ/ชำรุด)</span>
                       </span>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
 
@@ -879,7 +896,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                   setIsSubmittingClaim(true);
                   try {
                     await apiService.fileOnlineClaim(selectedPO.id, { reason: claimReason, description: claimDescription, photo: claimPhoto }, currentRole);
-                    await modalService.success('ส่งเรื่องเคลมสำเร็จ', 'ระบบได้แจ้งเตือนไปยังผู้สั่งซื้อแล้ว');
+                    await modalService.success('ส่งเรื่องเคลมสำเร็จ', 'ระบบได้แจ้งเตือนไปยังผู้รับผิดชอบแล้ว');
                     if (onRefresh) onRefresh();
                     onClose();
                   } catch (err) {
@@ -891,7 +908,13 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                 className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl flex items-center gap-2 cursor-pointer transition-all shadow-sm"
               >
                 <AlertOctagon className="w-4 h-4" />
-                <span>{isSubmittingClaim ? 'กำลังส่งข้อมูล...' : '⚠️ ยืนยันส่งเรื่องแจ้งเคลมไปยังจัดซื้อ'}</span>
+                <span>
+                  {isSubmittingClaim 
+                    ? 'กำลังส่งข้อมูล...' 
+                    : (selectedPO.procurementType === 'INTERNAL' || selectedPO.channel === 'DIRECT' || selectedPO.purchaseChannel === 'SELF')
+                      ? '⚠️ บันทึกเรื่องเคลม / ติดต่อร้านค้าเอง'
+                      : '⚠️ ยืนยันส่งเรื่องแจ้งเคลมไปยังจัดซื้อ'}
+                </span>
               </button>
             </div>
           </div>
