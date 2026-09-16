@@ -18,6 +18,7 @@ import { getNextPRNumber } from '../utils/idGenerator';
 import { safeStringCompare } from '../utils/formatters';
 import { resolveDriveImageUrl, handleDriveImageError, getDriveFileViewUrl } from '../utils/driveHelper';
 import { compressImage, compressImageFile, getBase64SizeBytes, MAX_IMAGE_SIZE_BYTES } from '../utils/fileUtils';
+import { isDepartmentMatch } from '../utils/permissions';
 
 /**
  * Deduplicate Master Data & Inventory list for product dropdowns/comboboxes
@@ -350,8 +351,8 @@ export default function PRCreateView({
     }
     const unifiedInitial = getUnifiedProductList(products, inventory);
     const initialList = unifiedInitial.filter(p => {
-      const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
-      return !isInactive && (p.category === initialDept || p.department === initialDept);
+      const isInactive = p.isActive === false || String(p.isActive).toUpperCase() === 'FALSE' || String(p.status || '').toUpperCase() === 'INACTIVE';
+      return !isInactive && isDepartmentMatch(p.category || p.department, initialDept);
     });
     return [{ 
       productId: initialList[0]?.id || '', 

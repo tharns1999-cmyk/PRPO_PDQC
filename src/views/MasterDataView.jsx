@@ -17,9 +17,9 @@ import { modalService } from '../services/modalService';
 import { useAppContext } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/common/Pagination';
-import { getUserDepartments, canAccessDepartmentData } from '../utils/permissions';
+import { getUserDepartments, canAccessDepartmentData, isDepartmentMatch } from '../utils/permissions';
 
-export { MASTER_DATA_TABS, normalizeTabId, isTabActive };
+export { MASTER_DATA_TABS, normalizeTabId, isTabActive, isDepartmentMatch };
 
 // ── Permanent Blacklist Guard against Test / Mock Artifacts ──
 export const DUMMY_BLACKLIST = new Set(['P01', 'P02', 'PROD-01', 'PROD-02']);
@@ -414,16 +414,26 @@ function MasterDataContent({
     productsList.forEach(p => {
       const itemDept = p.department || p.category;
       const matchesDeptRole = canAccessDepartmentData(targetUserObj, itemDept);
-      const matchesCategory = prodCategoryFilter === 'ALL' || 
-        String(p.category || '').toUpperCase() === prodCategoryFilter.toUpperCase() || 
-        String(p.department || '').toUpperCase() === prodCategoryFilter.toUpperCase();
+      const matchesCategory = prodCategoryFilter === 'ALL' || isDepartmentMatch(itemDept, prodCategoryFilter);
       if (matchesDeptRole && matchesCategory) {
-        const isItemActive = p.isActive !== false && String(p.status || '').toUpperCase() !== 'INACTIVE';
-        if (isItemActive) active++;
-        else inactive++;
+        const isItemInactive = p.isActive === false || String(p.isActive).toUpperCase() === 'FALSE' || String(p.status || '').toUpperCase() === 'INACTIVE';
+        const isItemActive = (p.isActive === true || String(p.isActive).toUpperCase() === 'TRUE' || String(p.status || '').toUpperCase() === 'ACTIVE') && !isItemInactive;
+
+        if (isItemInactive) {
+          inactive++;
+        } else if (isItemActive || p.isActive !== false) {
+          active++;
+        }
       }
     });
-    return { active, inactive, total: active + inactive };
+    return {
+      active,
+      inactive,
+      total: active + inactive,
+      activeCount: active,
+      inactiveCount: inactive,
+      totalCount: active + inactive
+    };
   }, [productsList, targetUserObj, prodCategoryFilter]);
 
   // Filtered Products
@@ -431,16 +441,17 @@ function MasterDataContent({
     return productsList.filter(p => {
       const itemDept = p.department || p.category;
       const matchesDeptRole = canAccessDepartmentData(targetUserObj, itemDept);
-      const matchesCategory = prodCategoryFilter === 'ALL' || 
-        String(p.category || '').toUpperCase() === prodCategoryFilter.toUpperCase() || 
-        String(p.department || '').toUpperCase() === prodCategoryFilter.toUpperCase();
+      const matchesCategory = prodCategoryFilter === 'ALL' || isDepartmentMatch(itemDept, prodCategoryFilter);
       
-      const isItemActive = p.isActive !== false && String(p.status || '').toUpperCase() !== 'INACTIVE';
+      const isItemInactive = p.isActive === false || String(p.isActive).toUpperCase() === 'FALSE' || String(p.status || '').toUpperCase() === 'INACTIVE';
+      const isItemActive = (p.isActive === true || String(p.isActive).toUpperCase() === 'TRUE' || String(p.status || '').toUpperCase() === 'ACTIVE') && !isItemInactive;
+      const effectiveActive = isItemActive || (!isItemInactive && p.isActive !== false);
+
       const matchesStatus = prodStatusFilter === 'ALL' 
         ? true 
         : prodStatusFilter === 'ACTIVE' 
-          ? isItemActive 
-          : !isItemActive;
+          ? effectiveActive 
+          : isItemInactive;
 
       const q = prodSearch.trim().toLowerCase();
       const matchesSearch = !q || (
@@ -460,7 +471,7 @@ function MasterDataContent({
       const matchesDeptFilter = vendorDeptFilter === 'ALL' || 
         v.department === 'BOTH' || 
         v.department === 'ALL' || 
-        String(v.department || '').toUpperCase() === vendorDeptFilter.toUpperCase();
+        isDepartmentMatch(v.department, vendorDeptFilter);
       const q = vendorSearch.trim().toLowerCase();
       const matchesSearch = !q || (
         v.code?.toLowerCase().includes(q) ||
@@ -480,7 +491,7 @@ function MasterDataContent({
       const matchesDeptFilter = locDeptFilter === 'ALL' || 
         l.department === 'ALL' || 
         l.department === 'BOTH' || 
-        String(l.department || '').toUpperCase() === locDeptFilter.toUpperCase();
+        isDepartmentMatch(l.department, locDeptFilter);
       const q = locSearch.trim().toLowerCase();
       const matchesSearch = !q || (
         l.name?.toLowerCase().includes(q)
@@ -514,7 +525,7 @@ function MasterDataContent({
       const matchesDeptRole = canAccessDepartmentData(targetUserObj, u.department);
       const matchesDeptFilter = unitDeptFilter === 'ALL' || 
         u.department === 'ALL' || 
-        String(u.department || '').toUpperCase() === unitDeptFilter.toUpperCase();
+        isDepartmentMatch(u.department, unitDeptFilter);
       const q = unitSearch.trim().toLowerCase();
       const matchesSearch = !q || (
         u.name?.toLowerCase().includes(q) ||
@@ -535,9 +546,9 @@ function MasterDataContent({
     return usersList.filter(u => {
       // Dept filter: checks primaryDepartment or allowedDepartments
       const matchesDept = userDeptFilter === 'ALL' ||
-        u.primaryDepartment === userDeptFilter ||
-        u.department === userDeptFilter ||
-        (Array.isArray(u.allowedDepartments) && (u.allowedDepartments.includes(userDeptFilter) || u.allowedDepartments.includes('*')));
+        isDepartmentMatch(u.primaryDepartment, userDeptFilter) ||
+        isDepartmentMatch(u.department, userDeptFilter) ||
+        (Array.isArray(u.allowedDepartments) && (u.allowedDepartments.some(ud => isDepartmentMatch(ud, userDeptFilter)) || u.allowedDepartments.includes('*')));
 
       // Role filter
       const matchesRole = userRoleFilter === 'ALL' || u.roleId === userRoleFilter || u.positionKey === userRoleFilter;
@@ -575,12 +586,15 @@ function MasterDataContent({
 
     if (isAdmin || canSeeAll) {
       return [
-        { code: 'ALL', label: 'ทุกแผนก' },
+        { code: 'ALL', id: 'ALL', label: 'ทุกแผนก' },
         ...baseDepts.map(d => {
-          const name = d.name || deptNameMap[d.code] || d.code;
+          const rawCode = d.code || (d.id ? String(d.id).replace(/^DEPT-/, '') : '');
+          const cleanCode = rawCode || d.id;
+          const name = d.name || deptNameMap[cleanCode] || cleanCode;
           return {
-            code: d.code,
-            label: `${name} (${d.code})`
+            code: cleanCode,
+            id: d.id,
+            label: `${name} (${cleanCode})`
           };
         })
       ];
@@ -588,14 +602,17 @@ function MasterDataContent({
 
     // For Department-Restricted Requesters/Users:
     // Omit 'ALL' / 'ทุกแผนก' entirely to ensure they manage only their own department's items
-    const myDepts = baseDepts.filter(d => userDepts.some(ud => ud.toUpperCase() === d.code?.toUpperCase()));
+    const myDepts = baseDepts.filter(d => userDepts.some(ud => isDepartmentMatch(ud, d)));
     const resultDepts = myDepts.length > 0 ? myDepts : userDepts.map(code => ({ code, name: deptNameMap[code] || code }));
 
     return resultDepts.map(d => {
-      const name = d.name || deptNameMap[d.code] || d.code;
+      const rawCode = d.code || (d.id ? String(d.id).replace(/^DEPT-/, '') : '');
+      const cleanCode = rawCode || d.id;
+      const name = d.name || deptNameMap[cleanCode] || cleanCode;
       return {
-        code: d.code,
-        label: `${name} (${d.code})`
+        code: cleanCode,
+        id: d.id,
+        label: `${name} (${cleanCode})`
       };
     });
   }, [departmentsList, isAdmin, canSeeAll, userDepts]);
@@ -1034,7 +1051,7 @@ function MasterDataContent({
         </span>
       );
     }
-    const found = departmentsList.find(d => d.code === deptCode);
+    const found = departmentsList.find(d => isDepartmentMatch(d, deptCode));
     const color = found?.color;
     const badgeStyle = color === 'amber'
       ? 'bg-amber-50 text-amber-700 border-amber-200/80'
@@ -1046,9 +1063,10 @@ function MasterDataContent({
       ? 'bg-cyan-50 text-cyan-700 border-cyan-200/80'
       : 'bg-blue-50 text-blue-700 border-blue-200/80';
 
+    const displayCode = found?.code || (found?.id ? String(found.id).replace(/^DEPT-/, '') : deptCode);
     return (
       <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeStyle}`}>
-        {found ? `${found.name} (${found.code})` : deptCode}
+        {found ? `${found.name} (${displayCode})` : deptCode}
       </span>
     );
   };
@@ -1187,8 +1205,8 @@ function MasterDataContent({
         onTabChange={setActiveTab}
         isAdmin={isAdmin}
         counts={{
-          catalog: filteredProducts.length,
-          products: filteredProducts.length,
+          catalog: prodStatusCounts.total,
+          products: prodStatusCounts.total,
           vendors: filteredVendors.length,
           locations: filteredLocations.length,
           rooms: filteredUsageUnits.length,
@@ -1205,19 +1223,24 @@ function MasterDataContent({
             <div className="flex items-center gap-2 flex-wrap">
               {showDeptFilterToolbar && (
                 <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
-                  {deptFilterOptions.map(cat => (
-                    <button
-                      key={cat.code}
-                      onClick={() => setProdCategoryFilter(cat.code)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                        prodCategoryFilter === cat.code
-                          ? 'bg-white text-slate-900 shadow-xs font-bold'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
+                  {deptFilterOptions.map(cat => {
+                    const isTabSelected = cat.code === 'ALL'
+                      ? prodCategoryFilter === 'ALL'
+                      : (prodCategoryFilter !== 'ALL' && isDepartmentMatch(cat.code || cat.id, prodCategoryFilter));
+                    return (
+                      <button
+                        key={cat.code || cat.id}
+                        onClick={() => setProdCategoryFilter(cat.code || cat.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                          isTabSelected
+                            ? 'bg-white text-slate-900 shadow-xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
 
@@ -1307,7 +1330,7 @@ function MasterDataContent({
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {paginatedProducts.map((p, index) => {
-                    const isInactive = p.isActive === false || String(p.status || '').toUpperCase() === 'INACTIVE';
+                    const isInactive = p.isActive === false || String(p.isActive).toUpperCase() === 'FALSE' || String(p.status || '').toUpperCase() === 'INACTIVE';
                     return (
                       <tr 
                         key={p.id ? `${p.id}-${index}` : `${p.code}-${index}`} 
@@ -1332,7 +1355,7 @@ function MasterDataContent({
                             )}
                           </div>
                         </td>
-                        <td className="py-3.5 px-4">{deptBadge(p.category)}</td>
+                        <td className="py-3.5 px-4">{deptBadge(p.category || p.department)}</td>
                         <td className="py-3.5 px-4 text-center whitespace-nowrap">
                           {isInactive ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-500 border border-slate-200">
@@ -1453,19 +1476,24 @@ function MasterDataContent({
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {showDeptFilterToolbar && (
               <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
-                {deptFilterOptions.map(cat => (
-                  <button
-                    key={cat.code}
-                    onClick={() => setVendorDeptFilter(cat.code)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      vendorDeptFilter === cat.code
-                        ? 'bg-white text-slate-900 shadow-xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
+                {deptFilterOptions.map(cat => {
+                  const isTabSelected = cat.code === 'ALL'
+                    ? vendorDeptFilter === 'ALL'
+                    : (vendorDeptFilter !== 'ALL' && isDepartmentMatch(cat.code || cat.id, vendorDeptFilter));
+                  return (
+                    <button
+                      key={cat.code || cat.id}
+                      onClick={() => setVendorDeptFilter(cat.code || cat.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        isTabSelected
+                          ? 'bg-white text-slate-900 shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  );
+                })}
               </div>
             )}
             <div className="relative flex-1 sm:w-80 ml-auto">
@@ -1569,19 +1597,24 @@ function MasterDataContent({
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {showDeptFilterToolbar && (
               <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
-                {deptFilterOptions.map(cat => (
-                  <button
-                    key={cat.code}
-                    onClick={() => setLocDeptFilter(cat.code)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      locDeptFilter === cat.code
-                        ? 'bg-white text-slate-900 shadow-xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
+                {deptFilterOptions.map(cat => {
+                  const isTabSelected = cat.code === 'ALL'
+                    ? locDeptFilter === 'ALL'
+                    : (locDeptFilter !== 'ALL' && isDepartmentMatch(cat.code || cat.id, locDeptFilter));
+                  return (
+                    <button
+                      key={cat.code || cat.id}
+                      onClick={() => setLocDeptFilter(cat.code || cat.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        isTabSelected
+                          ? 'bg-white text-slate-900 shadow-xs font-bold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  );
+                })}
               </div>
             )}
             <div className="relative flex-1 sm:w-80 ml-auto">
@@ -1709,19 +1742,24 @@ function MasterDataContent({
           <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {showDeptFilterToolbar && (
               <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl shrink-0 flex-wrap">
-                {deptFilterOptions.map(cat => (
-                  <button
-                    key={cat.code}
-                    onClick={() => setUnitDeptFilter(cat.code)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      unitDeptFilter === cat.code
-                        ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
+                {deptFilterOptions.map(cat => {
+                  const isTabSelected = cat.code === 'ALL'
+                    ? unitDeptFilter === 'ALL'
+                    : (unitDeptFilter !== 'ALL' && isDepartmentMatch(cat.code || cat.id, unitDeptFilter));
+                  return (
+                    <button
+                      key={cat.code || cat.id}
+                      onClick={() => setUnitDeptFilter(cat.code || cat.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        isTabSelected
+                          ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  );
+                })}
               </div>
             )}
 

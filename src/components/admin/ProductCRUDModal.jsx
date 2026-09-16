@@ -12,7 +12,7 @@ import SearchableSelect from '../common/SearchableSelect';
 import StorageLocationCRUDModal from './StorageLocationCRUDModal';
 import DeleteLocationModal from './DeleteLocationModal';
 import { useAppContext } from '../../context/AppContext';
-import { getUserDepartments, canAccessDepartmentData } from '../../utils/permissions';
+import { getUserDepartments, canAccessDepartmentData, isDepartmentMatch } from '../../utils/permissions';
 
 const COMMON_PURCHASE_UNITS = ['ถัง (200L)', 'แกลลอน (20L)', 'ลัง', 'กล่อง', 'ถุง', 'ม้วน', 'ชุด', 'ชิ้น'];
 const COMMON_STOCK_UNITS = ['ลิตร', 'มล.', 'กก.', 'กรัม', 'ชิ้น', 'คู่', 'แผ่น', 'ม้วน', 'ขวด', 'กระป๋อง'];
@@ -59,7 +59,7 @@ export default function ProductCRUDModal({
   const selectableDepts = useMemo(() => {
     if (canSelectAll) return deptList;
     if (userDepts.length > 0) {
-      const filtered = deptList.filter(d => userDepts.some(ud => ud.toUpperCase() === d.code?.toUpperCase()));
+      const filtered = deptList.filter(d => userDepts.some(ud => isDepartmentMatch(ud, d)));
       return filtered.length > 0 ? filtered : deptList;
     }
     return deptList;
@@ -67,7 +67,7 @@ export default function ProductCRUDModal({
 
   const hasMultipleAllowedDepts = !canSelectAll && selectableDepts.length > 1;
   const isSingleLockedDept = !canSelectAll && selectableDepts.length === 1;
-  const lockedCategory = isSingleLockedDept ? selectableDepts[0]?.code : null;
+  const lockedCategory = isSingleLockedDept ? (selectableDepts[0]?.code || (selectableDepts[0]?.id ? String(selectableDepts[0].id).replace(/^DEPT-/, '') : 'PD')) : null;
 
   const skuInputRef = useRef(null);
   const [itemCode, setItemCode] = useState(() => {
@@ -263,7 +263,8 @@ export default function ProductCRUDModal({
   };
 
   const activeCategory = editProd?.category || category || lockedCategory || 'PD';
-  const deptBadgeClass = activeCategory === 'QC'
+  const isQC = isDepartmentMatch(activeCategory, 'QC');
+  const deptBadgeClass = isQC
     ? 'bg-amber-50 text-amber-700 border-amber-200'
     : 'bg-blue-50 text-blue-700 border-blue-200';
 
@@ -284,7 +285,7 @@ export default function ProductCRUDModal({
                     {editProd ? 'แก้ไขข้อมูลสินค้า Master Data' : 'เพิ่มสินค้าใหม่ใน Master Data'}
                   </h3>
                   <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${deptBadgeClass}`}>
-                    {activeCategory === 'PD' ? 'ฝ่ายผลิต (PD)' : 'ฝ่ายควบคุมคุณภาพ (QC)'}
+                    {isQC ? 'ฝ่ายควบคุมคุณภาพ (QC)' : 'ฝ่ายผลิต (PD)'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">

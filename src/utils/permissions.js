@@ -64,6 +64,45 @@ export function getUserDepartments(user) {
 }
 
 /**
+ * Department Matching Helper
+ * Robustly matches department codes or IDs across representations:
+ * e.g. 'QC' vs 'DEPT-QC', objects { id, code, name }, case-insensitively.
+ * @param {string|Object} productDept - The product's department (e.g. 'QC', 'DEPT-QC', or category)
+ * @param {string|Object} targetDept - The target department to compare against (e.g. 'DEPT-QC', 'QC', or dept object)
+ * @returns {boolean}
+ */
+export const isDepartmentMatch = (productDept, targetDept) => {
+  if (!productDept || !targetDept) return false;
+
+  const rawTargetStr = typeof targetDept === 'string' ? targetDept.trim().toUpperCase() : '';
+  const rawProductStr = typeof productDept === 'string' ? productDept.trim().toUpperCase() : '';
+  if (rawTargetStr === 'ALL' || rawTargetStr === '*' || rawTargetStr === 'BOTH') return true;
+  if (rawProductStr === 'ALL' || rawProductStr === '*' || rawProductStr === 'BOTH') return true;
+
+  const pDept = String(productDept?.code || productDept?.id || productDept).trim().toUpperCase();
+
+  // กรณี targetDept เป็น String (เช่น 'QC', 'DEPT-QC')
+  if (typeof targetDept === 'string') {
+    const tDept = targetDept.trim().toUpperCase();
+    return pDept === tDept || 
+           pDept.replace(/^DEPT-/, '') === tDept.replace(/^DEPT-/, '') ||
+           tDept.includes(pDept) || 
+           pDept.includes(tDept);
+  }
+
+  // กรณี targetDept เป็น Object แผนก { id, code, name }
+  const deptId = String(targetDept.id || '').trim().toUpperCase();
+  const deptCode = String(targetDept.code || '').trim().toUpperCase();
+  const deptName = String(targetDept.name || '').trim().toUpperCase();
+
+  return pDept === deptCode || 
+         pDept === deptId || 
+         pDept.replace(/^DEPT-/, '') === deptId.replace(/^DEPT-/, '') ||
+         (Boolean(deptName) && pDept === deptName) ||
+         (Boolean(deptCode) && pDept.replace(/^DEPT-/, '') === deptCode.replace(/^DEPT-/, ''));
+};
+
+/**
  * Checks if a user can access data scoped to a target department.
  * - Returns true if user.role === 'admin' or user departments contain 'ALL' or '*'
  * - Returns true if targetDepartment is 'ALL' or 'BOTH' (central / shared data)
@@ -91,7 +130,7 @@ export function canAccessDepartmentData(user, targetDepartment) {
   if (isAdmin) return true;
 
   const target = String(targetDepartment).trim().toUpperCase();
-  return userDepts.some(d => d.toUpperCase() === target);
+  return userDepts.some(d => isDepartmentMatch(d, target));
 }
 
 /**
