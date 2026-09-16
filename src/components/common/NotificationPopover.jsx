@@ -42,38 +42,134 @@ export default function NotificationPopover(props) {
     onMarkAsRead, 
     onClose,
     onNotificationClick,
+    currentUser,
+    currentRole,
     className = ''
   } = props;
 
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'unread'
 
-  // Helper ตรวจสอบ Unread ให้ครอบคลุมทุกคีย์ (isRead, read, status: 'read')
+  const user = currentUser || currentRole;
+  const safeUserName = String(user?.name || user?.username || 'default').trim().toLowerCase();
+
+  // Helper ดึง readIds แยกตาม user จาก localStorage
+  const getLocalReadIds = () => {
+    try {
+      const stored = localStorage.getItem(`prpo_read_notifications_${safeUserName}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  // Helper ตรวจสอบ Role & Department Filter (Strict Role & Dept, No Email)
+  const matchesRoleAndDept = (n) => {
+    if (!user) return true;
+
+    const roleStr = String(user.role || user.canonicalRole || user.roleId || user.positionKey || '').toUpperCase();
+    const isAdmin = user.isAdmin === true || roleStr.includes('ADMIN') || Number(user.level) >= 99 || user.username === 'admin';
+    if (isAdmin) return true;
+
+    const userDept = String(user.department || user.primaryDepartment || user.dept || '').toUpperCase();
+    const targetDept = String(n.targetDepartment || n.targetDept || n.department || 'ALL').toUpperCase();
+    const targetRole = String(n.targetRole || (Array.isArray(n.targetRoles) && n.targetRoles[0]) || 'ALL').toUpperCase();
+
+    // 1. Department Filter: หากเป็น Approver หรืองานของ MGT ให้ข้ามเงื่อนไขตรวจสอบ department ได้
+    const isApproverOrMGT = roleStr.includes('APPROV') || roleStr.includes('REVIEW') || roleStr.includes('MANAGER') || userDept === 'MGT';
+    const isApproverTarget = targetRole.includes('APPROV') || targetRole.includes('REVIEW') || (Array.isArray(n.targetRoles) && n.targetRoles.some(r => {
+      const ru = String(r).toUpperCase();
+      return ru.includes('APPROV') || ru.includes('REVIEW') || ru.includes('MANAGER');
+    }));
+
+    const matchDept = (isApproverOrMGT && isApproverTarget)
+      ? true
+      : (targetDept === 'ALL' || userDept === 'ALL' || targetDept === userDept || userDept.includes(targetDept) || targetDept.includes(userDept));
+
+    if (!matchDept && !user.canViewAllDepts && userDept !== 'ALL') {
+      const userDepts = Array.isArray(user.assignedDepartments)
+        ? user.assignedDepartments.map(d => String(d).toUpperCase())
+        : [];
+      if (!userDepts.includes(targetDept)) {
+        return false;
+      }
+    }
+
+    // 2. Role Filter
+    if (targetRole === 'ALL') return true;
+
+    if (targetRole.includes('REQUEST')) {
+      return roleStr.includes('REQUEST') || roleStr.includes('PD') || roleStr.includes('QC') || Number(user.level) === 1;
+    }
+    if (targetRole.includes('APPROV')) {
+      return isApproverOrMGT || roleStr.includes('APPROV') || roleStr.includes('REVIEW') || roleStr.includes('MANAGER') || Boolean(user.canReview || user.canFinalApprove);
+    }
+    if (targetRole.includes('PURCHAS') || targetRole.includes('BUYER')) {
+      return roleStr.includes('PURCHAS') || roleStr.includes('BUYER') || Boolean(user.canOnlinePurchase);
+    }
+
+    return roleStr.includes(targetRole);
+  };
+
+  // กรอง notifications ตาม Role และ Department
+  const scopedNotifications = useMemo(() => {
+    return notifications.filter(matchesRoleAndDept);
+  }, [notifications, user]);
+
+  // Helper ตรวจสอบ Unread ให้ครอบคลุมทุกคีย์ และ localStorage readIds แยกตาม user
   const isUnread = (n) => {
     if (!n) return false;
     if (n.isRead === true || n.read === true || n.status === 'read') return false;
+    const notifId = n.id || n._id;
+    if (notifId && getLocalReadIds().includes(notifId)) return false;
     return true;
   };
 
   // คำนวณ Unread Count แบบ Real-time
   const unreadCount = useMemo(() => {
-    return notifications.filter(isUnread).length;
-  }, [notifications]);
+    return scopedNotifications.filter(isUnread).length;
+  }, [scopedNotifications]);
 
   // กรองรายการตาม Tab
   const displayedNotifications = useMemo(() => {
     if (activeTab === 'unread') {
-      return notifications.filter(isUnread);
+      return scopedNotifications.filter(isUnread);
     }
-    return notifications;
-  }, [notifications, activeTab]);
+    return scopedNotifications;
+  }, [scopedNotifications, activeTab]);
 
-  // ปรับการดักฟังปุ่ม "อ่านทั้งหมด": รองรับทั้ง onMarkAllAsRead และ markAllAsRead
+  // จัดการการคลิกที่รายการแจ้งเตือน: บันทึก readIds ลง localStorage ตาม user
+  const handleItemClick = (item) => {
+    const notifId = item.id || item._id;
+    if (notifId) {
+      try {
+        const readIds = getLocalReadIds();
+        if (!readIds.includes(notifId)) {
+          readIds.push(notifId);
+          localStorage.setItem(`prpo_read_notifications_${safeUserName}`, JSON.stringify(readIds));
+        }
+      } catch {}
+    }
+    if (onMarkAsRead) {
+      onMarkAsRead(notifId);
+    }
+    if (onNotificationClick) {
+      onNotificationClick(item);
+    }
+  };
+
+  // ปรับการดักฟังปุ่ม "อ่านทั้งหมด": บันทึกลง localStorage ตาม user และแจ้ง Callback
   const handleMarkAll = (e) => {
     e.preventDefault();
     e.stopPropagation();
+    try {
+      const readIds = getLocalReadIds();
+      const idsToMark = scopedNotifications.map(n => n.id || n._id).filter(Boolean);
+      const combined = Array.from(new Set(readIds.concat(idsToMark)));
+      localStorage.setItem(`prpo_read_notifications_${safeUserName}`, JSON.stringify(combined));
+    } catch {}
     const markFn = onMarkAllAsRead || markAllAsRead || props.markAllAsRead || props.onMarkAllAsRead;
     if (typeof markFn === 'function') {
-      markFn(notifications);
+      markFn(scopedNotifications);
     }
   };
 
@@ -97,7 +193,15 @@ export default function NotificationPopover(props) {
         label: 'รับของบางส่วน'
       };
     }
-    if (text.includes('อนุมัติ') || text.includes('approved') || text.includes('สำเร็จ')) {
+    if (text.includes('รอการตรวจสอบ') || text.includes('รออนุมัติ') || text.includes('review') || item.type === 'PR_SUBMITTED' || item.type === 'PR_REVIEWED') {
+      return {
+        icon: <Clock size={15} strokeWidth={2.2} />,
+        bg: 'bg-amber-50 text-amber-600 ring-1 ring-amber-200/60',
+        badge: 'bg-amber-50 text-amber-700 border-amber-200',
+        label: 'รออนุมัติ'
+      };
+    }
+    if (text.includes('อนุมัติเรียบร้อย') || item.type === 'PR_APPROVED' || item.type === 'PO_APPROVED' || text.includes('ได้รับการอนุมัติ') || text.includes('สำเร็จ') || text.includes('approved')) {
       return {
         icon: <CheckCircle2 size={15} strokeWidth={2.2} />,
         bg: 'bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200/60',
@@ -225,10 +329,7 @@ export default function NotificationPopover(props) {
             return (
               <div
                 key={item.id || item._id || Math.random()}
-                onClick={() => {
-                  if (itemUnread && onMarkAsRead) onMarkAsRead(item.id);
-                  if (onNotificationClick) onNotificationClick(item);
-                }}
+                onClick={() => handleItemClick(item)}
                 className={`relative p-3.5 flex items-start gap-3 transition-all cursor-pointer group ${
                   itemUnread 
                     ? 'bg-indigo-50/25 hover:bg-indigo-50/50' 

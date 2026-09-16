@@ -2375,6 +2375,25 @@ export const storageService = {
   },
   appendBudgetTransaction(tx) {
     const existing = this.getBudgetTransactions();
+
+    // ── Client-Side Idempotency Guard ──────────────────────────────────────
+    // For financial event types that are strictly one-per-document, check if
+    // a record with the same type+docRef already exists before writing.
+    const IDEMPOTENT_TYPES = new Set(['PR_CANCEL_RELEASE', 'PO_CANCEL_RELEASE', 'BUDGET_ROLLBACK', 'CLAIM_REFUND']);
+    const txType = String(tx.type || '').toUpperCase();
+    const txDocRef = String(tx.docRef || tx.docNo || tx.referenceDoc || tx.refDocNo || '').trim();
+    if (IDEMPOTENT_TYPES.has(txType) && txDocRef) {
+      const isDuplicate = existing.some(ex =>
+        String(ex.type || '').toUpperCase() === txType &&
+        String(ex.docRef || ex.docNo || ex.referenceDoc || ex.refDocNo || '').trim() === txDocRef
+      );
+      if (isDuplicate) {
+        console.warn(`[storageService] Idempotency Guard: Skipped duplicate ${txType} for docRef=${txDocRef}`);
+        return; // No localStorage write, no GAS call
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     const cleanId = tx.id || `BTX-${Date.now()}`;
     const normalizedTx = {
       ...tx,

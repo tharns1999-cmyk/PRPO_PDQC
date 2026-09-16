@@ -156,77 +156,148 @@ export const notificationService = {
     this.notify();
   },
 
-  // Helper to check if a notification is targeted for the current role
+  // User-specific read status management in localStorage
+  getReadNotificationIds(userName) {
+    const safeName = String(userName || 'default').trim().toLowerCase();
+    try {
+      const data = localStorage.getItem(`prpo_read_notifications_${safeName}`);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  saveReadNotificationIds(userName, readIds) {
+    const safeName = String(userName || 'default').trim().toLowerCase();
+    try {
+      const unique = Array.from(new Set((readIds || []).filter(Boolean)));
+      localStorage.setItem(`prpo_read_notifications_${safeName}`, JSON.stringify(unique));
+    } catch {}
+  },
+
+  markNotificationAsReadForUser(userName, id) {
+    if (!id) return;
+    const current = this.getReadNotificationIds(userName);
+    current.push(id);
+    this.saveReadNotificationIds(userName, current);
+    this.notify();
+  },
+
+  markAllNotificationsAsReadForUser(userName, ids) {
+    const current = this.getReadNotificationIds(userName);
+    const combined = current.concat(ids || []);
+    this.saveReadNotificationIds(userName, combined);
+    this.notify();
+  },
+
+  // Helper to check if a notification is targeted for the current role and department (Strict Role & Dept, No Email)
   isNotificationTarget(n, currentRole) {
     if (!currentRole) return true;
-    if (currentRole.id === 'ADMIN' || currentRole.roleId === 'ADMIN' || Number(currentRole.level) >= 99) return true;
+    const roleId = String(currentRole.canonicalRole || currentRole.roleId || currentRole.id || currentRole.role || currentRole.positionKey || '').toUpperCase();
+    const isAdmin = currentRole.isAdmin === true || roleId.includes('ADMIN') || Number(currentRole.level) >= 99 || currentRole.username === 'admin';
+    if (isAdmin) return true;
 
-    // 1. Role Filter
+    const userDept = String(currentRole.department || currentRole.primaryDepartment || currentRole.dept || '').toUpperCase();
+    const targetDept = String(n.targetDepartment || n.targetDept || n.department || 'ALL').toUpperCase();
+    const targetRole = String(n.targetRole || (Array.isArray(n.targetRoles) && n.targetRoles[0]) || 'ALL').toUpperCase();
+
+    // 1. Department Filter: ปลดล็อกแผนกสำหรับ Approver และ MGT ให้เห็นงานขออนุมัติทุกแผนก
+    const isApproverOrMGT = roleId.includes('APPROV') || roleId.includes('REVIEW') || roleId.includes('MANAGER') || userDept === 'MGT';
+    const isApproverTarget = targetRole.includes('APPROV') || targetRole.includes('REVIEW') || (Array.isArray(n.targetRoles) && n.targetRoles.some(r => {
+      const ru = String(r).toUpperCase();
+      return ru.includes('APPROV') || ru.includes('REVIEW') || ru.includes('MANAGER');
+    }));
+
+    const matchDept = (isApproverOrMGT && isApproverTarget)
+      ? true
+      : (targetDept === 'ALL' || userDept === 'ALL' || targetDept === userDept || userDept.includes(targetDept) || targetDept.includes(userDept));
+
+    if (!matchDept && !currentRole.canViewAllDepts && userDept !== 'ALL') {
+      const userDepts = Array.isArray(currentRole.assignedDepartments)
+        ? currentRole.assignedDepartments.map(d => String(d).toUpperCase())
+        : [];
+      if (!userDepts.includes(targetDept)) {
+        return false;
+      }
+    }
+
+    // 2. Target Roles Array Filter (WorkflowEngine & Dispatch compatibility)
     if (Array.isArray(n.targetRoles) && n.targetRoles.length > 0) {
       const userLevel = Number(currentRole.level || 1);
-      const isOnline = currentRole.roleId === 'ONLINE_PURCHASER' || currentRole.id === 'ONLINE_PURCHASER' || currentRole.positionKey === 'ONLINE_PURCHASER' || (currentRole.canOnlinePurchase && userLevel < 99);
+      const isOnline = roleId === 'ONLINE_PURCHASER' || currentRole.canOnlinePurchase;
 
-      let roleMatches = n.targetRoles.includes(currentRole.id) ||
-        n.targetRoles.includes(currentRole.roleId) ||
-        n.targetRoles.includes(currentRole.positionKey);
+      let roleMatches = n.targetRoles.some(r => {
+        const rUpper = String(r).toUpperCase();
+        return rUpper === roleId || rUpper === String(currentRole.id || '').toUpperCase() || rUpper === String(currentRole.roleId || '').toUpperCase() || rUpper === String(currentRole.positionKey || '').toUpperCase();
+      });
 
       if (!roleMatches) {
-        if (isOnline && n.targetRoles.includes('ONLINE_PURCHASER')) {
+        if (isOnline && n.targetRoles.some(r => String(r).toUpperCase().includes('ONLINE_PURCHASER') || String(r).toUpperCase().includes('PURCHAS'))) {
           roleMatches = true;
-        } else if (!isOnline && userLevel === 2 && !currentRole.canFinalApprove && n.targetRoles.some(r => ['ASST_MANAGER', 'REVIEWER'].includes(r))) {
+        } else if (!isOnline && (userLevel >= 2 || isApproverOrMGT) && n.targetRoles.some(r => ['ASST_MANAGER', 'REVIEWER', 'APPROVER', 'PLANT_MANAGER'].includes(String(r).toUpperCase()))) {
           roleMatches = true;
-        } else if (userLevel >= 3 && n.targetRoles.some(r => ['PLANT_MANAGER', 'APPROVER'].includes(r))) {
+        } else if (userLevel === 1 && n.targetRoles.some(r => ['REQUESTER', 'REQUESTER_PD', 'REQUESTER_QC'].includes(String(r).toUpperCase()))) {
           roleMatches = true;
-        } else if (userLevel === 1 && n.targetRoles.some(r => ['REQUESTER', 'REQUESTER_PD', 'REQUESTER_QC'].includes(r))) {
-          // Match on unified REQUESTER role
-          if (n.targetRoles.includes('REQUESTER')) {
-            roleMatches = true;
-          } else {
-            // Match on department-specific legacy roles
-            // Check user's assignedDepartments (new) or fallback to department field
-            const userDepts = Array.isArray(currentRole.assignedDepartments) && currentRole.assignedDepartments.length > 0
-              ? currentRole.assignedDepartments
-              : [currentRole.department || currentRole.primaryDepartment].filter(Boolean);
-            const deptMatch = userDepts.some(d => n.targetRoles.includes(`REQUESTER_${d}`));
-            if (deptMatch) roleMatches = true;
-          }
         }
       }
 
       if (!roleMatches) return false;
     }
 
-    // 2. Department Filter (if department is specified and not ALL)
-    if (n.department && n.department !== 'ALL') {
-      if (currentRole.department !== 'ALL' && !currentRole.canViewAllDepts && currentRole.department !== n.department) {
-        return false;
+    // 3. Target Role String Filter (Event-driven Notifications: 'Approver', 'Requester', 'Purchaser', 'ALL')
+    if (n.targetRole) {
+      const trUpper = String(n.targetRole).toUpperCase();
+      if (trUpper !== 'ALL') {
+        if (trUpper.includes('REQUEST')) {
+          return roleId.includes('REQUEST') || roleId.includes('PD') || roleId.includes('QC') || Number(currentRole.level) === 1;
+        }
+        if (trUpper.includes('APPROV')) {
+          return isApproverOrMGT || roleId.includes('APPROV') || roleId.includes('REVIEW') || roleId.includes('PLANT_MANAGER') || roleId.includes('ASST_MANAGER') || Boolean(currentRole.canReview || currentRole.canFinalApprove);
+        }
+        if (trUpper.includes('PURCHAS') || trUpper.includes('BUYER')) {
+          return roleId.includes('PURCHAS') || roleId.includes('BUYER') || Boolean(currentRole.canOnlinePurchase);
+        }
+        return roleId.includes(trUpper);
       }
     }
 
     return true;
   },
 
-  // Get notifications filtered for a specific role or all if Admin
-  getNotificationsForRole(currentRole) {
+  // Get notifications filtered for a specific role and augmented with user-specific read status
+  getNotificationsForRole(currentRole, userName = null) {
     const all = this.getAll();
-    if (!currentRole) return all;
+    const safeUser = userName || currentRole?.name || currentRole?.username || 'default';
+    const userReadIds = new Set(this.getReadNotificationIds(safeUser));
 
-    return all.filter(n => this.isNotificationTarget(n, currentRole))
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const augmented = all.map(n => {
+      const notifId = n.id || n._id;
+      const isRead = n.isRead === true || n.read === true || n.status === 'read' || userReadIds.has(notifId);
+      return isRead ? { ...n, isRead: true, read: true, status: 'read' } : n;
+    });
+
+    if (!currentRole) return augmented;
+
+    return augmented
+      .filter(n => this.isNotificationTarget(n, currentRole))
+      .sort((a, b) => new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0));
   },
 
   // Unread count
-  getUnreadCountForRole(currentRole) {
-    const list = this.getNotificationsForRole(currentRole);
+  getUnreadCountForRole(currentRole, userName = null) {
+    const list = this.getNotificationsForRole(currentRole, userName);
     return list.filter(n => !(n.isRead === true || n.read === true || n.status === 'read')).length;
   },
 
-  getUnreadCount(currentRole) {
-    return this.getUnreadCountForRole(currentRole);
+  getUnreadCount(currentRole, userName = null) {
+    return this.getUnreadCountForRole(currentRole, userName);
   },
 
-  // Mark a specific notification as read
-  async markAsRead(id) {
+  // Mark a specific notification as read (with user isolation)
+  async markAsRead(id, userName = null) {
+    if (userName) {
+      this.markNotificationAsReadForUser(userName, id);
+    }
     const all = this.getAll();
     const updated = all.map(n => (n.id === id || n._id === id) ? { ...n, isRead: true, read: true, status: 'read' } : n);
     this.saveAll(updated);
@@ -240,10 +311,17 @@ export const notificationService = {
     return updated;
   },
 
-  // Mark all notifications as read for role or specific item IDs
-  async markAllAsRead(currentRole, targetIds = null) {
+  // Mark all notifications as read for role or specific item IDs (with user isolation)
+  async markAllAsRead(currentRole, targetIds = null, userName = null) {
     const all = this.getAll();
     const idSet = Array.isArray(targetIds) && targetIds.length > 0 ? new Set(targetIds) : null;
+
+    if (userName) {
+      const idsToMark = idSet 
+        ? Array.from(idSet)
+        : all.filter(n => !currentRole || this.isNotificationTarget(n, currentRole)).map(n => n.id || n._id).filter(Boolean);
+      this.markAllNotificationsAsReadForUser(userName, idsToMark);
+    }
 
     const updated = all.map(n => {
       const shouldMark = idSet

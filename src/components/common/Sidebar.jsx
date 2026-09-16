@@ -58,9 +58,11 @@ export default function Sidebar({
     ? Boolean(isDev)
     : Boolean(import.meta.env.DEV);
 
+  const notifUserName = currentUser?.name || currentUser?.username || currentRole?.name || currentRole?.username || context?.currentUser?.name || context?.currentUser?.username;
+
   // Single-Click Instant Reactive Notification State (Role-scoped)
   const [notifications, setNotifications] = useState(() => {
-    return notificationService.getNotificationsForRole(currentRole);
+    return notificationService.getNotificationsForRole(currentRole, notifUserName);
   });
 
   useEffect(() => {
@@ -74,17 +76,20 @@ export default function Sidebar({
 
   useEffect(() => {
     const unsub = notificationService.subscribe?.(() => {
-      setNotifications(notificationService.getNotificationsForRole(currentRole));
+      setNotifications(notificationService.getNotificationsForRole(currentRole, notifUserName));
     });
     return () => {
       if (unsub) unsub();
     };
-  }, [currentRole]);
+  }, [currentRole, notifUserName]);
 
   // Helper ตรวจสอบ Unread ให้ครอบคลุมทุกคีย์
   const isUnread = (n) => {
     if (!n) return false;
     if (n.isRead === true || n.read === true || n.status === 'read') return false;
+    const notifId = n.id || n._id;
+    const readIds = notificationService.getReadNotificationIds(notifUserName);
+    if (notifId && readIds.includes(notifId)) return false;
     return true;
   };
 
@@ -118,7 +123,7 @@ export default function Sidebar({
 
     // 3. สั่ง Service ทำงาน (Persist ลง Storage และ Backend)
     if (notificationService?.markAllAsRead) {
-      await notificationService.markAllAsRead(currentRole, ids);
+      await notificationService.markAllAsRead(currentRole, ids, notifUserName);
     }
   };
 
@@ -132,7 +137,7 @@ export default function Sidebar({
       );
     }
     if (notificationService?.markAsRead) {
-      await notificationService.markAsRead(id);
+      await notificationService.markAsRead(id, notifUserName);
     }
   };
 
@@ -378,7 +383,7 @@ export default function Sidebar({
           <div className="flex items-center gap-1.5 shrink-0 ml-1">
             <NotificationBell 
               currentRole={currentRole} 
-              count={unreadBadgeCount}
+              count={taskCounts.total}
               onClick={() => setShowNotiDrawer(true)} 
             />
 
@@ -595,6 +600,8 @@ export default function Sidebar({
             onMarkAsRead={handleMarkAsRead}
             onClose={() => setShowNotiDrawer(false)}
             onNotificationClick={handleNotificationClick}
+            currentUser={currentUser || context?.currentUser}
+            currentRole={currentRole}
           />
         </>,
         document.body

@@ -329,7 +329,7 @@ function ensureStockLogSheetHeaders(sheet) {
   var REQUIRED_HEADERS = [
     'id', 'timestamp', 'date', 'productId', 'productCode', 'name', 'type',
     'documentNo', 'grnNumber', 'poNumber', 'prNo', 'qty', 'unit', 'conversionRate',
-    'unitPrice', 'totalPrice', 'balanceAfter', 'actorName', 'department', 'locationId', 'notes'
+    'unitPrice', 'totalPrice', 'unitCost', 'totalCost', 'balanceAfter', 'actorName', 'department', 'locationId', 'notes'
   ];
 
   if (!sheet) return;
@@ -356,6 +356,101 @@ function ensureStockLogSheetHeaders(sheet) {
     sheet.getRange(1, startCol, 1, missingHeaders.length).setValues([missingHeaders]);
     formatHeaderRange(sheet, 1, startCol, missingHeaders.length);
   }
+}
+
+/**
+ * Records an in-app notification event into the Notifications sheet tab.
+ * Role & Department based delivery only (no emails).
+ * Schema: ['id', 'timestamp', 'title', 'message', 'type', 'targetDepartment', 'targetRole', 'docRef', 'status']
+ *
+ * @param {Object} params
+ * @param {string} params.title Notification headline
+ * @param {string} params.message Detailed explanation
+ * @param {string} [params.type='INFO'] Notification event type
+ * @param {string} [params.targetDept='ALL'] Target Department ('PD', 'QC', 'ALL')
+ * @param {string} [params.targetDepartment='ALL'] Alias for targetDept
+ * @param {string} [params.targetRole='ALL'] Target Role ('Requester', 'Approver', 'Purchaser', 'ALL')
+ * @param {string} [params.docRef=''] Reference document ID (e.g. PR-PD-2026-001, PO-QC-2026-002)
+ * @returns {Object|null} Created notification record
+ */
+function recordNotification(params) {
+  if (!params || typeof params !== 'object') return null;
+  try {
+    var ss = getSpreadsheet();
+    var sheetName = SHEET_NAMES.NOTIFICATIONS || 'Notifications';
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+    }
+
+    var REQUIRED_HEADERS = [
+      'id', 'timestamp', 'title', 'message', 'type', 'targetDepartment', 'targetRole', 'docRef', 'status'
+    ];
+
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+
+    if (lastRow === 0 || lastCol === 0) {
+      sheet.getRange(1, 1, 1, REQUIRED_HEADERS.length).setValues([REQUIRED_HEADERS]);
+      formatHeaderRow(sheet, REQUIRED_HEADERS.length);
+    } else {
+      var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+        return String(h || '').trim();
+      });
+      var missingHeaders = REQUIRED_HEADERS.filter(function(h) {
+        return existingHeaders.indexOf(h) === -1;
+      });
+      if (missingHeaders.length > 0) {
+        var startCol = existingHeaders.length + 1;
+        sheet.getRange(1, startCol, 1, missingHeaders.length).setValues([missingHeaders]);
+      }
+    }
+
+    var nowIso = new Date().toISOString();
+    var notifId = 'NTF-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    var targetDept = params.targetDept || params.targetDepartment || params.department || 'ALL';
+    var targetRole = params.targetRole || params.role || 'ALL';
+    var docRef = params.docRef || params.refNo || params.poNumber || params.prNumber || params.prNo || params.poNo || '';
+
+    var record = {
+      id: notifId,
+      timestamp: nowIso,
+      title: String(params.title || 'การแจ้งเตือนระบบ'),
+      message: String(params.message || ''),
+      type: String(params.type || 'INFO'),
+      targetDepartment: String(targetDept),
+      targetRole: String(targetRole),
+      docRef: String(docRef),
+      status: 'unread'
+    };
+
+    var currentHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function(h) {
+      return String(h || '').trim();
+    });
+
+    var rowValues = currentHeaders.map(function(header) {
+      var val = record[header];
+      if (val === undefined) {
+        if (header === 'createdAt') val = nowIso;
+        if (header === 'isRead') val = false;
+        if (header === 'prNumber' && String(docRef).indexOf('PR') !== -1) val = docRef;
+        if (header === 'poNumber' && String(docRef).indexOf('PO') !== -1) val = docRef;
+      }
+      return val !== undefined ? val : '';
+    });
+
+    var nextRow = sheet.getLastRow() + 1;
+    sheet.getRange(nextRow, 1, 1, rowValues.length).setValues([rowValues]);
+    return record;
+  } catch (err) {
+    console.error('[recordNotification] Error recording notification: ' + err.message);
+    return null;
+  }
+}
+
+// Alias for createNotification
+function createNotification(params) {
+  return recordNotification(params);
 }
 
 // =========================================================================
@@ -860,7 +955,7 @@ function deleteMasterItem(collection, id) {
 const SCHEMA_DEFINITIONS = Object.freeze({
   [SHEET_NAMES.PRODUCTS]: [
     'id', 'code', 'name', 'category', 'department', 'purchaseUnit', 'stockUnit', 
-    'conversionRate', 'price', 'stockBalance', 'reorderPoint', 'leadTimeDays', 
+    'conversionRate', 'price', 'avgCost', 'stockBalance', 'reorderPoint', 'leadTimeDays', 
     'locationId', 'locationName', 'status', 'isActive', 'updatedAt'
   ],
   [SHEET_NAMES.VENDORS]: [
@@ -887,7 +982,8 @@ const SCHEMA_DEFINITIONS = Object.freeze({
   [SHEET_NAMES.PRS]: [
     'id', 'prNo', 'department', 'requestedBy', 'requesterSignature', 'status', 
     'items', 'subtotal', 'totalAmount', 'createdAt', 'updatedAt', 'reviewedBy', 
-    'reviewedAt', 'approvedBy', 'approvedAt', 'poNumber', 'note'
+    'reviewedAt', 'approvedBy', 'approvedAt', 'poNumber', 'note',
+    'budgetPeriod', 'committedAmount', 'actualPaidAmount', 'paymentStatus'
   ],
   [SHEET_NAMES.PR_ITEMS]: [
     'id', 'prId', 'prNo', 'productId', 'productCode', 'name', 
@@ -905,13 +1001,18 @@ const SCHEMA_DEFINITIONS = Object.freeze({
     'receiverRole', 'receiverSignature', 'receivingInfo', 'actualTotalAmount', 
     'savingsAmount', 'settlementStatus', 'settlementNote', 'settlementProofUrl', 
     'settledBy', 'settledAt', 'actualItems', 'activityLog', 
-    'createdAt', 'completedAt', 'updatedAt'
+    'createdAt', 'completedAt', 'updatedAt',
+    'budgetPeriod', 'committedAmount', 'actualPaidAmount', 'paymentStatus'
   ],
   [SHEET_NAMES.STOCK_LOGS]: [
-    'id', 'timestamp', 'date', 'productId', 'productCode', 'name', 'type', 
-    'documentNo', 'grnNumber', 'poNumber', 'prNo', 'qty', 'unit', 'conversionRate', 
-    'unitPrice', 'totalPrice', 'balanceAfter', 'actorName', 'department', 'locationId', 'notes'
+    'id', 'timestamp', 'date', 'type', 'productId', 'productCode', 'productName', 'name',
+    'department', 'location', 'changeQty', 'qty', 'unit', 'conversionRate',
+    'unitPrice', 'totalPrice', 'unitCost', 'totalCost', 'balanceAfter', 'balance',
+    'issuedTo', 'issueUnit', 'reason', 'notes',
+    'documentNo', 'grnNumber', 'poNumber', 'prNo',
+    'actorId', 'actorName', 'locationId'
   ],
+
   [SHEET_NAMES.BUDGET_TRANSACTIONS]: [
     'id', 'date', 'createdAt', 'transactionId', 'period', 'type', 'actionType', 
     'dept', 'amount', 'refundAmount', 'creditAmount', 'docType', 'docNo', 
@@ -922,7 +1023,7 @@ const SCHEMA_DEFINITIONS = Object.freeze({
     'actor', 'changes', 'createdAt'
   ],
   [SHEET_NAMES.NOTIFICATIONS]: [
-    'id', 'type', 'title', 'message', 'targetRole', 'poNumber', 'prNumber', 'isRead', 'createdAt'
+    'id', 'timestamp', 'title', 'message', 'type', 'targetDepartment', 'targetRole', 'docRef', 'status'
   ],
   [SHEET_NAMES.BUDGETS]: [
     'dept', 'monthlyBudget', 'spent', 'pending', 'variance', 'year', 'month', 

@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Menu } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import NotificationDrawer from './NotificationDrawer';
 import UserProfileModal from './UserProfileModal';
+import { useAppContext } from '../../context/AppContext';
+import { workflowEngine } from '../../services/workflowEngine';
 
 /**
  * @deprecated Navbar is kept for backward compatibility if any legacy component imports it.
@@ -19,6 +21,15 @@ export default function Navbar({
 }) {
   const [showNotiDrawer, setShowNotiDrawer] = React.useState(false);
   const [showProfileModal, setShowProfileModal] = React.useState(false);
+
+  const context = useAppContext();
+  const prs = context?.prs;
+  const pos = context?.pos;
+  const taskCounts = useMemo(() => {
+    if (!prs && !pos) return null;
+    const userTasks = workflowEngine.getUserTasks(currentRole, prs, pos);
+    return userTasks.counts;
+  }, [prs, pos, currentRole]);
 
   return (
     <header className="bg-white border-b border-slate-200/80 sticky top-0 z-30 no-print">
@@ -46,6 +57,7 @@ export default function Navbar({
         <div className="flex items-center gap-2 sm:gap-3">
           <NotificationBell 
             currentRole={currentRole} 
+            count={taskCounts?.total}
             onClick={() => setShowNotiDrawer(true)} 
           />
           <div className="h-5 w-px bg-slate-200 mx-1 hidden sm:block"></div>

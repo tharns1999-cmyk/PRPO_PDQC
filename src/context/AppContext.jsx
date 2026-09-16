@@ -110,6 +110,13 @@ export function AppProvider({ children }) {
   const [pos, setPOs] = useState([]);
   const [stockLogs, setStockLogs] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [readNotifIds, setReadNotifIds] = useState(() => {
+    try {
+      const auth = authService.getCurrentSession() || DEFAULT_EMPLOYEE_ACCOUNTS[0];
+      const name = auth?.name || auth?.username;
+      return notificationService.getReadNotificationIds?.(name) || [];
+    } catch { return []; }
+  });
   const [budgetSummary, setBudgetSummary] = useState(null);
   const [budgetTransactions, setBudgetTransactions] = useState([]);
 
@@ -223,6 +230,11 @@ export function AppProvider({ children }) {
             if (idKey) seenPOKeys.add(idKey);
             if (noKey) seenPOKeys.add(noKey);
             return true;
+          }).map(po => {
+            return {
+              ...po,
+              items: typeof po.items === 'string' ? JSON.parse(po.items || '[]') : (po.items || [])
+            };
           });
           setPOs(uniquePOs);
         }
@@ -262,8 +274,11 @@ export function AppProvider({ children }) {
           });
         }
         if (Array.isArray(notisData) && notisData.length > 0) {
+          const userName = currentUser?.name || currentUser?.username || currentRole?.name || currentRole?.username;
+          const readIds = notificationService.getReadNotificationIds(userName);
           const localNotifs = notificationService.getAll();
           const localReadMap = new Map();
+          readIds.forEach(id => localReadMap.set(id, true));
           localNotifs.forEach(n => {
             if (n.isRead === true || n.read === true || n.status === 'read') {
               localReadMap.set(n.id || n._id, true);
@@ -1383,6 +1398,7 @@ export function AppProvider({ children }) {
     const productCode = payload.productCode || payload.code || payload.sku;
     const department = payload.department || payload.category;
     const issuedTo = payload.issuedTo || payload.issueUnit || payload.unitName || '';
+    const location = payload.location || payload.targetUnit || payload.unit || issuedTo || '';
     const reason = payload.reason || payload.note || 'เบิกจ่ายด่วน';
     const requester = payload.user || currentUser || currentRole;
 
@@ -1416,24 +1432,30 @@ export function AppProvider({ children }) {
       updatedAt: nowIso
     };
 
-    const logId = `LOG-${department || updatedProd.department || 'PD'}-${Date.now()}`;
+    const currentAvg = Number(updatedProd.avgCost || updatedProd.costPrice || updatedProd.price || 0);
+    const totalCost = Math.round(issueQty * currentAvg * 100) / 100;
+
+    const logId = `LOG-${department || updatedProd.department || 'PD'}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const logEntry = {
       id: logId,
       timestamp: nowIso,
       date: nowIso,
-      type: 'ISSUE',
+      type: 'OUT',
       productId: updatedProd.id,
       productCode: updatedProd.code,
       productName: updatedProd.name,
       name: updatedProd.name,
       department: department || updatedProd.department || 'PD',
+      location: location || '',       // ห้อง/หน่วยที่เบิก เช่น 'ห้อง K1'
       changeQty: -issueQty,
       qty: issueQty,
       unit: sUnit,
       balanceAfter: newBalance,
       balance: newBalance,
-      issuedTo: issuedTo || '',
-      issueUnit: issuedTo || '',
+      unitCost: currentAvg,
+      totalCost: totalCost,
+      issuedTo: issuedTo || location || '',
+      issueUnit: location || issuedTo || '',  // Backward compat สำหรับ getLogUnit()
       reason: reason || 'เบิกจ่ายด่วน',
       note: reason || 'เบิกจ่ายด่วน',
       actorId: requester?.id || requester?.username || '',
@@ -1461,12 +1483,21 @@ export function AppProvider({ children }) {
         department: updatedProd.department || department || 'PD',
         quantity: issueQty,
         issuedTo,
+        location,        // ห้อง/หน่วยที่เบิก → บันทึกลงชีต StockLogs
         reason,
         requesterId: requester?.id || requester?.username || '',
         requesterName: requester?.name || '',
         user: requester
       };
-      await apiService.issueStock(apiPayload);
+      const apiResult = await apiService.issueStock(apiPayload);
+      const serverLog = apiResult?.data?.logEntry || apiResult?.logEntry;
+      if (serverLog && serverLog.id) {
+        setStockLogs(prev => {
+          const replaced = prev.map(l => (l.id === logId ? { ...l, ...serverLog, id: serverLog.id } : l));
+          storageService.saveStockLogs(replaced);
+          return replaced;
+        });
+      }
     } catch (err) {
       console.warn('[AppContext] issueStock backend RPC warning:', err.message);
       if (err.message && err.message.includes('ไม่พอ')) {
@@ -1487,18 +1518,43 @@ export function AppProvider({ children }) {
   }, [currentUser, currentRole]);
 
   const handleMarkNotificationAsRead = useCallback(async (id) => {
+    const userName = currentUser?.name || currentUser?.username || currentRole?.name || currentRole?.username;
+    
+    setReadNotifIds(prev => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      if (notificationService?.saveReadNotificationIds) {
+        notificationService.saveReadNotificationIds(userName, next);
+      }
+      return next;
+    });
+
     setNotifications(prev => prev.map(n => (n.id === id || n._id === id) ? { ...n, isRead: true, read: true, status: 'read' } : n));
+    
     if (notificationService?.markAsRead) {
-      await notificationService.markAsRead(id);
+      await notificationService.markAsRead(id, userName);
     }
-  }, []);
+  }, [currentUser, currentRole]);
 
   const handleMarkAllNotificationsAsRead = useCallback(async () => {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true, read: true, status: 'read' })));
+    const userName = currentUser?.name || currentUser?.username || currentRole?.name || currentRole?.username;
+    
+    setNotifications(prev => {
+      const updated = prev.map(n => ({ ...n, isRead: true, read: true, status: 'read' }));
+      setReadNotifIds(rPrev => {
+        const next = [...new Set([...rPrev, ...updated.map(n => n.id || n._id)])];
+        if (notificationService?.saveReadNotificationIds) {
+          notificationService.saveReadNotificationIds(userName, next);
+        }
+        return next;
+      });
+      return updated;
+    });
+
     if (notificationService?.markAllAsRead) {
-      await notificationService.markAllAsRead(currentRole);
+      await notificationService.markAllAsRead(currentRole, null, userName);
     }
-  }, [currentRole]);
+  }, [currentUser, currentRole]);
 
   const handleClearNotifications = useCallback(() => {
     setNotifications([]);
@@ -1578,6 +1634,8 @@ export function AppProvider({ children }) {
     markAllNotificationsAsRead: handleMarkAllNotificationsAsRead,
     setNotifications,
     clearNotifications: handleClearNotifications,
+    readNotifIds,
+    setReadNotifIds,
     preselectedProduct,
     setPreselectedProduct,
     clearPreselectedProduct: () => setPreselectedProduct(null),
@@ -1613,6 +1671,7 @@ export function AppProvider({ children }) {
     pos,
     stockLogs,
     notifications,
+    readNotifIds,
     budgetSummary,
     loadAllData,
     fetchPRs,

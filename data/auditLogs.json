@@ -1,97 +1,12 @@
 [
   {
-    "id": "AUD-1789404062186-O1J2H",
-    "timestamp": "2026-09-14 23:41:02",
-    "timeFormatted": "2026-09-14 23:41:02",
-    "action": "LOGIN",
-    "module": "RBAC",
-    "targetRef": "siraphat.pd",
-    "summary": "เข้าสู่ระบบสำเร็จ (Username: siraphat.pd)",
-    "actor": {
-      "id": "USR-ANON",
-      "name": "สิรภัทร แจ่มมิน",
-      "role": "Requester (PD)",
-      "department": "PD"
-    },
-    "changes": [],
-    "hasDiff": false
-  },
-  {
-    "id": "AUD-1789401749131-D7SAG",
-    "timestamp": "2026-09-14 23:02:29",
-    "timeFormatted": "2026-09-14 23:02:29",
-    "action": "LOGOUT",
-    "module": "RBAC",
-    "targetRef": "siraphat.pd",
-    "summary": "ออกจากระบบสำเร็จ (Username: siraphat.pd)",
-    "actor": {
-      "id": "USR-ANON",
-      "name": "สิรภัทร แจ่มมิน",
-      "role": "Requester (PD)",
-      "department": "PD"
-    },
-    "changes": [],
-    "hasDiff": false
-  },
-  {
-    "id": "AUD-1789386683204-NX248",
-    "timestamp": "2026-09-14 18:51:23",
-    "timeFormatted": "2026-09-14 18:51:23",
-    "action": "UPDATE",
-    "module": "MASTER",
-    "targetRef": "PT02",
-    "summary": "แก้ไขข้อมูลสินค้า: [PT02] Part B",
-    "actor": {
-      "id": "USR-ANON",
-      "name": "สิรภัทร แจ่มมิน",
-      "role": "Requester (PD)",
-      "department": "PD"
-    },
-    "changes": [],
-    "hasDiff": false
-  },
-  {
-    "id": "AUD-1789386683081-YB1ZK",
-    "timestamp": "2026-09-14 18:51:23",
-    "timeFormatted": "2026-09-14 18:51:23",
-    "action": "UPDATE",
-    "module": "MASTER",
-    "targetRef": "PT02",
-    "summary": "แก้ไขข้อมูลสินค้า: [PT02] Part B",
-    "actor": {
-      "id": "USR-ANON",
-      "name": "Admin / Master Manager",
-      "role": "Staff",
-      "department": "PD"
-    },
-    "changes": [],
-    "hasDiff": false
-  },
-  {
-    "id": "AUD-1789386674878-FG7EH",
-    "timestamp": "2026-09-14 18:51:14",
-    "timeFormatted": "2026-09-14 18:51:14",
-    "action": "CREATE",
-    "module": "MASTER",
-    "targetRef": "TH22",
-    "summary": "เพิ่มสินค้าใหม่: [TH22] bvnfghxjxfyjhdxfrtyhjdxrtghdrsf",
-    "actor": {
-      "id": "USR-ANON",
-      "name": "Admin / Master Manager",
-      "role": "Staff",
-      "department": "PD"
-    },
-    "changes": [],
-    "hasDiff": false
-  },
-  {
-    "id": "AUD-1789383773489-L78NF",
-    "timestamp": "2026-09-14 18:02:53",
-    "timeFormatted": "2026-09-14 18:02:53",
+    "id": "AUD-1789458440213-WPFUM",
+    "timestamp": "2026-09-15 14:47:20",
+    "timeFormatted": "2026-09-15 14:47:20",
     "action": "APPROVE",
     "module": "PURCHASE",
-    "targetRef": "PO-PD-2026-001",
-    "summary": "อนุมัติ PR PD001/2026 ออกใบสั่งซื้อ PO-PD-2026-001 (ผู้ขาย: Shopee / Lazada (ระบุร้านภายหลัง)) ยอดเงิน ฿2,712",
+    "targetRef": "PO-PD-2026-002",
+    "summary": "อนุมัติ PR PD004/2026 ออกใบสั่งซื้อ PO-PD-2026-002 (ผู้ขาย: Shopee / Lazada (ระบุร้านภายหลัง)) ยอดเงิน ฿3,300",
     "actor": {
       "id": "USR-ANON",
       "name": "คุณประเสริฐ ยิ่งยง",
@@ -102,13 +17,13 @@
     "hasDiff": false
   },
   {
-    "id": "AUD-1789383757398-5R8ZN",
-    "timestamp": "2026-09-14 18:02:37",
-    "timeFormatted": "2026-09-14 18:02:37",
+    "id": "AUD-1789458422756-04C80",
+    "timestamp": "2026-09-15 14:47:02",
+    "timeFormatted": "2026-09-15 14:47:02",
     "action": "CREATE",
     "module": "PURCHASE",
-    "targetRef": "PD001/2026",
-    "summary": "สร้างและยื่นส่งใบขอซื้อ เลขที่ PD001/2026 ยอดรวม ฿2,712",
+    "targetRef": "PD004/2026",
+    "summary": "สร้างและยื่นส่งใบขอซื้อ เลขที่ PD004/2026 ยอดรวม ฿3,300",
     "actor": {
       "id": "USR-ANON",
       "name": "สิรภัทร แจ่มมิน",
@@ -119,9 +34,111 @@
     "hasDiff": false
   },
   {
-    "id": "AUD-1789383617283-FHL9O",
-    "timestamp": "2026-09-14 18:00:17",
-    "timeFormatted": "2026-09-14 18:00:17",
+    "id": "AUD-1789458359051-ZVGYH",
+    "timestamp": "2026-09-15 14:45:59",
+    "timeFormatted": "2026-09-15 14:45:59",
+    "action": "CREATE",
+    "module": "PURCHASE",
+    "targetRef": "PD003/2026",
+    "summary": "สร้างและยื่นส่งใบขอซื้อ เลขที่ PD003/2026 ยอดรวม ฿107",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789458353830-PH0IL",
+    "timestamp": "2026-09-15 14:45:53",
+    "timeFormatted": "2026-09-15 14:45:53",
+    "action": "CREATE",
+    "module": "PURCHASE",
+    "targetRef": "PD002/2026",
+    "summary": "สร้างและยื่นส่งใบขอซื้อ เลขที่ PD002/2026 ยอดรวม ฿100",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789444836854-F0GUV",
+    "timestamp": "2026-09-15 11:00:36",
+    "timeFormatted": "2026-09-15 11:00:36",
+    "action": "APPROVE",
+    "module": "PURCHASE",
+    "targetRef": "PO-PD-2026-001",
+    "summary": "อนุมัติ PR PD001/2026 ออกใบสั่งซื้อ PO-PD-2026-001 (ผู้ขาย: Shopee / Lazada (ระบุร้านภายหลัง)) ยอดเงิน ฿600",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณประเสริฐ ยิ่งยง",
+      "role": "Plant Manager (PD, QC, ALL)",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789444548478-TE5ZL",
+    "timestamp": "2026-09-15 10:55:48",
+    "timeFormatted": "2026-09-15 10:55:48",
+    "action": "CREATE",
+    "module": "PURCHASE",
+    "targetRef": "PD001/2026",
+    "summary": "สร้างและยื่นส่งใบขอซื้อ เลขที่ PD001/2026 ยอดรวม ฿600",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "สิรภัทร แจ่มมิน",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789444515842-PRM9X",
+    "timestamp": "2026-09-15 10:55:15",
+    "timeFormatted": "2026-09-15 10:55:15",
+    "action": "LOGIN",
+    "module": "RBAC",
+    "targetRef": "admin",
+    "summary": "เข้าสู่ระบบสำเร็จ (Username: admin)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "ผู้ดูแลระบบ",
+      "role": "System Admin",
+      "department": "ALL"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789402228185-N1WGU",
+    "timestamp": "2026-09-14 23:10:28",
+    "timeFormatted": "2026-09-14 23:10:28",
+    "action": "LOGOUT",
+    "module": "RBAC",
+    "targetRef": "wichai.pd",
+    "summary": "ออกจากระบบสำเร็จ (Username: wichai.pd)",
+    "actor": {
+      "id": "USR-ANON",
+      "name": "คุณวิชัย (PD)",
+      "role": "Requester (PD)",
+      "department": "PD"
+    },
+    "changes": [],
+    "hasDiff": false
+  },
+  {
+    "id": "AUD-1789319126814-7S8US",
+    "timestamp": "2026-09-13T17:05:26.814Z",
+    "timeFormatted": "14/09/2569 00:05:26",
     "action": "RESET_TRANSACTIONS",
     "module": "SYSTEM",
     "targetRef": "-",

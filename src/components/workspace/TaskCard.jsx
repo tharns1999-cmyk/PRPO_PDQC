@@ -129,11 +129,22 @@ export default function TaskCard({ task, activeTab, currentRole, onClick, onReor
   const dateVal = task.createdAt || task.requestedDate || task.date || task.issueDate;
   
   // Format Title / Item name
-  const title = task.title || (task.items && task.items.length > 0 
+  let title = task.title || (task.items && task.items.length > 0 
     ? (task.items.length === 1 
         ? task.items[0].name 
         : `${task.items[0].name} (+${task.items.length - 1} รายการ)`)
     : (isPR ? 'ใบขอซื้อ' : 'ใบสั่งซื้อ'));
+
+  const isPartialPO = !isPR && task.status === 'PARTIAL_RECEIVED' && (activeTab === 'todo' || activeTab === 'action');
+  if (isPartialPO) {
+    const remainingCount = (task.items || []).filter(it => {
+       const q = Number(it.quantity || 0);
+       const rq = Number(it.receivedQty || 0);
+       const rem = it.remainingQty !== undefined ? Number(it.remainingQty) : (q - rq);
+       return rem > 0;
+    }).length;
+    title = `ตรวจรับพัสดุรอบที่ ${task.receiptRound || 2} (ค้างรับ ${remainingCount} รายการ) - PO: ${docNo}`;
+  }
 
   const getVendorDisplayName = (vendorData) => {
     if (!vendorData) return 'ไม่ระบุผู้ขาย';
@@ -263,13 +274,31 @@ export default function TaskCard({ task, activeTab, currentRole, onClick, onReor
           </p>
         </div>
 
-        <button
-          type="button"
-          className="h-8 px-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 whitespace-nowrap cursor-pointer"
-        >
-          <span>{actionText}</span>
-          <span className="text-xs">➔</span>
-        </button>
+        {isPartialPO ? (
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              className="h-8 px-3.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer"
+            >
+              ส่งเคลม / ติดต่อร้าน
+            </button>
+            <button
+              type="button"
+              className="h-8 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 whitespace-nowrap cursor-pointer"
+            >
+              <span>ตรวจรับรอบถัดไป</span>
+              <span className="text-xs">➔</span>
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="h-8 px-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 whitespace-nowrap cursor-pointer"
+          >
+            <span>{actionText}</span>
+            <span className="text-xs">➔</span>
+          </button>
+        )}
       </div>
     </div>
   );

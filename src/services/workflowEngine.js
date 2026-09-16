@@ -89,10 +89,10 @@ export const workflowEngine = {
         return isOnlinePurchaser || isAdmin;
       }
 
-      // 2. PO Goods Receiving (ORDERED, ORDERED_PENDING_DELIVERY, ISSUED, PARTIAL, IN_DELIVERY):
+      // 2. PO Goods Receiving (ORDERED, ORDERED_PENDING_DELIVERY, ISSUED, PARTIAL, IN_DELIVERY, PARTIAL_RECEIVED):
       // ─── PRIMARY RULE: ONLY Requester / Supervisor (Level 1) of that department can receive goods!
       // Asst. Mgr (Level 2) and Plant Mgr (Level 3) and Online Purchaser CANNOT receive goods.
-      if (['ORDERED', 'ORDERED_PENDING_DELIVERY', 'ISSUED', 'PARTIAL', 'IN_DELIVERY'].includes(po.status)) {
+      if (['ORDERED', 'ORDERED_PENDING_DELIVERY', 'ISSUED', 'PARTIAL', 'IN_DELIVERY', 'PARTIAL_RECEIVED', 'WAITING_DELIVERY_ROUND_2'].includes(po.status)) {
         if (isAdmin) return true;
         if (isOnlinePurchaser) return false;
         
@@ -312,7 +312,7 @@ export const workflowEngine = {
       const poSubtitle = (() => {
         if (po.status === 'ISSUED') return '📦 รอดำเนินการ: ตรวจรับสินค้าเข้าคลัง';
         if (po.status === 'ORDERED' || po.status === 'ORDERED_PENDING_DELIVERY') return '🚚 สินค้ากำลังจัดส่ง: รอตรวจรับของ';
-        if (po.status === 'PARTIAL') return '⚠️ รับของบางส่วนแล้ว: ยังมียอดค้างส่ง';
+        if (po.status === 'PARTIAL' || po.status === 'PARTIAL_RECEIVED' || po.status === 'WAITING_DELIVERY_ROUND_2') return 'ตรวจรับพัสดุรอบถัดไป / ติดตามของเคลม';
         if (po.status === 'IN_PROGRESS_ONLINE') return '🛒 รอจัดซื้อออนไลน์ดำเนินการ';
         if (po.status === 'CLAIM_REPORTED') return '🚨 แจ้งปัญหาแล้ว: รอดำเนินการแก้ไข';
         if (po.status === 'CLAIM_IN_PROGRESS') return '🔄 อยู่ระหว่างแก้ไขเคลม';

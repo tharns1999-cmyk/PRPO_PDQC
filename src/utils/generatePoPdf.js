@@ -639,10 +639,10 @@ export async function generatePoPdf(po) {
     x: 480, y: rowY - 55, size: 10, font: boldFont, color: rgb(0.1, 0.5, 0.3) 
   });
 
-  // 7. กล่อง Digital Approval Stamp 4 ช่อง (Continuous Table Layout) & Settlement Box
+  // 7. กล่อง Digital Approval Stamp 3 ช่อง (Continuous Table Layout) & Settlement Box
   const stampBoxHeight = 90;
   const totalStampWidth = width - 100;
-  const stampWidth = totalStampWidth / 4;
+  const stampWidth = totalStampWidth / 3;
   const isCompleted = ['completed', 'CLOSED', 'RECEIVED'].includes(po?.status);
 
   const financialBottomY = rowY - 55;
@@ -871,13 +871,6 @@ export async function generatePoPdf(po) {
       time: formatDocDateTime(approverDate), 
       sigImg: appSigImg,
       isSigned: true
-    },
-    { 
-      role: 'ผู้ตรวจรับ / บันทึกสต็อก', 
-      name: recName, 
-      time: formatDocDateTime(receiverDate), 
-      sigImg: isReceivedDoc ? recSigImg : null,
-      isSigned: isReceivedDoc
     }
   ];
 
@@ -1008,7 +1001,7 @@ export async function generatePoPdf(po) {
   });
 
   // Draw Vertical Separators
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i < 3; i++) {
     const lineX = 50 + (i * stampWidth);
     activePage.drawLine({
       start: { x: lineX, y: stampBoxY },
@@ -1071,12 +1064,12 @@ export async function generatePoPdf(po) {
     }
   });
 
-  // Confirmation note under Column 4 (Receiver stamp)
+  // Confirmation note under Column 3
   if (hasSettlement) {
     const confirmNote = normalizeThaiText(`* ยืนยันยอดตรวจรับและจ่ายจริง ฿${actualTotal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
-    const col4X = 50 + (3 * stampWidth);
+    const col3X = 50 + (2 * stampWidth);
     activePage.drawText(confirmNote, {
-      x: col4X + 4,
+      x: col3X + 4,
       y: stampBoxY - 11,
       size: 7.5,
       font: boldFont,

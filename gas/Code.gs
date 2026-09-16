@@ -1407,6 +1407,22 @@ function apiCreatePR(rawPayload, userContext) {
       console.warn('AuditLog Error in apiCreatePR:', e);
     }
 
+    // 4. Trigger In-App Notification (Approver in department)
+    if (prObj.status !== 'DRAFT') {
+      try {
+        recordNotification({
+          title: 'มี PR รอการตรวจสอบ / อนุมัติ',
+          message: 'ใบขอซื้อ ' + (seqPrNo || prObj.prNo || prObj.id) + ' แผนก ' + dept + ' จาก ' + (prObj.requestedBy || user.name) + ' รอการอนุมัติ',
+          type: 'PR_SUBMITTED',
+          targetDept: dept,
+          targetRole: 'Approver',
+          docRef: seqPrNo || prObj.prNo || prObj.id
+        });
+      } catch(ne) {
+        console.warn('[apiCreatePR] Notification error:', ne);
+      }
+    }
+
     var returnPr = Object.assign({}, prObj);
     returnPr.items = rawItems;
     return packageUpdatedPR(returnPr);
@@ -1605,6 +1621,28 @@ function apiApprovePR(rawPayload, userContext) {
       console.warn('AuditLog Error in apiApprovePR:', e);
     }
 
+    // 4. Trigger In-App Notifications (Requester & Purchaser)
+    try {
+      recordNotification({
+        title: 'PR ได้รับการอนุมัติแล้ว',
+        message: 'ใบขอซื้อ ' + (prObj.prNo || prObj.id) + ' ได้รับการอนุมัติเรียบร้อยแล้ว',
+        type: 'PR_APPROVED',
+        targetDept: dept,
+        targetRole: 'Requester',
+        docRef: prObj.prNo || prObj.id
+      });
+      recordNotification({
+        title: 'มี PR ใหม่ได้รับการอนุมัติ (พร้อมออก PO)',
+        message: 'ใบขอซื้อ ' + (prObj.prNo || prObj.id) + ' แผนก ' + dept + ' ได้รับการอนุมัติแล้ว พร้อมดำเนินการจัดซื้อ',
+        type: 'PR_APPROVED',
+        targetDept: dept,
+        targetRole: 'Purchaser',
+        docRef: prObj.prNo || prObj.id
+      });
+    } catch(ne) {
+      console.warn('[apiApprovePR] Notification error:', ne);
+    }
+
     return packageUpdatedPR(prObj);
   }, 'ApprovePR', rawPayload, userContext);
 }
@@ -1652,13 +1690,18 @@ function apiRejectPR(rawPayload, userContext) {
       console.warn('AuditLog Error in apiRejectPR:', e);
     }
 
-    // 4. แจ้งเตือน (Safe wrapper)
+    // 4. แจ้งเตือน In-App Notification (Requester)
     try {
-      if (typeof UrlFetchApp !== 'undefined') {
-        // Safe placeholder with muteHttpExceptions
-      }
+      recordNotification({
+        title: 'PR ไม่อนุมัติ / ส่งกลับแก้ไข',
+        message: 'ใบขอซื้อ ' + (prObj.prNo || prObj.id) + ' ถูกส่งกลับ: ' + (actualReason || 'โปรดตรวจสอบรายละเอียดและแก้ไข'),
+        type: 'PR_REJECTED',
+        targetDept: dept,
+        targetRole: 'Requester',
+        docRef: prObj.prNo || prObj.id
+      });
     } catch (notifyErr) {
-      console.warn('Notification Error:', notifyErr);
+      console.warn('[apiRejectPR] Notification Error:', notifyErr);
     }
 
     return packageUpdatedPR(prObj);
@@ -1698,10 +1741,41 @@ function apiCancelPR(rawPayload, userContext) {
 
     var result = upsertRecordFast(SHEET_NAMES.PRS, 'id', prObj);
 
+    var committed = Number(prObj.totalAmount || prObj.grandTotal || 0);
+    if (committed > 0) {
+      try {
+        var txObj = {
+          type: 'PR_CANCEL_RELEASE',
+          docRef: prObj.prNo || prObj.id,
+          amount: committed,
+          refundAmount: committed,
+          note: 'คืนงบผูกพันจากการยกเลิกใบขอซื้อ' + (actualReason ? (' (' + actualReason + ')') : ''),
+          department: prObj.department
+        };
+        apiAppendBudgetTransaction(txObj, userContext);
+      } catch (e) {
+        console.warn('Budget Refund Error in apiCancelPR:', e);
+      }
+    }
+
     try {
       logPRAudit(prObj.prNo || prObj.id, 'CANCEL', user, actualReason || 'ยกเลิกใบขอซื้อ');
     } catch(e) {
       console.warn('AuditLog Error in apiCancelPR:', e);
+    }
+
+    // Trigger In-App Notification (PR Cancelled & Budget Released)
+    try {
+      recordNotification({
+        title: 'PR ถูกยกเลิกและคืนงบประมาณแล้ว',
+        message: 'ใบขอซื้อ ' + (prObj.prNo || prObj.id) + ' ถูกยกเลิก' + (actualReason ? (' (' + actualReason + ')') : '') + ' และคืนงบประมาณเรียบร้อยแล้ว',
+        type: 'PR_CANCELLED',
+        targetDept: dept,
+        targetRole: 'ALL',
+        docRef: prObj.prNo || prObj.id
+      });
+    } catch(ne) {
+      console.warn('[apiCancelPR] Notification error:', ne);
     }
 
     return packageUpdatedPR(prObj);
@@ -2165,6 +2239,19 @@ function apiSavePO(rawPayload, userContext) {
     poObj.createdAt = poObj.createdAt || new Date().toISOString();
     poObj.updatedAt = new Date().toISOString();
 
+    // ✅ Budget Anchoring & Commitment Logic (Flow A vs Flow B)
+    var refDate = poObj.approvedAt || poObj.createdAt;
+    poObj.budgetPeriod = poObj.budgetPeriod || refDate.substring(0, 7);
+
+    // Online Procurement Confirm Order
+    if (poObj.isOnline && poObj.actualTotalAmount !== undefined && poObj.actualTotalAmount !== null) {
+      poObj.actualPaidAmount = Number(poObj.actualTotalAmount);
+      poObj.committedAmount = 0;
+    } else {
+      // Internal Procurement (or still pending online)
+      poObj.committedAmount = Number(poObj.grandTotal || poObj.totalAmount || 0);
+    }
+
     if (poObj.items) {
       var rawItems = poObj.items;
       if (typeof rawItems === 'string') {
@@ -2188,6 +2275,101 @@ function apiSavePO(rawPayload, userContext) {
         poObj[field] = JSON.stringify(Array.isArray(rawVal) ? rawVal : []);
       }
     });
+
+    var livePOs = batchReadRecords(SHEET_NAMES.POS);
+    var livePO = livePOs.find(function(p) { return String(p.id) === String(poObj.id); });
+    var wasCancelled = livePO && livePO.status === 'CANCELLED';
+
+    if (poObj.status === 'CANCELLED' && !wasCancelled) {
+      var poCommitted = Number(poObj.committedAmount || poObj.grandTotal || poObj.totalAmount || 0);
+      if (poCommitted > 0) {
+        try {
+          apiAppendBudgetTransaction({
+            type: 'PO_CANCEL_RELEASE',
+            docRef: poObj.poNo || poObj.id,
+            amount: poCommitted,
+            refundAmount: poCommitted,
+            note: 'คืนงบผูกพันจากการยกเลิกใบสั่งซื้อ',
+            department: poObj.department
+          }, userContext);
+        } catch(e) {
+          console.warn('Budget Refund Error in apiSavePO Cancel:', e);
+        }
+      }
+      try {
+        recordNotification({
+          title: 'PO ถูกยกเลิกและคืนงบประมาณแล้ว',
+          message: 'ใบสั่งซื้อ ' + (poObj.poNo || poObj.id) + ' ถูกยกเลิกและคืนงบประมาณเรียบร้อยแล้ว',
+          type: 'PO_CANCELLED',
+          targetDept: poObj.department || 'ALL',
+          targetRole: 'ALL',
+          docRef: poObj.poNo || poObj.id
+        });
+      } catch(ne) {
+        console.warn('[apiSavePO] Cancel Notification error:', ne);
+      }
+    }
+
+    // Trigger Notification for Online Order Confirmation
+    var wasOrdered = livePO && (livePO.status === 'ORDERED' || livePO.orderStatus === 'ORDERED');
+    var isNowOrdered = poObj.status === 'ORDERED' || poObj.orderStatus === 'ORDERED';
+    if (isNowOrdered && !wasOrdered) {
+      try {
+        recordNotification({
+          title: 'สินค้าสั่งซื้อแล้ว (รอรับของ)',
+          message: 'ใบสั่งซื้อ ' + (poObj.poNo || poObj.id) + ' ได้รับการยืนยันการสั่งซื้อแล้ว อยู่ระหว่างการจัดส่ง',
+          type: 'ONLINE_ORDERED',
+          targetDept: poObj.department || 'ALL',
+          targetRole: 'Requester',
+          docRef: poObj.poNo || poObj.id
+        });
+      } catch(ne) {
+        console.warn('[apiSavePO] Online Order Notification error:', ne);
+      }
+    }
+
+    if (poObj.claimResolution) {
+      var res = poObj.claimResolution;
+      if (typeof res === 'string') {
+        try { res = JSON.parse(res); } catch(e) { res = null; }
+      }
+      var liveRes = livePO ? livePO.claimResolution : null;
+      if (typeof liveRes === 'string') {
+        try { liveRes = JSON.parse(liveRes); } catch(e) { liveRes = null; }
+      }
+      
+      if (res && res.type && (!liveRes || liveRes.resolvedAt !== res.resolvedAt)) {
+         if (res.type === 'REFUND' || res.type === 'CANCEL') {
+           var refundAmt = Number(res.refundAmount || 0);
+           if (refundAmt > 0) {
+             try {
+                apiAppendBudgetTransaction({
+                  type: 'CLAIM_REFUND',
+                  docRef: poObj.poNo || poObj.id,
+                  amount: refundAmt,
+                  refundAmount: refundAmt,
+                  note: 'รับเงินคืนจากการเคลม/ยกเลิก (Claim Resolution)',
+                  department: poObj.department
+                }, userContext);
+             } catch(e) {
+                console.warn('Budget Refund Error in apiSavePO Claim:', e);
+             }
+           }
+         }
+         try {
+           recordNotification({
+             title: 'เคลมสินค้าสำเร็จ / คืนเงินเรียบร้อย',
+             message: 'ใบสั่งซื้อ ' + (poObj.poNo || poObj.id) + ' จัดการเคลมสำเร็จ' + (res.refundAmount > 0 ? (' ได้รับเงินคืน ฿' + Number(res.refundAmount).toLocaleString()) : ''),
+             type: 'PO_CLAIM_CLOSED',
+             targetDept: poObj.department || 'ALL',
+             targetRole: 'Purchaser',
+             docRef: poObj.poNo || poObj.id
+           });
+         } catch(ne) {
+           console.warn('[apiSavePO] Claim Notification error:', ne);
+         }
+      }
+    }
 
     upsertRecordFast(SHEET_NAMES.POS, 'id', poObj);
 
@@ -2291,9 +2473,43 @@ function apiReceivePO(rawPayload, userContext) {
     poObj.createdAt = poObj.createdAt || new Date().toISOString();
     poObj.updatedAt = new Date().toISOString();
 
-    // Status: prefer explicit payload status, then derive from legacy field
-    if (!poObj.status || poObj.status === 'GOODS_RECEIVED') {
-      poObj.status = 'CLOSED'; // Default full-receipt → CLOSED
+    // Status: Partial vs Full Receiving Logic
+    var rawItemsForPartial = payload.items || poObj.items;
+    if (typeof rawItemsForPartial === 'string') {
+      try { rawItemsForPartial = JSON.parse(rawItemsForPartial); } catch(e) { rawItemsForPartial = []; }
+    }
+    var isPartial = false;
+    if (Array.isArray(rawItemsForPartial)) {
+      for (var pIdx = 0; pIdx < rawItemsForPartial.length; pIdx++) {
+        var it = rawItemsForPartial[pIdx];
+        var q = Number(it.quantity || 0);
+        var rQ = Number(it.receivedQty || 0);
+        var remQ = it.remainingQty !== undefined ? Number(it.remainingQty) : (q - rQ);
+        
+        it.quantity = q;
+        it.receivedQty = rQ;
+        it.remainingQty = remQ;
+
+        if (remQ > 0 || String(it.lastAction) === 'SEPARATE' || String(it.lastAction) === 'CLAIM') {
+          isPartial = true;
+        }
+      }
+      poObj.items = rawItemsForPartial; // Will be stringified later
+    }
+
+    if (isPartial) {
+      poObj.status = 'PARTIAL_RECEIVED';
+      poObj.receiptRound = (Number(poObj.receiptRound) || 1) + 1;
+    } else {
+      if (!poObj.status || poObj.status === 'GOODS_RECEIVED' || poObj.status === 'PARTIAL_RECEIVED') {
+        poObj.status = 'CLOSED'; // Default full-receipt -> CLOSED
+      }
+    }
+
+    // ✅ Budget Encumbrance & Force Close Logic
+    if (poObj.status === 'CLOSED' || poObj.status === 'COMPLETED') {
+      poObj.actualPaidAmount = Number(poObj.actualTotalAmount !== undefined ? poObj.actualTotalAmount : (poObj.grandTotal || poObj.totalAmount || 0));
+      poObj.committedAmount = 0;
     }
 
     // Receiver metadata (Guardrail: avoid hardcoded mock names, respect cell limits)
@@ -2490,6 +2706,39 @@ function apiReceivePO(rawPayload, userContext) {
       console.warn('[apiReceivePO] AuditLog error: ' + auditErr.message);
     }
 
+    // Trigger In-App Notification (Full vs Partial/Claim GRN)
+    try {
+      if (isClosed) {
+        recordNotification({
+          title: 'ตรวจรับสินค้าเข้าคลังเรียบร้อย',
+          message: 'ใบสั่งซื้อ ' + (poObj.poNo || poId) + ' ได้รับสินค้าครบถ้วนและเข้าคลังเรียบร้อยแล้ว',
+          type: 'GOODS_RECEIVED',
+          targetDept: poObj.department || dept || 'ALL',
+          targetRole: 'Purchaser',
+          docRef: poObj.poNo || poId
+        });
+      } else {
+        recordNotification({
+          title: 'ตรวจรับสินค้าบางส่วน / มีรายการค้างรับ-รอเคลม',
+          message: 'ใบสั่งซื้อ ' + (poObj.poNo || poId) + ' ตรวจรับบางส่วน มีรายการค้างรับหรือรอเคลม',
+          type: 'PO_CLAIM',
+          targetDept: poObj.department || dept || 'ALL',
+          targetRole: 'Purchaser',
+          docRef: poObj.poNo || poId
+        });
+        recordNotification({
+          title: 'ตรวจรับสินค้าบางส่วน / มีรายการค้างรับ-รอเคลม',
+          message: 'ใบสั่งซื้อ ' + (poObj.poNo || poId) + ' ตรวจรับบางส่วน มีรายการค้างรับหรือรอเคลม',
+          type: 'PO_CLAIM',
+          targetDept: poObj.department || dept || 'ALL',
+          targetRole: 'Requester',
+          docRef: poObj.poNo || poId
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[apiReceivePO] Notification error: ' + notifErr.message);
+    }
+
     return packageUpdatedPO(updatedPO);
   }, 'ReceivePO', rawPayload, userContext);
 }
@@ -2667,7 +2916,18 @@ function apiFinalizePO(poIdOrPayload, poDataOrUser, userContext) {
  */
 function apiGetStockLogs(rawPayload, userContext) {
   return handleApiRequest(function(payload, user) {
-    return batchReadRecords(SHEET_NAMES.STOCK_LOGS);
+    var logs = batchReadRecords(SHEET_NAMES.STOCK_LOGS);
+    return logs.map(function(log) {
+      if (log.timestamp) {
+        var ts = new Date(log.timestamp);
+        if (!isNaN(ts.getTime())) log.timestamp = ts.toISOString();
+      }
+      if (log.date) {
+        var dt = new Date(log.date);
+        if (!isNaN(dt.getTime())) log.date = dt.toISOString();
+      }
+      return log;
+    });
   }, 'GetStockLogs', rawPayload, userContext);
 }
 
@@ -2700,15 +2960,55 @@ function apiAppendStockMovements(movementsListOrPayload, userContext) {
         });
       }
       var currentBalance = prod ? Number(prod.stockBalance || 0) : 0;
-      var qty = Number(mov.qty || mov.quantity || 0);
+      
+      var conversionRate = Number(mov.conversionRate || mov.packSize || 1);
+      if (conversionRate <= 0) conversionRate = 1;
+
+      var baseQty = Number(mov.receiveQty || mov.roundQty || mov.qty || mov.quantity || 0);
+      var qty = (mov.receiveQty !== undefined || mov.roundQty !== undefined) 
+        ? baseQty * conversionRate 
+        : baseQty;
+
+      if (qty === 0 && baseQty > 0) qty = baseQty; // Fallback
+      if (qty === 0 && mov.type === 'IN') {
+        qty = Number(mov.qty || mov.quantity || 0) * conversionRate;
+        if (qty === 0) qty = Number(mov.qty || mov.quantity || 0);
+      }
 
       var newBalance = currentBalance;
+      var unitCost = 0;
+      var totalCost = 0;
+
       if (mov.type === 'IN') {
         newBalance += qty;
+        var rawPrice = Number(mov.unitPrice !== undefined ? mov.unitPrice : (mov.actualUnitPrice !== undefined ? mov.actualUnitPrice : (mov.actualPrice || 0)));
+        var baseUnitPrice = rawPrice / conversionRate;
+
+        var currentAvg = prod ? Number(prod.avgCost || prod.costPrice || prod.price || 0) : 0;
+        var newAvgCost = currentAvg;
+        
+        var totalQty = currentBalance + qty;
+        if (totalQty > 0) {
+          newAvgCost = ((currentBalance * currentAvg) + (qty * baseUnitPrice)) / totalQty;
+        }
+        newAvgCost = Math.round((newAvgCost + Number.EPSILON) * 100) / 100;
+        
+        if (prod) {
+          prod.avgCost = newAvgCost;
+        }
+        
+        unitCost = baseUnitPrice;
+        totalCost = Math.round(qty * baseUnitPrice * 100) / 100;
       } else if (mov.type === 'OUT') {
         newBalance = Math.max(0, currentBalance - qty);
+        var currentAvg = prod ? Number(prod.avgCost || prod.costPrice || prod.price || 0) : 0;
+        unitCost = currentAvg;
+        totalCost = Math.round(qty * currentAvg * 100) / 100;
       } else if (mov.type === 'ADJUST') {
         newBalance = qty;
+        var currentAvg = prod ? Number(prod.avgCost || prod.costPrice || prod.price || 0) : 0;
+        unitCost = currentAvg;
+        totalCost = Math.round(qty * currentAvg * 100) / 100;
       }
 
       if (prod) {
@@ -2729,11 +3029,14 @@ function apiAppendStockMovements(movementsListOrPayload, userContext) {
         grnNumber: mov.grnNumber || mov.documentNo || '',
         poNumber: mov.poNumber || mov.poNo || '',
         prNo: mov.prNo || '',
+        changeQty: mov.type === 'IN' || mov.type === 'IN_NG' ? qty : (mov.type === 'OUT' ? -qty : qty),
         qty: qty,
         unit: mov.unit || mov.stockUnit || (prod ? prod.stockUnit : 'ชิ้น'),
-        conversionRate: Number(mov.conversionRate || 1),
+        conversionRate: conversionRate,
         unitPrice: Number(mov.unitPrice !== undefined ? mov.unitPrice : (mov.actualUnitPrice !== undefined ? mov.actualUnitPrice : (mov.actualPrice || 0))),
         totalPrice: Number(mov.totalPrice !== undefined ? mov.totalPrice : (qty * Number(mov.unitPrice || mov.actualUnitPrice || mov.actualPrice || 0))),
+        unitCost: unitCost,
+        totalCost: totalCost,
         balanceAfter: newBalance,
         actorName: mov.actorName || defaultActor,
         department: mov.department || (prod ? (prod.department || prod.category) : dept),
@@ -2773,7 +3076,7 @@ function apiReceiveStock(rawPayload, userContext) {
 function ensureStockLogSheetHeaders(sheet) {
   var REQUIRED_HEADERS = [
     'id', 'timestamp', 'type', 'productId', 'productCode', 'productName',
-    'department', 'changeQty', 'balanceAfter', 'issuedTo', 'reason', 'actorId', 'actorName'
+    'department', 'location', 'changeQty', 'balanceAfter', 'issuedTo', 'reason', 'actorId', 'actorName'
   ];
 
   if (!sheet) return;
@@ -2829,6 +3132,7 @@ function apiIssueStock(rawPayload, userContext) {
     var department = payload.department || payload.category || (user && user.department);
     var quantity = payload.quantity !== undefined ? payload.quantity : (payload.qty || payload.issueQty);
     var issuedTo = payload.issuedTo || payload.issueUnit || payload.unitName || '';
+    var targetLocation = payload.location || payload.unit || payload.targetLocation || payload.targetUnit || issuedTo || '';
     var reason = payload.reason || payload.note || 'เบิกจ่ายด่วน';
     var requesterId = payload.requesterId || payload.userId || (user && (user.id || user.username)) || '';
     var requesterName = payload.requesterName || payload.userName || (user && (user.name || user.displayName)) || issuedTo || '';
@@ -2846,6 +3150,8 @@ function apiIssueStock(rawPayload, userContext) {
     var balanceIdx = prodHeaders.indexOf('stockBalance');
     var nameIdx = prodHeaders.indexOf('name');
     var updateIdx = prodHeaders.indexOf('updatedAt');
+    var avgCostIdx = prodHeaders.indexOf('avgCost');
+    if (avgCostIdx === -1) avgCostIdx = prodHeaders.indexOf('price'); // Fallback
 
     var targetRowIndex = -1;
     for (var i = 1; i < prodData.length; i++) {
@@ -2874,6 +3180,10 @@ function apiIssueStock(rawPayload, userContext) {
     }
     var newBalance = Math.round((currentBalance - issueQty) * 10000) / 10000;
 
+    // ประทับตราต้นทุนเฉลี่ย
+    var currentAvg = Number(avgCostIdx !== -1 ? (currentRow[avgCostIdx] || 0) : 0);
+    var totalCost = Math.round(issueQty * currentAvg * 100) / 100;
+
     // อัปเดต stockBalance และ updatedAt ลงใน Products
     prodSheet.getRange(targetRowIndex, balanceIdx + 1).setValue(newBalance);
     if (updateIdx !== -1) {
@@ -2889,19 +3199,23 @@ function apiIssueStock(rawPayload, userContext) {
       id: logId,
       timestamp: nowIso,
       date: nowIso,
-      type: 'ISSUE', // บันทึกสถานะการเบิกจ่าย
+      type: 'OUT', // 'OUT' สำหรับสอดคล้องกับ frontend filter ('OUT'/'ISSUE'/'DISPATCH')
       productId: String(currentRow[idIdx] || productId || ''),
       productCode: String(currentRow[codeIdx] || productCode || ''),
       productName: String(currentRow[nameIdx] || ''),
       name: String(currentRow[nameIdx] || ''),
       department: department || (deptIdx !== -1 ? currentRow[deptIdx] : 'PD'),
+      location: targetLocation || '',  // ห้องหรือหน่วยที่เบิก เช่น 'ห้อง K1'
       changeQty: -issueQty, // ติดลบสำหรับตัดสต็อก
       qty: issueQty,
       unit: (prodHeaders.indexOf('stockUnit') !== -1 ? currentRow[prodHeaders.indexOf('stockUnit')] : '') || 
             (prodHeaders.indexOf('unit') !== -1 ? currentRow[prodHeaders.indexOf('unit')] : 'ชิ้น') || 'ชิ้น',
       balanceAfter: newBalance,
       balance: newBalance,
-      issuedTo: issuedTo || '',
+      unitCost: currentAvg,
+      totalCost: totalCost,
+      issuedTo: issuedTo || targetLocation || '',
+      issueUnit: targetLocation || issuedTo || '',
       reason: reason || 'เบิกจ่ายด่วน',
       notes: reason || 'เบิกจ่ายด่วน',
       actorId: requesterId || '',
@@ -2994,17 +3308,41 @@ function apiGetBudgetTransactions(rawPayload, userContext) {
 
 /**
  * Appends a budget transaction and reconciles variance.
+ * Includes an idempotency guard: for key event types (PR_CANCEL_RELEASE,
+ * PO_CANCEL_RELEASE, BUDGET_ROLLBACK, CLAIM_REFUND), it checks the sheet
+ * for a pre-existing record with the same (type + docRef) before appending.
+ * If a duplicate is found, it skips the append and returns the existing record.
  */
 function apiAppendBudgetTransaction(txObj, userContext) {
   return handleApiRequest(function(payload, user) {
     var targetTx = payload ? Object.assign({}, payload) : {};
     var dept = targetTx.dept || targetTx.department || user.department || 'PD';
     targetTx.dept = dept;
-    targetTx.id = targetTx.id || ('TX-' + Date.now() + '-' + Utilities.getUuid().slice(0, 4));
     targetTx.createdAt = targetTx.createdAt || new Date().toISOString();
     targetTx.actorName = targetTx.actorName || user.name || user.username || 'System User';
     targetTx.actorRole = targetTx.actorRole || user.role || 'ADMIN';
 
+    // ── Idempotency Guard ──────────────────────────────────────────────────
+    // For cancellation/refund event types, prevent double-writing the same
+    // transaction if the caller is retried or the button is pressed twice.
+    var IDEMPOTENT_TYPES = ['PR_CANCEL_RELEASE', 'PO_CANCEL_RELEASE', 'BUDGET_ROLLBACK', 'CLAIM_REFUND'];
+    var txType = String(targetTx.type || '').toUpperCase();
+    var txDocRef = String(targetTx.docRef || targetTx.docNo || targetTx.referenceDoc || '').trim();
+
+    if (IDEMPOTENT_TYPES.indexOf(txType) !== -1 && txDocRef) {
+      var existingTxs = batchReadRecords(SHEET_NAMES.BUDGET_TRANSACTIONS);
+      var duplicate = existingTxs.find(function(ex) {
+        return String(ex.type || '').toUpperCase() === txType &&
+               String(ex.docRef || ex.docNo || ex.referenceDoc || '').trim() === txDocRef;
+      });
+      if (duplicate) {
+        console.log('[apiAppendBudgetTransaction] Idempotency Guard: Skipped duplicate ' + txType + ' for docRef=' + txDocRef);
+        return duplicate; // Return existing record — no sheet write
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
+    targetTx.id = targetTx.id || ('TX-' + Date.now() + '-' + Utilities.getUuid().slice(0, 4));
     appendRecord(SHEET_NAMES.BUDGET_TRANSACTIONS, targetTx);
 
     // Reconcile with Budgets tab if refund/credit
@@ -3044,20 +3382,86 @@ function apiAppendAuditLog(logObj, userContext) {
   }, 'AppendAuditLog', logObj, userContext);
 }
 
+/**
+ * Helper to match user against notification targetDepartment and targetRole (No email binding)
+ */
+function isUserTargetOfNotification(n, user) {
+  if (!n) return false;
+  var targetRole = String(n.targetRole || (Array.isArray(n.targetRoles) && n.targetRoles[0]) || 'ALL').toUpperCase();
+  var targetDept = String(n.targetDepartment || n.targetDept || n.department || 'ALL').toUpperCase();
+
+  if (!user) return targetRole === 'ALL' && targetDept === 'ALL';
+  var userRole = String(user.canonicalRole || user.roleId || user.role || '').toUpperCase();
+  var isAdmin = user.isAdmin || userRole.indexOf('ADMIN') !== -1 || Number(user.level) >= 99 || user.username === 'admin';
+  if (isAdmin) return true;
+
+  // 1. Department Filter: หากเป็น Approver หรืองานของ MGT ให้ข้ามเงื่อนไขตรวจสอบ department ได้
+  var userDept = String(user.department || user.dept || '').toUpperCase();
+  var isApproverOrMGT = userRole.indexOf('APPROV') !== -1 || userRole.indexOf('REVIEW') !== -1 || userRole.indexOf('MANAGER') !== -1 || userDept === 'MGT';
+  var isApproverTarget = targetRole.indexOf('APPROV') !== -1 || targetRole.indexOf('REVIEW') !== -1 || (Array.isArray(n.targetRoles) && n.targetRoles.some(function(r) {
+    var ru = String(r).toUpperCase();
+    return ru.indexOf('APPROV') !== -1 || ru.indexOf('REVIEW') !== -1 || ru.indexOf('MANAGER') !== -1;
+  }));
+
+  var matchDept = (isApproverOrMGT && isApproverTarget)
+    ? true
+    : (targetDept === 'ALL' || userDept === 'ALL' || targetDept === userDept || userDept.indexOf(targetDept) !== -1 || targetDept.indexOf(userDept) !== -1);
+
+  if (!matchDept && !user.canViewAllDepts && userDept !== 'ALL') {
+    return false;
+  }
+
+  // 2. Role Filter
+  if (targetRole === 'ALL') return true;
+
+  if (targetRole.indexOf('REQUEST') !== -1) {
+    return userRole.indexOf('REQUEST') !== -1 || userRole.indexOf('PD') !== -1 || userRole.indexOf('QC') !== -1 || Number(user.level) === 1;
+  }
+  if (targetRole.indexOf('APPROV') !== -1) {
+    return isApproverOrMGT || userRole.indexOf('APPROV') !== -1 || userRole.indexOf('REVIEW') !== -1 || userRole.indexOf('PLANT_MANAGER') !== -1 || userRole.indexOf('ASST_MANAGER') !== -1 || Boolean(user.canReview || user.canFinalApprove);
+  }
+  if (targetRole.indexOf('PURCHAS') !== -1 || targetRole.indexOf('BUYER') !== -1) {
+    return userRole.indexOf('PURCHAS') !== -1 || userRole.indexOf('BUYER') !== -1 || Boolean(user.canOnlinePurchase);
+  }
+
+  return userRole.indexOf(targetRole) !== -1;
+}
+
 function apiGetNotifications(userObjOrPayload, userContext) {
   return handleApiRequest(function(payload, user) {
     var allNotifs = batchReadRecords(SHEET_NAMES.NOTIFICATIONS);
-    var u = user;
     return allNotifs.filter(function(n) {
-      if (!n.targetRole || n.targetRole === 'ALL') return true;
-      if (!u) return false;
-      if (u.isAdmin) return true;
-      var roleStr = String(n.targetRole).toUpperCase();
-      return roleStr === String(u.canonicalRole).toUpperCase() ||
-             roleStr === String(u.role).toUpperCase() ||
-             roleStr === String(u.roleId).toUpperCase();
+      return isUserTargetOfNotification(n, user);
     });
   }, 'GetNotifications', userObjOrPayload, userContext);
+}
+
+function apiConfirmOnlineOrder(rawPayload, userContext) {
+  return handleApiRequest(function(payload, user) {
+    var poObj = payload ? Object.assign({}, payload) : {};
+    poObj.status = poObj.status || 'ORDERED';
+    poObj.orderStatus = 'ORDERED';
+    poObj.orderedAt = poObj.orderedAt || new Date().toISOString();
+    poObj.orderedBy = poObj.orderedBy || user.name || user.username || 'Online Purchaser';
+    return apiSavePO(poObj, userContext);
+  }, 'ConfirmOnlineOrder', rawPayload, userContext);
+}
+
+function apiCancelPO(rawPayload, userContext) {
+  return handleApiRequest(function(payload, user) {
+    var poObj = payload ? Object.assign({}, payload) : {};
+    poObj.status = 'CANCELLED';
+    poObj.cancelledAt = poObj.cancelledAt || new Date().toISOString();
+    poObj.cancelledBy = poObj.cancelledBy || user.name || user.username || 'User';
+    return apiSavePO(poObj, userContext);
+  }, 'CancelPO', rawPayload, userContext);
+}
+
+function apiResolveClaim(rawPayload, userContext) {
+  return handleApiRequest(function(payload, user) {
+    var poObj = payload ? Object.assign({}, payload) : {};
+    return apiSavePO(poObj, userContext);
+  }, 'ResolveClaim', rawPayload, userContext);
 }
 
 function apiSaveNotifications(notifsListOrPayload, userContext) {
@@ -3813,13 +4217,7 @@ function apiGetBootstrapData(rawPayload, userContext) {
     });
 
     var notifications = rawNotifications.filter(function(n) {
-      if (!n.targetRole || n.targetRole === 'ALL') return true;
-      if (!user) return false;
-      if (user.isAdmin) return true;
-      var roleStr = String(n.targetRole).toUpperCase();
-      return roleStr === String(user.canonicalRole).toUpperCase() ||
-             roleStr === String(user.role).toUpperCase() ||
-             roleStr === String(user.roleId).toUpperCase();
+      return isUserTargetOfNotification(n, user);
     });
 
     // 4. Return all collections in a single Response

@@ -206,7 +206,7 @@ function StockCardRoute() {
 }
 
 function QuickIssueRoute() {
-  const { products, stockLogs, currentRole, currentUser, usageUnits, departments, refreshData, handleIssueStock } = useAppContext();
+  const { products, stockLogs, currentRole, currentUser, usageUnits, departments, refreshData, handleIssueStock, onNavigate } = useAppContext();
   return (
     <QuickIssueView
       products={products}
@@ -217,6 +217,7 @@ function QuickIssueRoute() {
       departments={departments}
       onRefresh={refreshData}
       onIssueStock={handleIssueStock}
+      onNavigate={onNavigate}
     />
   );
 }

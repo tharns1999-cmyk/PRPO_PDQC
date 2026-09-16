@@ -8,15 +8,15 @@
       "2026-09": 1000000,
       "2026-10": 25000
     },
-    "variance": 1000000,
+    "variance": 1000828,
     "pending": 0,
     "spent": 0,
     "actualExpense": 0,
     "budgetSpent": 0,
-    "remainingBudget": 1000000,
+    "remainingBudget": 1000828,
     "budgetRemaining": 1000000,
     "refundCredits": {
-      "2026-09": 817
+      "2026-09": 1645
     }
   },
   "QC": {

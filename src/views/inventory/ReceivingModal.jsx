@@ -1115,7 +1115,7 @@ export default function ReceivingModal({
                 <thead>
                   <tr className="bg-slate-100/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     <th style={{ width: '32%' }} className="w-[32%] py-2.5 px-4 text-left">สินค้า</th>
-                    <th style={{ width: '8%' }} className="w-[8%] py-2.5 px-3 text-center">สั่งมา</th>
+                    <th style={{ width: '8%' }} className="w-[8%] py-2.5 px-3 text-center">สั่งมา/ค้างรับ</th>
                     <th style={{ width: '8%' }} className="w-[8%] py-2.5 px-3 text-center">รับแล้ว</th>
                     <th style={{ width: '16%' }} className="w-[16%] py-2.5 px-3 text-center">ตรวจรับรอบนี้</th>
                     <th style={{ width: '12%' }} className="w-[12%] py-2.5 px-3 text-center">ชำรุด/NG</th>
@@ -1183,11 +1183,11 @@ export default function ReceivingModal({
                           </div>
                         </td>
 
-                        {/* 2. สั่งมา (8%) */}
+                        {/* 2. สั่งมา/ค้างรับ (8%) */}
                         <td style={{ width: '8%' }} className="w-[8%] py-3.5 px-3 text-center align-middle">
                           <div className="flex flex-col items-center justify-center">
                             <span className="font-mono font-bold text-slate-800 text-sm h-8 flex items-center justify-center">
-                              {item.orderedQty}
+                              {item.remainingToReceive}
                             </span>
                             <span className="text-[11px] text-slate-400 h-5 flex items-center justify-center font-mono">
                               {item.pUnit}

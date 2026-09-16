@@ -6,16 +6,17 @@ import { AppContext } from '../../context/AppContext';
 import { matchDepartment, isMultiDeptUser } from '../../utils/permissions';
 
 /**
- * Resilient Date Parser for diverse stock log formats
- * (ISO string, DD/MM/YYYY, Thai Buddhist Era, timestamps).
+ * Helper แปลง Timestamp ให้เป็น Epoch Milliseconds ที่รองรับทั้ง พ.ศ. และ ค.ศ.
  */
-export const parseLogDate = (raw) => {
-  if (!raw) return null;
-  if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw;
-  const str = String(raw).trim();
-  if (!str) return null;
+export const parseLogTimestamp = (dateVal) => {
+  if (!dateVal) return 0;
+  if (typeof dateVal === 'number') return dateVal;
+  if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? 0 : dateVal.getTime();
+  
+  let str = String(dateVal).trim();
+  if (!str) return 0;
 
-  // DD/MM/YYYY [HH:mm[:ss]]
+  // 1. ตรวจสอบรูปแบบ DD/MM/YYYY [HH:mm[:ss]]
   const dmy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
   if (dmy) {
     let y = parseInt(dmy[3], 10);
@@ -27,37 +28,59 @@ export const parseLogDate = (raw) => {
     const mm = dmy[5] ? parseInt(dmy[5], 10) : 0;
     const ss = dmy[6] ? parseInt(dmy[6], 10) : 0;
     const dateObj = new Date(y, m, d, hh, mm, ss);
-    return isNaN(dateObj.getTime()) ? null : dateObj;
+    if (!isNaN(dateObj.getTime())) {
+      return dateObj.getTime();
+    }
   }
 
-  // ISO string or Standard parse
-  const parsed = new Date(str);
-  return isNaN(parsed.getTime()) ? null : parsed;
+  // 2. ตรวจจับและแปลงปี พ.ศ. (เช่น 2569 -> 2026) ในรูปแบบ ISO หรือสตริงอื่น
+  const thaiYearMatch = str.match(/(?:^|\D)(25\d\d)(?:\D|$)/);
+  if (thaiYearMatch) {
+    const thaiYear = parseInt(thaiYearMatch[1], 10);
+    const ceYear = thaiYear - 543;
+    str = str.replace(String(thaiYear), String(ceYear));
+  }
+
+  const parsed = new Date(str).getTime();
+  return isNaN(parsed) ? 0 : parsed;
 };
 
 /**
- * Format timestamp/date to 'DD/MM/YYYY HH:mm' in Bangkok (Asia/Bangkok) timezone.
+ * Resilient Date Parser for diverse stock log formats (backward compatibility)
+ */
+export const parseLogDate = (raw) => {
+  const ts = parseLogTimestamp(raw);
+  return ts > 0 ? new Date(ts) : null;
+};
+
+/**
+ * Format timestamp/date to 'DD/MM/YYYY HH:mm' in Bangkok (Asia/Bangkok) timezone in Thai Buddhist Era (พ.ศ.).
  */
 export const formatDateTimeThai = (raw) => {
   if (!raw) return '-';
-  const d = parseLogDate(raw);
-  if (!d) return String(raw);
+  const ts = parseLogTimestamp(raw);
+  if (!ts) return typeof raw === 'string' && raw.trim() ? raw.trim() : '-';
+
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '-';
 
   try {
-    const parts = new Intl.DateTimeFormat('en-GB', {
+    const formatted = new Intl.DateTimeFormat('th-TH', {
       timeZone: 'Asia/Bangkok',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false
+      hour12: false,
+      numberingSystem: 'latn'
     }).format(d);
-    return parts.replace(',', '');
+    return formatted.replace(',', '').replace(/\s+/, ' ').trim();
   } catch {
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
+    let year = d.getFullYear();
+    if (year < 2400) year += 543;
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
     return `${day}/${month}/${year} ${hours}:${minutes}`;
@@ -69,22 +92,46 @@ export const formatDateTimeThai = (raw) => {
  */
 export const isStockIn = (log) => {
   if (!log) return false;
-  const type = String(log.type || '').trim().toUpperCase();
-  if (['OUT', 'ISSUE', 'DISPATCH', 'CONSUME', 'REDUCE', 'ADJUST_OUT'].includes(type)) {
+  const type = String(log.type || log.actionType || log.docType || '').trim().toUpperCase();
+  if (['OUT', '-OUT', 'ISSUE', 'DISPATCH', 'CONSUME', 'REDUCE', 'ADJUST_OUT'].includes(type)) {
     return false;
   }
-  const qty = Number(log.changeQty ?? (log.changeQty === undefined ? (log.quantity ?? log.qty) : 0) ?? 0);
-  return ['IN', 'RECEIVE', 'GRN', 'PURCHASE', 'ADJUST_IN', 'IN_NG'].includes(type) || qty > 0;
+  if (['IN', '+IN', 'RECEIVE', 'GRN', 'PURCHASE', 'ADJUST_IN', 'IN_NG', 'INITIAL', 'INITIAL-BALANCE'].includes(type)) {
+    return true;
+  }
+  const doc = String(log.documentNo || log.docNo || log.id || '').toUpperCase();
+  if (doc.startsWith('GRN') || doc.startsWith('INIT')) {
+    return true;
+  }
+  if (doc.startsWith('OUT') || doc.startsWith('ISSUE')) {
+    return false;
+  }
+  if (log.changeQty !== undefined && log.changeQty !== null) {
+    return Number(log.changeQty) > 0;
+  }
+  return Number(log.quantity ?? log.qty ?? 0) > 0;
 };
 
 export const isStockOut = (log) => {
   if (!log) return false;
-  const type = String(log.type || '').trim().toUpperCase();
-  if (['IN', 'RECEIVE', 'GRN', 'PURCHASE', 'ADJUST_IN', 'IN_NG'].includes(type)) {
+  const type = String(log.type || log.actionType || log.docType || '').trim().toUpperCase();
+  if (['IN', '+IN', 'RECEIVE', 'GRN', 'PURCHASE', 'ADJUST_IN', 'IN_NG', 'INITIAL', 'INITIAL-BALANCE'].includes(type)) {
     return false;
   }
-  const qty = Number(log.changeQty ?? (log.changeQty === undefined ? -(log.quantity ?? log.qty) : 0) ?? 0);
-  return ['OUT', 'ISSUE', 'DISPATCH', 'CONSUME', 'REDUCE', 'ADJUST_OUT'].includes(type) || qty < 0;
+  if (['OUT', '-OUT', 'ISSUE', 'DISPATCH', 'CONSUME', 'REDUCE', 'ADJUST_OUT'].includes(type)) {
+    return true;
+  }
+  const doc = String(log.documentNo || log.docNo || log.id || '').toUpperCase();
+  if (doc.startsWith('GRN') || doc.startsWith('INIT')) {
+    return false;
+  }
+  if (doc.startsWith('OUT') || doc.startsWith('ISSUE')) {
+    return true;
+  }
+  if (log.changeQty !== undefined && log.changeQty !== null) {
+    return Number(log.changeQty) < 0;
+  }
+  return false;
 };
 
 export default function StockMovementTable({
@@ -171,7 +218,7 @@ export default function StockMovementTable({
 
   // Self-Healing Data (Migration): If product.stock > 0 but movement logs are empty,
   // auto-generate the initial balance log and persist it so stock and history reconcile
-  const effectiveProductLogs = useMemo(() => {
+  const scopedLogs = useMemo(() => {
     if (!selectedProduct) return [];
     const stockVal = Number(selectedProduct.stockBalance ?? selectedProduct.stock ?? selectedProduct.qty) || 0;
 
@@ -268,47 +315,23 @@ export default function StockMovementTable({
     }
   }, [selectedProduct, rawProductLogs.length]);
 
-
-  // Helper for 3 Months Date Boundary (current month + 2 previous months)
-  const isWithinLast3Months = useCallback((rawDate) => {
-    const logDate = parseLogDate(rawDate);
-    if (!logDate) return true; // Keep if unparseable
-    const now = new Date();
-    const startOfPeriod = new Date(now.getFullYear(), now.getMonth() - 2, 1, 0, 0, 0, 0);
-    return logDate >= startOfPeriod;
-  }, []);
-
-  // Filter & Sort logs:
-  // 1. Descending sort by timestamp/date (latest first)
-  // 2. Filter by 3 Months / All
-  // 3. Filter by Type (ALL, IN, OUT)
-  // 4. Search by Document No, PO, User, Note
-  const productMovementLogs = useMemo(() => {
-    if (!selectedProduct) return [];
-
-    // 1. Sort descending: Latest first
-    const sorted = [...effectiveProductLogs].sort((a, b) => {
-      const dateA = parseLogDate(a.timestamp || a.date || a.createdAt);
-      const dateB = parseLogDate(b.timestamp || b.date || b.createdAt);
-      const timeA = dateA ? dateA.getTime() : 0;
-      const timeB = dateB ? dateB.getTime() : 0;
-      return timeB - timeA;
-    });
-
-    // 2. Filter by criteria
-    return sorted.filter(log => {
-      // Type Filter (Supports ALL, IN, +IN, OUT, -OUT, ISSUE, GRN)
+  // Single-Stream Data Processing Pipeline:
+  // ขั้นตอนที่ 2: กรองตามแท็บ (ALL, IN, OUT), ช่วงเวลา และการค้นหา
+  const filteredLogs = useMemo(() => {
+    return scopedLogs.filter(log => {
+      // Type Filter (ALL, IN, +IN, OUT, -OUT)
       const activeTab = String(filterType || 'ALL').toUpperCase();
       if (activeTab.includes('OUT')) {
-        if (!isStockOut(log)) return false;
+        if (!isStockOut(log)) return false; // ต้องเป็นรายการเบิกจ่ายเท่านั้น
       } else if (activeTab.includes('IN')) {
-        if (!isStockIn(log)) return false;
+        if (!isStockIn(log)) return false;  // ต้องเป็นรายการรับเข้าเท่านั้น
       }
 
-      // Time Range Filter (3M: 3 เดือนล่าสุด)
-      if (timeFilter === '3M') {
-        const rawD = log.timestamp || log.date || log.createdAt;
-        if (rawD && !isWithinLast3Months(rawD)) return false;
+      // Time Range Filter (3M / 3_MONTHS: 3 เดือนล่าสุด)
+      if (timeFilter === '3M' || timeFilter === '3_MONTHS') {
+        const t = parseLogTimestamp(log.timestamp || log.date || log.createdAt);
+        const threeMonthsAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
+        if (t > 0 && t < threeMonthsAgo) return false;
       }
 
       // Search Query Filter
@@ -338,7 +361,16 @@ export default function StockMovementTable({
         note.includes(q)
       );
     });
-  }, [effectiveProductLogs, selectedProduct, filterType, timeFilter, searchQuery, isWithinLast3Months]);
+  }, [scopedLogs, filterType, timeFilter, searchQuery]);
+
+  // ขั้นตอนที่ 3: เรียงลำดับจากล่าสุดไปเก่าสุดเสมอ (Newest First / Descending)
+  const sortedLogs = useMemo(() => {
+    return [...filteredLogs].sort((a, b) => {
+      const timeA = parseLogTimestamp(a.timestamp || a.date || a.createdAt);
+      const timeB = parseLogTimestamp(b.timestamp || b.date || b.createdAt);
+      return timeB - timeA;
+    });
+  }, [filteredLogs]);
 
   // Helper to format currency numbers (stable reference via useCallback)
   const formatCurrency = useCallback((val) => {
@@ -348,7 +380,7 @@ export default function StockMovementTable({
 
   /**
    * Pre-computed purchase detail lookup Map (Performance)
-   * Runs once per productMovementLogs/resolvedPOs change instead of
+   * Runs once per sortedLogs/resolvedPOs change instead of
    * re-computing on every render cycle for every visible row.
    * Returns: Map<log.id, { poNumber, totalPurchaseAmount, avgUnitPrice }>
    */
@@ -463,20 +495,20 @@ export default function StockMovementTable({
       };
     };
 
-    productMovementLogs.forEach(log => {
+    sortedLogs.forEach(log => {
       map.set(log.id, _compute(log));
     });
     return map;
-  }, [productMovementLogs, resolvedPOs, selectedProduct, formatCurrency]);
+  }, [sortedLogs, resolvedPOs, selectedProduct, formatCurrency]);
 
-  // Pagination Calculations
-  const totalPages = Math.max(1, Math.ceil(productMovementLogs.length / pageSize));
+  // ขั้นตอนที่ 4: แบ่งหน้า Pagination
+  const totalPages = Math.max(1, Math.ceil(sortedLogs.length / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   
-  const visibleLogs = useMemo(() => {
+  const pagedLogs = useMemo(() => {
     const start = (safeCurrentPage - 1) * pageSize;
-    return productMovementLogs.slice(start, start + pageSize);
-  }, [productMovementLogs, safeCurrentPage, pageSize]);
+    return sortedLogs.slice(start, start + pageSize);
+  }, [sortedLogs, safeCurrentPage, pageSize]);
 
   // Generate Page Numbers for Pagination
   const getPageNumbers = () => {
@@ -636,21 +668,21 @@ export default function StockMovementTable({
                   <th className="py-3.5 px-3 text-right whitespace-nowrap">จำนวน</th>
                   <th className="py-3.5 px-3 text-right whitespace-nowrap">ยอดคงเหลือ</th>
                   <th className="py-3.5 px-3 whitespace-nowrap text-left bg-indigo-50/40 text-indigo-900">เลขที่ PO</th>
-                  <th className="py-3.5 px-3 text-right whitespace-nowrap bg-indigo-50/40 text-indigo-900">จำนวนเงินที่ซื้อ</th>
-                  <th className="py-3.5 px-3 text-right whitespace-nowrap bg-indigo-50/40 text-indigo-900">ราคาเฉลี่ย/หน่วย</th>
+                  <th className="py-3.5 px-3 text-right whitespace-nowrap bg-indigo-50/40 text-indigo-900">มูลค่ารวม / ซื้อ (฿)</th>
+                  <th className="py-3.5 px-3 text-right whitespace-nowrap bg-indigo-50/40 text-indigo-900">ต้นทุนเฉลี่ย/หน่วย</th>
                   <th className="py-3.5 px-3 whitespace-nowrap">ผู้ทำรายการ</th>
                   <th className="py-3.5 pr-5 whitespace-nowrap">หมายเหตุ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {productMovementLogs.length === 0 ? (
+                {sortedLogs.length === 0 ? (
                   <tr>
                     <td colSpan="10" className="p-8 text-center text-slate-400">
                       ไม่พบประวัติความเคลื่อนไหวตามเงื่อนไขที่เลือก
                     </td>
                   </tr>
                 ) : (
-                  visibleLogs.map(log => {
+                  pagedLogs.map(log => {
                     const purchase = purchaseDetailMap.get(log.id) || { poNumber: '-', totalPurchaseAmount: '-', avgUnitPrice: '-' };
                     const isIncoming = isStockIn(log);
                     const isNg = String(log.type || '').toUpperCase() === 'IN_NG';
@@ -724,7 +756,6 @@ export default function StockMovementTable({
                           )}
                         </td>
 
-                        {/* 7. Total Purchase Amount */}
                         <td className="py-3 px-3 text-right font-mono text-xs whitespace-nowrap tabular-nums">
                           {isIncoming && log.totalAmount !== undefined && Number(log.totalAmount) > 0 ? (
                             <span className="font-semibold text-slate-900">
@@ -738,12 +769,20 @@ export default function StockMovementTable({
                             <span className="font-semibold text-slate-900">
                               {formatCurrency(log.totalPrice)} ฿
                             </span>
+                          ) : !isIncoming && log.totalCost !== undefined ? (
+                            <span className="font-semibold text-rose-700">
+                              {formatCurrency(log.totalCost)} ฿
+                            </span>
+                          ) : !isIncoming && log.totalPrice !== undefined ? (
+                            <span className="font-semibold text-rose-700">
+                              {formatCurrency(log.totalPrice)} ฿
+                            </span>
                           ) : (
                             <span className="text-slate-400 font-normal">-</span>
                           )}
                         </td>
 
-                        {/* 8. Average Unit Price */}
+                        {/* 8. Average Unit Price / Cost */}
                         <td className="py-3 px-3 text-right font-mono text-xs whitespace-nowrap tabular-nums">
                           {isIncoming && log.unitPrice !== undefined && Number(log.unitPrice) > 0 ? (
                             <span className="font-semibold text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100">
@@ -756,6 +795,14 @@ export default function StockMovementTable({
                           ) : isIncoming && log.baseUnitCost !== undefined && Number(log.baseUnitCost) > 0 ? (
                             <span className="font-semibold text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100">
                               ฿{formatCurrency(log.baseUnitCost)} / {selectedProduct?.stockUnit || selectedProduct?.unit || log.unit || 'ชิ้น'}
+                            </span>
+                          ) : !isIncoming && log.unitCost !== undefined ? (
+                            <span className="font-semibold text-rose-700 bg-rose-50/50 px-2 py-0.5 rounded border border-rose-100">
+                              ฿{formatCurrency(log.unitCost)} / {selectedProduct?.stockUnit || selectedProduct?.unit || log.unit || 'ชิ้น'}
+                            </span>
+                          ) : !isIncoming && log.unitPrice !== undefined ? (
+                            <span className="font-semibold text-rose-700 bg-rose-50/50 px-2 py-0.5 rounded border border-rose-100">
+                              ฿{formatCurrency(log.unitPrice)} / {selectedProduct?.stockUnit || selectedProduct?.unit || log.unit || 'ชิ้น'}
                             </span>
                           ) : (
                             <span className="text-slate-400 font-normal">-</span>
@@ -806,7 +853,7 @@ export default function StockMovementTable({
             {/* Left: Item Range Summary & Page Size selector */}
             <div className="flex items-center gap-3">
               <span>
-                แสดง <span className="font-mono font-semibold text-slate-800">{productMovementLogs.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}</span> - <span className="font-mono font-semibold text-slate-800">{Math.min(safeCurrentPage * pageSize, productMovementLogs.length)}</span> จากทั้งหมด <span className="font-mono font-semibold text-slate-800">{productMovementLogs.length}</span> รายการ
+                แสดง <span className="font-mono font-semibold text-slate-800">{sortedLogs.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}</span> - <span className="font-mono font-semibold text-slate-800">{Math.min(safeCurrentPage * pageSize, sortedLogs.length)}</span> จากทั้งหมด <span className="font-mono font-semibold text-slate-800">{sortedLogs.length}</span> รายการ
               </span>
               <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
                 <span className="text-[11px] text-slate-400">แสดงหน้าละ:</span>
@@ -869,7 +916,7 @@ export default function StockMovementTable({
 
           {/* Footer */}
           <div className="pt-2 flex items-center justify-between text-xs text-slate-400 border-t border-slate-100">
-            <span>* คอลัมน์ข้อมูลจัดซื้อ (เลขที่ PO, จำนวนเงิน, ราคาเฉลี่ย) จะแสดงเฉพาะรายการรับเข้าสินค้า (+IN)</span>
+            <span>หมายเหตุ: รายการรับเข้า (+IN) แสดงราคาซื้อจริงตามเอกสารจัดซื้อ ส่วนรายการเบิกจ่าย (-OUT) แสดงมูลค่าต้นทุนเฉลี่ย ณ วันและเวลาที่ทำรายการ</span>
             <button
               onClick={onClose}
               className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer"

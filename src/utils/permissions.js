@@ -1,3 +1,5 @@
+import { storageService } from '../services/storageService';
+
 /**
  * Permission and Department Access Control Utilities
  * Supports multi-department access, wildcard (* or ALL), and backward compatibility.

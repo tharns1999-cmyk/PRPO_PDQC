@@ -22,7 +22,7 @@ import {
   Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   Cell, PieChart as RechartsPieChart, Pie
 } from 'recharts';
-import { safeStringCompare } from '../utils/formatters';
+import { safeStringCompare, formatThaiDateTime } from '../utils/formatters';
 
 const RANGE_OPTIONS = [
   { value: 3, label: '3 ด.' },
@@ -1472,7 +1472,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                     return (
                       <tr key={tx.id || tx.transactionId || Math.random()} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3.5 pl-6 whitespace-nowrap text-slate-500 font-mono text-xs">
-                          {tx.date || tx.createdAt?.slice(0, 19).replace('T', ' ') || '-'}
+                          {formatThaiDateTime(tx.createdAt || tx.date)}
                         </td>
                         <td className="py-3.5 px-4">
                           <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${badgeClass}`}>

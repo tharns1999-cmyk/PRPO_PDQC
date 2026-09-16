@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { storageService } from '../services/storageService';
 import { apiService } from '../services/apiService';
 import { ISSUE_LOCATIONS, ISSUE_LOCATION_CONFIG } from '../config/constants';
 import { hasDepartmentAccess, getUserAccessibleDepartments, matchDepartment } from '../utils/permissions';
@@ -14,7 +15,7 @@ import {
 } from 'lucide-react';
 import SearchableSelect from '../components/common/SearchableSelect';
 import Pagination from '../components/common/Pagination';
-import { safeStringCompare } from '../utils/formatters';
+import { safeStringCompare, formatThaiDateTime, parseSafeDate } from '../utils/formatters';
 
 const ISSUE_REASONS = [
   'เบิกใช้ในสายการผลิต (Production Line)',
@@ -25,35 +26,20 @@ const ISSUE_REASONS = [
   'อื่นๆ (ระบุในหมายเหตุ)'
 ];
 
-// Helper to reliably parse date from stock logs
+// Helper to reliably parse date from stock logs using parseSafeDate
 const parseLogDate = (log) => {
   if (!log) return new Date();
-  if (log.date) {
-    if (/^\d{4}-\d{2}-\d{2}/.test(log.date)) {
-      return new Date(log.date);
-    }
-    const parts = log.date.split(',')[0].trim().split('/');
-    if (parts.length === 3) {
-      let [d, m, y] = parts.map(n => parseInt(n, 10));
-      if (y > 2500) y -= 543;
-      return new Date(y, m - 1, d);
-    }
-  }
-  if (log.timestamp) {
-    if (/^\d{4}-\d{2}-\d{2}/.test(log.timestamp)) return new Date(log.timestamp);
-    const parts = log.timestamp.split(' ')[0].trim().split('/');
-    if (parts.length === 3) {
-      let [d, m, y] = parts.map(n => parseInt(n, 10));
-      if (y > 2500) y -= 543;
-      return new Date(y, m - 1, d);
-    }
-  }
-  return new Date();
+  return parseSafeDate(log.timestamp || log.date);
 };
 
 // Helper to extract unit / room name from log
+// Priority: log.location (new GAS field) > log.issueUnit > note bracket pattern
 const getLogUnit = (log) => {
-  if (log.issueUnit && log.issueUnit.trim()) return log.issueUnit.trim();
+  if (log.location && String(log.location).trim()) return String(log.location).trim();
+  if (log.issueUnit && String(log.issueUnit).trim()) return String(log.issueUnit).trim();
+  if (log.issuedTo && String(log.issuedTo).trim() && !String(log.issuedTo).includes('@')) {
+    return String(log.issuedTo).trim();
+  }
   if (log.note) {
     const match = log.note.match(/\[(.*?)\]/);
     if (match && match[1]) {
@@ -61,6 +47,15 @@ const getLogUnit = (log) => {
     }
   }
   return 'ไม่ระบุหน่วย';
+};
+
+// Helper to check if a log is a stock-out event
+const isStockOutLog = (log) => {
+  const typeStr = String(log.type || '').toUpperCase();
+  if (['OUT', 'ISSUE', 'DISPATCH'].includes(typeStr)) return true;
+  // Negative changeQty is always a deduction
+  if (Number(log.changeQty) < 0) return true;
+  return false;
 };
 
 export default function QuickIssueView({
@@ -264,7 +259,8 @@ export default function QuickIssueView({
   const recentIssueLogs = useMemo(() => {
     return stockLogs
       .filter(log => {
-        if (log.type !== 'OUT') return false;
+        // Accept OUT, ISSUE, DISPATCH and negative changeQty
+        if (!isStockOutLog(log)) return false;
         if (currentRole.canViewAllDepts) return true;
         if (log.department) return matchDepartment(log.department, currentRole.department);
         const prod = products.find(p => {
@@ -274,7 +270,6 @@ export default function QuickIssueView({
         return prod ? matchDepartment(prod.department || prod.category, currentRole.department) : true;
       })
       .slice(0, 6);
-
   }, [stockLogs, products, currentRole]);
 
   const handleQuickQty = (amount) => {
@@ -318,6 +313,7 @@ export default function QuickIssueView({
         department: selectedProduct.department || selectedProduct.category || user?.department || 'PD',
         quantity: qtyNumber,
         issuedTo: productionUnit,
+        location: productionUnit,   // ชื่อห้องที่เลือก เช่น 'ห้อง K1' → บันทึกลงชีต StockLogs
         reason: fullNote,
         requesterId: user?.id || user?.username,
         requesterName: user?.name,
@@ -343,7 +339,8 @@ export default function QuickIssueView({
 
   // ─── Filtered OUT Logs for Statistics ───
   const filteredStatsLogs = useMemo(() => {
-    let logs = stockLogs.filter(log => log.type === 'OUT');
+    // Accept OUT, ISSUE, DISPATCH types and negative changeQty
+    let logs = stockLogs.filter(log => isStockOutLog(log));
 
     // Role department permission filter
     logs = logs.filter(log => {
@@ -371,8 +368,7 @@ export default function QuickIssueView({
       });
     }
 
-
-    // Unit filter
+    // Unit filter (match against location, issueUnit, issuedTo, or note bracket)
     if (statsUnitFilter !== 'ALL') {
       logs = logs.filter(log => getLogUnit(log) === statsUnitFilter);
     }
@@ -418,7 +414,7 @@ export default function QuickIssueView({
         const name = prod?.name?.toLowerCase() || '';
         const code = log.productCode?.toLowerCase() || '';
         const note = log.note?.toLowerCase() || '';
-        const actor = log.user?.toLowerCase() || '';
+        const actor = (log.actorName || log.user || '')?.toLowerCase() || '';
         const unit = getLogUnit(log).toLowerCase();
         return name.includes(q) || code.includes(q) || note.includes(q) || actor.includes(q) || unit.includes(q);
       });
@@ -431,6 +427,11 @@ export default function QuickIssueView({
   const analytics = useMemo(() => {
     const totalIssues = filteredStatsLogs.length;
     const totalQty = filteredStatsLogs.reduce((sum, log) => sum + (Number(log.qty) || 0), 0);
+    const totalValue = filteredStatsLogs.reduce((sum, log) => {
+      const prod = products.find(p => p.id === log.productId || p.code === log.productCode);
+      const cost = Number(log.totalCost ?? ((Number(log.qty) || 0) * (prod?.avgCost || prod?.costPrice || prod?.price || 0)));
+      return sum + cost;
+    }, 0);
 
     // 1. Group by Unit
     const unitMap = {};
@@ -443,6 +444,7 @@ export default function QuickIssueView({
         dot: u.dot,
         count: 0,
         totalQty: 0,
+        totalValue: 0,
         items: {},
         lastIssued: null
       };
@@ -460,6 +462,7 @@ export default function QuickIssueView({
           dot: found?.dot || 'bg-slate-500',
           count: 0,
           totalQty: 0,
+          totalValue: 0,
           items: {},
           lastIssued: null
         };
@@ -472,6 +475,9 @@ export default function QuickIssueView({
       const pName = prod?.name || pCode;
       const pUnit = prod?.stockUnit || prod?.unit || log.unit || 'ชิ้น';
       const dept = prod?.category || 'PD';
+      const cost = Number(log.totalCost ?? ((Number(log.qty) || 0) * (prod?.avgCost || prod?.costPrice || prod?.price || 0)));
+      
+      unitMap[unitName].totalValue += cost;
 
       if (!unitMap[unitName].items[pCode]) {
         unitMap[unitName].items[pCode] = {
@@ -481,11 +487,14 @@ export default function QuickIssueView({
           dept: dept,
           qty: 0,
           count: 0,
+          totalValue: 0,
+          unitCost: Number(log.unitCost ?? (prod?.avgCost || prod?.costPrice || prod?.price || 0)),
           lastDate: log.date || '-'
         };
       }
       unitMap[unitName].items[pCode].qty += Number(log.qty) || 0;
       unitMap[unitName].items[pCode].count += 1;
+      unitMap[unitName].items[pCode].totalValue += cost;
       unitMap[unitName].items[pCode].lastDate = log.date || unitMap[unitName].items[pCode].lastDate;
     });
 
@@ -535,13 +544,14 @@ export default function QuickIssueView({
         matrixRows.push({
           unitName: u.name,
           ...item,
-          pctOfTotal: totalQty > 0 ? ((item.qty / totalQty) * 100).toFixed(1) : 0
+          pctOfTotal: totalValue > 0 ? ((item.totalValue / totalValue) * 100).toFixed(1) : 0
         });
       });
     });
     return {
       totalIssues,
       totalQty,
+      totalValue,
       unitList,
       mostActiveUnit,
       topProducts,
@@ -570,33 +580,91 @@ export default function QuickIssueView({
     const counts = { ALL: 0 };
     displayedUnits.forEach(u => { counts[u.name] = 0; });
     stockLogs.forEach(log => {
-      if (log.type === 'OUT') {
-        const logDept = log.department;
-        let prodCat = logDept;
-        if (!prodCat) {
-          const prod = products.find(p => {
-            if (log.productId && p.id === log.productId) return true;
-            return p.code === log.productCode;
-          });
-          prodCat = prod?.category || prod?.department;
-        }
-        if (!hasDepartmentAccess(user, prodCat)) return;
-        if (statsDeptFilter !== 'ALL' && !matchDepartment(prodCat, statsDeptFilter)) return;
+      // Accept OUT, ISSUE, DISPATCH types and negative changeQty
+      if (!isStockOutLog(log)) return;
+      const logDept = log.department;
+      let prodCat = logDept;
+      if (!prodCat) {
+        const prod = products.find(p => {
+          if (log.productId && p.id === log.productId) return true;
+          return p.code === log.productCode;
+        });
+        prodCat = prod?.category || prod?.department;
+      }
+      if (!hasDepartmentAccess(user, prodCat)) return;
+      if (statsDeptFilter !== 'ALL' && !matchDepartment(prodCat, statsDeptFilter)) return;
 
-        const u = getLogUnit(log);
-        if (counts[u] !== undefined) {
-          counts[u] += 1;
-          counts.ALL = (counts.ALL || 0) + 1;
-        }
+      const u = getLogUnit(log);
+      if (counts[u] !== undefined) {
+        counts[u] += 1;
+        counts.ALL = (counts.ALL || 0) + 1;
       }
     });
     return counts;
   }, [stockLogs, displayedUnits, products, user, statsDeptFilter]);
 
+  // Recent issue history for the currently selected product (sidebar in Issue Form)
+  // Deduplicated, strict LIFO sorted (latest first), windowed to 20 records
+  const recentIssuesForProduct = useMemo(() => {
+    if (!selectedProduct || !stockLogs || stockLogs.length === 0) return [];
+    const targetId = String(selectedProduct.id || '').trim();
+    const targetCode = String(selectedProduct.code || selectedProduct.sku || '').trim();
+    const targetDept = String(selectedProduct.department || selectedProduct.category || '').trim();
+
+    // 1. Filter out only stock-out logs matching this product
+    const matchingLogs = stockLogs.filter(log => {
+      if (!isStockOutLog(log)) return false;
+      // Match by productId (most reliable)
+      if (targetId && log.productId && String(log.productId).trim() === targetId) return true;
+      // Fallback: match by code + department
+      const logCode = String(log.productCode || log.code || '').trim();
+      if (!logCode || logCode !== targetCode) return false;
+      const logDept = String(log.department || '').trim();
+      return !logDept || !targetDept || matchDepartment(logDept, targetDept);
+    });
+
+    // 2. Strict LIFO Sorting before deduplicating or slicing (Descending by safe date)
+    matchingLogs.sort((a, b) => {
+      const timeB = parseSafeDate(b.timestamp || b.date).getTime();
+      const timeA = parseSafeDate(a.timestamp || a.date).getTime();
+      return timeB - timeA;
+    });
+
+    // 3. Deduplication: Filter out duplicates using Map / Composite Unique Key
+    const seenIds = new Set();
+    const seenSignatures = new Set();
+    const dedupedLogs = [];
+
+    for (const log of matchingLogs) {
+      const logId = log.id ? String(log.id).trim() : '';
+      if (logId && seenIds.has(logId)) {
+        continue;
+      }
+
+      // Composite signature: timestamp (minute resolution) + productId + changeQty + unit
+      const pId = String(log.productId || log.productCode || targetId).trim();
+      const qty = Math.abs(Number(log.qty || log.changeQty || 0));
+      const safeTime = parseSafeDate(log.timestamp || log.date).getTime();
+      const timeMinute = Math.floor(safeTime / 60000);
+      const signature = `${pId}_${qty}_${timeMinute}_${String(log.issuedTo || log.location || '').trim()}`;
+
+      if (seenSignatures.has(signature)) {
+        continue;
+      }
+
+      if (logId) seenIds.add(logId);
+      seenSignatures.add(signature);
+      dedupedLogs.push(log);
+    }
+
+    // 4. Data Windowing (limit to 20 most recent items)
+    return dedupedLogs.slice(0, 20);
+  }, [selectedProduct, stockLogs]);
+
   // Export to CSV
   const handleExportCSV = () => {
     if (analytics.matrixRows.length === 0) return;
-    const headers = ['หน่วยที่เบิก', 'รหัสสินค้า', 'ชื่อสินค้า', 'แผนก', 'จำนวนครั้งที่เบิก', 'ยอดรวมที่เบิก', 'หน่วยนับ', 'เบิกล่าสุด'];
+    const headers = ['หน่วยที่เบิก', 'รหัสสินค้า', 'ชื่อสินค้า', 'แผนก', 'จำนวนครั้งที่เบิก', 'ยอดรวมที่เบิก', 'หน่วยนับ', 'ต้นทุนเฉลี่ย (บาท)', 'มูลค่ารวม (บาท)', 'เบิกล่าสุด'];
     const rows = analytics.matrixRows.map(r => [
       `"${r.unitName}"`,
       `"${r.code}"`,
@@ -605,6 +673,8 @@ export default function QuickIssueView({
       r.count,
       r.qty,
       `"${r.unit}"`,
+      Number(r.unitCost || 0).toFixed(2),
+      Number(r.totalValue || 0).toFixed(2),
       `"${r.lastDate}"`
     ]);
 
@@ -641,7 +711,7 @@ export default function QuickIssueView({
           <span className="w-2 h-2 rounded-full bg-emerald-500 ring-4 ring-emerald-100 shrink-0" />
           <span className="text-slate-500">สิทธิ์การเบิก:</span>
           <span className="font-semibold text-slate-900">
-            {currentRole.department === 'ALL' ? 'ทุกแผนก (ALL)' : `แผนก ${currentRole.department}`}
+            {currentRole?.department === 'ALL' ? 'ทุกแผนก (ALL)' : `แผนก ${currentRole?.department || user?.department || 'ALL'}`}
           </span>
         </div>
       </div>
@@ -1105,52 +1175,94 @@ export default function QuickIssueView({
                     </span>
                   </div>
                 </div>
+
+                <div className="bg-indigo-50/80 rounded-2xl p-3 border border-indigo-100 flex items-center justify-between mt-3">
+                  <div>
+                    <span className="text-[10px] font-medium text-indigo-500 uppercase tracking-wider block">มูลค่าเงินที่เบิกครั้งนี้</span>
+                    <p className="font-mono text-sm font-bold text-indigo-700 mt-0.5">
+                      ฿{((selectedProduct?.avgCost || selectedProduct?.costPrice || selectedProduct?.price || 0) * qtyNumber).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[9px] font-medium text-slate-400 block">(คำนวณจากต้นทุนเฉลี่ย)</span>
+                    <p className="font-mono text-[11px] text-slate-500 mt-0.5">
+                      ฿{Number(selectedProduct?.avgCost || selectedProduct?.costPrice || selectedProduct?.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {sUnit}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* ส่วนล่าง: ประวัติการเบิกล่าสุด หากยังไม่มี ให้แสดงเป็นข้อความบรรทัดเดียวสีเทาจาง */}
+            {/* ส่วนล่าง: ประวัติการเบิกล่าสุดของสินค้าที่เลือก (Scrollable Frame max-h-[360px]) */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
                   <History className="w-3.5 h-3.5 text-slate-400" />
-                  <span>ประวัติการเบิกล่าสุด</span>
+                  <span>ประวัติการเบิกล่าสุด ({recentIssuesForProduct.length} รายการ)</span>
                 </span>
-                {recentIssueLogs.length > 0 && (
-                  <span className="text-[10px] text-slate-400 font-mono">{recentIssueLogs.length} รายการ</span>
+                {recentIssuesForProduct.length > 0 && (
+                  <span className="text-[10px] text-slate-400 font-mono">{recentIssuesForProduct.length} รายการ</span>
                 )}
               </div>
 
-              {recentIssueLogs.length > 0 ? (
-                <div className="divide-y divide-slate-100">
-                  {recentIssueLogs.slice(0, 4).map(log => {
-                    const logUnit = getLogUnit(log);
-                    return (
-                      <div key={log.id} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between gap-2.5 text-xs">
-                        <div className="min-w-0 flex-1 space-y-0.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700">
-                              {logUnit}
+              {recentIssuesForProduct.length > 0 ? (
+                <div className="max-h-[360px] overflow-y-auto pr-1 space-y-2 custom-scrollbar">
+                  <div className="divide-y divide-slate-100 rounded-xl border border-slate-200/80 bg-slate-50/40 px-3">
+                    {recentIssuesForProduct.map((log, idx) => {
+                      const logUnit = getLogUnit(log);
+                      const safeDate = formatThaiDateTime(log.timestamp || log.date);
+                      return (
+                        <div key={log.id || `issue-${idx}-${log.timestamp}`} className="py-2.5 first:pt-2.5 last:pb-2.5 flex items-center justify-between gap-2.5 text-xs">
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200/60">
+                                {logUnit}
+                              </span>
+                              <span className="font-mono text-[10px] text-slate-400">
+                                {log.productCode}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              {log.reason || log.note || 'เบิกใช้งาน'} • {safeDate}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="font-mono font-bold text-slate-800 bg-white border border-slate-200/80 px-2 py-0.5 rounded-lg text-xs block mb-0.5 shadow-2xs">
+                              -{Math.abs(log.qty || log.changeQty || 0)}
                             </span>
-                            <span className="font-mono text-[10px] text-slate-400">
-                              {log.productCode}
+                            <span className="text-[10px] text-rose-500 font-mono font-semibold block">
+                              (฿{Number(log.totalCost ?? (Math.abs(log.qty || log.changeQty || 0) * (selectedProduct?.avgCost || selectedProduct?.price || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                             </span>
                           </div>
-                          <p className="text-[11px] text-slate-500 truncate">
-                            {log.note || 'เบิกใช้งาน'} • {log.date}
-                          </p>
                         </div>
-                        <div className="text-right shrink-0">
-                          <span className="font-mono font-bold text-slate-800 bg-slate-50 border border-slate-200/60 px-2 py-0.5 rounded-lg text-xs">
-                            -{log.qty}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               ) : (
-                <p className="text-xs text-slate-400 italic py-1">ยังไม่มีประวัติการเบิกจ่ายสินค้า</p>
+                <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center">
+                  <p className="text-xs text-slate-400 italic">ยังไม่มีประวัติการเบิกจ่ายสินค้านี้</p>
+                </div>
               )}
+
+              {/* ส่วนท้าย (Footer): นำทางไปยังหน้าประวัติสต็อกเต็มรูปแบบ (StockMovementTable) */}
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400">แสดงสูงสุด 20 รายการล่าสุด (LIFO)</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onNavigate) {
+                      onNavigate('stock-card');
+                    } else {
+                      window.location.hash = '#/inventory/stock-card';
+                    }
+                  }}
+                  className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors cursor-pointer group"
+                >
+                  <span>ดูประวัติการเคลื่อนไหวทั้งหมด</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              </div>
             </div>
 
           </div>
@@ -1381,14 +1493,14 @@ export default function QuickIssueView({
             </div>
           </div>
 
-          {/* KPI 2: Total Items Quantity Out */}
+          {/* KPI 2: Total Items Value Out */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">ปริมาณสินค้าตัดจ่ายรวม</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">มูลค่าตัดจ่ายรวม</p>
                 <h3 className="text-2xl sm:text-3xl font-black text-rose-600 font-mono mt-1 tracking-tight">
-                  {analytics.totalQty.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                  <span className="text-xs font-semibold text-slate-400 ml-1.5 font-sans">หน่วย</span>
+                  <span className="text-base mr-1">฿</span>
+                  {analytics.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </h3>
               </div>
               <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center shrink-0 shadow-2xs">
@@ -1396,8 +1508,8 @@ export default function QuickIssueView({
               </div>
             </div>
             <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between">
-              <span>ชนิดสินค้าที่เบิก:</span>
-              <span className="font-bold text-slate-800 font-mono">{analytics.uniqueProductCount} ชนิด</span>
+              <span>ปริมาณสินค้าเบิกจ่าย:</span>
+              <span className="font-bold text-slate-800 font-mono">{analytics.totalQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} หน่วย</span>
             </div>
           </div>
 
@@ -1620,6 +1732,8 @@ export default function QuickIssueView({
                     <th className="py-3.5 px-4 text-center">แผนก</th>
                     <th className="py-3.5 px-4 text-center">จำนวนครั้ง</th>
                     <th className="py-3.5 px-4 text-right">ยอดรวมที่เบิก</th>
+                    <th className="py-3.5 px-4 text-right">ต้นทุนเฉลี่ย</th>
+                    <th className="py-3.5 px-4 text-right">มูลค่ารวม (บาท)</th>
                     <th className="py-3.5 px-4 text-right">สัดส่วน (%)</th>
                     <th className="py-3.5 px-4 text-right pr-6">เบิกล่าสุด</th>
                   </tr>
@@ -1662,6 +1776,12 @@ export default function QuickIssueView({
                           </td>
                           <td className="py-3 px-4 text-right font-mono font-bold text-rose-600 text-sm">
                             {row.qty.toLocaleString()} <span className="text-xs font-normal text-slate-400 font-sans">{row.unit}</span>
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono text-slate-500 text-xs">
+                            ฿{Number(row.unitCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-700 text-sm">
+                            ฿{Number(row.totalValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="py-3 px-4 text-right font-mono text-slate-600">
                             <div className="flex items-center justify-end gap-1.5">

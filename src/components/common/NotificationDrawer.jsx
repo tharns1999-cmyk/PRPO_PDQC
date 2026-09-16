@@ -16,8 +16,10 @@ export default function NotificationDrawer({
   const context = useAppContext();
   const isOnlinePurchaser = currentRole?.roleId === 'ONLINE_PURCHASER' || currentRole?.id === 'ONLINE_PURCHASER';
 
+  const userName = context?.currentUser?.name || context?.currentUser?.username || currentRole?.name || currentRole?.username;
+
   const [notifications, setNotifications] = useState(() => {
-    return notificationService.getNotificationsForRole(currentRole);
+    return notificationService.getNotificationsForRole(currentRole, userName);
   });
 
   useEffect(() => {
@@ -31,12 +33,12 @@ export default function NotificationDrawer({
 
   useEffect(() => {
     const unsub = notificationService.subscribe?.(() => {
-      setNotifications(notificationService.getNotificationsForRole(currentRole));
+      setNotifications(notificationService.getNotificationsForRole(currentRole, userName));
     });
     return () => {
       if (unsub) unsub();
     };
-  }, [currentRole]);
+  }, [currentRole, userName]);
 
   if (!isOpen) return null;
 
@@ -55,7 +57,7 @@ export default function NotificationDrawer({
       }));
     }
     if (notificationService?.markAllAsRead) {
-      await notificationService.markAllAsRead(currentRole, ids);
+      await notificationService.markAllAsRead(currentRole, ids, userName);
     }
   };
 
@@ -65,30 +67,34 @@ export default function NotificationDrawer({
       context.setNotifications(prev => prev.map(n => (n.id === id || n._id === id) ? { ...n, isRead: true, read: true, status: 'read' } : n));
     }
     if (notificationService?.markAsRead) {
-      await notificationService.markAsRead(id);
+      await notificationService.markAsRead(id, userName);
     }
   };
 
   const handleNotificationClick = (item) => {
-    handleMarkAsRead(item.id);
-    if (isOnlinePurchaser) {
-      if (onNavigate) onNavigate('online-tasks');
-    } else if (item.refDocType === 'PR') {
-      if (onOpenPR && item.refDocId) {
-        onOpenPR(item.refDocId);
+    handleMarkAsRead(item.id || item._id);
+    onClose?.();
+    
+    const docRef = String(item.docRef || item.refDocId || '').toUpperCase();
+    const type = String(item.type || '').toUpperCase();
+    
+    if (docRef.includes('PR') || docRef.startsWith('PR-') || item.refDocType === 'PR') {
+      if (onOpenPR && docRef) {
+        onOpenPR(docRef);
       } else if (onNavigate) {
         onNavigate('pr-list');
       }
-    } else if (item.refDocType === 'PO') {
-      if (onOpenPO && item.refDocId) {
-        onOpenPO(item.refDocId);
+    } else if (docRef.includes('PO') || docRef.startsWith('PO-') || item.refDocType === 'PO') {
+      if (onOpenPO && docRef) {
+        onOpenPO(docRef);
       } else if (onNavigate) {
-        onNavigate(item.type === 'ONLINE_TASK' ? 'online-tasks' : 'po-list');
+        onNavigate(type === 'ONLINE_TASK' ? 'online-tasks' : 'po-list');
       }
-    } else if (item.refDocType === 'STOCK') {
+    } else if (type === 'LOW_STOCK_ROP' || type === 'STOCK_ISSUED' || type === 'GOODS_RECEIVED' || item.refDocType === 'STOCK') {
       if (onNavigate) onNavigate('stock-card');
+    } else {
+      if (onNavigate) onNavigate('my-workspace');
     }
-    onClose?.();
   };
 
   return createPortal(
@@ -107,6 +113,8 @@ export default function NotificationDrawer({
         onMarkAsRead={handleMarkAsRead}
         onClose={onClose}
         onNotificationClick={handleNotificationClick}
+        currentUser={context?.currentUser}
+        currentRole={currentRole}
       />
     </>,
     document.body

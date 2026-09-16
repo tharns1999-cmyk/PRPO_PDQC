@@ -2,34 +2,52 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Bell } from 'lucide-react';
 import { notificationService } from '../../services/notificationService';
 import { useAppContext } from '../../context/AppContext';
+import { workflowEngine } from '../../services/workflowEngine';
 
 export default function NotificationBell({ currentRole, onClick, count, className }) {
   const context = useAppContext();
   const contextNotifications = context?.notifications;
+  const contextReadIds = context?.readNotifIds || [];
+  const userName = context?.currentUser?.name || context?.currentUser?.username;
 
   const [serviceNotifs, setServiceNotifs] = useState(() => {
-    return notificationService.getNotificationsForRole(currentRole);
+    return notificationService.getNotificationsForRole(currentRole, userName);
   });
 
   useEffect(() => {
-    setServiceNotifs(notificationService.getNotificationsForRole(currentRole));
+    setServiceNotifs(notificationService.getNotificationsForRole(currentRole, userName));
     const unsub = notificationService.subscribe?.(() => {
-      setServiceNotifs(notificationService.getNotificationsForRole(currentRole));
+      setServiceNotifs(notificationService.getNotificationsForRole(currentRole, userName));
     });
     return () => {
       if (unsub) unsub();
     };
-  }, [currentRole]);
+  }, [currentRole, userName]);
 
   const activeNotifs = useMemo(() => {
     const raw = (contextNotifications && contextNotifications.length > 0) ? contextNotifications : serviceNotifs;
     return (raw || []).filter(n => notificationService.isNotificationTarget(n, currentRole));
   }, [contextNotifications, serviceNotifs, currentRole]);
 
+  // Reactive Task Sync with "งานของฉัน" (My Tasks)
+  const userTasks = useMemo(() => {
+    if (!context?.prs && !context?.pos) return null;
+    return workflowEngine.getUserTasks(currentRole, context?.prs, context?.pos);
+  }, [currentRole, context?.prs, context?.pos]);
+
+  const taskTotal = userTasks?.counts?.total;
+
   const unreadCount = useMemo(() => {
     if (count !== undefined) return count;
-    return activeNotifs.filter(n => !(n.isRead === true || n.read === true || n.status === 'read')).length;
-  }, [count, activeNotifs]);
+    if (taskTotal !== undefined) return taskTotal;
+    const userReadIds = new Set(contextReadIds);
+    return activeNotifs.filter(n => {
+      if (n.isRead === true || n.read === true || n.status === 'read') return false;
+      const notifId = n.id || n._id;
+      if (notifId && userReadIds.has(notifId)) return false;
+      return true;
+    }).length;
+  }, [count, taskTotal, activeNotifs, contextReadIds]);
 
   return (
     <button

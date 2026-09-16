@@ -534,10 +534,9 @@ export default function PrintablePO({ po }) {
               {[
                 { role: 'ผู้ขอซื้อ' },
                 { role: 'ผู้ทบทวน' },
-                { role: 'ผู้อนุมัติ' },
-                { role: 'ผู้ตรวจรับ / บันทึกสต็อก' }
+                { role: 'ผู้อนุมัติ' }
               ].map((stamp, idx) => (
-                <th key={idx} className={`w-1/4 py-1.5 px-2 ${idx < 3 ? 'border-r border-black' : ''} text-[11px] font-bold text-slate-800`}>
+                <th key={idx} className={`w-1/3 py-1.5 px-2 ${idx < 2 ? 'border-r border-black' : ''} text-[11px] font-bold text-slate-800`}>
                   {cleanThaiText(stamp.role)}
                 </th>
               ))}
@@ -545,7 +544,7 @@ export default function PrintablePO({ po }) {
           </thead>
           <tbody>
             <tr className="break-inside-avoid print:break-inside-avoid" style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-            <td className="w-1/4 p-2 align-top border-r border-black">
+            <td className="w-1/3 p-2 align-top border-r border-black">
               <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
                 <div className="h-14 flex items-center justify-center">
                   {requesterSig ? (
@@ -565,7 +564,7 @@ export default function PrintablePO({ po }) {
               </div>
             </td>
 
-            <td className="w-1/4 p-2 align-top border-r border-black">
+            <td className="w-1/3 p-2 align-top border-r border-black">
               <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
                 {isReviewed ? (
                   <>
@@ -595,7 +594,7 @@ export default function PrintablePO({ po }) {
               </div>
             </td>
 
-            <td className="w-1/4 p-2 align-top border-r border-black">
+            <td className="w-1/3 p-2 align-top">
               <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
                 {isApproved ? (
                   <>

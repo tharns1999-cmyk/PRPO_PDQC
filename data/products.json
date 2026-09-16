@@ -9,7 +9,7 @@
     "conversionRate": 1,
     "unit": "ชิ้น",
     "price": 100,
-    "stockBalance": 0,
+    "stockBalance": 10,
     "reorderPoint": 10,
     "leadTimeDays": 7,
     "supplierId": null,
@@ -57,6 +57,6 @@
     "stock": 0,
     "rop": 10,
     "currentStock": 5,
-    "updatedAt": "2026-09-16T06:10:08.698Z"
+    "updatedAt": "2026-09-16T09:22:55.771Z"
   }
 ]
