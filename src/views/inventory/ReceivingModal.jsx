@@ -582,24 +582,22 @@ export default function ReceivingModal({
       // 1. Prepare Receiver Metadata (Directive 1)
       const receiverName = (currentUser?.name && currentUser.name !== 'Admin System') 
         ? currentUser.name 
-        : (currentUser?.employeeName || 'คุณวิชัย สุขใจ');
+        : (currentUser?.employeeName || currentUser?.username || '');
+      const receiverRole = currentUser?.position || currentUser?.roleId || currentUser?.role || 'ผู้ตรวจรับ / บันทึกสต็อก';
       const receiverSignature = currentUser?.signatureUrl || 
         currentUser?.signature || 
         storageService.getSignatureByRole?.(currentUser?.roleId || currentUser?.id)?.signatureUrl || 
         storageService.getSignatures?.()?.[currentUser?.roleId || 'REQUESTER_PD']?.signatureUrl || 
-        '/signatures/receiver-default.png';
+        null;
       const receivedAtIso = new Date().toISOString();
 
       const receivingMetadata = {
-        receiverName: currentUser?.name || 'คุณวิชัย สุขใจ',
-        receiverSignature: currentUser?.signatureUrl || currentUser?.signature || receiverSignature || '/signatures/receiver-default.png',
-        receivedAt: receivedAtIso // เช่น 2026-09-12T10:15:00.000Z
+        receiverName: receiverName,
+        receiverId: currentUser?.id || currentUser?.username || '',
+        receiverRole: receiverRole,
+        receiverSignature: receiverSignature || '',
+        receivedAt: receivedAtIso
       };
-      if (currentUser?.name && currentUser.name !== 'Admin System') {
-        receivingMetadata.receiverName = currentUser.name;
-      } else if (currentUser?.employeeName) {
-        receivingMetadata.receiverName = currentUser.employeeName;
-      }
       const receivingInfo = receivingMetadata;
 
       // 2. Prepare Dispute Items for Online Hub
@@ -965,10 +963,15 @@ export default function ReceivingModal({
         }
       }
 
-      // Refresh app data
-      if (appContext?.loadAllData) {
-        await appContext.loadAllData();
+      // Optimistic state update & non-blocking background refresh
+      if (appContext?.setPOs) {
+        appContext.setPOs(prev => prev.map(p => (p.id === finalTargetPO.id || p.poNo === finalTargetPO.poNo) ? finalTargetPO : p));
       }
+      setTimeout(() => {
+        if (appContext?.loadAllData) {
+          appContext.loadAllData(true);
+        }
+      }, 1500);
 
       modalService.success(
         isFullyAccounted ? 'ปิดงานใบสั่งซื้อสำเร็จ' : (summary.isClaimRequired ? 'บันทึกตรวจรับ & ส่งเรื่องเคลมเรียบร้อย' : 'บันทึกตรวจรับสินค้าสำเร็จ'),

@@ -136,42 +136,50 @@ export default function PrintablePO({ po }) {
   const approverDate = po.approvedAt || approvedLog?.timestamp || approvedLog?.date || po.createdAt || '';
 
   const isReceived = Boolean(
-    po.receivingInfo ||
-    po.receivedAt ||
     po.receiverSignature ||
-    ['COMPLETED', 'CLOSED', 'RECEIVED', 'ตรวจรับครบ', 'ปิดงาน'].includes(String(po.status || '').toUpperCase())
+    po.receivedAt ||
+    po.receiverName ||
+    po.receivingInfo?.receivedAt ||
+    po.receivingInfo?.receiverSignature ||
+    ['COMPLETED', 'CLOSED', 'RECEIVED', 'PARTIALLY_RECEIVED', 'PARTIALLY_RECEIVED_IN_CLAIM', 'WAITING_DELIVERY_ROUND_2', 'ตรวจรับครบ', 'ปิดงาน'].includes(String(po.status || '').toUpperCase()) ||
+    (Array.isArray(po.grnHistory) && po.grnHistory.length > 0)
   );
 
   const receiverUser = users.find(u =>
     (po.receivingInfo?.receiverId && u.id === po.receivingInfo.receiverId) ||
+    (po.receiverId && u.id === po.receiverId) ||
     (po.receivedById && u.id === po.receivedById) ||
     (po.receivingInfo?.receiverName && (u.name === po.receivingInfo.receiverName || u.employeeName === po.receivingInfo.receiverName)) ||
     (po.receiverName && (u.name === po.receiverName || u.employeeName === po.receiverName)) ||
-    (po.receivedBy && (u.name === po.receivedBy || u.employeeName === po.receivedBy)) ||
-    u.roleId === 'REQUESTER_PD'
+    (po.receivedBy && (u.name === po.receivedBy || u.employeeName === po.receivedBy))
   );
 
   let receiverName = po.receivingInfo?.receiverName ||
     po.receiverName ||
     po.receivedBy ||
+    po.receiver?.name ||
     receiverUser?.employeeName ||
     receiverUser?.name ||
-    (isReceived ? 'คุณวิชัย สุขใจ' : '');
-  if (!receiverName || receiverName === 'Admin System') {
-    receiverName = isReceived ? 'คุณวิชัย สุขใจ' : '';
+    '';
+  if (receiverName === 'Admin System' || receiverName === 'System User') {
+    receiverName = '';
   }
 
-  const defaultReceiverSig = storageService.getSignatureByRole?.('REQUESTER_PD')?.signatureUrl ||
+  const defaultReceiverSig = receiverUser?.signature ||
+    storageService.getSignatureByRole?.(receiverUser?.roleId || 'REQUESTER_PD')?.signatureUrl ||
     storageService.getSignatures?.()?.[receiverUser?.roleId || 'REQUESTER_PD']?.signatureUrl ||
-    receiverUser?.signature ||
-    '/signatures/receiver-default.png';
+    null;
 
-  const receiverSig = po.receivingInfo?.receiverSignature ||
-    po.receiverSignature ||
-    (isReceived ? defaultReceiverSig : null);
+  const receiverSig = (po.receivingInfo?.receiverSignature && po.receivingInfo.receiverSignature.indexOf('/signatures/receiver-default.png') === -1)
+    ? po.receivingInfo.receiverSignature
+    : (po.receiverSignature && po.receiverSignature.indexOf('/signatures/receiver-default.png') === -1
+        ? po.receiverSignature
+        : (po.receiver?.signature || po.receiver?.signatureUrl || (isReceived ? (defaultReceiverSig || po.receivingInfo?.receiverSignature || po.receiverSignature || null) : null)));
 
   const receiverDate = po.receivingInfo?.receivedAt ||
     po.receivedAt ||
+    po.receiver?.receivedAt ||
+    po.receivedDate ||
     (po.grnHistory?.length > 0 ? po.grnHistory[po.grnHistory.length - 1].date : '') ||
     '';
 
@@ -571,33 +579,33 @@ export default function PrintablePO({ po }) {
             </td>
 
             <td className="w-1/4 p-2 align-top">
-              {/* ตรวจสอบว่ามีข้อมูลการรับของหรือสถานะเป็น COMPLETED หรือไม่ */}
-              {po.receivingInfo?.receivedAt || po.status === 'COMPLETED' || isReceived ? (
-                <div className="flex flex-col items-center justify-between h-24 py-1">
-                  {/* ลายเซ็นดิจิทัล */}
-                  <div className="h-10 flex items-center justify-center">
-                    <img
-                      src={po.receivingInfo?.receiverSignature || po.receiverSignature || receiverSig || '/signatures/receiver-default.png'}
-                      alt="Receiver Signature"
-                      className="h-10 max-w-[120px] object-contain"
-                    />
-                  </div>
-                  {/* ชื่อผู้ตรวจรับ */}
-                  <div className="text-xs text-slate-800 font-medium">
-                    ( {cleanThaiText(po.receivingInfo?.receiverName || po.receiverName || po.receivedBy || receiverName || 'คุณวิชัย สุขใจ')} )
-                  </div>
-                  {/* วันที่และเวลาภาษาไทย */}
-                  <div className="text-[11px] text-slate-500 font-mono">
-                    วันที่ {formatThaiDateTime(po.receivingInfo?.receivedAt || po.receivedAt || receiverDate)}
-                  </div>
-                </div>
-              ) : (
-                /* กรณีของยังมาไม่ถึง ให้แสดง Placeholder สำหรับพิมพ์ไปเซ็นมือตามเดิม */
-                <div className="flex flex-col items-center justify-end h-24 pb-2 text-slate-400">
-                  <div className="text-xs mb-1">( ........................................... )</div>
-                  <div className="text-[11px]">วันที่ ..... / ..... / .........</div>
-                </div>
-              )}
+              <div className="flex flex-col items-center justify-start min-h-[120px] w-full">
+                {isReceived && (receiverSig || receiverName) ? (
+                  <>
+                    <div className="h-14 flex items-center justify-center">
+                      {receiverSig ? (
+                        <img
+                          src={receiverSig}
+                          alt="Receiver Signature"
+                          className="h-12 max-h-12 max-w-[120px] object-contain"
+                        />
+                      ) : null}
+                    </div>
+                    <p className="text-[11px] font-medium text-slate-800">
+                      {receiverName ? `( ${cleanThaiText(receiverName)} )` : '( ........................................... )'}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {receiverDate ? `วันที่ ${formatThaiDateTime(receiverDate)}` : 'วันที่ ..... / ..... / .........'}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="h-14 flex items-center justify-center"></div>
+                    <p className="text-xs text-slate-600">( ........................................... )</p>
+                    <p className="text-[11px] text-slate-400 mt-1">วันที่ ..... / ..... / .........</p>
+                  </>
+                )}
+              </div>
             </td>
           </tr>
         </tbody>

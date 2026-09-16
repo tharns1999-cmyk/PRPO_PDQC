@@ -53,7 +53,9 @@ const SCHEMA_DEFINITIONS = Object.freeze({
     'purchaseChannel', 'issueDate', 'orderDate', 'status', 'workflowStatus', 
     'items', 'subtotal', 'vat', 'grandTotal', 'isOnline', 'isClosed', 
     'claimStatus', 'ngItems', 'reviewedBy', 'reviewedAt', 'approvedBy', 
-    'approvedAt', 'activityLog', 'createdAt', 'completedAt', 'updatedAt'
+    'approvedAt', 'receivedBy', 'receiverName', 'receiverId', 'receivedAt', 
+    'receiverRole', 'receiverSignature', 'receivingInfo', 'activityLog', 
+    'createdAt', 'completedAt', 'updatedAt'
   ],
   [SHEET_NAMES.STOCK_LOGS]: [
     'id', 'timestamp', 'date', 'productId', 'productCode', 'name', 'type', 
@@ -278,9 +280,8 @@ function ensurePRItemsSheet() {
   const targetHeaders = SCHEMA_DEFINITIONS[SHEET_NAMES.PR_ITEMS];
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAMES.PR_ITEMS);
-    sheet.appendRow(targetHeaders);
+    sheet.getRange(1, 1, 1, targetHeaders.length).setValues([targetHeaders]);
     formatHeaderRow(sheet, targetHeaders.length);
-    SpreadsheetApp.flush();
   } else {
     try {
       const currentHeaders = getSheetHeaders(sheet);
@@ -289,7 +290,6 @@ function ensurePRItemsSheet() {
         const newHeaders = currentHeaders.concat(missingHeaders);
         sheet.getRange(1, 1, 1, newHeaders.length).setValues([newHeaders]);
         formatHeaderRow(sheet, newHeaders.length);
-        SpreadsheetApp.flush();
       }
     } catch (e) {
       console.warn('[ensurePRItemsSheet] Header sync warning: ' + e.message);
@@ -312,9 +312,8 @@ function ensureAttachmentsSheet() {
   const targetHeaders = SCHEMA_DEFINITIONS[SHEET_NAMES.ATTACHMENTS];
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAMES.ATTACHMENTS);
-    sheet.appendRow(targetHeaders);
+    sheet.getRange(1, 1, 1, targetHeaders.length).setValues([targetHeaders]);
     formatHeaderRow(sheet, targetHeaders.length);
-    SpreadsheetApp.flush();
   } else {
     try {
       const currentHeaders = getSheetHeaders(sheet);
@@ -323,7 +322,6 @@ function ensureAttachmentsSheet() {
         const newHeaders = currentHeaders.concat(missingHeaders);
         sheet.getRange(1, 1, 1, newHeaders.length).setValues([newHeaders]);
         formatHeaderRow(sheet, newHeaders.length);
-        SpreadsheetApp.flush();
       }
     } catch (e) {
       console.warn('[ensureAttachmentsSheet] Header sync warning: ' + e.message);

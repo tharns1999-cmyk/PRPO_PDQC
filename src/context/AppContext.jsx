@@ -585,13 +585,13 @@ export function AppProvider({ children }) {
     }
   }, [pos, navigate]);
 
-  // ── Operational & Workflow Mutations (Await Backend API + LoadAllData) ──
+  // ── Operational & Workflow Mutations (Non-blocking High Performance) ──
   const handleCreatePR = useCallback(async (prPayload, isDraft = false) => {
     const newPR = await apiService.createPR(prPayload, currentRole, isDraft);
     if (newPR) {
       // Directive 3: Prevent Overwrite during save - Check if newPR.id already exists
       setPRs(prev => {
-        const idx = prev.findIndex(p => p.id === newPR.id);
+        const idx = prev.findIndex(p => p.id === newPR.id || (newPR.prNo && p.prNo === newPR.prNo));
         if (idx !== -1) {
           const updated = [...prev];
           updated[idx] = newPR;
@@ -601,31 +601,76 @@ export function AppProvider({ children }) {
         return [newPR, ...prev];
       });
     }
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1000);
     return newPR;
   }, [currentRole, loadAllData]);
 
   const handleUpdatePR = useCallback(async (prId, prPayload, isDraft = false) => {
     const updated = await apiService.updatePR(prId, prPayload, currentRole, isDraft);
-    await loadAllData();
+    if (updated) {
+      setPRs(prev => prev.map(p => 
+        (p.id === prId || p.prNo === prId || (updated.id && p.id === updated.id) || (updated.prNo && p.prNo === updated.prNo))
+          ? { ...p, ...updated }
+          : p
+      ));
+    }
+    setTimeout(() => { loadAllData(true); }, 1000);
     return updated;
   }, [currentRole, loadAllData]);
 
   const handleRejectPR = useCallback(async (prId, reason) => {
     const result = await apiService.rejectPR(prId, currentRole, reason);
-    await loadAllData();
+    if (result) {
+      setPRs(prev => prev.map(p => 
+        (p.id === prId || p.prNo === prId || (result.id && p.id === result.id) || (result.prNo && p.prNo === result.prNo))
+          ? { ...p, ...result }
+          : p
+      ));
+    }
+    setTimeout(() => { loadAllData(true); }, 1000);
     return result;
   }, [currentRole, loadAllData]);
 
   const handleReviewPR = useCallback(async (prId, note = '') => {
     const result = await apiService.updatePRStatus(prId, 'REVIEWED', currentRole, note);
-    await loadAllData();
+    if (result?.pr) {
+      setPRs(prev => prev.map(p => 
+        (p.id === prId || p.prNo === prId || (result.pr.id && p.id === result.pr.id) || (result.pr.prNo && p.prNo === result.pr.prNo))
+          ? { ...p, ...result.pr }
+          : p
+      ));
+    }
+    setTimeout(() => { loadAllData(true); }, 1000);
     return result;
   }, [currentRole, loadAllData]);
 
   const handleApprovePR = useCallback(async (prId, note = '') => {
     const result = await apiService.updatePRStatus(prId, 'APPROVED', currentRole, note);
-    await loadAllData();
+    if (result?.pr) {
+      setPRs(prev => prev.map(p => 
+        (p.id === prId || p.prNo === prId || (result.pr.id && p.prNo === result.pr.prNo))
+          ? { ...p, ...result.pr }
+          : p
+      ));
+    }
+    if (result?.po) {
+      const poList = Array.isArray(result.po) ? result.po : [result.po];
+      setPOs(prev => [...poList, ...prev]);
+    }
+    setTimeout(() => { loadAllData(true); }, 1000);
+    return result;
+  }, [currentRole, loadAllData]);
+
+  const handleCancelPR = useCallback(async (prId, reason) => {
+    const result = await apiService.cancelPR(prId, currentRole, reason);
+    if (result) {
+      setPRs(prev => prev.map(p => 
+        (p.id === prId || p.prNo === prId || (result.id && p.id === result.id) || (result.prNo && p.prNo === result.prNo))
+          ? { ...p, ...result }
+          : p
+      ));
+    }
+    setTimeout(() => { loadAllData(true); }, 1000);
     return result;
   }, [currentRole, loadAllData]);
 
@@ -653,9 +698,23 @@ export function AppProvider({ children }) {
     ));
     if (typeof updates === 'object') {
       if (updates.items) {
-        return apiService.updatePR(prId, updates, currentRole, isDraft).then(() => loadAllData()).catch(e => console.warn(e));
+        return apiService.updatePR(prId, updates, currentRole, isDraft)
+          .then(res => {
+            if (res) {
+              setPRs(prev => prev.map(p => (p.id === prId || p.prNo === prId) ? { ...p, ...res } : p));
+            }
+            setTimeout(() => loadAllData(true), 1000);
+          })
+          .catch(e => console.warn(e));
       } else if (updates.status) {
-        return apiService.updatePRStatus(prId, updates.status, currentRole).then(() => loadAllData()).catch(e => console.warn(e));
+        return apiService.updatePRStatus(prId, updates.status, currentRole)
+          .then(res => {
+            if (res?.pr) {
+              setPRs(prev => prev.map(p => (p.id === prId || p.prNo === prId) ? { ...p, ...res.pr } : p));
+            }
+            setTimeout(() => loadAllData(true), 1000);
+          })
+          .catch(e => console.warn(e));
       }
     }
   }, [currentRole, loadAllData]);
@@ -667,7 +726,7 @@ export function AppProvider({ children }) {
     const result = await apiService.receiveGoods(poId, receivingItems, currentRole, note, enrichedOptions);
     const freshPOs = storageService.getPOs();
     if (freshPOs) setPOs([...freshPOs]);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return result;
   }, [currentRole, loadAllData]);
 
@@ -911,7 +970,7 @@ export function AppProvider({ children }) {
       } catch {}
     }
 
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return { success: true, po: updatedPO, grn: grnEntry };
   }, [currentRole, loadAllData]);
 
@@ -932,7 +991,7 @@ export function AppProvider({ children }) {
       return [product, ...prev];
     });
     const saved = await apiService.saveProduct(product, currentRole);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return saved;
   }, [currentRole, loadAllData]);
 
@@ -944,7 +1003,7 @@ export function AppProvider({ children }) {
       return pId !== targetStr && pCode !== targetStr;
     }));
     const result = await apiService.deleteProduct(productId, currentRole);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return result;
   }, [currentRole, loadAllData]);
 
@@ -965,7 +1024,7 @@ export function AppProvider({ children }) {
       return [vendor, ...prev];
     });
     const saved = await apiService.saveVendor(vendor, currentRole);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return saved;
   }, [currentRole, loadAllData]);
 
@@ -977,19 +1036,19 @@ export function AppProvider({ children }) {
       return vId !== targetStr && vCode !== targetStr;
     }));
     const result = await apiService.deleteVendor(vendorId, currentRole);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return result;
   }, [currentRole, loadAllData]);
 
   const handleSaveStorageLocation = useCallback(async (location) => {
     const saved = await apiService.saveStorageLocation(location, currentRole);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return saved;
   }, [currentRole, loadAllData]);
 
   const handleDeleteStorageLocation = useCallback(async (locationId, options) => {
     const result = await apiService.deleteStorageLocation(locationId, options, currentRole);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return result;
   }, [currentRole, loadAllData]);
 
@@ -1000,50 +1059,50 @@ export function AppProvider({ children }) {
 
   const handleSaveUsageUnit = useCallback(async (unit) => {
     const saved = await apiService.saveUsageUnit(unit, currentRole?.name || currentUser?.name);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return saved;
   }, [currentRole, currentUser, loadAllData]);
 
   const handleDeleteUsageUnit = useCallback(async (unitId) => {
     const result = await apiService.deleteUsageUnit(unitId, currentRole?.name || currentUser?.name);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return result;
   }, [currentRole, currentUser, loadAllData]);
 
   const handleSaveDepartment = useCallback(async (deptPayload) => {
     const saved = await apiService.saveDepartment(deptPayload, currentUser?.name || currentRole?.name);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return saved;
   }, [currentUser, currentRole, loadAllData]);
 
   const handleDeleteDepartment = useCallback(async (deptId) => {
     const result = await apiService.deleteDepartment(deptId, currentUser?.name || currentRole?.name);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return result;
   }, [currentUser, currentRole, loadAllData]);
 
   const handleSaveUser = useCallback(async (userPayload) => {
     const saved = await apiService.saveUser(userPayload, currentUser?.name || currentRole?.name);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return saved;
   }, [currentUser, currentRole, loadAllData]);
 
   const handleDeleteUser = useCallback(async (userId) => {
     const result = await apiService.deleteUser(userId, currentUser?.name || currentRole?.name);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return result;
   }, [currentUser, currentRole, loadAllData]);
 
   const handleUpdateBudget = useCallback(async (department, newAmount, targetMonth) => {
     const updated = await apiService.updateBudget(department, newAmount, targetMonth);
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return updated;
   }, [loadAllData]);
 
   const handleAdjustBudget = useCallback(async (params) => {
     const actor = currentUser?.name || currentRole?.name || 'ผู้ดูแลระบบ';
     const result = await apiService.adjustBudget({ ...params, actor });
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return result;
   }, [currentUser, currentRole, loadAllData]);
 
@@ -1060,7 +1119,7 @@ export function AppProvider({ children }) {
       reason,
       actor
     });
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return result;
   }, [currentUser, currentRole, loadAllData]);
 
@@ -1129,7 +1188,7 @@ export function AppProvider({ children }) {
       });
     } catch {}
 
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return {
       success: true,
       department: dept,
@@ -1257,7 +1316,7 @@ export function AppProvider({ children }) {
       } catch {}
     }
 
-    await loadAllData();
+    setTimeout(() => { loadAllData(true); }, 1500);
     return {
       success: true,
       processedCount: processedItems.length,
@@ -1327,6 +1386,7 @@ export function AppProvider({ children }) {
     rejectPR: handleRejectPR,
     reviewPR: handleReviewPR,
     approvePR: handleApprovePR,
+    cancelPR: handleCancelPR,
     receivePOItems: handleReceiveGoods,
     receiveGoods: handleReceiveGoods,
     recordGoodsReceipt: handleRecordGoodsReceipt,
@@ -1400,6 +1460,7 @@ export function AppProvider({ children }) {
     handleRejectPR,
     handleReviewPR,
     handleApprovePR,
+    handleCancelPR,
     handleReceiveGoods,
     handleSaveProduct,
     handleDeleteProduct,

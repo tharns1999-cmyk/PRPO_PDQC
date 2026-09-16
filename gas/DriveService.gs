@@ -532,7 +532,17 @@ function processDocumentAttachments(attachments, category, docNo, docType, isNew
       });
       
       if (filteredAtts.length < allAtts.length) {
-        batchWriteRecords(SHEET_NAMES.ATTACHMENTS, filteredAtts);
+        var attSheet = getSheet(SHEET_NAMES.ATTACHMENTS || 'Attachments');
+        var attHeaders = getSheetHeaders(attSheet);
+        var lastR = attSheet.getLastRow();
+        var lastC = attSheet.getLastColumn();
+        if (lastR > 1 && lastC > 0) {
+          attSheet.getRange(2, 1, lastR - 1, lastC).clearContent();
+        }
+        if (filteredAtts.length > 0) {
+          var rowsToWrite = filteredAtts.map(function(rec) { return serializeRecordToRow(rec, attHeaders); });
+          attSheet.getRange(2, 1, rowsToWrite.length, attHeaders.length).setValues(rowsToWrite);
+        }
         console.info('[processDocumentAttachments] Reconciled attachments for ' + docNo + ', deleted ' + (allAtts.length - filteredAtts.length) + ' old files');
       }
     } catch (e) {
@@ -745,7 +755,6 @@ function makeAllDriveFilesPublic() {
             }
             if (modified) {
               rng.setValues(vals);
-              SpreadsheetApp.flush();
               console.info('[DriveMigration] Cleaned up legacy placeholders in sheet: ' + sName);
             }
           }

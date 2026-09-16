@@ -317,7 +317,11 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
     setProcessingAction('กำลังบันทึกการยกเลิกคำขอ...');
     setIsProcessing(true);
     try {
-      await apiService.cancelPR(selectedPR.id, currentRole, reason.trim());
+      if (context?.cancelPR) {
+        await context.cancelPR(selectedPR.id, reason.trim());
+      } else {
+        await apiService.cancelPR(selectedPR.id, currentRole, reason.trim());
+      }
       await modalService.success('ยกเลิกสำเร็จ', `ยกเลิกใบขอซื้อ ${selectedPR.prNo} เรียบร้อยแล้ว`);
       if (onRefresh) onRefresh();
       onClose();

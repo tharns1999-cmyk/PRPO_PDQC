@@ -159,7 +159,6 @@ function batchWriteRecords(sheetName, records = []) {
 
   // Batch write all rows
   sheet.getRange(2, 1, rowValues.length, headers.length).setValues(rowValues);
-  SpreadsheetApp.flush();
 
   return rowValues.length;
 }
@@ -180,8 +179,8 @@ function appendRecord(sheetName, record) {
   }
 
   const rowValues = serializeRecordToRow(record, headers);
-  sheet.appendRow(rowValues);
-  SpreadsheetApp.flush();
+  const nextRow = sheet.getLastRow() + 1;
+  sheet.getRange(nextRow, 1, 1, headers.length).setValues([rowValues]);
 
   return record;
 }
@@ -202,7 +201,6 @@ function batchAppendRecords(sheetName, records = []) {
 
   const startRow = sheet.getLastRow() + 1;
   sheet.getRange(startRow, 1, rowValues.length, headers.length).setValues(rowValues);
-  SpreadsheetApp.flush();
 
   return rowValues.length;
 }
@@ -250,10 +248,10 @@ function upsertRecordById(sheetName, idField, record) {
     sheet.getRange(rowIndexToUpdate, 1, 1, headers.length).setValues([rowValues]);
   } else {
     // Append new row
-    sheet.appendRow(rowValues);
+    const nextRow = sheet.getLastRow() + 1;
+    sheet.getRange(nextRow, 1, 1, headers.length).setValues([rowValues]);
   }
 
-  SpreadsheetApp.flush();
   return record;
 }
 
@@ -275,18 +273,31 @@ function deleteRecordById(sheetName, idField, idValue) {
   }
 
   const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
   if (lastRow <= 1) return false;
 
-  const idValues = sheet.getRange(2, idColIndex + 1, lastRow - 1, 1).getValues();
-  for (let i = 0; i < idValues.length; i++) {
-    if (String(idValues[i][0]).trim() === String(idValue).trim()) {
-      sheet.deleteRow(i + 2);
-      SpreadsheetApp.flush();
-      return true;
+  const allRows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  const targetVal = String(idValue).trim();
+  const remainingRows = [];
+  let found = false;
+
+  for (let i = 0; i < allRows.length; i++) {
+    if (!found && String(allRows[i][idColIndex]).trim() === targetVal) {
+      found = true;
+      continue; // Skip target row (In-memory deletion)
+    }
+    remainingRows.push(allRows[i]);
+  }
+
+  if (found) {
+    // Clear rows from 2 down, strictly preserving Row 1 header
+    sheet.getRange(2, 1, lastRow - 1, lastCol).clearContent();
+    if (remainingRows.length > 0) {
+      sheet.getRange(2, 1, remainingRows.length, lastCol).setValues(remainingRows);
     }
   }
 
-  return false;
+  return found;
 }
 
 /**

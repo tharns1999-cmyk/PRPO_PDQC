@@ -733,11 +733,17 @@ export async function generatePoPdf(po) {
     po?.receivedAt ||
     po?.receiverSignature ||
     po?.receivedBy ||
+    po?.receiverName ||
     hasGrnEntry ||
+    ['RECEIVED', 'COMPLETED', 'CLOSED', 'COMPLETED_WITH_REFUND', 'PARTIALLY_RECEIVED', 'PARTIALLY_RECEIVED_IN_CLAIM'].includes(String(po?.status || '').toUpperCase()) ||
     isCompleted
   );
 
-  const receiverSigData = po?.receivingInfo?.receiverSignature || po?.receiverSignature || receiverUser?.signature || '/signatures/receiver-default.png';
+  const receiverSigData = (po?.receivingInfo?.receiverSignature && !po.receivingInfo.receiverSignature.startsWith('/'))
+    ? po.receivingInfo.receiverSignature
+    : (po?.receiverSignature && !po.receiverSignature.startsWith('/')
+        ? po.receiverSignature
+        : (receiverUser?.signature && !receiverUser.signature.startsWith('/') ? receiverUser.signature : null));
 
   const [reqSigImg, revSigImg, appSigImg, recSigImg] = await Promise.all([
     embedSignature(requesterUser),
@@ -804,11 +810,11 @@ export async function generatePoPdf(po) {
   const revName = isReviewed ? (rawRevName || 'คุณสมชาย มุ่งมั่น') : '( ............................................................ )';
 
   let rawRecName = isReceivedDoc ? (po?.receivingInfo?.receiverName || po?.receiverName || po?.receivedBy || receiverUser?.employeeName || '') : '';
-  if (rawRecName === 'Admin System') {
+  if (rawRecName === 'Admin System' || rawRecName === 'System User') {
     rawRecName = '';
   }
-  const recName = isReceivedDoc
-    ? (rawRecName || 'คุณวิชัย สุขใจ')
+  const recName = (isReceivedDoc && rawRecName)
+    ? rawRecName
     : '( ............................................................ )';
 
   const stamps = [

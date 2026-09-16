@@ -2169,6 +2169,45 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
       expect(html).toContain('src="/signatures/receiver-default.png"');
       expect(html).toContain('alt="Receiver Signature"');
     });
+
+    it('renders fallback line ( ........................................... ) without mock name when receiverName is missing on received PO', () => {
+      const anonReceivedPO = {
+        id: 'PO-ANON-01',
+        poNo: 'PO-ANON-01',
+        status: 'RECEIVED',
+        department: 'PD',
+        requestedBy: 'คุณกนกวรรณ ผู้ขอซื้อ',
+        reviewerName: 'คุณสมชาย ผู้ทบทวน',
+        approvedBy: 'คุณประเสริฐ ผู้อนุมัติ',
+        receivedAt: '2026-09-15T08:30:00.000Z',
+        receiverSignature: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        items: [{ name: 'Item A', qty: 2, price: 100 }]
+      };
+
+      const html = renderToStaticMarkup(<PrintablePO po={anonReceivedPO} />);
+      expect(html).toContain('alt="Receiver Signature"');
+      expect(html).toContain('( ........................................... )');
+      expect(html).not.toContain('คุณวิชัย สุขใจ');
+    });
+
+    it('renders receiver signature and Thai formatted date for partial receive status (PARTIALLY_RECEIVED)', () => {
+      const partialPO = {
+        id: 'PO-PARTIAL-01',
+        poNo: 'PO-PARTIAL-01',
+        status: 'PARTIALLY_RECEIVED',
+        department: 'PD',
+        receiverName: 'สิรภัทร แจ่มมิน',
+        receivedAt: '2026-09-16T08:00:00.000Z',
+        receiverSignature: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        items: [{ name: 'Item A', qty: 2, price: 100 }]
+      };
+
+      const html = renderToStaticMarkup(<PrintablePO po={partialPO} />);
+      expect(html).toContain('( สิรภัทร แจ่มมิน )');
+      expect(html).toContain('alt="Receiver Signature"');
+      const expectedDate = formatThaiDateTime('2026-09-16T08:00:00.000Z');
+      expect(html).toContain(`วันที่ ${expectedDate}`);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════

@@ -856,6 +856,100 @@ function apiGetPRs(rawPayload, userContext) {
 }
 
 /**
+ * Packages an updated PR object for lean client responses.
+ * Parses JSON strings (items, attachments, logs), joins timeline/audit logs & attachments,
+ * and normalizes the PR object without triggering full database bootstrap.
+ * @param {Object} prObj
+ * @returns {Object} { success: true, data: packagedPR }
+ */
+function packageUpdatedPR(prObj) {
+  if (!prObj || typeof prObj !== 'object') return { success: true, data: prObj };
+  var packaged = Object.assign({}, prObj);
+
+  // Safely parse items if stringified
+  if (typeof packaged.items === 'string') {
+    try { packaged.items = JSON.parse(packaged.items); } catch(e) { packaged.items = []; }
+  }
+
+  // Safely parse attachments if stringified
+  if (typeof packaged.attachments === 'string') {
+    try { packaged.attachments = JSON.parse(packaged.attachments); } catch(e) { packaged.attachments = []; }
+  }
+
+  // Parse JSON fields
+  ['history', 'timeline', 'activityLog', 'approvalHistory', 'comments'].forEach(function(field) {
+    if (typeof packaged[field] === 'string') {
+      try { packaged[field] = JSON.parse(packaged[field]); } catch(e) { packaged[field] = []; }
+    }
+  });
+
+  // Attach up-to-date AuditLogs for this PR if docNo is present
+  var docNo = packaged.prNo || packaged.id;
+  if (docNo) {
+    try {
+      var auditLogs = [];
+      try { auditLogs = batchReadRecords('AuditLogs'); } catch (e) {}
+      var logsByDoc = buildAuditLogsByDoc(auditLogs);
+      var prKey = String(docNo).trim().toUpperCase();
+      var kNo = String(packaged.prNo || '').trim().toUpperCase();
+      var kId = String(packaged.id || '').trim().toUpperCase();
+      var docLogs = logsByDoc[prKey] || (kNo ? logsByDoc[kNo] : null) || (kId ? logsByDoc[kId] : null) || [];
+      var seenIds = {};
+      var sortedLogs = [];
+      docLogs.forEach(function(l) {
+        var lid = l.id || (l.timestamp + '_' + l.action);
+        if (!seenIds[lid]) {
+          seenIds[lid] = true;
+          sortedLogs.push(l);
+        }
+      });
+      sortedLogs.sort(function(a, b) {
+        var tA = new Date(a.timestamp || a.createdAt || 0).getTime();
+        var tB = new Date(b.timestamp || b.createdAt || 0).getTime();
+        return tA - tB;
+      });
+
+      if (sortedLogs.length > 0) {
+        packaged.timeline = sortedLogs;
+        packaged.activityTimeline = sortedLogs;
+        packaged.history = sortedLogs;
+        packaged.approvalHistory = sortedLogs;
+        packaged.auditLogs = sortedLogs;
+      }
+    } catch (e) {
+      console.warn('[packageUpdatedPR] Warning fetching audit logs: ' + e.message);
+    }
+
+    if (!Array.isArray(packaged.attachments) || packaged.attachments.length === 0) {
+      try {
+        var attachSheet = getSheet(SHEET_NAMES.ATTACHMENTS || 'Attachments');
+        var rawAttachments = attachSheet ? readSheetValuesAsObjects(attachSheet) : [];
+        var prKeyU = String(docNo).trim().toUpperCase();
+        var matchingAtts = rawAttachments.filter(function(att) {
+          if (!att) return false;
+          var adoc = String(att.docNo || att.prNo || '').trim().toUpperCase();
+          return adoc === prKeyU;
+        });
+        if (matchingAtts.length > 0) {
+          packaged.attachments = matchingAtts;
+          packaged.quotationFiles = matchingAtts;
+          packaged.generalAttachments = matchingAtts;
+        }
+      } catch (attErr) {
+        console.warn('[packageUpdatedPR] Warning fetching attachments: ' + attErr.message);
+      }
+    }
+  }
+
+  if (typeof normalizePRsLegacyOnline === 'function') {
+    var normalized = normalizePRsLegacyOnline([packaged]);
+    packaged = normalized[0] || packaged;
+  }
+
+  return { success: true, data: packaged };
+}
+
+/**
  * Creates a new PR with thread-safe sequential PR Number generation.
  * Immediately persists to PRs sheet and writes individual lines to PRItems sheet.
  */
@@ -957,7 +1051,7 @@ function apiCreatePR(rawPayload, userContext) {
 
     var returnPr = Object.assign({}, prObj);
     returnPr.items = rawItems;
-    return returnPr;
+    return packageUpdatedPR(returnPr);
   }, 'CreatePR', rawPayload, userContext);
 }
 
@@ -1052,7 +1146,7 @@ function apiSavePR(rawPayload, userContext) {
 
     var returnSaved = Object.assign({}, prObj);
     returnSaved.items = rawItems;
-    return returnSaved;
+    return packageUpdatedPR(returnSaved);
   }, 'SavePR', rawPayload, userContext);
 }
 
@@ -1071,7 +1165,7 @@ function apiUpdatePR(rawPayload, userContext) {
         console.warn('AuditLog Error in apiUpdatePR:', e);
       }
     }
-    return targetPr;
+    return packageUpdatedPR(targetPr);
   }, 'UpdatePR', rawPayload, userContext);
 }
 
@@ -1112,7 +1206,7 @@ function apiReviewPR(rawPayload, userContext) {
       console.warn('AuditLog Error in apiReviewPR:', e);
     }
 
-    return result;
+    return packageUpdatedPR(prObj);
   }, 'ReviewPR', rawPayload, userContext);
 }
 
@@ -1153,7 +1247,7 @@ function apiApprovePR(rawPayload, userContext) {
       console.warn('AuditLog Error in apiApprovePR:', e);
     }
 
-    return result;
+    return packageUpdatedPR(prObj);
   }, 'ApprovePR', rawPayload, userContext);
 }
 
@@ -1209,7 +1303,7 @@ function apiRejectPR(rawPayload, userContext) {
       console.warn('Notification Error:', notifyErr);
     }
 
-    return result;
+    return packageUpdatedPR(prObj);
   }, 'RejectPR', rawPayload, userContext);
 }
 
@@ -1252,7 +1346,7 @@ function apiCancelPR(rawPayload, userContext) {
       console.warn('AuditLog Error in apiCancelPR:', e);
     }
 
-    return result;
+    return packageUpdatedPR(prObj);
   }, 'CancelPR', rawPayload, userContext);
 }
 
@@ -1261,12 +1355,365 @@ function apiCancelPR(rawPayload, userContext) {
 // =========================================================================
 
 /**
- * Retrieves all POs.
+ * Resolves a user signature to a Base64 Data URI in memory.
+ * Safely extracts signature from user object, Users sheet, Drive File ID, or Signatures sheet.
+ * Respects Google Sheets 50,000 char cell limit by resolving large images dynamically in RAM.
+ *
+ * @param {Object|string} userOrId User object, username, employeeName, or user ID
+ * @param {Array} [usersList] Optional preloaded Users array
+ * @param {Array} [signaturesList] Optional preloaded Signatures array
+ * @returns {string|null} Base64 Data URI or null
+ */
+function resolveUserSignatureBase64(userOrId, usersList, signaturesList) {
+  if (!userOrId) return null;
+  
+  var targetUser = null;
+  var allUsers = usersList;
+  if (!allUsers || !Array.isArray(allUsers)) {
+    try { allUsers = batchReadRecords(SHEET_NAMES.USERS); } catch(e) { allUsers = []; }
+  }
+
+  if (typeof userOrId === 'object') {
+    targetUser = userOrId;
+  }
+  
+  var searchKey = String(
+    (typeof userOrId === 'object' ? (userOrId.id || userOrId.username || userOrId.employeeId || userOrId.name || userOrId.employeeName) : userOrId) || ''
+  ).trim().toLowerCase();
+
+  if (searchKey && Array.isArray(allUsers) && allUsers.length > 0) {
+    for (var i = 0; i < allUsers.length; i++) {
+      var u = allUsers[i];
+      if (!u) continue;
+      var uid = String(u.id || '').trim().toLowerCase();
+      var uname = String(u.username || '').trim().toLowerCase();
+      var empid = String(u.employeeId || '').trim().toLowerCase();
+      var rname = String(u.name || '').trim().toLowerCase();
+      var empname = String(u.employeeName || '').trim().toLowerCase();
+      if (uid === searchKey || uname === searchKey || empid === searchKey || rname === searchKey || empname === searchKey) {
+        targetUser = Object.assign({}, u, targetUser || {});
+        break;
+      }
+    }
+  }
+
+  var rawSig = (targetUser && (targetUser.signature || targetUser.signatureUrl)) || '';
+  if (typeof userOrId === 'object' && userOrId.signature) {
+    rawSig = userOrId.signature;
+  }
+
+  // 1. If already a Data URI
+  if (rawSig && typeof rawSig === 'string' && rawSig.indexOf('data:image/') === 0) {
+    return rawSig;
+  }
+
+  // 2. If Drive File ID or Drive URL
+  if (rawSig && typeof rawSig === 'string' && (rawSig.indexOf('http') === 0 || rawSig.length < 150)) {
+    var match = rawSig.match(/[-\w]{25,}/);
+    if (match && match[0]) {
+      try {
+        var fileId = match[0];
+        var file = DriveApp.getFileById(fileId);
+        var blob = file.getBlob();
+        var mime = blob.getContentType() || 'image/png';
+        return 'data:' + mime + ';base64,' + Utilities.base64Encode(blob.getBytes());
+      } catch (driveErr) {
+        console.warn('[resolveUserSignatureBase64] Drive fetch error: ' + driveErr.message);
+      }
+    }
+  }
+
+  // 3. Fallback to Signatures sheet by roleId
+  var targetRoleId = (targetUser && (targetUser.roleId || targetUser.canonicalRole || targetUser.role)) || 'REQUESTER_PD';
+  var allSigs = signaturesList;
+  if (!allSigs || !Array.isArray(allSigs)) {
+    try { allSigs = batchReadRecords(SHEET_NAMES.SIGNATURES); } catch(e) { allSigs = []; }
+  }
+  if (allSigs && allSigs.length > 0) {
+    for (var s = 0; s < allSigs.length; s++) {
+      if (String(allSigs[s].roleId || '').trim().toUpperCase() === String(targetRoleId).trim().toUpperCase()) {
+        var sUrl = allSigs[s].signatureUrl || allSigs[s].signature;
+        if (sUrl && sUrl.indexOf('data:image/') === 0) {
+          return sUrl;
+        }
+        if (sUrl && (sUrl.indexOf('http') === 0 || sUrl.length < 150)) {
+          var sMatch = sUrl.match(/[-\w]{25,}/);
+          if (sMatch && sMatch[0]) {
+            try {
+              var sFile = DriveApp.getFileById(sMatch[0]);
+              var sBlob = sFile.getBlob();
+              var sMime = sBlob.getContentType() || 'image/png';
+              return 'data:' + sMime + ';base64,' + Utilities.base64Encode(sBlob.getBytes());
+            } catch (err) {}
+          }
+        }
+      }
+    }
+  }
+
+  return rawSig || null;
+}
+
+/**
+ * Ensures header row in POs sheet contains all required receiving columns.
+ * Appends missing headers without altering existing rows.
+ */
+function ensurePOSheetHeaders(sheet) {
+  if (!sheet) return;
+  var lastCol = sheet.getLastColumn();
+  if (lastCol === 0) return;
+  var headerValues = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headers = headerValues.map(function(h) { return String(h).trim(); });
+  var REQUIRED_RECEIVING_HEADERS = ['receivedBy', 'receiverName', 'receiverId', 'receivedAt', 'receiverRole', 'receiverSignature', 'receivingInfo'];
+  var missing = [];
+  REQUIRED_RECEIVING_HEADERS.forEach(function(col) {
+    if (headers.indexOf(col) === -1) {
+      missing.push(col);
+    }
+  });
+  if (missing.length > 0) {
+    var startCol = lastCol + 1;
+    sheet.getRange(1, startCol, 1, missing.length).setValues([missing]);
+    try {
+      formatHeaderRange(sheet, 1, startCol, missing.length);
+    } catch(e) {}
+    console.log('[ensurePOSheetHeaders] Appended ' + missing.length + ' missing headers to POs sheet: ' + missing.join(', '));
+  }
+}
+
+/**
+ * Backfills receiving signatures for historical POs in memory.
+ * If a PO is completed/received but missing receiverSignature,
+ * looks up the latest StockLog for this PO and matches the user's signature.
+ */
+function backfillHistoricalReceivingSignatures(pos, stockLogs, users, signatures) {
+  if (!Array.isArray(pos) || pos.length === 0) return pos;
+  
+  var logs = stockLogs;
+  if (!logs || !Array.isArray(logs)) {
+    try { logs = batchReadRecords(SHEET_NAMES.STOCK_LOGS); } catch(e) { logs = []; }
+  }
+  var allUsers = users;
+  if (!allUsers || !Array.isArray(allUsers)) {
+    try { allUsers = batchReadRecords(SHEET_NAMES.USERS); } catch(e) { allUsers = []; }
+  }
+  var allSigs = signatures;
+  if (!allSigs || !Array.isArray(allSigs)) {
+    try { allSigs = batchReadRecords(SHEET_NAMES.SIGNATURES); } catch(e) { allSigs = []; }
+  }
+
+  // Index logs by PO number / ID
+  var logsByPo = {};
+  if (Array.isArray(logs)) {
+    logs.forEach(function(l) {
+      if (!l) return;
+      var pNo = String(l.poNumber || l.documentNo || '').trim().toUpperCase();
+      if (pNo) {
+        if (!logsByPo[pNo]) logsByPo[pNo] = [];
+        logsByPo[pNo].push(l);
+      }
+    });
+  }
+
+  pos.forEach(function(po) {
+    if (!po) return;
+    var status = String(po.status || '').toUpperCase();
+    var isReceived = ['RECEIVED', 'COMPLETED', 'CLOSED', 'COMPLETED_WITH_REFUND', 'PARTIALLY_RECEIVED', 'PARTIALLY_RECEIVED_IN_CLAIM'].indexOf(status) !== -1 ||
+                     Boolean(po.receivedAt || po.receivingInfo || (po.grnHistory && po.grnHistory.length > 0));
+
+    // Safely parse receivingInfo if stringified
+    if (typeof po.receivingInfo === 'string') {
+      try { po.receivingInfo = JSON.parse(po.receivingInfo); } catch(e) { po.receivingInfo = {}; }
+    }
+
+    if (isReceived) {
+      var currentSig = po.receiverSignature || (po.receivingInfo && po.receivingInfo.receiverSignature) || '';
+      var needsSig = !currentSig || currentSig.indexOf('/signatures/') !== -1 || currentSig.indexOf('USER_SIG:') === 0;
+
+      // Find candidate receiver name / id
+      var recName = po.receiverName || po.receivedBy || (po.receivingInfo && po.receivingInfo.receiverName) || '';
+      var recId = po.receiverId || (po.receivingInfo && po.receivingInfo.receiverId) || '';
+      var recAt = po.receivedAt || (po.receivingInfo && po.receivingInfo.receivedAt) || '';
+
+      // If name or time missing, look up from StockLogs
+      if (!recName || !recAt) {
+        var pKey = String(po.poNo || po.id || '').trim().toUpperCase();
+        var poLogs = logsByPo[pKey] || [];
+        if (poLogs.length > 0) {
+          poLogs.sort(function(a, b) {
+            var tA = new Date(a.timestamp || a.date || 0).getTime();
+            var tB = new Date(b.timestamp || b.date || 0).getTime();
+            return tB - tA;
+          });
+          var latestLog = poLogs[0];
+          if (!recName && latestLog.actorName) recName = latestLog.actorName;
+          if (!recAt && (latestLog.timestamp || latestLog.date)) recAt = latestLog.timestamp || latestLog.date;
+        }
+      }
+
+      if (needsSig) {
+        var resolved = resolveUserSignatureBase64(recId || recName, allUsers, allSigs);
+        if (resolved) {
+          po.receiverSignature = resolved;
+        }
+      } else if (currentSig && currentSig.indexOf('data:image/') === 0) {
+        po.receiverSignature = currentSig;
+      }
+
+      if (recName) {
+        po.receiverName = recName;
+        po.receivedBy = recName;
+      }
+      if (recAt) {
+        po.receivedAt = recAt;
+      }
+      if (!po.receivingInfo || typeof po.receivingInfo !== 'object') {
+        po.receivingInfo = {};
+      }
+      po.receivingInfo.receiverName = po.receiverName || '';
+      po.receivingInfo.receivedAt = po.receivedAt || '';
+      po.receivingInfo.receiverSignature = po.receiverSignature || '';
+    }
+  });
+
+  return pos;
+}
+
+/**
+ * Retrieves all POs with historical receiving backfill.
  */
 function apiGetPOs(rawPayload, userContext) {
   return handleApiRequest(function(payload, user) {
-    return batchReadRecords(SHEET_NAMES.POS);
+    var pos = batchReadRecords(SHEET_NAMES.POS);
+    return backfillHistoricalReceivingSignatures(pos);
   }, 'GetPOs', rawPayload, userContext);
+}
+
+/**
+ * Packages an updated PO object for lean client responses.
+ * Parses JSON strings (items, attachments, logs, claim/grn history),
+ * preserves and structures receiving metadata (receiverName, receivedAt, receiverSignature/receivingInfo)
+ * for PDF printing, joins AuditLogs, and returns { success: true, data: packagedPO }.
+ * @param {Object} poObj
+ * @returns {Object} { success: true, data: packagedPO }
+ */
+function packageUpdatedPO(poObj) {
+  if (!poObj || typeof poObj !== 'object') return { success: true, data: poObj };
+  var packaged = Object.assign({}, poObj);
+
+  // 1. Safely parse items if stringified
+  if (typeof packaged.items === 'string') {
+    try { packaged.items = JSON.parse(packaged.items); } catch(e) { packaged.items = []; }
+  }
+
+  // 2. Safely parse attachments if stringified
+  if (typeof packaged.attachments === 'string') {
+    try { packaged.attachments = JSON.parse(packaged.attachments); } catch(e) { packaged.attachments = []; }
+  }
+
+  // 3. Parse JSON array fields
+  ['history', 'timeline', 'activityLog', 'claimHistory', 'comments', 'ngItems', 'grnHistory', 'grAttachments'].forEach(function(field) {
+    if (typeof packaged[field] === 'string') {
+      try { packaged[field] = JSON.parse(packaged[field]); } catch(e) { packaged[field] = []; }
+    }
+  });
+
+  // 4. Parse & Structure Goods Receiving Metadata for PDF & UI
+  if (typeof packaged.receivingInfo === 'string') {
+    try { packaged.receivingInfo = JSON.parse(packaged.receivingInfo); } catch(e) { packaged.receivingInfo = {}; }
+  }
+  if (!packaged.receivingInfo || typeof packaged.receivingInfo !== 'object') {
+    packaged.receivingInfo = {};
+  }
+  if (typeof packaged.claimDetails === 'string') {
+    try { packaged.claimDetails = JSON.parse(packaged.claimDetails); } catch(e) { packaged.claimDetails = null; }
+  }
+  if (typeof packaged.claimData === 'string') {
+    try { packaged.claimData = JSON.parse(packaged.claimData); } catch(e) { packaged.claimData = null; }
+  }
+
+  // Harmonize receiving signature & receiver info
+  packaged.receiverName = packaged.receiverName || packaged.receivedBy || (packaged.receivingInfo && packaged.receivingInfo.receiverName) || '';
+  packaged.receivedBy = packaged.receivedBy || packaged.receiverName;
+  packaged.receivedAt = packaged.receivedAt || (packaged.receivingInfo && packaged.receivingInfo.receivedAt) || '';
+  packaged.receiverRole = packaged.receiverRole || (packaged.receivingInfo && packaged.receivingInfo.receiverRole) || '';
+
+  // Resolve Base64 Data URI in RAM (Guardrail: cell limit protected, full base64 in RAM)
+  var currentSig = packaged.receiverSignature || (packaged.receivingInfo && packaged.receivingInfo.receiverSignature) || '';
+  if (!currentSig || currentSig.indexOf('USER_SIG:') === 0 || currentSig.indexOf('/signatures/') !== -1 || currentSig.indexOf('data:image/') !== 0) {
+    var inMemSig = resolveUserSignatureBase64(packaged.receiverId || packaged.receiverName || packaged.receivedBy);
+    if (inMemSig) {
+      packaged.receiverSignature = inMemSig;
+    } else {
+      packaged.receiverSignature = currentSig;
+    }
+  } else {
+    packaged.receiverSignature = currentSig;
+  }
+
+  if (packaged.receiverName || packaged.receivedAt || packaged.receiverSignature) {
+    packaged.receivingInfo.receiverName = packaged.receiverName;
+    packaged.receivingInfo.receivedAt = packaged.receivedAt;
+    packaged.receivingInfo.receiverSignature = packaged.receiverSignature;
+    packaged.receivingInfo.receiverRole = packaged.receiverRole;
+  }
+
+  // 5. Attach up-to-date AuditLogs for this PO if poNo is present
+  var docNo = packaged.poNo || packaged.id;
+  if (docNo) {
+    try {
+      var auditLogs = [];
+      try { auditLogs = batchReadRecords('AuditLogs'); } catch (e) {}
+      var logsByDoc = buildAuditLogsByDoc(auditLogs);
+      var poKey = String(docNo).trim().toUpperCase();
+      var kNo = String(packaged.poNo || '').trim().toUpperCase();
+      var kId = String(packaged.id || '').trim().toUpperCase();
+      var docLogs = logsByDoc[poKey] || (kNo ? logsByDoc[kNo] : null) || (kId ? logsByDoc[kId] : null) || [];
+      var seenIds = {};
+      var sortedLogs = [];
+      docLogs.forEach(function(l) {
+        var lid = l.id || (l.timestamp + '_' + l.action);
+        if (!seenIds[lid]) {
+          seenIds[lid] = true;
+          sortedLogs.push(l);
+        }
+      });
+      sortedLogs.sort(function(a, b) {
+        var tA = new Date(a.timestamp || a.createdAt || 0).getTime();
+        var tB = new Date(b.timestamp || b.createdAt || 0).getTime();
+        return tA - tB;
+      });
+
+      if (sortedLogs.length > 0) {
+        packaged.timeline = sortedLogs;
+        packaged.activityTimeline = sortedLogs;
+        packaged.history = sortedLogs;
+        packaged.auditLogs = sortedLogs;
+      }
+    } catch (e) {
+      console.warn('[packageUpdatedPO] Warning fetching audit logs: ' + e.message);
+    }
+
+    if (!Array.isArray(packaged.attachments) || packaged.attachments.length === 0) {
+      try {
+        var attachSheet = getSheet(SHEET_NAMES.ATTACHMENTS || 'Attachments');
+        var rawAttachments = attachSheet ? readSheetValuesAsObjects(attachSheet) : [];
+        var poKeyU = String(docNo).trim().toUpperCase();
+        var matchingAtts = rawAttachments.filter(function(att) {
+          if (!att) return false;
+          var adoc = String(att.docNo || att.poNo || '').trim().toUpperCase();
+          return adoc === poKeyU;
+        });
+        if (matchingAtts.length > 0) {
+          packaged.attachments = matchingAtts;
+        }
+      } catch (attErr) {
+        console.warn('[packageUpdatedPO] Warning fetching attachments: ' + attErr.message);
+      }
+    }
+  }
+
+  return { success: true, data: packaged };
 }
 
 /**
@@ -1310,7 +1757,22 @@ function apiCreatePO(rawPayload, userContext) {
     });
 
     upsertRecordFast(SHEET_NAMES.POS, 'id', poObj);
-    return poObj;
+
+    // Audit log for PO creation
+    try {
+      recordAuditLogEntry({
+        docNo: seqPoNo,
+        targetRef: seqPoNo,
+        action: 'PO_CREATED',
+        actor: user,
+        comment: 'สร้างใบสั่งซื้อ (PO) เลขที่ ' + seqPoNo,
+        status: poObj.status || 'PO_CREATED'
+      });
+    } catch (auditErr) {
+      console.warn('[apiCreatePO] AuditLog error: ' + auditErr.message);
+    }
+
+    return packageUpdatedPO(poObj);
   }, 'CreatePO', rawPayload, userContext);
 }
 
@@ -1351,7 +1813,22 @@ function apiSavePO(rawPayload, userContext) {
     });
 
     upsertRecordFast(SHEET_NAMES.POS, 'id', poObj);
-    return poObj;
+
+    // Audit log for PO update
+    try {
+      recordAuditLogEntry({
+        docNo: poObj.poNo || poObj.id,
+        targetRef: poObj.poNo || poObj.id,
+        action: 'UPDATE_PO',
+        actor: user,
+        comment: (payload && (payload.note || payload.reason || payload.comment)) || 'ปรับปรุงข้อมูลใบสั่งซื้อ',
+        status: poObj.status
+      });
+    } catch (auditErr) {
+      console.warn('[apiSavePO] AuditLog error: ' + auditErr.message);
+    }
+
+    return packageUpdatedPO(poObj);
   }, 'SavePO', rawPayload, userContext);
 }
 
@@ -1442,16 +1919,41 @@ function apiReceivePO(rawPayload, userContext) {
       poObj.status = 'CLOSED'; // Default full-receipt → CLOSED
     }
 
-    // Receiver metadata
-    poObj.receivedBy = poObj.receivedBy || user.name || user.username || 'Receiver';
+    // Receiver metadata (Guardrail: avoid hardcoded mock names, respect cell limits)
+    poObj.receivedBy = poObj.receivedBy || (user && (user.employeeName || user.name || user.username)) || 'Receiver';
     poObj.receiverName = poObj.receiverName || poObj.receivedBy;
+    poObj.receiverId = poObj.receiverId || (user && (user.id || user.username)) || '';
+    poObj.receiverRole = poObj.receiverRole || (user && (user.position || user.roleId || user.role)) || 'ผู้ตรวจรับ / บันทึกสต็อก';
     poObj.receivedAt = poObj.receivedAt || new Date().toISOString();
+
+    // Resolve user signature safely
+    var resolvedSig = resolveUserSignatureBase64(user, null, null);
+    if (!resolvedSig && poObj.receiverSignature) {
+      resolvedSig = resolveUserSignatureBase64(poObj.receiverSignature, null, null);
+    }
+
+    // Guardrail 1: Do NOT write massive Base64 into sheet cell (> 50,000 char limit)
+    // In sheet cell, store short reference if string is large, and resolve to Base64 in RAM
+    var sheetSig = poObj.receiverSignature || resolvedSig || '';
+    if (sheetSig && sheetSig.length > 2000) {
+      sheetSig = poObj.receiverId ? ('USER_SIG:' + poObj.receiverId) : 'SIGNATURE_ATTACHED';
+    }
+    poObj.receiverSignature = sheetSig;
+
     if (!poObj.receivingInfo || typeof poObj.receivingInfo !== 'object') {
       poObj.receivingInfo = {
-        receiverName: poObj.receivedBy,
-        receiverSignature: poObj.receiverSignature || '/signatures/receiver-default.png',
-        receivedAt: poObj.receivedAt
+        receiverName: poObj.receiverName,
+        receiverId: poObj.receiverId,
+        receivedAt: poObj.receivedAt,
+        receiverRole: poObj.receiverRole,
+        receiverSignature: sheetSig
       };
+    } else {
+      poObj.receivingInfo.receiverName = poObj.receiverName;
+      poObj.receivingInfo.receiverId = poObj.receiverId;
+      poObj.receivingInfo.receivedAt = poObj.receivedAt;
+      poObj.receivingInfo.receiverRole = poObj.receiverRole;
+      poObj.receivingInfo.receiverSignature = sheetSig;
     }
 
     // ── 7. Append GRN entry to grnHistory if grNumber present ───────────────
@@ -1550,7 +2052,21 @@ function apiReceivePO(rawPayload, userContext) {
       }
     }
 
-    return updatedPO;
+    // Audit log for Goods Receiving
+    try {
+      recordAuditLogEntry({
+        docNo: poObj.poNo || poId,
+        targetRef: poObj.poNo || poId,
+        action: isClosed ? 'GOODS_RECEIVED_FULL' : 'GOODS_RECEIVED_PARTIAL',
+        actor: user,
+        comment: 'ตรวจรับสินค้า ' + (incomingGrn ? ('เลขที่ ' + incomingGrn) : '') + (isClosed ? ' ครบถ้วนแล้ว ปิดใบงาน' : ' บางส่วน'),
+        status: poObj.status
+      });
+    } catch (auditErr) {
+      console.warn('[apiReceivePO] AuditLog error: ' + auditErr.message);
+    }
+
+    return packageUpdatedPO(updatedPO);
   }, 'ReceivePO', rawPayload, userContext);
 }
 
@@ -1605,7 +2121,7 @@ function apiFinalizePO(poIdOrPayload, poDataOrUser, userContext) {
       }
     }
 
-    return updated;
+    return packageUpdatedPO(updated);
   }, 'FinalizePO', rawPayload, rawUser);
 }
 
@@ -1694,6 +2210,32 @@ function apiAppendStockMovements(movementsListOrPayload, userContext) {
 
     return recordsToAppend;
   }, 'AppendStockMovements', movementsListOrPayload, userContext);
+}
+
+/**
+ * Receives stock into inventory (Atomic Response).
+ */
+function apiReceiveStock(rawPayload, userContext) {
+  return handleApiRequest(function(payload, user) {
+    var items = Array.isArray(payload) ? payload : (payload.items || payload.movements || [payload]);
+    items.forEach(function(it) { if (it && typeof it === 'object') it.type = 'IN'; });
+    var res = apiAppendStockMovements(items, userContext);
+    var data = (res && res.data) ? res.data : res;
+    return { success: true, data: data };
+  }, 'ReceiveStock', rawPayload, userContext);
+}
+
+/**
+ * Issues stock from inventory (Atomic Response).
+ */
+function apiIssueStock(rawPayload, userContext) {
+  return handleApiRequest(function(payload, user) {
+    var items = Array.isArray(payload) ? payload : (payload.items || payload.movements || [payload]);
+    items.forEach(function(it) { if (it && typeof it === 'object') it.type = 'OUT'; });
+    var res = apiAppendStockMovements(items, userContext);
+    var data = (res && res.data) ? res.data : res;
+    return { success: true, data: data };
+  }, 'IssueStock', rawPayload, userContext);
 }
 
 // =========================================================================
@@ -2070,6 +2612,7 @@ function apiGetBootstrapData(rawPayload, userContext) {
     var usageUnits = unitSheet ? readSheetValuesAsObjects(unitSheet) : [];
     var rawDepartments = deptSheet ? readSheetValuesAsObjects(deptSheet) : [];
     var users = userSheet ? readSheetValuesAsObjects(userSheet) : [];
+    pos = backfillHistoricalReceivingSignatures(pos, stockLogs, users, null);
     var rawBudgets = budSheet ? readSheetValuesAsObjects(budSheet) : [];
     var budgetTransactions = txSheet ? readSheetValuesAsObjects(txSheet) : [];
     var rawNotifications = notifSheet ? readSheetValuesAsObjects(notifSheet) : [];
@@ -2128,6 +2671,9 @@ function upsertRecordFast(sheetName, idField, record) {
   var targetId = record[idField];
   if (!targetId) throw new Error('VALIDATION_ERROR: Missing idField');
   var sheet = getSheet(sheetName);
+  if (sheetName === SHEET_NAMES.POS && typeof ensurePOSheetHeaders === 'function') {
+    ensurePOSheetHeaders(sheet);
+  }
   var values = sheet.getDataRange().getValues(); // Load into RAM array
   if (!values || values.length === 0) throw new Error('SCHEMA_ERROR: Sheet empty');
   
@@ -2152,7 +2698,6 @@ function upsertRecordFast(sheetName, idField, record) {
   } else {
     sheet.getRange(values.length + 1, 1, 1, headers.length).setValues([rowValues]);
   }
-  SpreadsheetApp.flush();
   return record;
 }
 
@@ -2200,7 +2745,6 @@ function batchUpsertRecordsFast(sheetName, idField, records) {
     sheet.getRange(startRow, 1, newRows.length, headers.length).setValues(newRows);
   }
   
-  SpreadsheetApp.flush();
   return records;
 }
 

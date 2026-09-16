@@ -763,14 +763,24 @@ export const apiService = {
         if (result?.pr) {
           const prPayload = sanitizePayloadForGAS({ ...result.pr, comment: note, reason: note });
           const userPayload = sanitizePayloadForGAS(user);
+          let gasResult = null;
           if (nextStatus === 'REVIEWED') {
-            await callGAS('apiReviewPR', prPayload, userPayload);
+            gasResult = await callGAS('apiReviewPR', prPayload, userPayload);
           } else if (nextStatus === 'APPROVED') {
-            await callGAS('apiApprovePR', prPayload, userPayload);
+            gasResult = await callGAS('apiApprovePR', prPayload, userPayload);
           } else if (nextStatus === 'CANCELLED') {
-            await callGAS('apiCancelPR', prPayload, userPayload);
+            gasResult = await callGAS('apiCancelPR', prPayload, userPayload);
           } else {
-            await callGAS('apiSavePR', prPayload, userPayload);
+            gasResult = await callGAS('apiSavePR', prPayload, userPayload);
+          }
+          if (gasResult && typeof gasResult === 'object') {
+            const returnedPR = gasResult.data || gasResult;
+            result.pr = Object.assign({}, result.pr, returnedPR);
+            try {
+              if (storageService && typeof storageService.savePR === 'function') {
+                storageService.savePR(result.pr);
+              }
+            } catch (storageErr) {}
           }
         }
         if (result?.po) {
@@ -813,13 +823,22 @@ export const apiService = {
     if (isGAS()) {
       try {
         const payloadToSend = sanitizePayloadForGAS({ ...updated, reason, rejectReason: reason, comment: reason });
-        await callGAS('apiRejectPR', payloadToSend, sanitizePayloadForGAS(user));
+        const gasResult = await callGAS('apiRejectPR', payloadToSend, sanitizePayloadForGAS(user));
+        let finalPR = updated;
+        if (gasResult && typeof gasResult === 'object') {
+          finalPR = Object.assign({}, updated, gasResult.data || gasResult);
+        }
+        try {
+          if (storageService && typeof storageService.savePR === 'function') {
+            storageService.savePR(finalPR);
+          }
+        } catch (storageErr) {}
+        return finalPR;
       } catch (e) {
         console.error('[apiService] GAS apiRejectPR error:', e.message);
         modalService.error('ปฏิเสธ PR ไม่สำเร็จ', e.message);
         throw e;
       }
-      return updated;
     }
     try {
       await fetch(`/api/prs/${prId}`, {
@@ -835,13 +854,22 @@ export const apiService = {
     const updated = await workflowEngine.editPRItems(prId, items, user, reason);
     if (isGAS()) {
       try {
-        await callGAS('apiSavePR', sanitizePayloadForGAS(updated), sanitizePayloadForGAS(user));
+        const gasResult = await callGAS('apiSavePR', sanitizePayloadForGAS(updated), sanitizePayloadForGAS(user));
+        let finalPR = updated;
+        if (gasResult && typeof gasResult === 'object') {
+          finalPR = Object.assign({}, updated, gasResult.data || gasResult);
+        }
+        try {
+          if (storageService && typeof storageService.savePR === 'function') {
+            storageService.savePR(finalPR);
+          }
+        } catch (storageErr) {}
+        return finalPR;
       } catch (e) {
         console.error('[apiService] GAS apiSavePR error:', e.message);
         modalService.error('แก้ไขรายการ PR ไม่สำเร็จ', e.message);
         throw e;
       }
-      return updated;
     }
     try {
       await fetch(`/api/prs/${prId}`, {
@@ -858,13 +886,22 @@ export const apiService = {
     if (isGAS()) {
       try {
         const payloadToSend = sanitizePayloadForGAS({ ...cancelled, reason, comment: reason });
-        await callGAS('apiCancelPR', payloadToSend, sanitizePayloadForGAS(user));
+        const gasResult = await callGAS('apiCancelPR', payloadToSend, sanitizePayloadForGAS(user));
+        let finalPR = cancelled;
+        if (gasResult && typeof gasResult === 'object') {
+          finalPR = Object.assign({}, cancelled, gasResult.data || gasResult);
+        }
+        try {
+          if (storageService && typeof storageService.savePR === 'function') {
+            storageService.savePR(finalPR);
+          }
+        } catch (storageErr) {}
+        return finalPR;
       } catch (e) {
         console.error('[apiService] GAS apiCancelPR error:', e.message);
         modalService.error('ยกเลิก PR ไม่สำเร็จ', e.message);
         throw e;
       }
-      return cancelled;
     }
     try {
       await fetch(`/api/prs/${prId}`, {

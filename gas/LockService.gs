@@ -16,7 +16,7 @@
  * @returns {*} Result of the callback function
  * @throws {Error} If lock acquisition times out or callback throws
  */
-function withScriptLock(callback, timeoutMs = 15000, operationName = 'Operation') {
+function withScriptLock(callback, timeoutMs = 5000, operationName = 'Operation') {
   const lock = LockService.getScriptLock();
   if (lock.hasLock()) {
     return callback();

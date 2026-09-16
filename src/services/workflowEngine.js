@@ -2442,16 +2442,20 @@ export const workflowEngine = {
       storageService.getSignatureByRole?.(user?.roleId || user?.id)?.signatureUrl || 
       storageService.getSignatures?.()?.[user?.roleId || 'REQUESTER_PD']?.signatureUrl || 
       null;
-    const realReceiverName = user?.employeeName || (user?.name && user.name !== 'Admin System' ? user.name : 'คุณวิชัย สุขใจ');
+    const realReceiverName = user?.employeeName || (user?.name && user.name !== 'Admin System' ? user.name : (user?.username || ''));
+    const realReceiverRole = user?.position || user?.roleId || user?.role || user?.title || 'ผู้ตรวจรับ / บันทึกสต็อก';
 
     po.receivedBy = realReceiverName;
     po.receiverName = realReceiverName;
-    po.receivedById = user?.id || user?.roleId || '';
-    po.receivedRole = user?.title || '';
+    po.receivedById = user?.id || user?.username || '';
+    po.receivedRole = realReceiverRole;
+    po.receiverRole = realReceiverRole;
     po.receiverSignature = recUserSig || '/signatures/receiver-default.png';
     po.receivedAt = timestamp;
     po.receivingInfo = {
       receiverName: realReceiverName,
+      receiverId: po.receivedById,
+      receiverRole: realReceiverRole,
       receiverSignature: recUserSig || '/signatures/receiver-default.png',
       receivedAt: new Date().toISOString()
     };
@@ -2483,6 +2487,8 @@ export const workflowEngine = {
         receivedBy: po.receivedBy,
         receiverName: po.receiverName,
         receivedById: po.receivedById,
+        receiverId: po.receivedById,
+        receiverRole: po.receiverRole,
         receiverSignature: po.receiverSignature,
         receivedAt: po.receivedAt,
         receivingInfo: po.receivingInfo,
