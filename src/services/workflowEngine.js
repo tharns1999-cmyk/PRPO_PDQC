@@ -864,6 +864,17 @@ export const workflowEngine = {
 
     storageService.savePOs(pos);
 
+    // BUDGET LOGGING: Refund PO
+    budgetService.logBudgetTransaction({
+      department: po.department,
+      type: 'PO_CANCEL_REFUND',
+      amount: Math.abs(po.grandTotal || 0),
+      docType: 'PO',
+      docRef: po.poNo || po.id,
+      description: `คืนเงิน (ยกเลิก PO) ${po.poNo} เหตุผล: ${reason.trim()}`,
+      recordedBy: user.name || 'System'
+    });
+
     auditService.logAction({
       action: 'PO_CANCELLED',
       actor: user,
@@ -1656,6 +1667,29 @@ export const workflowEngine = {
 
     storageService.savePRs(prs);
 
+    // BUDGET LOGGING
+    if (nextStatus === 'APPROVED') {
+      budgetService.logBudgetTransaction({
+        department: pr.department,
+        type: 'PR_COMMITMENT',
+        amount: -(pr.totalAmount || 0),
+        docType: 'PR',
+        docRef: pr.prNo || pr.id,
+        description: `กันเงินผูกพันอนุมัติ PR ${pr.prNo}`,
+        recordedBy: user.name || 'System'
+      });
+    } else if (nextStatus === 'REJECTED_TO_DRAFT' || nextStatus === 'CANCELLED') {
+      budgetService.logBudgetTransaction({
+        department: pr.department,
+        type: 'PR_RELEASE',
+        amount: Math.abs(pr.totalAmount || 0),
+        docType: 'PR',
+        docRef: pr.prNo || pr.id,
+        description: `คืนเงินผูกพัน PR ${nextStatus === 'CANCELLED' ? 'ยกเลิก' : 'ไม่อนุมัติ'} ${pr.prNo}`,
+        recordedBy: user.name || 'System'
+      });
+    }
+
     // Dispatch In-App Notification for Review / Reject
     if (nextStatus === 'REVIEWED') {
       notificationService.dispatch({
@@ -2008,6 +2042,30 @@ export const workflowEngine = {
     });
 
     storageService.savePOs(deduplicatedPOs);
+
+    // BUDGET LOGGING: Release PR Commitment and Record PO Actual Spends
+    budgetService.logBudgetTransaction({
+      department: pr.department,
+      type: 'PR_RELEASE',
+      amount: Math.abs(pr.totalAmount || 0),
+      docType: 'PR',
+      docRef: pr.prNo || pr.id,
+      description: `คืนเงินผูกพัน (ออก PO แล้ว) PR ${pr.prNo}`,
+      recordedBy: user.name || 'System'
+    });
+
+    generatedPOs.forEach(po => {
+      budgetService.logBudgetTransaction({
+        department: po.department,
+        type: 'ACTUAL_SPEND',
+        amount: -(po.grandTotal || 0),
+        docType: 'PO',
+        docRef: po.poNo || po.id,
+        description: `ตัดจ่ายจริง PO ${po.poNo}`,
+        recordedBy: user.name || 'System'
+      });
+    });
+
     return generatedPOs.length === 1 ? generatedPOs[0] : generatedPOs;
   },
 

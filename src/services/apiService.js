@@ -1047,6 +1047,19 @@ export const apiService = {
     if (isGAS()) {
       try {
         await callGAS('apiSavePO', resolved, user);
+
+        // --- TRIGGER ACTUAL SPENT BUDGET TRANSACTION ---
+        if (['CLOSE_WITH_REFUND', 'REFUND', 'CANCEL'].includes(resolution.type) && resolved.refundAmount > 0) {
+          const refundAmt = Math.round(Number(resolved.refundAmount) * 100) / 100;
+          const refPo = resolved.poNo || resolved.poNumber || resolved.id;
+          const localTxs = storageService.getBudgetTransactions() || [];
+          const targetTx = localTxs.slice().reverse().find(tx => tx.poNumber === refPo && tx.refundAmount === refundAmt);
+          if (targetTx) {
+            await callGAS('apiAppendBudgetTransaction', targetTx, user).catch(e => {
+              console.warn('[apiService] Backend budget sync warning:', e.message);
+            });
+          }
+        }
       } catch (e) {
         console.error('[apiService] GAS apiSavePO error:', e.message);
         modalService.error('บันทึกผลการเคลมไม่สำเร็จ', e.message);

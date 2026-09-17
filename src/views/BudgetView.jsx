@@ -60,6 +60,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
   const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'overview');
   const [timeRange, setTimeRange] = useState(6);
   const [deptAllocationTarget, setDeptAllocationTarget] = useState(null);
+  const [ledgerFilter, setLedgerFilter] = useState('ALL'); // ALL, ACTUAL_SPEND, COMMITMENT, REFUND
 
   const deptList = useMemo(() => {
     const raw = (departments && departments.length > 0) ? departments : storageService.getDepartments();
@@ -828,7 +829,7 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
           }`}
         >
           <History className="w-4 h-4 text-slate-500" />
-          <span>ประวัติการปรับปรุง & คืนงบ</span>
+          <span>สมุดบัญชีความเคลื่อนไหวงบประมาณ (Budget Ledger)</span>
           {budgetTransactions.length > 0 && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
               {budgetTransactions.length}
@@ -1405,10 +1406,37 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
 
       {/* Tab 3: History & Refund Logs */}
       {activeTab === 'history' && (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-          <div className="p-5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
-            <h4 className="font-bold text-slate-900 text-sm">ประวัติการปรับปรุงงบประมาณ & การคืนเงินงบประมาณ</h4>
-            <span className="text-xs text-slate-500 font-mono">ทั้งหมด {budgetTransactions.length} รายการ</span>
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col">
+          <div className="p-5 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <h4 className="font-bold text-slate-900 text-sm">สมุดบัญชีความเคลื่อนไหวงบประมาณ (Budget Ledger)</h4>
+            
+            {/* Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
+              <button 
+                onClick={() => setLedgerFilter('ALL')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${ledgerFilter === 'ALL' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                ทั้งหมด
+              </button>
+              <button 
+                onClick={() => setLedgerFilter('ACTUAL_SPEND')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${ledgerFilter === 'ACTUAL_SPEND' ? 'bg-rose-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                ใช้จริง (Actual Spend)
+              </button>
+              <button 
+                onClick={() => setLedgerFilter('COMMITMENT')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${ledgerFilter === 'COMMITMENT' ? 'bg-amber-500 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                ผูกพัน (Commitment)
+              </button>
+              <button 
+                onClick={() => setLedgerFilter('REFUND')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${ledgerFilter === 'REFUND' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                คืนเงิน & ปรับปรุง
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs sm:text-sm">
@@ -1423,15 +1451,28 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {budgetTransactions.length === 0 ? (
+                {budgetTransactions.filter(tx => {
+                  const txType = String(tx.type || tx.transactionType || tx.actionType || '').toUpperCase();
+                  if (ledgerFilter === 'ACTUAL_SPEND') return txType === 'ACTUAL_SPEND';
+                  if (ledgerFilter === 'COMMITMENT') return txType === 'PR_COMMITMENT';
+                  if (ledgerFilter === 'REFUND') return ['PR_RELEASE', 'PO_CANCEL_REFUND', 'CLAIM_REFUND', 'REFUND_SETTLEMENT', 'BUDGET_ROLLBACK', 'BUDGET_RESTORED_CLAIM_REFUND', 'TOP_UP', 'MONTHLY_ALLOCATION', 'SET_BUDGET'].includes(txType);
+                  return true; // ALL
+                }).length === 0 ? (
                   <tr>
                     <td colSpan="6" className="p-8 text-center text-slate-400">
-                      ยังไม่มีประวัติการปรับปรุงงบประมาณหรือการคืนเงิน
+                      ยังไม่มีประวัติความเคลื่อนไหวงบประมาณในหมวดหมู่นี้
                     </td>
                   </tr>
                 ) : (
-                  budgetTransactions.map(tx => {
+                  budgetTransactions.filter(tx => {
+                    const txType = String(tx.type || tx.transactionType || tx.actionType || '').toUpperCase();
+                    if (ledgerFilter === 'ACTUAL_SPEND') return txType === 'ACTUAL_SPEND';
+                    if (ledgerFilter === 'COMMITMENT') return txType === 'PR_COMMITMENT';
+                    if (ledgerFilter === 'REFUND') return ['PR_RELEASE', 'PO_CANCEL_REFUND', 'CLAIM_REFUND', 'REFUND_SETTLEMENT', 'BUDGET_ROLLBACK', 'BUDGET_RESTORED_CLAIM_REFUND', 'TOP_UP', 'MONTHLY_ALLOCATION', 'SET_BUDGET'].includes(txType);
+                    return true;
+                  }).map(tx => {
                     const amountNum = Number(tx.amount ?? tx.refundAmount ?? tx.creditAmount ?? 0);
+
                     const docRef = tx.referenceDoc || tx.docNo || tx.poNumber || tx.poNo || tx.refDocNo || tx.refId || tx.referencePo || (tx.note?.match(/PO-[A-Z0-9-]+/i)?.[0]) || '-';
                     const deptDisplay = tx.departmentName || (tx.department ? (tx.department.startsWith('ฝ่าย') ? tx.department : `ฝ่าย ${tx.department}`) : (tx.dept ? `ฝ่าย ${tx.dept}` : 'ฝ่าย PD'));
 
@@ -1441,14 +1482,18 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                     const isMonthlyAlloc = rawType === 'MONTHLY_ALLOCATION' || rawType === 'ALLOCATE_BUDGET' || (rawType === 'SET_BUDGET' && !isRefund && (tx.previousAmount === 0 || tx.isInitialAllocation));
                     const isTopUp = rawType === 'TOP_UP';
 
+                    const isClaimRefund = rawType === 'CLAIM_REFUND' || rawType === 'PO_CANCEL_REFUND' || rawType === 'PR_RELEASE';
+                    const isActualSpend = rawType === 'ACTUAL_SPEND';
+                    const isCommitment = rawType === 'PR_COMMITMENT';
+
                     let badgeText = '[ปรับปรุงงบประมาณ]';
                     let badgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
                     let typeDisplay = tx.typeLabel || tx.type || 'ADJUST';
 
-                    if (isRefund) {
+                    if (isRefund || isClaimRefund) {
                       badgeText = '[คืนงบประมาณ]';
                       badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                      typeDisplay = 'BUDGET_ROLLBACK';
+                      typeDisplay = rawType;
                     } else if (isMonthlyAlloc) {
                       badgeText = '[จัดสรรงบประมาณ]';
                       badgeClass = 'bg-indigo-50 text-indigo-700 border-indigo-200';
@@ -1457,6 +1502,14 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                       badgeText = '[เติมงบประมาณ]';
                       badgeClass = 'bg-teal-50 text-teal-700 border-teal-200';
                       typeDisplay = 'TOP_UP';
+                    } else if (isActualSpend) {
+                      badgeText = '[ตัดจ่ายจริง]';
+                      badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
+                      typeDisplay = 'ACTUAL_SPEND';
+                    } else if (isCommitment) {
+                      badgeText = '[ผูกพันงบ]';
+                      badgeClass = 'bg-amber-50 text-amber-700 border-amber-200';
+                      typeDisplay = 'PR_COMMITMENT';
                     } else if (amountNum < 0) {
                       badgeText = '[ปรับลดยอดงบประมาณ]';
                       badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';

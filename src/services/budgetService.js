@@ -224,6 +224,72 @@ export const budgetService = {
   calculateBudgetSummary: calculatePeriodBudgetSummary,
 
   /**
+   * Universal Budget Ledger Logger
+   */
+  async logBudgetTransaction(entry) {
+    if (!entry || !entry.department || !entry.type || entry.amount === undefined) {
+      console.warn('Invalid budget transaction entry:', entry);
+      return;
+    }
+
+    const dept = String(entry.department).replace(/^ฝ่าย\s*/i, '').trim().toUpperCase();
+    const docRef = entry.docRef || entry.docNo || '-';
+    // Use Idempotent Transaction Key per user requirement
+    const idempotencyKey = `TXN-${docRef}-${entry.type}`;
+    const today = new Date();
+    const period = entry.period || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    const tx = {
+      id: `TX-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      transactionId: idempotencyKey,
+      idempotencyKey,
+      createdAt: today.toISOString(),
+      date: today.toISOString().replace('T', ' ').substring(0, 19),
+      period,
+      type: entry.type,
+      actionType: entry.type,
+      transactionType: entry.type,
+      typeLabel: entry.type,
+      dept,
+      department: dept,
+      departmentName: `ฝ่าย ${dept}`,
+      amount: Number(entry.amount),
+      docType: entry.docType || (docRef.startsWith('PR') ? 'PR' : 'PO'),
+      docNo: docRef,
+      referenceDoc: docRef,
+      poNumber: docRef,
+      refDocNo: docRef,
+      refId: docRef,
+      referencePo: docRef,
+      actor: entry.recordedBy || 'System',
+      actorName: entry.recordedBy || 'System',
+      actorRole: 'SYSTEM',
+      notes: entry.description || '',
+      remark: entry.description || '',
+      isReconciled: true
+    };
+
+    // Prevent duplicate entries
+    const existingTxs = storageService.getBudgetTransactions() || [];
+    const isDuplicate = existingTxs.some(ex => ex.idempotencyKey === idempotencyKey || (ex.type === tx.type && ex.docRef === tx.docRef));
+    if (isDuplicate) return tx;
+
+    storageService.appendBudgetTransaction(tx);
+
+    try {
+      if (typeof fetch === 'function') {
+        fetch('/api/budget-transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(tx)
+        }).catch(() => {});
+      }
+    } catch {}
+
+    return tx;
+  },
+
+  /**
    * Allocate monthly budget for specified period (YYYY-MM)
    * Enforces persistence in storageService & localStorage
    */
