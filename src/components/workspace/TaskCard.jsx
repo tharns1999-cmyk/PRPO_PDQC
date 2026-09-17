@@ -137,13 +137,17 @@ export default function TaskCard({ task, activeTab, currentRole, onClick, onReor
 
   const isPartialPO = !isPR && ['PARTIAL', 'PARTIAL_RECEIVED', 'WAITING_DELIVERY_ROUND_2'].includes(task.status) && (activeTab === 'todo' || activeTab === 'action');
   if (isPartialPO) {
-    const remainingCount = (task.items || []).filter(it => {
-       const q = Number(it.quantity || 0);
-       const rq = Number(it.receivedQty || 0);
-       const rem = it.remainingQty !== undefined ? Number(it.remainingQty) : (q - rq);
-       return rem > 0;
-    }).length;
-    title = `ตรวจรับพัสดุรอบที่ ${task.receiptRound || 2} (ค้างรับ ${remainingCount} รายการ) - PO: ${docNo}`;
+    if (task.status === 'WAITING_DELIVERY_ROUND_2') {
+      title = `ตรวจรับพัสดุรอบที่ ${task.receiptRound || 2} (สินค้าทดแทน) - PO: ${docNo}`;
+    } else {
+      const remainingCount = (task.items || []).filter(it => {
+         const q = Number(it.quantity || 0);
+         const rq = Number(it.receivedQty || 0);
+         const rem = it.remainingQty !== undefined ? Number(it.remainingQty) : (q - rq);
+         return rem > 0;
+      }).length;
+      title = `ตรวจรับพัสดุรอบที่ ${task.receiptRound || 2} (ค้างรับ ${remainingCount} รายการ) - PO: ${docNo}`;
+    }
   }
 
   const getVendorDisplayName = (vendorData) => {
@@ -169,9 +173,13 @@ export default function TaskCard({ task, activeTab, currentRole, onClick, onReor
 
   const amount = task.amount ?? task.grandTotal ?? task.totalAmount ?? 0;
   
-  const statusInfo = isPR 
+  let statusInfo = isPR 
     ? (PR_STATUS[task.status] || { label: task.status, color: 'bg-slate-50 text-slate-700 border-slate-200' })
     : (PO_STATUS[task.status] || { label: task.status, color: 'bg-slate-50 text-slate-700 border-slate-200' });
+    
+  if (!isPR && task.status === 'CLOSED' && task.claimStatus === 'WRITE_OFF') {
+    statusInfo = { label: 'ตัดจำหน่าย/ยกเว้นเคลม', color: 'bg-slate-100 text-slate-700 border-slate-300 font-bold' };
+  }
 
   const canViewPrice = currentRole?.canViewBudget !== false;
 
@@ -276,12 +284,14 @@ export default function TaskCard({ task, activeTab, currentRole, onClick, onReor
 
         {isPartialPO ? (
           <div className="flex gap-2 shrink-0">
-            <button
-              type="button"
-              className="h-8 px-3.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer"
-            >
-              ส่งเคลม / ติดต่อร้าน
-            </button>
+            {task.purchaseChannel !== 'ONLINE' && task.claimStatus !== 'PENDING' && task.claimStatus !== 'IN_CLAIM' && (
+              <button
+                type="button"
+                className="h-8 px-3.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 cursor-pointer"
+              >
+                ส่งเคลม / ติดต่อร้าน
+              </button>
+            )}
             <button
               type="button"
               className="h-8 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 whitespace-nowrap cursor-pointer"

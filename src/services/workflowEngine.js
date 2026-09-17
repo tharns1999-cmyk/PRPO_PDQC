@@ -314,8 +314,10 @@ export const workflowEngine = {
         if (po.status === 'ORDERED' || po.status === 'ORDERED_PENDING_DELIVERY') return '🚚 สินค้ากำลังจัดส่ง: รอตรวจรับของ';
         if (po.status === 'PARTIAL' || po.status === 'PARTIAL_RECEIVED' || po.status === 'WAITING_DELIVERY_ROUND_2') return 'ตรวจรับพัสดุรอบถัดไป / ติดตามของเคลม';
         if (po.status === 'IN_PROGRESS_ONLINE') return '🛒 รอจัดซื้อออนไลน์ดำเนินการ';
-        if (po.status === 'CLAIM_REPORTED') return '🚨 แจ้งปัญหาแล้ว: รอดำเนินการแก้ไข';
-        if (po.status === 'CLAIM_IN_PROGRESS') return '🔄 อยู่ระหว่างแก้ไขเคลม';
+        if (po.status === 'CLAIM_REPORTED' || po.status === 'CLAIM_IN_PROGRESS') {
+           if (po.purchaseChannel === 'ONLINE') return 'รอจัดซื้อออนไลน์เจรจาเคลมกับร้านค้า';
+           return '🚨 แจ้งปัญหาแล้ว: รอดำเนินการแก้ไข';
+        }
         return null;
       })();
 
@@ -716,6 +718,27 @@ export const workflowEngine = {
           targetMonth: poMonth
         });
       }
+
+      // Log ACTUAL_SPEND for this Online PO and Release its PR_COMMITMENT portion
+      budgetService.logBudgetTransaction({
+        department: po.department,
+        type: 'PR_RELEASE',
+        amount: Math.abs(initialTotal),
+        docType: 'PR',
+        docRef: po.prNo || po.id,
+        description: `คืนเงินผูกพัน (ออก PO ออนไลน์แล้ว) PR ${po.prNo}`,
+        recordedBy: user.name || 'System'
+      });
+
+      budgetService.logBudgetTransaction({
+        department: po.department,
+        type: 'ACTUAL_SPEND',
+        amount: -newTotal,
+        docType: 'PO',
+        docRef: po.poNo || po.id,
+        description: `ตัดจ่ายจริง PO ${po.poNo}`,
+        recordedBy: user.name || 'System'
+      });
     }
 
     let noteText = `สั่งซื้อจาก: ${vendorName.trim()} — ส่งต่อให้แผนกต้นทางตรวจรับและปิด PO`;
@@ -2044,27 +2067,30 @@ export const workflowEngine = {
     storageService.savePOs(deduplicatedPOs);
 
     // BUDGET LOGGING: Release PR Commitment and Record PO Actual Spends
-    budgetService.logBudgetTransaction({
-      department: pr.department,
-      type: 'PR_RELEASE',
-      amount: Math.abs(pr.totalAmount || 0),
-      docType: 'PR',
-      docRef: pr.prNo || pr.id,
-      description: `คืนเงินผูกพัน (ออก PO แล้ว) PR ${pr.prNo}`,
-      recordedBy: user.name || 'System'
-    });
-
-    generatedPOs.forEach(po => {
+    const _isOnlinePr = pr.purchaseChannel === 'ONLINE' || pr.purchaseChannel === 'ONLINE_PURCHASE';
+    if (!_isOnlinePr) {
       budgetService.logBudgetTransaction({
-        department: po.department,
-        type: 'ACTUAL_SPEND',
-        amount: -(po.grandTotal || 0),
-        docType: 'PO',
-        docRef: po.poNo || po.id,
-        description: `ตัดจ่ายจริง PO ${po.poNo}`,
+        department: pr.department,
+        type: 'PR_RELEASE',
+        amount: Math.abs(pr.totalAmount || 0),
+        docType: 'PR',
+        docRef: pr.prNo || pr.id,
+        description: `คืนเงินผูกพัน (ออก PO แล้ว) PR ${pr.prNo}`,
         recordedBy: user.name || 'System'
       });
-    });
+
+      generatedPOs.forEach(po => {
+        budgetService.logBudgetTransaction({
+          department: po.department,
+          type: 'ACTUAL_SPEND',
+          amount: -(po.grandTotal || 0),
+          docType: 'PO',
+          docRef: po.poNo || po.id,
+          description: `ตัดจ่ายจริง PO ${po.poNo}`,
+          recordedBy: user.name || 'System'
+        });
+      });
+    }
 
     return generatedPOs.length === 1 ? generatedPOs[0] : generatedPOs;
   },
@@ -2940,20 +2966,22 @@ export const workflowEngine = {
       }
 
       noteMsg = `[${channel} CLAIM RESOLVED] จัดซื้อเจรจาเคลมสำเร็จ ได้รับเงินคืน ฿${refundAmt.toLocaleString()} เข้าแผนก | ${resolution.note || ''} โดย ${user.name}`;
-    } else if (resolution.type === 'CLOSE_NO_ACTION') {
+    } else if (resolution.type === 'CLOSE_NO_ACTION' || resolution.type === 'WRITE_OFF') {
       if (!resolution.storeKey || resolution.allStoresResolved) {
-        po.status = 'COMPLETED';
+        po.status = resolution.type === 'WRITE_OFF' ? 'CLOSED' : 'COMPLETED';
+        po.claimStatus = resolution.type === 'WRITE_OFF' ? 'WRITE_OFF' : 'CLOSE_NO_ACTION';
       } else {
         po.status = (po.status && po.status !== 'COMPLETED' && po.status !== 'CLOSED') ? po.status : 'PARTIALLY_RECEIVED_IN_CLAIM';
         po.claimStatus = 'IN_CLAIM';
       }
-      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: CLOSE_NO_ACTION — ปิดเคสโดยไม่ดำเนินการต่อ | ${resolution.note || ''} โดย ${user.name}`;
+      noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: ${resolution.type} — ${resolution.type === 'WRITE_OFF' ? 'ตัดจำหน่าย/ยกเว้นเคลม (ปิดเคส)' : 'ปิดเคสโดยไม่ดำเนินการต่อ'} | ${resolution.note || ''} โดย ${user.name}`;
     }
 
     // ── Update PO item settlement / claim metadata (Directives D & E) ──
     const isRefundType = ['CLOSE_WITH_REFUND', 'REFUND', 'CANCEL'].includes(resolution.type);
     const isReplacementType = ['REPLACEMENT', 'RESEND'].includes(resolution.type);
-    if (Array.isArray(po.items) && (isRefundType || isReplacementType)) {
+    const isWriteOffType = ['WRITE_OFF', 'CLOSE_NO_ACTION'].includes(resolution.type);
+    if (Array.isArray(po.items) && (isRefundType || isReplacementType || isWriteOffType)) {
       po.items = po.items.map((item, idx) => {
         let isTarget = true;
         if (resolution.storeKey || resolution.storeName) {
@@ -2996,7 +3024,8 @@ export const workflowEngine = {
             isSettled: true,
             hasDispute: false,
             damagedQty: 0,
-            shortageQty: 0
+            shortageQty: 0,
+            remainingQty: 0
           };
         } else if (isReplacementType) {
           return {
@@ -3007,6 +3036,17 @@ export const workflowEngine = {
             isSettled: false, // Remains receivable in GRN
             hasDispute: false
           };
+        } else if (isWriteOffType) {
+          return {
+            ...item,
+            claimResolution: 'WRITE_OFF',
+            isSettled: true,
+            hasDispute: false,
+            damagedQty: 0,
+            shortageQty: 0,
+            disputedQty: 0,
+            remainingQty: 0
+          };
         }
         return item;
       });
@@ -3015,12 +3055,15 @@ export const workflowEngine = {
     // Support store-level claims for multi-store online procurement
     if (resolution.storeKey) {
       po.storeClaims = po.storeClaims || {};
+      const isReplacement = resolution.type === 'REPLACEMENT' || resolution.type === 'RESEND';
       const storeClaimObj = {
-        status: 'RESOLVED',
+        status: isReplacement ? 'WAITING_REPLACEMENT' : 'RESOLVED',
         isResolved: true,
         type: resolution.type,
         actionType: resolution.type,
         resolutionType: resolution.type,
+        claimStatus: isReplacement ? 'RESOLVED_REPLACEMENT' : 'RESOLVED',
+        hasPendingClaim: false,
         refundAmount: Number(resolution.refundAmount || 0),
         note: resolution.note || '',
         newTrackingNo: resolution.newTrackingNo || '',

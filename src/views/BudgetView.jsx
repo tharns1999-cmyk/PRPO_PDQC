@@ -1453,8 +1453,8 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
               <tbody className="divide-y divide-slate-100">
                 {budgetTransactions.filter(tx => {
                   const txType = String(tx.type || tx.transactionType || tx.actionType || '').toUpperCase();
-                  if (ledgerFilter === 'ACTUAL_SPEND') return txType === 'ACTUAL_SPEND';
-                  if (ledgerFilter === 'COMMITMENT') return txType === 'PR_COMMITMENT';
+                  if (ledgerFilter === 'ACTUAL_SPEND') return ['ACTUAL_SPEND', 'PO_SPEND', 'DIRECT_SPEND'].includes(txType);
+                  if (ledgerFilter === 'COMMITMENT') return ['PR_COMMITMENT', 'COMMITMENT', 'RESERVED'].includes(txType);
                   if (ledgerFilter === 'REFUND') return ['PR_RELEASE', 'PO_CANCEL_REFUND', 'CLAIM_REFUND', 'REFUND_SETTLEMENT', 'BUDGET_ROLLBACK', 'BUDGET_RESTORED_CLAIM_REFUND', 'TOP_UP', 'MONTHLY_ALLOCATION', 'SET_BUDGET'].includes(txType);
                   return true; // ALL
                 }).length === 0 ? (
@@ -1466,8 +1466,8 @@ export default function BudgetView({ budgetSummary, currentRole, currentUser, pr
                 ) : (
                   budgetTransactions.filter(tx => {
                     const txType = String(tx.type || tx.transactionType || tx.actionType || '').toUpperCase();
-                    if (ledgerFilter === 'ACTUAL_SPEND') return txType === 'ACTUAL_SPEND';
-                    if (ledgerFilter === 'COMMITMENT') return txType === 'PR_COMMITMENT';
+                    if (ledgerFilter === 'ACTUAL_SPEND') return ['ACTUAL_SPEND', 'PO_SPEND', 'DIRECT_SPEND'].includes(txType);
+                    if (ledgerFilter === 'COMMITMENT') return ['PR_COMMITMENT', 'COMMITMENT', 'RESERVED'].includes(txType);
                     if (ledgerFilter === 'REFUND') return ['PR_RELEASE', 'PO_CANCEL_REFUND', 'CLAIM_REFUND', 'REFUND_SETTLEMENT', 'BUDGET_ROLLBACK', 'BUDGET_RESTORED_CLAIM_REFUND', 'TOP_UP', 'MONTHLY_ALLOCATION', 'SET_BUDGET'].includes(txType);
                     return true;
                   }).map(tx => {

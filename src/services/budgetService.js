@@ -232,7 +232,12 @@ export const budgetService = {
       return;
     }
 
-    const dept = String(entry.department).replace(/^ฝ่าย\s*/i, '').trim().toUpperCase();
+    let rawDept = String(entry.department).toUpperCase();
+    let deptCode = rawDept.replace(/^ฝ่าย\s*/i, '').replace(/\s*\(.*?\)\s*/g, '').trim();
+    if (rawDept.includes('QC') || rawDept.includes('คุณภาพ')) deptCode = 'QC';
+    else if (rawDept.includes('PD') || rawDept.includes('ผลิต')) deptCode = 'PD';
+    
+    const normalizedDept = `ฝ่าย ${deptCode}`;
     const docRef = entry.docRef || entry.docNo || '-';
     // Use Idempotent Transaction Key per user requirement
     const idempotencyKey = `TXN-${docRef}-${entry.type}`;
@@ -250,9 +255,9 @@ export const budgetService = {
       actionType: entry.type,
       transactionType: entry.type,
       typeLabel: entry.type,
-      dept,
-      department: dept,
-      departmentName: `ฝ่าย ${dept}`,
+      dept: normalizedDept,
+      department: normalizedDept,
+      departmentName: normalizedDept,
       amount: Number(entry.amount),
       docType: entry.docType || (docRef.startsWith('PR') ? 'PR' : 'PO'),
       docNo: docRef,

@@ -62,30 +62,54 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
     );
   }, [allPOs, selectedPR]);
 
-  const allAttachments = React.useMemo(() => {
-    let list = [];
-    // รวมทุกแหล่งที่อาจเก็บไฟล์
-    [selectedPR?.attachments, selectedPR?.quotationFiles, selectedPR?.generalAttachments, selectedPR?.files].forEach(item => {
-      if (!item) return;
-      if (typeof item === 'string') {
-        try { const parsed = JSON.parse(item); if (Array.isArray(parsed)) list.push(...parsed); } catch(e) {}
-      } else if (Array.isArray(item)) {
-        list.push(...item);
-      } else if (typeof item === 'object') {
-        list.push(item);
-      }
-    });
-    if (typeof selectedPR?.quotationUrl === 'string' && selectedPR.quotationUrl.trim()) {
-      list.push({ url: selectedPR.quotationUrl, previewUrl: selectedPR.quotationUrl, name: 'เอกสารอ้างอิง / ใบเสนอราคา (Link)', category: 'Quotation' });
+  const displayAttachments = React.useMemo(() => {
+    // 1. รวบรวม Key ของรูปภาพประจำสินค้าทั้งหมดในตารางซ้าย
+    let parsedItems = [];
+    if (Array.isArray(selectedPR?.items)) {
+      parsedItems = selectedPR.items;
+    } else if (typeof selectedPR?.items === 'string') {
+      try { const parsed = JSON.parse(selectedPR.items); if (Array.isArray(parsed)) parsedItems = parsed; } catch(e) {}
     }
-    // ตัดรายการซ้ำตาม fileId หรือ url
-    const seen = new Set();
-    return list.filter(f => {
-      const id = f.fileId || f.id || f.viewUrl || f.url || f.fileName || f.name;
-      if (!id || seen.has(id)) return false;
-      seen.add(id);
-      return true;
-    });
+    const itemImageKeys = new Set(
+      parsedItems
+        .flatMap(it => {
+          let itImages = Array.isArray(it.images) ? it.images : [];
+          if (typeof it.images === 'string') { try { const p = JSON.parse(it.images); if(Array.isArray(p)) itImages = p; } catch(e){} }
+          let itAtt = Array.isArray(it.attachments) ? it.attachments : [];
+          if (typeof it.attachments === 'string') { try { const p = JSON.parse(it.attachments); if(Array.isArray(p)) itAtt = p; } catch(e){} }
+          return [...itImages, ...itAtt];
+        })
+        .map(img => (img?.name || img?.fileName || img?.url || img?.fileId || '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+
+    // 2. ดึงเฉพาะเอกสารระดับ PR
+    let prAttachments = Array.isArray(selectedPR?.attachments) ? selectedPR.attachments : [];
+    if (typeof selectedPR?.attachments === 'string') {
+      try { const parsed = JSON.parse(selectedPR.attachments); if (Array.isArray(parsed)) prAttachments = parsed; } catch(e) {}
+    }
+    
+    let prQuotationFiles = Array.isArray(selectedPR?.quotationFiles) ? selectedPR.quotationFiles : [];
+    if (typeof selectedPR?.quotationFiles === 'string') {
+      try { const parsed = JSON.parse(selectedPR.quotationFiles); if (Array.isArray(parsed)) prQuotationFiles = parsed; } catch(e) {}
+    }
+
+    const rawPrAttachments = [...prAttachments, ...prQuotationFiles];
+    if (typeof selectedPR?.quotationUrl === 'string' && selectedPR.quotationUrl.trim()) {
+      rawPrAttachments.push({ url: selectedPR.quotationUrl, name: 'เอกสารอ้างอิง / ใบเสนอราคา (Link)' });
+    }
+
+    // 3. กรองด้วย 2 กฎเหล็ก: Isolate (ไม่เป็นรูปสินค้า) และ Deduplicate (ไม่ซ้ำ)
+    return Array.from(
+      new Map(
+        rawPrAttachments
+          .filter(att => {
+            const key = (att?.name || att?.fileName || att?.url || att?.fileId || '').trim().toLowerCase();
+            return key && !itemImageKeys.has(key);
+          })
+          .map(att => [att.fileId || att.name || att.fileName || att.url, att])
+      ).values()
+    );
   }, [selectedPR]);
 
   const [actionNote, setActionNote] = useState('');
@@ -892,9 +916,9 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                   <span>ไฟล์แนบ & เอกสารอ้างอิง</span>
                 </span>
                 <div>
-                  {allAttachments.length > 0 ? (
+                  {displayAttachments.length > 0 ? (
                     <div className="space-y-1.5">
-                      {allAttachments.map((att, attIdx) => {
+                      {displayAttachments.map((att, attIdx) => {
                         const finalUrl = att.viewUrl || att.url || att.directUrl || att.previewUrl || att.dataUrl || att.driveUrl;
                         const fileName = att.fileName || att.name || 'ไฟล์แนบ';
                         const mimeType = String(att.mimeType || '').toLowerCase();
@@ -952,7 +976,7 @@ export default function PRDetailsModal({ selectedPR: initialPR, currentRole, onC
                   ) : (
                     <div className="px-3 py-1.5 rounded-lg bg-slate-50 text-slate-400 text-xs italic border border-slate-100 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-                      <span>ไม่มีไฟล์แนบ</span>
+                      <span>ไม่มีไฟล์แนบ หรือ เอกสารอ้างอิง</span>
                     </div>
                   )}
                 </div>

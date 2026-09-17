@@ -584,7 +584,7 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
 
     it('3. Renders emerald action button "[ ✓ ยืนยันรับเข้าคลังสมบูรณ์ ]" when 100% fully received', () => {
       const html = renderToStaticMarkup(<ReceivingModal po={basePO} isOpen={true} />);
-      expect(html).toContain('✓ ยืนยันรับเข้าคลังสมบูรณ์');
+      expect(html).toContain('ยืนยันรับเข้าคลังสมบูรณ์');
       expect(html).toContain('bg-emerald-600');
       expect(html).not.toContain('bg-rose-600');
     });
@@ -606,7 +606,7 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
       const html = renderToStaticMarkup(<ReceivingModal po={basePO} isOpen={true} />);
       expect(html).toContain('⚡ กรอกรับครบทุกรายการ');
       expect(html).toContain('text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100/80 border border-emerald-200/80');
-      expect(html).toContain('✓ ยืนยันรับเข้าคลังสมบูรณ์');
+      expect(html).toContain('ยืนยันรับเข้าคลังสมบูรณ์');
       expect(html).not.toContain('bg-emerald-700/90');
     });
 
@@ -1021,7 +1021,7 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
 
       const html = renderToStaticMarkup(<ReceivingModal po={po} isOpen={true} />);
 
-      expect(html).toContain('✓ ตรวจรับครบแล้วในรอบก่อน');
+      expect(html).toContain('ตรวจรับครบแล้วในรอบก่อน');
       expect(html).toContain('bg-slate-100 text-slate-400 cursor-not-allowed');
       expect(html).toContain('disabled=""');
       expect(html).toContain('value="0"');

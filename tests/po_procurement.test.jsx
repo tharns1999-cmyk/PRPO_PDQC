@@ -1549,7 +1549,7 @@ describe('Domain Suite: Purchase Order (PO) & Procurement Operations', () => {
       expect(html).toContain('w-24 h-8 pl-4 pr-2 text-right font-mono text-xs');
       expect(html).toContain('งบประเมิน PR:');
       expect(html).toContain('ยอดสั่งซื้อจริง:');
-      expect(html).toContain('✓ ยืนยันการสั่งซื้อแล้ว');
+      expect(html).toContain('ยืนยันการสั่งซื้อแล้ว');
     });
 
     it('2. Read-Only Mode (ORDERED): Renders high-density compact rows (~38px) with math breakdown', () => {
@@ -2008,7 +2008,7 @@ describe('Domain Suite: Purchase Order (PO) & Procurement Operations', () => {
       expect(pendingHtml).toContain('PO-PD-2026-002');
       expect(pendingHtml).toContain('รอดำเนินการสั่งซื้อ');
       expect(pendingHtml).toContain('ระบุชื่อร้านค้าจริง...');
-      expect(pendingHtml).toContain('✓ ยืนยันการสั่งซื้อแล้ว');
+      expect(pendingHtml).toContain('ยืนยันการสั่งซื้อแล้ว');
       expect(pendingHtml).toContain('งบประเมิน PR:');
 
       const claimHtml = renderToStaticMarkup(

@@ -1299,7 +1299,7 @@ export default function ReceivingModal({
                             ) : (
                               <span className="inline-flex items-center justify-center w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
                                 <Check className="w-4 h-4 text-emerald-600 shrink-0 mr-1" />
-                                ✓ ตรวจรับครบแล้วในรอบก่อน
+                                ตรวจรับครบแล้วในรอบก่อน
                               </span>
                             )
                           ) : remainingAfterThis > 0 ? (
@@ -1326,7 +1326,7 @@ export default function ReceivingModal({
                           ) : (
                             <div className="h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1.5 w-full justify-center">
                               <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                              <span>✓ ครบสมบูรณ์</span>
+                              <span>ครบสมบูรณ์</span>
                             </div>
                           )}
                         </td>
@@ -1494,7 +1494,7 @@ export default function ReceivingModal({
             /* ป้องกันการกดรับของซ้ำ (Double-Receipt Guard) */
             <div className="h-9 px-4 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center gap-2 shadow-2xs">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>✓ เอกสารนี้ตรวจรับเข้าคลังครบเรียบร้อยแล้ว (ปิด PO แล้ว)</span>
+              <span>เอกสารนี้ตรวจรับเข้าคลังครบเรียบร้อยแล้ว (ปิด PO แล้ว)</span>
             </div>
           ) : (isFullyAccounted || summary.isFullyAccepted) ? (
             /* กรณีสินค้าทุกรายการตรวจรับหรือเคลมชดเชยครบถ้วนแล้ว: ปุ่มสีเขียว Emerald */
@@ -1505,7 +1505,7 @@ export default function ReceivingModal({
               className="h-9 px-5 rounded-lg text-white text-xs sm:text-sm font-bold bg-emerald-600 hover:bg-emerald-700 active:scale-98 transition-all flex items-center gap-2 shadow-xs cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>✓ ยืนยันรับเข้าคลังสมบูรณ์ (ปิดงาน PO)</span>
+              <span>ยืนยันรับเข้าคลังสมบูรณ์ (ปิดงาน PO)</span>
             </button>
           ) : summary.isClaimRequired ? (
             /* กรณีมีสินค้าชำรุด หรือขาดส่งแจ้งเคลม: ปุ่มสีส้ม Amber */

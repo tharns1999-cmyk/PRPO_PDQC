@@ -1363,10 +1363,15 @@ export default function OnlineOrderCard({
     setIsSubmitting(true);
     setIsSaving(true); // แสดง LoadingOverlay บล็อกหน้าจอทันที
     try {
+      const isReplacement = claimResolutionType === 'REPLACEMENT' || claimResolutionType === 'RESEND';
       const claimUpdateData = {
-        status: 'RESOLVED',
+        status: isReplacement ? 'WAITING_REPLACEMENT' : 'RESOLVED',
         isResolved: true,
         type: claimResolutionType,
+        actionType: claimResolutionType,
+        resolutionType: claimResolutionType,
+        claimStatus: isReplacement ? 'RESOLVED_REPLACEMENT' : 'RESOLVED',
+        hasPendingClaim: false,
         refundAmount: resolvedRefundNum,
         replacementTrackingNo: (newTrackingNo || '').trim(),
         newTrackingNo: (newTrackingNo || '').trim(),
@@ -1501,7 +1506,8 @@ export default function OnlineOrderCard({
             isSettled: true,
             hasDispute: false,
             damagedQty: 0,
-            shortageQty: 0
+            shortageQty: 0,
+            remainingQty: 0
           };
         } else if (claimResolutionType === 'REPLACEMENT' || claimResolutionType === 'RESEND') {
           return {
@@ -1522,7 +1528,8 @@ export default function OnlineOrderCard({
             isSettled: true,
             hasDispute: false,
             damagedQty: 0,
-            shortageQty: 0
+            shortageQty: 0,
+            remainingQty: 0
           };
         }
         return item;
@@ -2558,28 +2565,41 @@ export default function OnlineOrderCard({
                 </div>
               )}
 
-              {/* If in CLAIM tab and group has no dispute, but user opened it to claim */}
-              {activeTab === 'CLAIM' && !group.hasDispute && !isStoreResolved && group.status !== 'RESOLVED' && !isStoreClaimActive && !isClosed && (
-                <div className="p-3 bg-white border-t border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs text-slate-500">
-                  <span>ร้านนี้ตรวจรับครบสมบูรณ์แล้ว หากต้องการแจ้งปัญหาหรือเคลม สามารถกดเปิดดำเนินการเคลมได้</span>
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      setStoreClaimStates(prev => ({ 
-                        ...prev, 
-                        [group.storeKey]: { 
-                          ...prev[group.storeKey], 
-                          showResolutionForm: true, 
-                          isManualDispute: true 
-                        } 
-                      }));
-                    }} 
-                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-200 cursor-pointer transition-colors shrink-0"
-                  >
-                    <AlertTriangle className="w-3.5 h-3.5" /> เปิดดำเนินการเคลมสำหรับร้านนี้
-                  </button>
-                </div>
-              )}
+              {/* If in CLAIM tab and group has no dispute, but user opened it to claim or it's waiting replacement */}
+              {activeTab === 'CLAIM' && !group.hasDispute && !isStoreResolved && group.status !== 'RESOLVED' && !isStoreClaimActive && !isClosed && (() => {
+                const remainingQty = group.items.reduce((sum, item) => sum + Math.max(0, Number(item.orderedQty ?? item.actualQty ?? item.purchaseQty ?? item.quantity ?? 0) - Number(item.accumulatedReceived ?? item.goodQty ?? item.receivedQty ?? 0)), 0);
+                const storeClaim = po?.storeClaims?.[group.storeKey] || group.claimData || Object.entries(po?.storeClaims || {}).find(([k]) => k.toLowerCase() === group.storeKey.toLowerCase())?.[1];
+                const isWaitingReplacement = group.status === 'WAITING_REPLACEMENT' || storeClaim?.status === 'WAITING_REPLACEMENT' || storeClaim?.claimStatus === 'RESOLVED_REPLACEMENT';
+                
+                return (
+                  <div className="p-3 bg-white border-t border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs text-slate-500">
+                    {isWaitingReplacement ? (
+                      <span className="font-semibold text-amber-700">📦 อยู่ระหว่างรอร้านค้าจัดส่งสินค้าทดแทน (ค้างรับ {remainingQty} รายการ)</span>
+                    ) : (
+                      <span>{remainingQty > 0 ? `ร้านนี้ยังมีสินค้าค้างรับ ${remainingQty} รายการ หากพบปัญหาสามารถกดเปิดดำเนินการเคลมได้` : 'ร้านนี้ตรวจรับครบสมบูรณ์แล้ว หากต้องการแจ้งปัญหาหรือเคลม สามารถกดเปิดดำเนินการเคลมได้'}</span>
+                    )}
+                    
+                    {!isWaitingReplacement && (
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setStoreClaimStates(prev => ({ 
+                            ...prev, 
+                            [group.storeKey]: { 
+                              ...prev[group.storeKey], 
+                              showResolutionForm: true, 
+                              isManualDispute: true 
+                            } 
+                          }));
+                        }} 
+                        className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-200 cursor-pointer transition-colors shrink-0"
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5" /> เปิดดำเนินการเคลมสำหรับร้านนี้
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               
               {isStoreClaimActive && !isStoreResolved && (() => {
                 const currentResolutionType = storeClaimState.claimResolutionType || group.claimData?.type || 'REFUND';
@@ -2805,7 +2825,7 @@ export default function OnlineOrderCard({
               <span>
                 {isSubmitting
                   ? 'กำลังบันทึก...'
-                  : `✓ ยืนยันการสั่งซื้อแล้ว (${items.length} รายการ)`}
+                  : `ยืนยันการสั่งซื้อแล้ว (${items.length} รายการ)`}
               </span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
