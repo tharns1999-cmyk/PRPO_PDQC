@@ -139,6 +139,28 @@ export const inventoryService = {
         ? Number(item.total)
         : (receivedStockQty * unitCostInStock);
 
+      // MAC Calculation (Moving Average Cost)
+      const currentAvgCost = Number(prod.averageCost ?? prod.avgCost ?? prod.unitCost ?? 0);
+      let newAverageCost = unitCostInStock;
+      if (currentBalance > 0) {
+        const currentTotalValue = currentBalance * currentAvgCost;
+        const inTotalValue = receivedStockQty * unitCostInStock;
+        newAverageCost = (currentTotalValue + inTotalValue) / newBalance;
+      }
+      newAverageCost = Math.round(newAverageCost * 100) / 100;
+
+      // Update Master Inventory Product
+      if (prod.id) {
+        prod.averageCost = newAverageCost;
+        prod.avgCost = newAverageCost;
+        prod.stockBalance = newBalance;
+        prod.totalValue = newBalance * newAverageCost;
+        const pIndex = products.findIndex(p => p.id === prod.id);
+        if (pIndex !== -1) {
+          products[pIndex] = { ...products[pIndex], ...prod };
+        }
+      }
+
       const movementRecord = {
         id: `MOV-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
         timestamp: formatLocalTimestamp(), // เวลาไทย UTC+7
@@ -167,9 +189,11 @@ export const inventoryService = {
         conversionRate,
         conversionRatio: conversionRate,
         balanceAfter: Number(newBalance), // ยอดหลังรับ (เช่น 36)
+        balanceStock: Number(newBalance),
         balance: Number(newBalance),
         unitPrice: Number(unitCostInStock), // ต้นทุนต่อหน่วยสต็อก (เช่น ฿50.00 / ชิ้น)
         baseUnitCost: Number(unitCostInStock),
+        appliedAvgCost: Number(newAverageCost), // ต้นทุนเฉลี่ยใหม่หลังรวมล็อตนี้
         totalAmount: Number(receivedPoItemTotal), // มูลค่าเงินตาม PO จริง (เช่น 1,000.00 ฿)
         totalPrice: Number(receivedPoItemTotal),
         totalValue: Number(receivedPoItemTotal),
@@ -191,6 +215,9 @@ export const inventoryService = {
       const allLogs = storageService.getStockLogs() || [];
       const updatedLogs = [...movements, ...allLogs];
       storageService.saveStockLogs(updatedLogs);
+      
+      // Save updated products (MAC)
+      storageService.saveProducts(products);
 
       // Sync to local server
       try {

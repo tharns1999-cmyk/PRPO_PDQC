@@ -5,10 +5,10 @@ import OnlineTaskView, {
   isOrderClosed,
   isOrderInClaim,
   OnlineOrderCard, 
-  OnlinePurchaseActionCard, 
   OnlineTaskCard 
 } from '../OnlineTaskView';
 import { calculateDisputeMetrics } from './OnlineOrderCard';
+import { isPendingPurchaseOrder, isPendingClaimOrder } from '../../services/procurementService';
 
 /**
  * ฟังก์ชันคัดแยกรายการคำสั่งซื้อออนไลน์ตามแท็บ (Tab Filtering Logic)
@@ -160,13 +160,7 @@ export function filteredOrders(orders, activeTab, selectedMonth = null) {
 
     // แท็บ "รอดำเนินการ" (PENDING)
     if (activeTab === 'PENDING') {
-      return (
-        po.status === 'PENDING_ORDER' ||
-        po.status === 'PENDING' ||
-        statusUpper === 'PENDING_ORDER' ||
-        statusUpper === 'PENDING' ||
-        ['in_progress_online', 'waiting_order', 'waiting', 'issued', 'รอดำเนินการ', 'รอดำเนินการสั่งซื้อ'].includes(s)
-      );
+      return isPendingPurchaseOrder(po);
     }
 
     // แท็บ "สั่งซื้อแล้ว" (ORDERED)
@@ -185,12 +179,12 @@ export function filteredOrders(orders, activeTab, selectedMonth = null) {
         statusUpper === 'PARTIALLY_RECEIVED_IN_CLAIM' ||
         s.startsWith('waiting_delivery')
       );
-      return isOrderedStatus && !poHasClaim && !isOrderClosed(statusUpper);
+      return isOrderedStatus && !isPendingClaimOrder(po) && !isOrderClosed(statusUpper);
     }
 
     // แท็บ "รอเคลม" (CLAIM)
     if (activeTab === 'CLAIM') {
-      return !isOrderClosed(statusUpper) && poHasClaim;
+      return isPendingClaimOrder(po);
     }
 
     // แท็บ "ปิดงานสำเร็จ" (CLOSED หรือ COMPLETED)
@@ -255,13 +249,7 @@ export function getTabMetrics(orders) {
 
     const poHasClaim = hasUnresolvedClaim(po);
 
-    const isPending = (
-      po.status === 'PENDING_ORDER' ||
-      po.status === 'PENDING' ||
-      statusUpper === 'PENDING_ORDER' ||
-      statusUpper === 'PENDING' ||
-      ['in_progress_online', 'waiting_order', 'waiting', 'issued', 'รอดำเนินการ', 'รอดำเนินการสั่งซื้อ'].includes(s)
-    );
+    const isPending = isPendingPurchaseOrder(po);
 
     const ws = String(po.workflowStatus || '').toLowerCase();
     const isClosed = !isPending && !poHasClaim && (
@@ -275,7 +263,7 @@ export function getTabMetrics(orders) {
       Boolean(po.isClosed)
     );
 
-    const isClaim = !isPending && !isClosed && poHasClaim;
+    const isClaim = isPendingClaimOrder(po);
 
     const isOrdered = !isPending && !isClaim && !isClosed && (
       (
@@ -317,6 +305,5 @@ export {
   isOrderInClaim,
   calculateDisputeMetrics,
   OnlineOrderCard, 
-  OnlinePurchaseActionCard, 
   OnlineTaskCard 
 };

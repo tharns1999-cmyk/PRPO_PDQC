@@ -11,7 +11,7 @@ import EmptyState from '../components/common/EmptyState';
 import AttachmentViewerModal from '../components/common/AttachmentViewerModal';
 import PODetailsModal from '../components/po/PODetailsModal';
 import { modalService } from '../services/modalService';
-import OnlineOrderCard, { OnlinePurchaseActionCard, getStoreGroupKey, isStoreClaimResolved } from './procurement/OnlineOrderCard';
+import OnlineOrderCard, { getStoreGroupKey, isStoreClaimResolved } from './procurement/OnlineOrderCard';
 import { 
   formatThaiMonth, 
   getPrevMonth, 
@@ -20,6 +20,7 @@ import {
   parseOrderYearMonth
 } from './procurement/OnlineProcurementHub';
 import { formatCurrency } from '../utils/formatters.js';
+import { isPendingPurchaseOrder, isPendingClaimOrder } from '../services/procurementService';
 
 const formatMoney = (n) => formatCurrency(n);
 
@@ -45,7 +46,7 @@ export function isOrderClosed(status) {
 
 export function isOrderInClaim(status) {
   const s = String(status || '').toUpperCase();
-  return s === 'IN_CLAIM' || s === 'PARTIALLY_RECEIVED_IN_CLAIM' || s.includes('CLAIM') || s.includes('DISPUTE');
+  return s === 'CLAIM_PENDING' || s === 'IN_CLAIM' || s === 'PARTIALLY_RECEIVED_IN_CLAIM' || s.includes('CLAIM') || s.includes('DISPUTE');
 }
 
 // 🛡️ Helper: Check if PO has shortage or damage from warehouse inspection
@@ -108,7 +109,7 @@ export function hasUnresolvedClaim(po) {
   });
 
   const hasLegacyDisputeFlag = Boolean(po.hasDispute || po.isInClaim || po.disputeDetails);
-  const isExplicitClaimStatus = s === 'in_claim' || s === 'partially_received_in_claim' || Boolean(po.isInClaim);
+  const isExplicitClaimStatus = s === 'claim_pending' || s === 'in_claim' || s === 'partially_received_in_claim' || Boolean(po.isInClaim);
   if (!isExplicitClaimStatus && realClaimItems.length === 0 && !(hasLegacyDisputeFlag && poHasGRN)) {
     return false;
   }
@@ -225,11 +226,7 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
       const poHasClaim = hasUnresolvedClaim(po);
 
       // แท็บ "รอดำเนินการ" (PENDING)
-      const isPending = (
-        statusUpper === 'PENDING_ORDER' || 
-        statusUpper === 'PENDING' || 
-        ['in_progress_online', 'waiting_order', 'waiting', 'issued', 'รอดำเนินการ', 'รอดำเนินการสั่งซื้อ'].includes(s)
-      );
+      const isPending = isPendingPurchaseOrder(po);
 
       // แท็บ "ปิดงานสำเร็จ" (CLOSED)
       const ws = String(po.workflowStatus || '').toLowerCase();
@@ -245,7 +242,7 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
       );
 
       // แท็บ "รอเคลม" (CLAIM)
-      const isClaim = !isPending && !isClosed && poHasClaim;
+      const isClaim = isPendingClaimOrder(po);
 
       // แท็บ "สั่งซื้อแล้ว" (ORDERED)
       const isOrdered = !isPending && !isClaim && !isClosed && (
@@ -334,11 +331,7 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
       // Tab filter (Strict separation - Directive 2)
       let matchTab = true;
       if (activeTab === 'PENDING') {
-        matchTab = (
-          statusUpper === 'PENDING_ORDER' || 
-          statusUpper === 'PENDING' || 
-          ['in_progress_online', 'waiting_order', 'waiting', 'issued', 'รอดำเนินการ', 'รอดำเนินการสั่งซื้อ'].includes(s)
-        );
+        matchTab = isPendingPurchaseOrder(po);
       } else if (activeTab === 'ORDERED') {
         const isOrderedStatus = (
           statusUpper === 'ORDERED' || 
@@ -351,9 +344,9 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
           statusUpper === 'PARTIALLY_RECEIVED_IN_CLAIM' ||
           s.startsWith('waiting_delivery')
         );
-        matchTab = isOrderedStatus && !poHasClaim && !isOrderClosed(statusUpper);
+        matchTab = isOrderedStatus && !isPendingClaimOrder(po) && !isOrderClosed(statusUpper);
       } else if (activeTab === 'CLAIM') {
-        matchTab = !isOrderClosed(statusUpper) && poHasClaim;
+        matchTab = isPendingClaimOrder(po);
       } else if (activeTab === 'CLOSED' || activeTab === 'COMPLETED') {
         const ws = String(po.workflowStatus || '').toLowerCase();
         const isClosed = !poHasClaim && (
@@ -808,4 +801,4 @@ export default function OnlineTaskView({ currentRole, onRefresh }) {
 }
 
 export const OnlineTaskCard = OnlineOrderCard;
-export { OnlineOrderCard, OnlinePurchaseActionCard };
+export { OnlineOrderCard };

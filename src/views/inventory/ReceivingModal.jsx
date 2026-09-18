@@ -537,6 +537,16 @@ export default function ReceivingModal({
       return modalService.warning('กรุณาระบุจำนวนสินค้าที่ตรวจรับ');
     }
 
+    // Validation: Require note and photo if there are any damages
+    if (summary.totalDamaged > 0) {
+      if (!grnNote || grnNote.trim() === '') {
+        return modalService.warning('กรุณาระบุหมายเหตุ', 'พบสินค้าชำรุด กรุณาระบุอาการชำรุดหรือหมายเหตุการตรวจรับ');
+      }
+      if (!attachments || attachments.length === 0) {
+        return modalService.warning('กรุณาแนบรูปถ่าย', 'พบสินค้าชำรุด กรุณาแนบรูปถ่ายพัสดุหรือจุดที่ชำรุดเพื่อใช้เป็นหลักฐานในการเคลม');
+      }
+    }
+
     // Confirmation dialog
     let confirmTitle = 'ยืนยันการตรวจรับสินค้า';
     let confirmDesc = `ยืนยันบันทึกตรวจรับสินค้าเข้าคลังสำหรับ PO ${targetPO.poNo || targetPO.id} หรือไม่?`;
@@ -582,9 +592,7 @@ export default function ReceivingModal({
       if (isFullyAccounted) {
         statusOverride = 'COMPLETED';
       } else if (summary.isClaimRequired) {
-        statusOverride = 'PARTIALLY_RECEIVED_IN_CLAIM';
-      } else if (summary.hasSplitShipment) {
-        statusOverride = 'WAITING_DELIVERY_ROUND_2';
+        statusOverride = 'CLAIM_PENDING';
       } else if (summary.isFullyAccepted) {
         statusOverride = 'CLOSED';
       }
@@ -612,9 +620,9 @@ export default function ReceivingModal({
 
       // 2. Prepare Dispute Items for Online Hub
       const disputeItems = computedItems
-        .filter(it => (it.shortageQty > 0 && (it.shortageAction === 'CLAIM_SHORTAGE' || it.shortageReason === 'VENDOR_SHORTAGE')) || it.damagedQty > 0)
+        .filter(it => it.shortageQty > 0 || it.damagedQty > 0)
         .map(it => {
-          const isShortage = it.shortageQty > 0 && (it.shortageAction === 'CLAIM_SHORTAGE' || it.shortageReason === 'VENDOR_SHORTAGE');
+          const isShortage = it.shortageQty > 0;
           return {
             productId: it.productId,
             code: it.code,
@@ -623,7 +631,7 @@ export default function ReceivingModal({
             acceptedQty: it.acceptedQty,
             damagedQty: it.damagedQty,
             shortageQty: it.shortageQty,
-            shortageAction: it.shortageAction || 'CLAIM_SHORTAGE',
+            shortageAction: 'CLAIM_SHORTAGE', // Default routing to Claim Hub
             reason: isShortage ? 'SHORT_SHIPMENT' : 'DAMAGED',
             reasonLabel: isShortage ? 'ร้านส่งของไม่ครบตามกล่อง (ขาดส่ง)' : 'สินค้าชำรุด / แตกหักเสียหาย',
             description: isShortage ? `ยอดขาดส่ง ${it.shortageQty} ${it.pUnit}` : it.defectNote || 'สินค้ามีปัญหาจากการตรวจรับ',
@@ -632,6 +640,13 @@ export default function ReceivingModal({
         });
 
       // 3. Prepare GRN Payload
+      const claimEvidence = summary.isClaimRequired ? {
+         inspectorName: currentUser?.name || receiverName,
+         inspectedAt: receivedAtIso,
+         notes: grnNote.trim(),
+         attachments: attachments || []
+      } : null;
+
       const grnPayload = {
         grnNumber,
         round: nextRound,
@@ -657,6 +672,7 @@ export default function ReceivingModal({
         },
         note: grnNote.trim(),
         attachments,
+        claimEvidence,
         statusOverride,
         waitingRound2: summary.hasSplitShipment,
         receivingItems: computedItems.map(it => {
@@ -1122,13 +1138,14 @@ export default function ReceivingModal({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse table-fixed">
                 <thead>
-                  <tr className="bg-slate-100/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    <th style={{ width: '32%' }} className="w-[32%] py-2.5 px-4 text-left">สินค้า</th>
-                    <th style={{ width: '8%' }} className="w-[8%] py-2.5 px-3 text-center">สั่งมา/ค้างรับ</th>
-                    <th style={{ width: '8%' }} className="w-[8%] py-2.5 px-3 text-center">รับแล้ว</th>
-                    <th style={{ width: '16%' }} className="w-[16%] py-2.5 px-3 text-center">ตรวจรับรอบนี้</th>
-                    <th style={{ width: '12%' }} className="w-[12%] py-2.5 px-3 text-center">ชำรุด/NG</th>
-                    <th style={{ width: '24%' }} className="w-[24%] py-2.5 px-4 text-left">สถานะ / การจัดการ</th>
+                  <tr className="bg-slate-100/80 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">
+                    <th className="w-5/12 min-w-[220px] py-2.5 px-4 text-left">สินค้า</th>
+                    <th className="w-16 py-2.5 px-3 text-center">สั่งมา/ค้างรับ</th>
+                    <th className="w-16 py-2.5 px-3 text-center">รับแล้ว</th>
+                    <th className="w-24 py-2.5 px-3 text-center">รับดี (เข้าคลัง)</th>
+                    <th className="w-24 py-2.5 px-3 text-center">ชำรุด (NG)</th>
+                    <th className="w-20 py-2.5 px-3 text-center">ขาดส่ง</th>
+                    <th className="w-48 py-2.5 px-4 text-right">สถานะ / การจัดการ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
@@ -1142,61 +1159,56 @@ export default function ReceivingModal({
                     const parsedAccepted = rawAccepted === '' ? 0 : Number(rawAccepted);
                     const currentReceiveInput = isNaN(parsedAccepted) ? remainingBeforeRound : Math.max(0, parsedAccepted);
 
+                    const rawDamaged = item.rawDamagedInput !== undefined ? item.rawDamagedInput : item.damagedQty;
+                    const parsedDamaged = rawDamaged === '' ? 0 : Number(rawDamaged);
+                    const currentDamageInput = isNaN(parsedDamaged) ? 0 : Math.max(0, parsedDamaged);
+
+                    const deliveredQty = currentReceiveInput + currentDamageInput;
+                    const hasDefect = currentDamageInput > 0;
+
                     // ยอดรวมหลังรับรอบนี้
-                    const totalReceivedAfterThis = previouslyReceived + (item.isRowLocked ? 0 : currentReceiveInput);
-                    const remainingAfterThis = Math.max(0, orderedQty - totalReceivedAfterThis);
+                    const totalDelivered = previouslyReceived + (item.isRowLocked ? 0 : deliveredQty);
+                    const shortageQty = Math.max(0, orderedQty - totalDelivered);
+                    const isFullyDelivered = shortageQty === 0;
 
                     return (
-                      <tr 
-                        key={item.key} 
-                        className={`transition-colors border-b border-slate-100 ${
-                          item.isRowLocked && item.refunded > 0 
-                            ? 'opacity-80 bg-slate-50/50' 
-                            : (item.isRowLocked ? 'bg-slate-50/40' : 'hover:bg-slate-50/80')
-                        }`}
-                      >
-                        {/* 1. สินค้า (32%) */}
-                        <td style={{ width: '32%' }} className="w-[32%] py-3.5 px-4 align-middle">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0">
-                                {item.code || `ITEM-${idx + 1}`}
-                              </span>
-                              <span className="text-sm font-bold text-slate-800 leading-snug" title={item.name}>
-                                {item.name}
-                              </span>
-                            </div>
-                            <div className="text-xs text-slate-500 font-mono flex items-center gap-2 flex-wrap">
-                              <span>หน่วย: <strong className="text-slate-700">{item.pUnit}</strong></span>
-                              {item.conversionRatio > 1 && (
-                                <span className="text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded font-sans">
-                                  (1 {item.pUnit} = {item.conversionRatio.toLocaleString()} {item.sUnit})
+                      <React.Fragment key={item.key}>
+                        <tr 
+                          className={`transition-colors border-b border-slate-100 ${
+                            item.isRowLocked && item.refunded > 0 
+                              ? 'opacity-80 bg-slate-50/50' 
+                              : (item.isRowLocked ? 'bg-slate-50/40' : 'hover:bg-slate-50/80')
+                          }`}
+                        >
+                          {/* 1. สินค้า */}
+                          <td className="w-5/12 min-w-[220px] py-3.5 px-4 align-middle">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shrink-0">
+                                  {item.code || `ITEM-${idx + 1}`}
                                 </span>
-                              )}
-                              {item.originalPurchaseQty && Number(item.originalPurchaseQty) !== Number(item.orderedQty) && (
-                                <span className="text-[11px] text-indigo-700 font-sans">
-                                  (ปรับจาก PR: {item.originalPurchaseQty})
+                                <span className="text-sm font-bold text-slate-800 leading-snug" title={item.name}>
+                                  {item.name}
                                 </span>
-                              )}
-                            </div>
-
-                            {/* Compact Defect Note Input (if damaged > 0) */}
-                            {item.hasDamage && (
-                              <div className="mt-2 pt-0.5">
-                                <input
-                                  type="text"
-                                  placeholder="ระบุอาการชำรุด เช่น แตกหัก, ผิดสเปก..."
-                                  value={item.defectNote}
-                                  onChange={(e) => handleDefectNoteChange(item.key, e.target.value)}
-                                  className="w-full h-8 px-2.5 text-xs bg-rose-50/70 border border-rose-200 rounded-md text-rose-900 placeholder:text-rose-400 focus:outline-none focus:ring-1 focus:ring-rose-400"
-                                />
                               </div>
-                            )}
-                          </div>
-                        </td>
+                              <div className="text-xs text-slate-500 font-mono flex items-center gap-2 flex-wrap">
+                                <span>หน่วย: <strong className="text-slate-700">{item.pUnit}</strong></span>
+                                {item.conversionRatio > 1 && (
+                                  <span className="text-[11px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded font-sans">
+                                    (1 {item.pUnit} = {item.conversionRatio.toLocaleString()} {item.sUnit})
+                                  </span>
+                                )}
+                                {item.originalPurchaseQty && Number(item.originalPurchaseQty) !== Number(item.orderedQty) && (
+                                  <span className="text-[11px] text-indigo-700 font-sans">
+                                    (ปรับจาก PR: {item.originalPurchaseQty})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
 
-                        {/* 2. สั่งมา/ค้างรับ (8%) */}
-                        <td style={{ width: '8%' }} className="w-[8%] py-3.5 px-3 text-center align-middle">
+                        {/* 2. สั่งมา/ค้างรับ */}
+                        <td className="w-16 py-3.5 px-3 text-center align-middle">
                           <div className="flex flex-col items-center justify-center">
                             <span className="font-mono font-bold text-slate-800 text-sm h-8 flex items-center justify-center">
                               {item.remainingToReceive}
@@ -1207,8 +1219,8 @@ export default function ReceivingModal({
                           </div>
                         </td>
 
-                        {/* 3. รับแล้ว (8%) */}
-                        <td style={{ width: '8%' }} className="w-[8%] py-3.5 px-3 text-center align-middle">
+                        {/* 3. รับแล้ว */}
+                        <td className="w-16 py-3.5 px-3 text-center align-middle">
                           <div className="flex flex-col items-center justify-center">
                             <span className="font-mono text-sm font-bold h-8 flex items-center justify-center">
                               {item.alreadyReceived > 0 ? (
@@ -1223,10 +1235,10 @@ export default function ReceivingModal({
                           </div>
                         </td>
 
-                        {/* 4. ตรวจรับรอบนี้ (16%) */}
-                        <td style={{ width: '16%' }} className="w-[16%] py-3.5 px-3 text-center align-middle">
+                        {/* 4. รับดี (เข้าคลัง) */}
+                        <td className="w-24 py-3.5 px-3 text-center align-middle">
                           <div className="flex flex-col items-center justify-center">
-                            <div className="h-8 flex items-center justify-center">
+                            <div className="h-10 flex items-center justify-center">
                               <input
                                 type="number"
                                 min="0"
@@ -1234,34 +1246,21 @@ export default function ReceivingModal({
                                 value={item.isRowLocked ? 0 : item.rawAcceptedInput}
                                 disabled={item.isRowLocked}
                                 onChange={(e) => handleAcceptedQtyChange(item.key, e.target.value)}
-                                className={`w-16 h-8 text-sm font-mono font-bold text-center rounded-lg outline-none shadow-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all ${
+                                className={`h-10 w-20 text-center font-bold text-base rounded-xl outline-none transition-all duration-150 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                                   item.isRowLocked
                                     ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 select-none'
-                                    : 'bg-white border border-emerald-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400/30 text-slate-900'
+                                    : 'bg-white border-2 border-emerald-400/80 text-emerald-700 focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 shadow-sm'
                                 }`}
                                 title={item.isRowLocked ? 'ปิดรับแล้ว' : 'จำนวนสินค้าสมบูรณ์ที่รับรอบนี้'}
                               />
                             </div>
-                            <div className="h-5 min-h-[20px] flex items-center justify-center mt-1">
-                              {!item.isRowLocked ? (
-                                item.isReplacement && item.remainingToReceive > 0 ? (
-                                  <span className="text-xs text-amber-600 font-medium whitespace-nowrap">
-                                    📦 รอรับของทดแทน {item.remainingToReceive} {item.pUnit}
-                                  </span>
-                                ) : remainingAfterThis > 0 ? (
-                                  <span className="text-xs text-amber-600 font-medium whitespace-nowrap">
-                                    ⏳ รอรับรอบถัดไป {remainingAfterThis} {item.pUnit}
-                                  </span>
-                                ) : null
-                              ) : null}
-                            </div>
                           </div>
                         </td>
 
-                        {/* 5. ชำรุด/NG (12%) */}
-                        <td style={{ width: '12%' }} className="w-[12%] py-3.5 px-3 text-center align-middle">
+                        {/* 5. ชำรุด (NG) */}
+                        <td className="w-24 py-3.5 px-3 text-center align-middle">
                           <div className="flex flex-col items-center justify-center">
-                            <div className="h-8 flex items-center justify-center">
+                            <div className="h-10 flex items-center justify-center">
                               <input
                                 type="number"
                                 min="0"
@@ -1269,68 +1268,135 @@ export default function ReceivingModal({
                                 value={item.isRowLocked ? 0 : item.rawDamagedInput}
                                 disabled={item.isRowLocked}
                                 onChange={(e) => handleDamagedQtyChange(item.key, e.target.value)}
-                                className={`w-16 h-8 text-sm font-mono font-bold text-center rounded-lg outline-none shadow-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none transition-all ${
+                                className={`h-10 w-20 text-center font-bold text-base rounded-xl outline-none transition-all duration-150 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
                                   item.isRowLocked
                                     ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 select-none'
                                     : item.hasDamage
-                                      ? 'border-2 border-rose-400 text-rose-700 ring-2 ring-rose-200 bg-white'
-                                      : 'border border-slate-300 text-slate-700 focus:border-slate-400 bg-white'
+                                      ? 'bg-rose-50/30 border-2 border-rose-400 text-rose-700 focus:ring-4 focus:ring-rose-500/10 shadow-sm'
+                                      : 'bg-slate-50/50 border border-slate-200 text-slate-400 hover:border-slate-300'
                                 }`}
                                 title={item.isRowLocked ? 'ปิดรับแล้ว' : 'จำนวนสินค้าชำรุดเสียหาย'}
                               />
                             </div>
-                            <div className="h-5 min-h-[20px] flex items-center justify-center mt-1">
-                              {!item.isRowLocked && item.hasDamage ? (
-                                <span className="text-xs text-rose-600 font-medium whitespace-nowrap">
-                                  ชำรุด {item.damagedQty} {item.pUnit}
+                          </div>
+                        </td>
+
+                        {/* 6. ขาดส่ง */}
+                        <td className="w-20 py-3.5 px-3 text-center align-middle">
+                          <div className="flex flex-col items-center justify-center">
+                            <div className="h-10 flex items-center justify-center">
+                              {shortageQty > 0 ? (
+                                <span className="inline-flex items-center justify-center h-10 w-16 rounded-xl font-bold text-sm bg-amber-50 text-amber-700 border border-amber-200/80">
+                                  {shortageQty}
                                 </span>
-                              ) : null}
+                              ) : (
+                                <span className="inline-flex items-center justify-center h-10 w-16 rounded-xl font-bold text-sm border border-transparent text-slate-300">-</span>
+                              )}
                             </div>
                           </div>
                         </td>
 
-                        {/* 6. สถานะ / การจัดการ (24%) */}
-                        <td style={{ width: '24%' }} className="w-[24%] py-3.5 px-4 align-middle">
-                          {item.isRowLocked ? (
-                            item.refunded > 0 ? (
-                              <span className="inline-flex items-center justify-center w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
-                                💰 ได้รับเงินคืนแล้ว ฿{item.refundAmountFormatted} (ปิดรับ)
-                              </span>
+                        {/* 7. สถานะ / การจัดการ */}
+                        <td className="w-48 py-3.5 px-4 align-middle text-right">
+                          <div className="flex flex-col items-end gap-1.5 w-full">
+                            {item.isRowLocked ? (
+                              item.refunded > 0 ? (
+                                <span className="inline-flex items-center justify-center px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap shadow-xs">
+                                  💰 ได้รับเงินคืนแล้ว ฿{item.refundAmountFormatted}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center justify-center px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap shadow-xs">
+                                  <Check className="w-4 h-4 text-emerald-600 shrink-0 mr-1" />
+                                  ตรวจรับครบแล้วในรอบก่อน
+                                </span>
+                              )
+                            ) : (hasDefect && shortageQty > 0) ? (
+                              <>
+                                <div className="flex items-center justify-end gap-1.5 w-full flex-wrap">
+                                  <span className="bg-rose-50 border border-rose-200/80 text-rose-800 px-3.5 py-1.5 rounded-xl font-medium text-xs inline-flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                                    ⚠ ชำรุด {currentDamageInput}
+                                  </span>
+                                  <span className="bg-amber-50 border border-amber-200/80 text-amber-800 px-3.5 py-1.5 rounded-xl font-medium text-xs inline-flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                                    ⏳ ขาด {shortageQty}
+                                  </span>
+                                </div>
+                                <span className="text-[11px] text-slate-400 mt-1 inline-block whitespace-nowrap">
+                                  ↳ ส่งต่องานให้จัดซื้อออนไลน์ประสานงานร้านค้า
+                                </span>
+                              </>
+                            ) : hasDefect ? (
+                              <>
+                                <div className="flex items-center justify-end w-full">
+                                  <span className="bg-rose-50 border border-rose-200/80 text-rose-800 px-3.5 py-1.5 rounded-xl font-medium text-xs inline-flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                                    <span>⚠ ชำรุด {currentDamageInput} {item.pUnit}</span>
+                                  </span>
+                                </div>
+                                <span className="text-[11px] text-slate-400 mt-1 inline-block whitespace-nowrap">
+                                  ↳ ส่งต่องานให้จัดซื้อออนไลน์ประสานงานร้านค้า
+                                </span>
+                              </>
+                            ) : shortageQty > 0 ? (
+                              <>
+                                <div className="flex items-center justify-end w-full">
+                                  <span className="bg-amber-50 border border-amber-200/80 text-amber-800 px-3.5 py-1.5 rounded-xl font-medium text-xs inline-flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                                    ⏳ ขาด {shortageQty} {item.pUnit}
+                                  </span>
+                                </div>
+                                <span className="text-[11px] text-slate-400 mt-1 inline-block whitespace-nowrap">
+                                  ↳ ส่งต่องานให้จัดซื้อออนไลน์ประสานงานร้านค้า
+                                </span>
+                              </>
                             ) : (
-                              <span className="inline-flex items-center justify-center w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
-                                <Check className="w-4 h-4 text-emerald-600 shrink-0 mr-1" />
-                                ตรวจรับครบแล้วในรอบก่อน
-                              </span>
-                            )
-                          ) : remainingAfterThis > 0 ? (
-                            <div className="flex flex-col gap-1.5 w-full">
-                              <div className="flex items-center">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold font-mono bg-amber-100 text-amber-900 border border-amber-300">
-                                  ขาด {remainingAfterThis} {item.pUnit}
+                              <div className="flex items-center justify-end w-full">
+                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-3.5 py-1.5 rounded-xl font-medium text-xs inline-flex items-center gap-1.5 shadow-xs whitespace-nowrap">
+                                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                                  <span>✓ ครบถ้วน</span>
                                 </span>
                               </div>
-                              <select
-                                value={item.shortageAction || (item.shortageReason === 'SPLIT_SHIPMENT' ? 'WAIT_NEXT_ROUND' : 'CLAIM_SHORTAGE')}
-                                onChange={(e) => handleShortageActionChange(item.key, e.target.value)}
-                                className="w-full h-8 px-2.5 text-xs font-medium rounded-lg border border-slate-300 bg-white text-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-400/20 focus:outline-none cursor-pointer shadow-xs transition-all"
-                              >
-                                <option value="CLAIM_SHORTAGE">🚨 ของขาด - ส่งเรื่องจัดซื้อเคลม/ขอเงินคืน</option>
-                                <option value="WAIT_NEXT_ROUND">📦 ร้านแจ้งแยกส่ง - รอส่งมอบรอบถัดไป</option>
-                              </select>
-                            </div>
-                          ) : item.hasDamage ? (
-                            <div className="h-8 px-2.5 rounded-lg text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1.5 w-full justify-center">
-                              <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0" />
-                              <span>ชำรุด {item.damagedQty} {item.pUnit} (ส่งเรื่องเคลม)</span>
-                            </div>
-                          ) : (
-                            <div className="h-8 px-3 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1.5 w-full justify-center">
-                              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-                              <span>ครบสมบูรณ์</span>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </td>
                       </tr>
+
+                      {/* Sub-row Panel for Defect Context */}
+                      {item.hasDamage && !item.isRowLocked && (
+                        <tr className="bg-slate-50/30">
+                          <td colSpan="7" className="p-0 border-b border-slate-200">
+                            <div className="bg-rose-50/50 border-t border-rose-200/60 p-3 mx-4 mb-3 rounded-b-xl flex flex-col md:flex-row items-center gap-3">
+                              <div className="flex-1 w-full flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                                <input
+                                  type="text"
+                                  placeholder="ระบุอาการชำรุด เช่น แตกหัก, ฉีกขาด..."
+                                  value={item.defectNote || ''}
+                                  onChange={(e) => handleDefectNoteChange(item.key, e.target.value)}
+                                  className="w-full h-9 px-3 text-sm bg-white border border-rose-200 rounded-lg text-rose-900 placeholder:text-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-400 focus:border-rose-400 shadow-xs"
+                                />
+                              </div>
+                              <div className="shrink-0 flex items-center gap-3">
+                                <span className="text-[10px] text-rose-500 font-medium">
+                                  * จำเป็นต้องระบุอาการและแนบรูปเพื่อส่งเรื่องเคลม
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => fileInputRef.current?.click()}
+                                  className="h-9 px-3 bg-white hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1.5 transition-all shadow-xs"
+                                >
+                                  <Camera className="w-4 h-4" />
+                                  <span>ถ่ายรูป / แนบหลักฐาน</span>
+                                  {attachments.length > 0 && (
+                                    <span className="ml-1 px-1.5 py-0.5 bg-rose-600 text-white rounded-full text-[10px]">
+                                      {attachments.length}
+                                    </span>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

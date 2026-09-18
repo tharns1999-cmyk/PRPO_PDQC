@@ -296,7 +296,7 @@ export default function TaskCard({ task, activeTab, currentRole, onClick, onReor
               type="button"
               className="h-8 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-2xs hover:shadow-xs transition-all active:scale-95 whitespace-nowrap cursor-pointer"
             >
-              <span>ตรวจรับรอบ 2 / เคลม</span>
+              <span>{task.status === 'WAITING_DELIVERY_ROUND_2' ? 'ตรวจรับรอบ 2 (สินค้าทดแทน)' : 'ตรวจรับรอบ 2'}</span>
               <span className="text-xs">➔</span>
             </button>
           </div>

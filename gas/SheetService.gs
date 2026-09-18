@@ -359,6 +359,44 @@ function ensureStockLogSheetHeaders(sheet) {
 }
 
 /**
+ * Ensures Products sheet contains all required standard header columns,
+ * specifically ensuring averageCost and totalValue columns are present.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ */
+function ensureProductSheetHeaders(sheet) {
+  var REQUIRED_HEADERS = [
+    'id', 'code', 'name', 'category', 'department', 'purchaseUnit', 'stockUnit', 
+    'conversionRate', 'price', 'avgCost', 'averageCost', 'stockBalance', 'totalValue', 'reorderPoint', 'leadTimeDays', 
+    'locationId', 'locationName', 'status', 'isActive', 'updatedAt'
+  ];
+
+  if (!sheet) return;
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+
+  if (lastRow === 0 || lastCol === 0) {
+    sheet.getRange(1, 1, 1, REQUIRED_HEADERS.length).setValues([REQUIRED_HEADERS]);
+    formatHeaderRow(sheet, REQUIRED_HEADERS.length);
+    return;
+  }
+
+  var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h) {
+    return String(h || '').trim();
+  });
+
+  var missingHeaders = REQUIRED_HEADERS.filter(function(h) {
+    return existingHeaders.indexOf(h) === -1;
+  });
+
+  if (missingHeaders.length > 0) {
+    var startCol = existingHeaders.length + 1;
+    sheet.getRange(1, startCol, 1, missingHeaders.length).setValues([missingHeaders]);
+    formatHeaderRange(sheet, 1, startCol, missingHeaders.length);
+  }
+}
+
+/**
  * Records an in-app notification event into the Notifications sheet tab.
  * Role & Department based delivery only (no emails).
  * Schema: ['id', 'timestamp', 'title', 'message', 'type', 'targetDepartment', 'targetRole', 'docRef', 'status']
@@ -955,7 +993,7 @@ function deleteMasterItem(collection, id) {
 const SCHEMA_DEFINITIONS = Object.freeze({
   [SHEET_NAMES.PRODUCTS]: [
     'id', 'code', 'name', 'category', 'department', 'purchaseUnit', 'stockUnit', 
-    'conversionRate', 'price', 'avgCost', 'stockBalance', 'reorderPoint', 'leadTimeDays', 
+    'conversionRate', 'price', 'avgCost', 'averageCost', 'stockBalance', 'totalValue', 'reorderPoint', 'leadTimeDays', 
     'locationId', 'locationName', 'status', 'isActive', 'updatedAt'
   ],
   [SHEET_NAMES.VENDORS]: [
@@ -1002,7 +1040,8 @@ const SCHEMA_DEFINITIONS = Object.freeze({
     'savingsAmount', 'settlementStatus', 'settlementNote', 'settlementProofUrl', 
     'settledBy', 'settledAt', 'actualItems', 'activityLog', 
     'createdAt', 'completedAt', 'updatedAt',
-    'budgetPeriod', 'committedAmount', 'actualPaidAmount', 'paymentStatus'
+    'budgetPeriod', 'committedAmount', 'actualPaidAmount', 'paymentStatus',
+    'claimEvidence', 'disputeInfo'
   ],
   [SHEET_NAMES.STOCK_LOGS]: [
     'id', 'timestamp', 'date', 'type', 'productId', 'productCode', 'productName', 'name',

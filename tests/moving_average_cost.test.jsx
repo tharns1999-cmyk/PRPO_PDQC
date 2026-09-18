@@ -6,6 +6,8 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AppProvider, AppContext } from '../src/context/AppContext';
+import { applyProductCostFailSafe } from '../src/services/productService';
+import { healMACForProduct } from '../src/utils/macMigration';
 
 // Mock matchMedia
 Object.defineProperty(window, 'matchMedia', {
@@ -134,6 +136,58 @@ describe('Domain Suite: Perpetual Moving Average Cost & Snapshot Immutability', 
       const logMissingCost = { id: 'LOG-2', qty: 5 };
       const calcCostMissing = Number(logMissingCost.totalCost ?? ((Number(logMissingCost.qty) || 0) * (prod?.avgCost || prod?.costPrice || prod?.price || 0)));
       expect(calcCostMissing).toBe(450); // Fallbacks to 5 * 90 if log doesn't have totalCost (for older logs before migration)
+    });
+  });
+
+  describe('Auto-Fallback Fail-Safe on Read & MAC Recalculation', () => {
+    it('5. Auto-fallback on Read: หาก currentStock > 0 แต่ averageCost เป็น 0 ให้ดึง unitPrice จาก IN log ล่าสุดมาเป็นค่าสำรองทันที', () => {
+      const mockProducts = [
+        { id: 'PROD-GLV-01', code: 'GLOVE-01', name: 'ถุงมือกันร้อน', stockBalance: 10, averageCost: 0, avgCost: 0 },
+        { id: 'PROD-OIL-02', code: 'OIL-02', name: 'น้ำมันหล่อลื่น', stockBalance: 5, averageCost: 150, avgCost: 150 },
+        { id: 'PROD-EMPTY-03', code: 'EMPTY-03', name: 'สินค้าสต็อก 0', stockBalance: 0, averageCost: 0, avgCost: 0 }
+      ];
+
+      const mockLogs = [
+        { type: 'IN', productId: 'PROD-GLV-01', productCode: 'GLOVE-01', qty: 5, unitPrice: 30.00, timestamp: '2026-09-10T10:00:00Z' },
+        { type: 'IN', productId: 'PROD-GLV-01', productCode: 'GLOVE-01', qty: 10, unitPrice: 34.50, timestamp: '2026-09-15T10:00:00Z' },
+        { type: 'OUT', productId: 'PROD-GLV-01', productCode: 'GLOVE-01', qty: 5, unitPrice: 34.50, timestamp: '2026-09-16T10:00:00Z' }
+      ];
+
+      const safeProducts = applyProductCostFailSafe(mockProducts, mockLogs);
+
+      const glv = safeProducts.find(p => p.id === 'PROD-GLV-01');
+      expect(glv.averageCost).toBe(34.50);
+      expect(glv.avgCost).toBe(34.50);
+      expect(glv.totalValue).toBe(345.00); // 10 * 34.50
+
+      const oil = safeProducts.find(p => p.id === 'PROD-OIL-02');
+      expect(oil.averageCost).toBe(150); // Preserves existing cost
+
+      const empty = safeProducts.find(p => p.id === 'PROD-EMPTY-03');
+      expect(empty.averageCost).toBe(0); // 0 stock remains 0
+    });
+
+    it('6. MAC Recalculation Action: คำนวณ Moving Average Cost สะสมจาก IN logs และบันทึก averageCost และ totalValue', async () => {
+      const { storageService } = await import('../src/services/storageService');
+      
+      const testProd = { id: 'PROD-RECALC-01', code: 'RECALC-01', name: 'อะไหล่ทดสอบ', stockBalance: 15, averageCost: 0, avgCost: 0 };
+      const testLogs = [
+        { type: 'IN', productId: 'PROD-RECALC-01', productCode: 'RECALC-01', qty: 10, unitPrice: 30.00, timestamp: '2026-09-10T08:00:00Z' },
+        { type: 'IN', productId: 'PROD-RECALC-01', productCode: 'RECALC-01', qty: 10, unitPrice: 40.00, timestamp: '2026-09-12T08:00:00Z' },
+        // (10*30 + 10*40) / 20 = 700 / 20 = 35.00
+      ];
+
+      vi.spyOn(storageService, 'getProducts').mockReturnValue([testProd]);
+      vi.spyOn(storageService, 'getStockLogs').mockReturnValue(testLogs);
+      const saveProductsSpy = vi.spyOn(storageService, 'saveProducts').mockImplementation(() => {});
+
+      const healed = await healMACForProduct('RECALC-01');
+
+      expect(healed).not.toBeNull();
+      expect(healed.averageCost).toBe(35.00);
+      expect(healed.avgCost).toBe(35.00);
+      expect(healed.totalValue).toBe(15 * 35.00); // 525
+      expect(saveProductsSpy).toHaveBeenCalled();
     });
   });
 });

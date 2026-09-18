@@ -376,7 +376,7 @@ describe('Domain Suite: Online PO Settlement & Cost Reconciliation', () => {
       expect(html).toContain('แก้ไขยอดจ่ายจริง');
       // Financial breakdown should show settled details
       expect(html).toContain('สรุปการปิดยอดจ่ายจริง (Settlement):');
-      expect(html).toContain('+คืนงบ ฿800.00');
+      expect(html).toContain('ประหยัดงบ PR ฿800.00');
     });
 
     it('POListView: renders actual settlement amount and savings badge', () => {

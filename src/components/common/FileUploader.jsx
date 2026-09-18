@@ -65,6 +65,18 @@ export default function FileUploader({
       }
 
       // Non-image (e.g. PDF) or compression fallback
+      let dataUrl = '';
+      try {
+        dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      } catch (err) {
+        console.warn('[FileUploader] Failed to convert to base64:', err);
+      }
+
       let previewUrl = '';
       try {
         previewUrl = URL.createObjectURL(file);
@@ -76,8 +88,9 @@ export default function FileUploader({
         name: file.name,
         size: file.size,
         type: file.type,
-        previewUrl,
-        url: previewUrl,
+        previewUrl: previewUrl || dataUrl,
+        url: dataUrl || previewUrl,
+        dataUrl: dataUrl,
         isImage: Boolean(file.type && file.type.startsWith('image/'))
       };
     });

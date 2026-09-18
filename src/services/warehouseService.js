@@ -161,13 +161,27 @@ export const warehouseService = {
         const currentBalance = Number(prod.stockBalance) || 0;
         const newBalance = currentBalance + stockQtyToAdd;
 
+        const actualPrice = Number(incItem.actualPrice ?? incItem.unitPrice ?? incItem.price ?? prod.price) || 0;
+        const stockUnitPrice = actualPrice > 0 && rate > 0 ? (actualPrice / rate) : (Number(prod.price) || 0);
+
+        // MAC Calculation
+        const currentAvgCost = Number(prod.averageCost ?? prod.avgCost ?? prod.unitCost ?? 0);
+        let newAverageCost = stockUnitPrice;
+        if (currentBalance > 0 && newBalance > 0) {
+          const currentTotalValue = currentBalance * currentAvgCost;
+          const inTotalValue = stockQtyToAdd * stockUnitPrice;
+          newAverageCost = (currentTotalValue + inTotalValue) / newBalance;
+        }
+        newAverageCost = Math.round(newAverageCost * 100) / 100;
+
         prod.stockBalance = newBalance;
+        prod.averageCost = newAverageCost;
+        prod.avgCost = newAverageCost;
+        prod.totalValue = newBalance * newAverageCost;
         products[pIdx] = prod;
 
         const sUnit = prod.stockUnit || prod.unit || 'ชิ้น';
         const pUnit = prod.purchaseUnit || prod.unit || sUnit;
-        const actualPrice = Number(incItem.actualPrice ?? incItem.unitPrice ?? incItem.price ?? prod.price) || 0;
-        const stockUnitPrice = actualPrice > 0 && rate > 0 ? (actualPrice / rate) : (Number(prod.price) || 0);
 
         const logEntry = {
           id: this.generateLogId(`LOG-IN-${idx}`),
@@ -277,26 +291,76 @@ export const warehouseService = {
       };
     });
 
-    // Update PO activity & status (Directive 2: Set status to IN_CLAIM or PARTIALLY_RECEIVED_IN_CLAIM if any item has dispute)
+    // Update PO activity & status (Rule 1: Lock PO to CLAIM_PENDING on defects or shortage)
     const anyItemHasDispute = targetPO.items.some(it => it.hasDispute);
+    const anyItemDefectOrShortage = targetPO.items.some(it => 
+      (Number(it.damagedQty || it.ngQty || 0) > 0) || 
+      (Number(it.shortageQty || 0) > 0 && it.shortageAction !== 'WAIT_NEXT_ROUND' && it.shortageReason !== 'SPLIT_SHIPMENT')
+    );
+    const isClaimRequired = anyItemHasDispute || anyItemDefectOrShortage;
     const allItemsFullyReceived = targetPO.items.every(it => it.shortageQty === 0 && it.damagedQty === 0);
     const anyWaitingRound2 = targetPO.items.some(it => it.shortageAction === 'WAIT_NEXT_ROUND' || it.shortageReason === 'SPLIT_SHIPMENT');
 
     targetPO.hasGRN = true;
-    targetPO.hasDispute = anyItemHasDispute;
-    targetPO.isInClaim = anyItemHasDispute;
+    targetPO.hasDispute = isClaimRequired;
+    targetPO.isInClaim = isClaimRequired;
 
-    if (grnPayload.statusOverride) {
-      targetPO.status = grnPayload.statusOverride;
-    } else if (anyItemHasDispute) {
-      targetPO.status = 'PARTIALLY_RECEIVED_IN_CLAIM';
+    // กฎเหล็ก: เมื่อพบของชำรุด (ngQty > 0) หรือของขาด (shortageQty > 0) ให้ตั้งสถานะ PO เป็น CLAIM_PENDING เท่านั้น
+    // ห้ามตั้งเป็น WAITING_DELIVERY_ROUND_2, PARTIALLY_DELIVERED, หรือสถานะรอบ 2 ใด ๆ ทั้งสิ้นในขั้นตอนนี้
+    if (isClaimRequired) {
+      targetPO.status = 'CLAIM_PENDING';
       targetPO.claimStatus = 'PENDING_CLAIM';
+    } else if (grnPayload.statusOverride) {
+      targetPO.status = grnPayload.statusOverride;
     } else if (anyWaitingRound2) {
       targetPO.status = 'WAITING_DELIVERY_ROUND_2';
     } else if (allItemsFullyReceived) {
       targetPO.status = 'COMPLETED';
     } else {
       targetPO.status = 'PARTIAL';
+    }
+
+    // Rule 2: บันทึกหลักฐานการตรวจรับ (Evidence Persistence)
+    const defectNotesFromItems = incomingItems
+      .map(it => it.defectReason || it.defectNote)
+      .filter(Boolean)
+      .join('; ');
+
+    const defectNote = grnPayload.defectNote || 
+      grnPayload.claimEvidence?.defectNote || 
+      grnPayload.claimEvidence?.notes || 
+      defectNotesFromItems || 
+      grnPayload.note || '';
+
+    const defectImages = grnPayload.defectImages || 
+      grnPayload.evidenceAttachments || 
+      grnPayload.attachments || 
+      grnPayload.claimEvidence?.defectImages || 
+      grnPayload.claimEvidence?.evidenceAttachments || 
+      grnPayload.claimEvidence?.attachments || 
+      [];
+
+    const inspectorName = grnPayload.inspectorName || 
+      grnPayload.claimEvidence?.inspectorName || 
+      userName || 
+      'ผู้ตรวจรับพัสดุ';
+
+    const inspectedAt = grnPayload.inspectedAt || 
+      grnPayload.claimEvidence?.inspectedAt || 
+      isoTimestamp;
+
+    if (isClaimRequired || grnPayload.claimEvidence || defectNote || (Array.isArray(defectImages) && defectImages.length > 0)) {
+      const evidenceObj = {
+        inspectorName,
+        inspectedAt,
+        defectNote,
+        notes: defectNote,
+        defectImages: Array.isArray(defectImages) ? defectImages : [defectImages],
+        evidenceAttachments: Array.isArray(defectImages) ? defectImages : [defectImages],
+        attachments: Array.isArray(defectImages) ? defectImages : [defectImages]
+      };
+      targetPO.claimEvidence = evidenceObj;
+      targetPO.disputeInfo = evidenceObj;
     }
 
     const grnEntry = {

@@ -5,6 +5,7 @@ import { modalService } from './modalService';
 import { PO_STATUS } from '../config/constants';
 import { clearMockTransactions, resetMockTransactions } from '../utils/dataResetHelper';
 import { matchDepartment } from '../utils/permissions';
+import { applyProductCostFailSafe } from './productService';
 
 // API Service Layer for Data & Operations
 export const apiService = {
@@ -62,7 +63,13 @@ export const apiService = {
             if (Array.isArray(payload.prs)) storageService.savePRs(payload.prs);
             if (Array.isArray(payload.pos)) storageService.savePOs(payload.pos);
             const prods = payload.inventory || payload.products;
-            if (Array.isArray(prods)) storageService.saveProducts(prods);
+            if (Array.isArray(prods)) {
+              const logs = payload.stockLogs || storageService.getStockLogs() || [];
+              const safeProds = applyProductCostFailSafe(prods, logs);
+              storageService.saveProducts(safeProds);
+              payload.products = safeProds;
+              payload.inventory = safeProds;
+            }
             if (Array.isArray(payload.stockLogs)) storageService.saveStockLogs(payload.stockLogs);
             if (Array.isArray(payload.vendors)) storageService.saveVendors(payload.vendors);
             if (Array.isArray(payload.storageLocations)) storageService.saveStorageLocations(payload.storageLocations);
@@ -118,8 +125,10 @@ export const apiService = {
         try {
           const data = await callGAS('apiGetProducts');
           if (Array.isArray(data)) {
-            storageService.saveProducts(data);
-            return data;
+            const logs = storageService.getStockLogs() || [];
+            const failSafeData = applyProductCostFailSafe(data, logs);
+            storageService.saveProducts(failSafeData);
+            return failSafeData;
           }
         } catch (e) {
           console.warn('[apiService] GAS apiGetProducts fallback:', e.message);
@@ -132,8 +141,10 @@ export const apiService = {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          storageService.saveProducts(data);
-          return data;
+          const logs = storageService.getStockLogs() || [];
+          const failSafeData = applyProductCostFailSafe(data, logs);
+          storageService.saveProducts(failSafeData);
+          return failSafeData;
         }
       }
     } catch (e) {

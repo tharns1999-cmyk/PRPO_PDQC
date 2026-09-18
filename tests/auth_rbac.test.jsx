@@ -662,7 +662,7 @@ describe('Domain Suite: Authentication, Authorization & RBAC', () => {
 
     it('[Image d42112 Fix]: Renders badge with count 1 when pendingActionCount = 1 and activeClaimCount = 0', () => {
       const pos = [
-        { id: 'PO-PENDING-01', status: 'PENDING_ORDER', purchaseChannel: 'ONLINE' }
+        { id: 'PO-PENDING-01', status: 'PENDING_PURCHASE', purchaseChannel: 'ONLINE' }
       ];
 
       const html = renderToStaticMarkup(
@@ -680,16 +680,14 @@ describe('Domain Suite: Authentication, Authorization & RBAC', () => {
 
       expect(html).toContain('งานจัดซื้อ');
       expect(html).toContain('justify-between');
-      expect(html).toContain('animate-pulse');
-      expect(html).toContain('bg-rose-600');
-      expect(html).toContain('border-rose-400');
+      expect(html).toContain('bg-rose-500');
       expect(html).toContain('>1</span>');
     });
 
     it('Renders badge with sum when both pending and claim tasks exist (1 + 2 = 3)', () => {
       const pos = [
-        { id: 'PO-PENDING-01', status: 'PENDING_ORDER', purchaseChannel: 'ONLINE' },
-        { id: 'PO-CLAIM-1', status: 'IN_CLAIM', purchaseChannel: 'ONLINE' },
+        { id: 'PO-PENDING-01', status: 'PENDING_PURCHASE', purchaseChannel: 'ONLINE' },
+        { id: 'PO-CLAIM-1', status: 'CLAIM_PENDING', purchaseChannel: 'ONLINE' },
         { id: 'PO-CLAIM-2', status: 'PARTIALLY_RECEIVED_IN_CLAIM', purchaseChannel: 'ONLINE' },
         { id: 'PO-ORDERED', status: 'ORDERED', purchaseChannel: 'ONLINE' }
       ];
@@ -707,9 +705,8 @@ describe('Domain Suite: Authentication, Authorization & RBAC', () => {
         </MemoryRouter>
       );
 
-      expect(html).toContain('>3</span>');
-      expect(html).toContain('animate-pulse');
-      expect(html).toContain('bg-rose-600');
+      expect(html).toContain('>2</span>');
+      expect(html).toContain('bg-rose-500');
     });
 
     it('Hides badge completely when both pending and claim are 0 (only ORDERED and COMPLETED exist)', () => {

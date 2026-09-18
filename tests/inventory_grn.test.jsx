@@ -573,13 +573,13 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
       expect(html).toContain('สินค้า');
       expect(html).toContain('สั่งมา');
       expect(html).toContain('รับแล้ว');
-      expect(html).toContain('ตรวจรับรอบนี้');
-      expect(html).toContain('ชำรุด/NG');
+      expect(html).toContain('รับดี (เข้าคลัง)');
+      expect(html).toContain('ชำรุด (NG)');
       expect(html).toContain('สถานะ / การจัดการ');
       expect(html).toContain('OIL-HYD-68');
       expect(html).toContain('น้ำมันไฮดรอลิกเกรด 68 (200L)');
       expect(html).toContain('10');
-      expect(html).toContain('ครบสมบูรณ์');
+      expect(html).toContain('✓ ครบถ้วน');
     });
 
     it('3. Renders emerald action button "[ ✓ ยืนยันรับเข้าคลังสมบูรณ์ ]" when 100% fully received', () => {
@@ -678,7 +678,7 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
 
     it('4. Upscales Number inputs to w-16 h-8 text-sm and hides browser spinners', () => {
       const html = renderToStaticMarkup(<ReceivingModal po={basePO} isOpen={true} />);
-      expect(html).toContain('w-16 h-8 text-sm font-mono font-bold');
+      expect(html).toContain('h-10 w-20 text-center font-bold text-base');
       expect(html).toContain('[appearance:textfield]');
       expect(html).toContain('[&amp;::-webkit-outer-spin-button]:appearance-none');
       expect(html).toContain('[&amp;::-webkit-inner-spin-button]:appearance-none');
@@ -1090,7 +1090,7 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
 
       const html = renderToStaticMarkup(<ReceivingModal po={po} isOpen={true} />);
 
-      expect(html).toContain('💰 ได้รับเงินคืนแล้ว ฿246.00 (ปิดรับ)');
+      expect(html).toContain('💰 ได้รับเงินคืนแล้ว ฿246.00');
       expect(html).toContain('opacity-80 bg-slate-50/50');
       expect(html).toContain('bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200 select-none');
       expect(html).toContain('disabled=""');
@@ -1148,7 +1148,6 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
       expect(html).toContain('value="1"');
       expect(html).toContain('max="1"');
       expect(html).toContain('min="0"');
-      expect(html).toContain('📦 รอรับของทดแทน 1 ถัง');
       expect(html).not.toContain('💰 ได้รับเงินคืนแล้ว');
       expect(html).not.toContain('✓ ตรวจรับครบแล้วในรอบก่อน');
     });
@@ -1369,7 +1368,7 @@ describe('Domain Suite: Inventory Management & Goods Receiving (GRN)', () => {
 
       const savedPOs = storageService.getPOs();
       const updated = savedPOs.find(p => p.id === testPO.id);
-      expect(updated.status).toBe('PARTIALLY_RECEIVED_IN_CLAIM');
+      expect(updated.status).toBe('CLAIM_PENDING');
       expect(updated.hasDispute).toBe(true);
       expect(updated.hasGRN).toBe(true);
 

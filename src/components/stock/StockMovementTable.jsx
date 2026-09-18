@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { History, ArrowDownRight, ArrowUpRight, X, MapPin, Search, Calendar, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { History, ArrowDownRight, ArrowUpRight, X, MapPin, Search, Calendar, ChevronLeft, ChevronRight, FileText, RefreshCw } from 'lucide-react';
 import Portal from '../common/Portal';
 import { storageService, normalizeDocNumber } from '../../services/storageService';
 import { AppContext } from '../../context/AppContext';
 import { matchDepartment, isMultiDeptUser } from '../../utils/permissions';
+import { healMACForProduct } from '../../utils/macMigration';
 
 /**
  * Helper แปลง Timestamp ให้เป็น Epoch Milliseconds ที่รองรับทั้ง พ.ศ. และ ค.ศ.
@@ -142,9 +143,11 @@ export default function StockMovementTable({
   currentUser: propCurrentUser,
   currentRole: propCurrentRole,
   onClose,
+  onRefresh,
   initialFilterType,
   filterType: controlledFilterType
 }) {
+  const [isRecalculating, setIsRecalculating] = useState(false);
   const [internalFilterType, setInternalFilterType] = useState(initialFilterType || 'ALL'); // ALL, IN, OUT
   const filterType = controlledFilterType !== undefined ? controlledFilterType : internalFilterType;
   const setFilterType = (val) => setInternalFilterType(val);
@@ -561,13 +564,49 @@ export default function StockMovementTable({
                 </div>
               </div>
             </div>
-            <button 
-              onClick={onClose} 
-              className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer" 
-              title="ปิด"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={isRecalculating}
+                onClick={async () => {
+                  if (isRecalculating) return;
+                  setIsRecalculating(true);
+                  try {
+                    const targetKey = selectedProduct?.id || selectedProduct?.code;
+                    const healed = await healMACForProduct(targetKey);
+                    if (healed && Number(healed.averageCost || healed.avgCost || 0) > 0) {
+                      const finalCost = Number(healed.averageCost || healed.avgCost).toFixed(2);
+                      alert(`คำนวณต้นทุนเฉลี่ยใหม่สำเร็จ: ฿${finalCost}`);
+                      // Global Cache Invalidation: refresh context so other views get updated immediately without reload
+                      if (typeof onRefresh === 'function') {
+                        await onRefresh();
+                      } else if (typeof appContext.refreshData === 'function') {
+                        await appContext.refreshData();
+                      }
+                    } else {
+                      alert('ไม่สามารถคำนวณใหม่ได้ (อาจไม่มีประวัติรับเข้า)');
+                    }
+                  } catch (err) {
+                    console.error('[StockMovementTable] Error recalculating MAC:', err);
+                    alert('เกิดข้อผิดพลาดในการคำนวณต้นทุนเฉลี่ย: ' + err.message);
+                  } finally {
+                    setIsRecalculating(false);
+                  }
+                }}
+                className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-100 bg-white transition-colors cursor-pointer text-xs font-bold flex items-center gap-1.5 shadow-2xs hover:shadow-xs disabled:opacity-50"
+                title="ระบบจะล้างค่าต้นทุนเฉลี่ยเก่า และคำนวณใหม่ทั้งหมดตามประวัติรับเข้าจริง (ตัดแถวขยะออก)"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRecalculating ? 'animate-spin' : ''}`} />
+                <span>{isRecalculating ? 'กำลังคำนวณ...' : 'คำนวณต้นทุนเฉลี่ยใหม่'}</span>
+              </button>
+              <button 
+                onClick={onClose} 
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer" 
+                title="ปิด"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Filters & Search Bar */}

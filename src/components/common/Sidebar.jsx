@@ -17,6 +17,7 @@ import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/authService';
 import { getUserDepartments } from '../../utils/permissions';
 import { calculateActiveClaimCount, calculatePendingActionCount, calculateUrgentTaskCount } from '../../context/ProcurementContext';
+import { calculateProcurementBadgeCount } from '../../services/procurementService';
 
 export default function Sidebar({ 
   activeView, 
@@ -219,16 +220,12 @@ export default function Sidebar({
     return calculatePendingActionCount(orders, prList);
   }, [pos, prs, context?.pos, context?.prs]);
 
-  // ผลรวมของ 2 แท็บที่เป็น Actionable Tasks สำคัญ: urgentTaskCount = pendingActionCount + activeClaimCount
+  // ผลรวมของ 2 แท็บที่เป็น Actionable Tasks สำคัญ: urgentTaskCount
+  // กฎเหล็ก: ให้นับผ่าน calculateProcurementBadgeCount ที่เป็น Single Source of Truth
   const urgentTaskCount = React.useMemo(() => {
-    if (propUrgentTaskCount !== undefined && propUrgentTaskCount !== null) {
-      return Number(propUrgentTaskCount);
-    }
-    if (context?.urgentTaskCount !== undefined && context?.urgentTaskCount !== null) {
-      return Number(context.urgentTaskCount);
-    }
-    return Number(pendingActionCount || 0) + Number(activeClaimCount || 0);
-  }, [propUrgentTaskCount, context?.urgentTaskCount, pendingActionCount, activeClaimCount]);
+    const orders = (pos && pos.length > 0) ? pos : (context?.pos || []);
+    return calculateProcurementBadgeCount(orders);
+  }, [pos, context?.pos]);
 
   // Calculate Task Counts for Badges (using unified workflowEngine task aggregator)
   const taskCounts = React.useMemo(() => {
@@ -453,7 +450,7 @@ export default function Sidebar({
 
                           {item.id === 'online-tasks' ? (
                             urgentTaskCount > 0 && (
-                              <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[11px] font-bold text-white bg-rose-600 rounded-full animate-pulse shadow-sm border border-rose-400">
+                              <span className={`ml-auto px-2 py-0.5 rounded-full text-xs font-bold text-white bg-rose-500 ${isActive ? 'shadow-sm ring-2 ring-slate-900' : 'shadow-xs'}`}>
                                 {urgentTaskCount}
                               </span>
                             )

@@ -706,12 +706,172 @@ function apiGetMasterData(collectionOrPayload, userContext) {
 }
 
 /**
- * Retrieves all products.
+ * Auto-fallback on Read:
+ * If a product has stockBalance > 0 but averageCost is 0 or empty,
+ * fall back to unitPrice from latest 'IN' log in StockLogs.
+ */
+function applyProductCostFailSafe(products, stockLogs) {
+  if (!Array.isArray(products)) return products;
+  var logs = Array.isArray(stockLogs) ? stockLogs : (batchReadRecords(SHEET_NAMES.STOCK_LOGS) || []);
+  
+  var latestInLogsMap = {};
+  logs.forEach(function(l) {
+    if (!l) return;
+    var lType = String(l.type || '').toUpperCase();
+    var qty = Number(l.qty || l.quantity || 0);
+    var unitPrice = Number(l.unitPrice !== undefined ? l.unitPrice : (l.actualUnitPrice !== undefined ? l.actualUnitPrice : (l.unitCost || 0)));
+    if (lType === 'IN' && qty > 0 && unitPrice > 0) {
+      var ts = new Date(l.timestamp || l.date || 0).getTime();
+      var keys = [
+        String(l.productId || '').trim().toLowerCase(),
+        String(l.productCode || l.code || l.sku || '').trim().toLowerCase(),
+        String(l.name || '').trim().toLowerCase()
+      ].filter(Boolean);
+      
+      keys.forEach(function(k) {
+        if (!latestInLogsMap[k] || ts >= latestInLogsMap[k].ts) {
+          latestInLogsMap[k] = { unitPrice: unitPrice, ts: ts };
+        }
+      });
+    }
+  });
+
+  products.forEach(function(prod) {
+    if (!prod) return;
+    var stock = Number(prod.stockBalance !== undefined ? prod.stockBalance : (prod.currentStock || prod.stock || 0));
+    var cost = Number(prod.averageCost !== undefined && prod.averageCost !== '' && prod.averageCost !== null ? prod.averageCost : (prod.avgCost !== undefined && prod.avgCost !== '' && prod.avgCost !== null ? prod.avgCost : 0));
+    
+    if (stock > 0 && cost <= 0) {
+      var pId = String(prod.id || '').trim().toLowerCase();
+      var pCode = String(prod.code || prod.sku || '').trim().toLowerCase();
+      var pName = String(prod.name || '').trim().toLowerCase();
+      
+      var match = (pId && latestInLogsMap[pId]) || (pCode && latestInLogsMap[pCode]) || (pName && latestInLogsMap[pName]);
+      if (match && match.unitPrice > 0) {
+        prod.averageCost = match.unitPrice;
+        prod.avgCost = match.unitPrice;
+        if (!prod.totalValue || Number(prod.totalValue) <= 0) {
+          prod.totalValue = Math.round(stock * match.unitPrice * 100) / 100;
+        }
+      }
+    } else if (cost > 0) {
+      if (prod.averageCost === undefined || prod.averageCost === null || prod.averageCost === '') {
+        prod.averageCost = cost;
+      }
+      if (prod.avgCost === undefined || prod.avgCost === null || prod.avgCost === '') {
+        prod.avgCost = cost;
+      }
+      if (!prod.totalValue || Number(prod.totalValue) <= 0) {
+        prod.totalValue = Math.round(stock * cost * 100) / 100;
+      }
+    }
+  });
+  return products;
+}
+
+/**
+ * Retrieves all products with fail-safe fallback applied.
  */
 function apiGetProducts(rawPayload, userContext) {
   return handleApiRequest(function(payload, user) {
-    return batchReadRecords(SHEET_NAMES.PRODUCTS);
+    var products = batchReadRecords(SHEET_NAMES.PRODUCTS);
+    var logs = batchReadRecords(SHEET_NAMES.STOCK_LOGS);
+    return applyProductCostFailSafe(products, logs);
   }, 'GetProducts', rawPayload, userContext);
+}
+
+/**
+ * Recalculates Moving Average Cost (MAC) from historical IN logs and updates Products sheet.
+ */
+function apiRecalculateProductMAC(rawPayload, userContext) {
+  return handleApiRequest(function(payload, user) {
+    var p = typeof payload === 'string' ? JSON.parse(payload) : (payload || {});
+    var targetKey = String(p.productId || p.productCode || p.code || p.id || p.targetSkuOrName || '').trim().toLowerCase();
+    if (!targetKey) throw new Error('VALIDATION_ERROR: Missing target product identifier');
+
+    var ss = getSpreadsheet();
+    var prodSheet = ss.getSheetByName(SHEET_NAMES.PRODUCTS || 'Products');
+    if (typeof ensureProductSheetHeaders === 'function') {
+      ensureProductSheetHeaders(prodSheet);
+    }
+    
+    var products = batchReadRecords(SHEET_NAMES.PRODUCTS);
+    var targetProdIndex = products.findIndex(function(prod) {
+      if (!prod) return false;
+      var cId = String(prod.id || '').trim().toLowerCase();
+      var cCode = String(prod.code || prod.sku || '').trim().toLowerCase();
+      var cName = String(prod.name || '').trim().toLowerCase();
+      return cId === targetKey || cCode === targetKey || cName === targetKey;
+    });
+
+    if (targetProdIndex === -1) {
+      throw new Error('NOT_FOUND: ไม่พบสินค้า "' + targetKey + '" ในระบบ');
+    }
+
+    var prod = products[targetProdIndex];
+    var pId = String(prod.id || '').trim().toLowerCase();
+    var pCode = String(prod.code || prod.sku || '').trim().toLowerCase();
+    var pName = String(prod.name || '').trim().toLowerCase();
+
+    var allLogs = batchReadRecords(SHEET_NAMES.STOCK_LOGS);
+    var targetLogs = allLogs.filter(function(l) {
+      if (!l) return false;
+      var lSku = String(l.productCode || l.code || l.sku || '').trim().toLowerCase();
+      var lId = String(l.productId || '').trim().toLowerCase();
+      var lName = String(l.name || l.productName || '').trim().toLowerCase();
+      var match = (pId && lId === pId) || (pCode && (lSku === pCode || lId === pCode)) || (pName && lName === pName);
+      var lType = String(l.type || '').toUpperCase();
+      var qty = Number(l.quantity !== undefined ? l.quantity : (l.qty || 0));
+      return match && lType === 'IN' && qty > 0;
+    }).sort(function(a, b) {
+      return new Date(a.timestamp || a.date || 0).getTime() - new Date(b.timestamp || b.date || 0).getTime();
+    });
+
+    var currentStock = 0;
+    var currentAvgCost = 0;
+
+    targetLogs.forEach(function(log) {
+      var inQty = Number(log.quantity !== undefined ? log.quantity : (log.qty || 0));
+      var inUnitCost = Number(
+        log.unitPrice !== undefined ? log.unitPrice : 
+        (log.actualUnitPrice !== undefined ? log.actualUnitPrice : 
+        (log.unitCost || log.baseUnitCost || 0))
+      );
+
+      var currentTotalValue = currentStock * currentAvgCost;
+      var inTotalValue = inQty * inUnitCost;
+      var newStock = currentStock + inQty;
+      var newAverageCost = inUnitCost;
+
+      if (currentStock > 0 && newStock > 0) {
+        newAverageCost = (currentTotalValue + inTotalValue) / newStock;
+      }
+      newAverageCost = Math.round((newAverageCost + Number.EPSILON) * 100) / 100;
+      currentStock = newStock;
+      currentAvgCost = newAverageCost;
+    });
+
+    if (p.averageCost && Number(p.averageCost) > 0 && currentAvgCost === 0) {
+      currentAvgCost = Number(p.averageCost);
+    }
+
+    if (currentAvgCost > 0) {
+      var stock = Number(prod.stockBalance !== undefined ? prod.stockBalance : (prod.currentStock || 0));
+      prod.averageCost = currentAvgCost;
+      prod.avgCost = currentAvgCost;
+      prod.totalValue = Math.round(stock * currentAvgCost * 100) / 100;
+      prod.updatedAt = new Date().toISOString();
+
+      upsertRecordFast(SHEET_NAMES.PRODUCTS, 'id', prod);
+    }
+
+    return {
+      success: true,
+      product: prod,
+      averageCost: prod.averageCost,
+      totalValue: prod.totalValue
+    };
+  }, 'RecalculateProductMAC', rawPayload, userContext);
 }
 
 /**
@@ -2568,22 +2728,9 @@ function apiReceivePO(rawPayload, userContext) {
     }
 
     // Write to StockLogs and Update Moving Average Cost
+    // NOTE: Writing to StockLogs is now handled exclusively by apiAppendStockMovements (called via storageService)
+    // to prevent duplicate and incomplete logs. We only calculate and update MAC here.
     if (stockMovements.length > 0) {
-      try {
-        var stockSheet = getSheet(SHEET_NAMES.STOCK_LOGS);
-        if (stockSheet) {
-          var stockHeaders = getSheetHeaders(stockSheet);
-          var stockRows = stockMovements.map(function(mov) {
-             return serializeRecordToRow(mov, stockHeaders);
-          });
-          if (stockRows.length > 0) {
-             stockSheet.getRange(stockSheet.getLastRow() + 1, 1, stockRows.length, stockRows[0].length).setValues(stockRows);
-          }
-        }
-      } catch (err) {
-        console.warn('[apiReceivePO] Failed to write to StockLogs: ' + err.message);
-      }
-      
       try {
         var products = batchReadRecords(SHEET_NAMES.PRODUCTS);
         products.forEach(function(prod) {
@@ -3151,6 +3298,14 @@ function apiAppendStockMovements(movementsListOrPayload, userContext) {
         locationId: mov.locationId || (prod ? prod.locationId : ''),
         notes: mov.notes || mov.note || ''
       };
+
+      // Guard: Before appending to StockLogs, MUST have documentNo or grnNumber
+      // If missing, skip this row entirely (Cancel recording)
+      var validDocNo = logRecord.documentNo || logRecord.grnNumber;
+      if (['IN', 'IN_NG', 'OUT'].indexOf(logRecord.type) !== -1 && !validDocNo && String(logRecord.docNo).indexOf('SYSTEM-INITIAL-BALANCE') === -1) {
+        console.warn('[apiAppendStockMovements] Cancelled invalid log row due to missing documentNo/grnNumber:', logRecord);
+        return;
+      }
 
       recordsToAppend.push(logRecord);
     });
@@ -4299,6 +4454,7 @@ function apiGetBootstrapData(rawPayload, userContext) {
     });
     var inventory = invSheet ? readSheetValuesAsObjects(invSheet) : [];
     var stockLogs = logsSheet ? readSheetValuesAsObjects(logsSheet) : [];
+    inventory = applyProductCostFailSafe(inventory, stockLogs);
     var vendors = venSheet ? readSheetValuesAsObjects(venSheet) : [];
     var storageLocations = locSheet ? readSheetValuesAsObjects(locSheet) : [];
     var usageUnits = unitSheet ? readSheetValuesAsObjects(unitSheet) : [];
@@ -4360,6 +4516,9 @@ function upsertRecordFast(sheetName, idField, record) {
   if (sheetName === SHEET_NAMES.POS && typeof ensurePOSheetHeaders === 'function') {
     ensurePOSheetHeaders(sheet);
   }
+  if (sheetName === SHEET_NAMES.PRODUCTS && typeof ensureProductSheetHeaders === 'function') {
+    ensureProductSheetHeaders(sheet);
+  }
   var values = sheet.getDataRange().getValues(); // Load into RAM array
   if (!values || values.length === 0) throw new Error('SCHEMA_ERROR: Sheet empty');
   
@@ -4395,6 +4554,9 @@ function upsertRecordFast(sheetName, idField, record) {
 function batchUpsertRecordsFast(sheetName, idField, records) {
   if (!records || records.length === 0) return [];
   var sheet = getSheet(sheetName);
+  if (sheetName === SHEET_NAMES.PRODUCTS && typeof ensureProductSheetHeaders === 'function') {
+    ensureProductSheetHeaders(sheet);
+  }
   var values = sheet.getDataRange().getValues(); // Load into RAM array
   if (!values || values.length === 0) throw new Error('SCHEMA_ERROR: Sheet empty');
   

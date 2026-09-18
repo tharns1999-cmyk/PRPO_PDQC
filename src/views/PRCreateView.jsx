@@ -247,10 +247,10 @@ export default function PRCreateView({
 
   // File attachments
   const [quotationFiles, setQuotationFiles] = useState(() => {
-    return (editingPR?.attachments || []).filter(a => a.category === 'QUOTATION' || a.type === 'application/pdf');
+    return (editingPR?.attachments || []).filter(a => a.category === 'QUOTATION');
   });
   const [imageFiles, setImageFiles] = useState(() => {
-    return (editingPR?.attachments || []).filter(a => a.category === 'IMAGE' || a.type?.startsWith('image/'));
+    return (editingPR?.attachments || []).filter(a => a.category === 'IMAGE' || a.category === 'GENERAL' || a.type?.startsWith('image/'));
   });
   const [previewImage, setPreviewImage] = useState(null);
   

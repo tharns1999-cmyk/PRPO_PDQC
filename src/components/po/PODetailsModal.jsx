@@ -1464,13 +1464,13 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                           <div className="bg-slate-100/90 border border-slate-200 rounded-lg p-2.5 mt-2 space-y-1 text-xs">
                             <div className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
                               <span>กระทบยอดงบประมาณ (Reconciliation):</span>
-                              <span className="text-emerald-700 font-bold font-mono">+คืนงบ ฿{totalRefundVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              <span className="text-emerald-700 font-bold font-mono">ประหยัดงบ PR ฿{totalRefundVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                             </div>
                             <div className="text-[11px] font-mono text-slate-600 flex items-center justify-between gap-1 flex-wrap pt-0.5 border-t border-slate-200/60">
                               <span>งบเดิม ฿{originalBudgetVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                               <span className="text-slate-400">→</span>
                               <span className="font-bold text-slate-800">จ่ายจริง ฿{actualSpentVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              <span className="text-emerald-600 font-bold">(+คืนงบ ฿{totalRefundVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
+                              <span className="text-emerald-600 font-bold">(ประหยัดงบ PR ฿{totalRefundVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})</span>
                             </div>
                           </div>
                         );
@@ -1486,7 +1486,7 @@ export default function PODetailsModal({ selectedPO, currentRole, onClose, onRef
                             </span>
                             {selectedPO.savingsAmount > 0 && (
                               <span className="text-emerald-700 font-bold font-mono">
-                                +คืนงบ ฿{Number(selectedPO.savingsAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                ประหยัดงบ PR ฿{Number(selectedPO.savingsAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>
                             )}
                           </div>

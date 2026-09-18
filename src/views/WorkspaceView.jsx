@@ -14,6 +14,16 @@ import TaskCard from '../components/workspace/TaskCard';
 import { sortByNewestFirst } from '../utils/sortUtils';
 const EMPTY_ARRAY = [];
 
+// 1. สร้างระบบตรวจสอบตัวตนแบบยืดหยุ่น (Robust User Matching)
+const isUserMatched = (targetValue, currentUser) => {
+  if (!targetValue || !currentUser) return false;
+  const val = String(targetValue).trim().toLowerCase();
+  const email = String(currentUser.email || '').trim().toLowerCase();
+  const name = String(currentUser.name || '').trim().toLowerCase();
+  const username = String(currentUser.username || '').trim().toLowerCase();
+  return (email && val === email) || (name && val === name) || (username && val === username);
+};
+
 export default function WorkspaceView({ 
   prs: propPrs, 
   pos: propPos, 
@@ -61,8 +71,11 @@ export default function WorkspaceView({
       }
 
       // Requester - sees ONLY docs they created, OR POs in their dept (since they receive goods)
-      const names = [user.name, user.employeeName, user.displayName, user.username].filter(Boolean);
-      const isCreator = names.includes(doc.requestedBy) || names.includes(doc.applicantName1) || names.includes(doc.createdBy) || doc.requesterId === user.id;
+      const isCreator = 
+        isUserMatched(doc.requestedBy, user) || 
+        isUserMatched(doc.applicantName1, user) || 
+        isUserMatched(doc.createdBy, user) || 
+        doc.requesterId === user.id;
       if (isCreator) return true;
 
       // Requesters can see POs in their department (for receiving goods)
@@ -110,9 +123,16 @@ export default function WorkspaceView({
     const THIRTY_DAYS_AGO = new Date();
     THIRTY_DAYS_AGO.setDate(THIRTY_DAYS_AGO.getDate() - 30);
 
-    const rawDate = task.completedAt || task.receivedAt || task.updatedAt || task.closedAt || task.date || task.issueDate || task.requestedDate || task.createdAt;
-    if (!rawDate) return true;
-    const doneDate = new Date(rawDate);
+    const rawDate = task.completedAt || task.closedAt || task.updatedAt || task.date || task.createdAt;
+    if (!rawDate) return true; // กฎความปลอดภัย: ห้ามตัดการ์ดทิ้งเด็ดขาด
+
+    let dateStr = String(rawDate);
+    // แปลง พ.ศ. เป็น ค.ศ. อย่างง่าย (ถ้ามีปี 25xx)
+    if (/(25\d{2})/.test(dateStr)) {
+      dateStr = dateStr.replace(/(25\d{2})/, (match) => String(Number(match) - 543));
+    }
+    
+    const doneDate = new Date(dateStr);
     return isNaN(doneDate.getTime()) ? true : doneDate >= THIRTY_DAYS_AGO;
   };
 
@@ -127,11 +147,12 @@ export default function WorkspaceView({
     if (task.docType === 'PO') {
       const isDone = ['CLOSED', 'CANCELLED', 'RECEIVED', 'COMPLETED', 'COMPLETED_WITH_REFUND'].includes(task.status);
       if (isDone) return false;
-      const isClaim = ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS', 'PARTIALLY_RECEIVED_IN_CLAIM'].includes(task.status);
+      const isClaim = ['CLAIM_PENDING', 'CLAIM_REPORTED', 'CLAIM_IN_PROGRESS', 'PARTIALLY_RECEIVED_IN_CLAIM'].includes(task.status) || task.hasUnresolvedClaim;
       if (isClaim) {
         if (user?.id === 'ADMIN' || user?.roleId === 'ADMIN' || Number(user?.level || 1) >= 99) return true;
         if (task.purchaseChannel === 'ONLINE' && (user?.roleId === 'ONLINE_PURCHASER' || user?.canOnlinePurchase)) return true;
-        if (task.purchaseChannel === 'SELF') return true;
+        // Block Requesters from seeing CLAIM_PENDING in To Do
+        return false;
       }
       return workflowEngine.canAction(user, task);
     }
@@ -141,9 +162,15 @@ export default function WorkspaceView({
   // Helper: ตรวจสอบงานที่เสร็จสิ้นแล้ว (Completed) - ปรับปรุงไม่ให้ Fallback ดูของคนอื่น
   const isCompletedTask = (task, user) => {
     const isPR = task.docType === 'PR';
-    const isDone = isPR 
-      ? ['PO_ISSUED', 'APPROVED', 'CLOSED', 'CANCELLED', 'completed', 'received'].includes(task.status)
-      : ['CLOSED', 'CANCELLED', 'RECEIVED', 'COMPLETED', 'COMPLETED_WITH_REFUND'].includes(task.status);
+    
+    // สถานะที่เป็นงานจบ: COMPLETED, CLOSED, FORCE_CLOSED, REJECTED, CANCELLED
+    // หรือ PR ที่ถูกนำไปเปิด PO และรับของเสร็จสิ้นครบถ้วนแล้ว
+    let isDone = false;
+    if (isPR) {
+      isDone = ['COMPLETED', 'CLOSED', 'FORCE_CLOSED', 'REJECTED', 'CANCELLED', 'PO_ISSUED', 'APPROVED', 'completed', 'received'].includes(task.status);
+    } else {
+      isDone = ['COMPLETED', 'CLOSED', 'FORCE_CLOSED', 'REJECTED', 'CANCELLED', 'RECEIVED', 'COMPLETED_WITH_REFUND'].includes(task.status);
+    }
     
     if (!isDone) return false;
 
@@ -151,61 +178,71 @@ export default function WorkspaceView({
     if (user?.id === 'ADMIN' || user?.roleId === 'ADMIN' || Number(user?.level || 1) >= 99) return true;
     
     // For normal users, only show in their completed tab if they were directly involved
-    const names = [user?.name, user?.employeeName, user?.displayName, user?.username].filter(Boolean);
-    const wasRequester = names.includes(task.requestedBy) || names.includes(task.applicantName1) || names.includes(task.createdBy) || task.requesterId === user?.id;
-    const wasInLog = task.activityLog?.some(l => names.includes(l.user) || (user?.title && l.role === user.title));
+    const wasRequester = 
+      isUserMatched(task.requestedBy, user) || 
+      isUserMatched(task.applicantName1, user) || 
+      isUserMatched(task.createdBy, user) || 
+      task.requesterId === user?.id;
+      
+    const wasInLog = task.activityLog?.some(l => 
+      isUserMatched(l.user, user) || 
+      (user?.title && l.role === user.title)
+    );
     
     return wasRequester || wasInLog;
   };
 
-  // Helper: ตรวจสอบงานที่รอผู้อื่นดำเนินการ (In Progress) - ลบ Fallback !isTaskForMe && !isCompletedTask
+  // 1.1 ขยายขอบเขตการตรวจสอบผู้เกี่ยวข้อง (Participant Matching)
+  const isUserParticipant = (doc, currentUser) => {
+    if (!doc || !currentUser) return false;
+    // 1. ผู้สร้างคำขอ (Requester)
+    const isRequester = 
+      isUserMatched(doc.createdBy, currentUser) || 
+      isUserMatched(doc.requestedBy, currentUser) ||
+      isUserMatched(doc.applicantName1, currentUser) ||
+      isUserMatched(doc.requesterEmail, currentUser) || 
+      isUserMatched(doc.requesterName, currentUser) ||
+      doc.requesterId === currentUser?.id;
+      
+    // 2. ผู้รีวิว/ตรวจสอบ (Reviewer/Assistant)
+    const isReviewer = 
+      isUserMatched(doc.reviewedBy, currentUser) || 
+      (Array.isArray(doc.reviewers) && doc.reviewers.some(r => isUserMatched(r, currentUser)));
+      
+    // 3. ผู้อนุมัติ (Approver)
+    const isApprover = isUserMatched(doc.approvedBy, currentUser);
+    
+    // 4. ประวัติการทำงาน (Timeline/History)
+    const isHistoryMatch = 
+      (Array.isArray(doc.history) && doc.history.some(h => isUserMatched(h.user || h.by || h.name, currentUser))) ||
+      (Array.isArray(doc.timeline) && doc.timeline.some(t => isUserMatched(t.user || t.by || t.name, currentUser))) ||
+      (Array.isArray(doc.activityLog) && doc.activityLog.some(l => isUserMatched(l.user, currentUser) || (currentUser?.title && l.role === currentUser.title)));
+      
+    return isRequester || isReviewer || isApprover || isHistoryMatch;
+  };
+
+  // Helper: ตรวจสอบงานที่รอผู้อื่นดำเนินการ (In Progress)
   const isInProgressTask = (task, user) => {
-    // 1. If it's for me right now, it's NOT in progress (it's To Do)
+    // 1. ณ ปัจจุบัน ผู้ใช้ไม่มี Action ที่ต้องกดทำรายการเอง (ไม่อยู่ในแท็บ To Do)
     if (isTaskForMe(task, user)) return false;
     
-    // 2. If it's completely done, it's NOT in progress
+    // 2. เอกสารยังไม่จบวงจร (ไม่เป็น COMPLETED, CLOSED, ฯลฯ)
     const isPR = task.docType === 'PR';
-    const isDone = isPR 
-      ? ['PO_ISSUED', 'APPROVED', 'CLOSED', 'CANCELLED', 'completed', 'received'].includes(task.status)
-      : ['CLOSED', 'CANCELLED', 'RECEIVED', 'COMPLETED', 'COMPLETED_WITH_REFUND'].includes(task.status);
+    let isDone = false;
+    if (isPR) {
+      isDone = ['COMPLETED', 'CLOSED', 'FORCE_CLOSED', 'REJECTED', 'CANCELLED', 'PO_ISSUED', 'APPROVED', 'completed', 'received'].includes(task.status);
+    } else {
+      isDone = ['COMPLETED', 'CLOSED', 'FORCE_CLOSED', 'REJECTED', 'CANCELLED', 'RECEIVED', 'COMPLETED_WITH_REFUND'].includes(task.status);
+    }
     if (isDone) return false;
 
-    // 3. Strict Classification based on User Involvement and Waiting Statuses
+    // Admin sees everything not done
     const roleId = String(user?.roleId || user?.id || '').toUpperCase();
     const userLevel = Number(user?.level || 1);
-    const isAdmin = roleId === 'ADMIN' || user?.role === 'admin' || userLevel >= 99;
-    
-    if (isAdmin) return true; // Admins see everything not-done as in-progress (since ToDo catches Admin actions)
+    if (roleId === 'ADMIN' || user?.role === 'admin' || userLevel >= 99) return true;
 
-    const names = [user?.name, user?.employeeName, user?.displayName, user?.username].filter(Boolean);
-    const actedOn = names.includes(task.requestedBy) || names.includes(task.applicantName1) || names.includes(task.createdBy) || task.requesterId === user?.id || task.activityLog?.some(l => names.includes(l.user) || (user?.title && l.role === user.title));
-
-    if (!actedOn) {
-       // If user never acted on it and didn't request it, they are not "waiting" on it.
-       return false;
-    }
-
-    if (isPR) {
-      if (userLevel === 1) { // Requester
-        return ['SUBMITTED', 'REJECTED_TO_L2', 'REVIEWED', 'waiting_review', 'pending_review', 'รอตรวจทาน', 'รอตรวจสอบ'].includes(task.status);
-      }
-      if (userLevel === 2 || roleId === 'ASST_MANAGER') { // Reviewer
-        return ['REVIEWED'].includes(task.status); // Waiting for Plant Manager
-      }
-      if (userLevel >= 3 || roleId === 'PLANT_MANAGER') { // Approver
-        return false; // Approver is the final authority
-      }
-    } else {
-      if (roleId === 'ONLINE_PURCHASER') {
-        return ['ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL'].includes(task.status);
-      }
-      // Requesters/Reviewers waiting for PO delivery
-      if (userLevel <= 2) {
-        return ['IN_PROGRESS_ONLINE', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL', 'WAITING_DELIVERY_ROUND_2', 'ISSUED', 'CLAIM_REPORTED', 'CLAIM_IN_PROGRESS', 'PARTIALLY_RECEIVED_IN_CLAIM'].includes(task.status);
-      }
-    }
-    
-    return false;
+    // 3. ผู้ใช้มีส่วนร่วมกับเอกสาร (Participant)
+    return isUserParticipant(task, user);
   };
 
   // 2. กรองข้อมูลตาม Tab ปัจจุบัน โดยไม่พึ่งพา Side-Effect State (Pure useMemo)
@@ -215,7 +252,34 @@ export default function WorkspaceView({
       return unifiedTasks.filter(t => isTaskForMe(t, user)).sort(sortByNewestFirst);
     }
     if (activeTab === 'in_progress' || activeTab === 'waiting') {
-      return unifiedTasks.filter(t => isInProgressTask(t, user)).sort(sortByNewestFirst);
+      return unifiedTasks.filter(t => isInProgressTask(t, user)).map(t => {
+        let customLabel = t.statusLabel;
+        if (t.docType === 'PR') {
+          if (['PENDING_REVIEW', 'WAITING_REVIEW', 'waiting_review', 'pending_review', 'รอตรวจทาน', 'รอตรวจสอบ', 'SUBMITTED', 'REJECTED_TO_L2'].includes(t.status)) {
+            customLabel = 'รอหัวหน้างานตรวจสอบ';
+          } else if (['PENDING_APPROVE', 'PENDING_APPROVAL', 'WAITING_APPROVE', 'WAITING_APPROVAL', 'REVIEWED'].includes(t.status)) {
+            // 1.3 ปรับ Badge แสดงสถานะให้ตรงกับบทบาท Assistant
+            const isReviewerRole = user?.level === 2 || user?.roleId === 'ASST_MANAGER' || isUserMatched(t.reviewedBy, user);
+            const isRequesterRole = t.requesterId === user?.id || isUserMatched(t.createdBy, user);
+            
+            if (isReviewerRole && !isRequesterRole) {
+              customLabel = '⏳ รอผู้จัดการอนุมัติ (คุณตรวจสอบแล้ว)';
+            } else {
+              customLabel = '⏳ รอผู้จัดการอนุมัติ';
+            }
+          } else if (['APPROVED', 'PENDING_PO'].includes(t.status)) {
+            customLabel = 'รอฝ่ายจัดซื้อเปิดใบสั่งซื้อ (PO)';
+          }
+        } else if (t.docType === 'PO') {
+          if (['ORDERED', 'PURCHASED', 'WAITING_DELIVERY', 'ORDERED_PENDING_DELIVERY', 'IN_DELIVERY', 'PARTIAL', 'WAITING_DELIVERY_ROUND_2', 'ISSUED'].includes(t.status)) {
+            customLabel = 'รอร้านค้าจัดส่งสินค้า';
+          } else if (['CLAIM_PENDING', 'CLAIM_REPORTED', 'CLAIM_IN_PROGRESS', 'PARTIALLY_RECEIVED_IN_CLAIM'].includes(t.status) || t.hasUnresolvedClaim) {
+            const isPurchaser = user?.roleId === 'ONLINE_PURCHASER' || user?.canOnlinePurchase || user?.roleId === 'ADMIN' || Number(user?.level || 1) >= 99;
+            customLabel = isPurchaser ? '🔴 รอเจรจาเคลมร้านค้า' : '⏳ รอฝ่ายจัดซื้อเจรจาเคลมร้านค้า';
+          }
+        }
+        return { ...t, statusLabel: customLabel || t.statusLabel };
+      }).sort(sortByNewestFirst);
     }
     if (activeTab === 'completed') {
       return unifiedTasks.filter(t => {

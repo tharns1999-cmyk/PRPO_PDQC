@@ -93,6 +93,13 @@ export const workflowEngine = {
       // ─── PRIMARY RULE: ONLY Requester / Supervisor (Level 1) of that department can receive goods!
       // Asst. Mgr (Level 2) and Plant Mgr (Level 3) and Online Purchaser CANNOT receive goods.
       if (['ORDERED', 'ORDERED_PENDING_DELIVERY', 'ISSUED', 'PARTIAL', 'IN_DELIVERY', 'PARTIAL_RECEIVED', 'WAITING_DELIVERY_ROUND_2'].includes(po.status)) {
+        
+        // 1.5 BLOCKER: If PO has CLAIM_PENDING or unresolved claims, Requesters CANNOT act on it unless it's WAITING_DELIVERY_ROUND_2.
+        const hasUnresolvedClaim = po.status === 'CLAIM_PENDING' || po.status === 'PARTIALLY_RECEIVED_IN_CLAIM' || po.hasUnresolvedClaim === true || (po.items && po.items.some(it => it.hasDispute || it.ngQty > 0 || it.shortageQty > 0));
+        if (hasUnresolvedClaim && po.status !== 'WAITING_DELIVERY_ROUND_2') {
+          return false;
+        }
+
         if (isAdmin) return true;
         if (isOnlinePurchaser) return false;
         
@@ -271,7 +278,7 @@ export const workflowEngine = {
 
     // 3. Process POs
     pos.forEach(po => {
-      const isClaim = ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS'].includes(po.status);
+      const isClaim = ['CLAIM_REPORTED', 'CLAIM_IN_PROGRESS', 'CLAIM_PENDING', 'PARTIALLY_RECEIVED_IN_CLAIM'].includes(po.status) || po.hasUnresolvedClaim === true;
       const isDone = po.status === 'CLOSED' || po.status === 'CANCELLED' || po.status === 'RECEIVED';
       const canAction = !isDone && this.canAction(currentRole, po);
       const actedOnPO = hasDirectlyActedOn(po);
@@ -300,6 +307,9 @@ export const workflowEngine = {
           isClaimAction = (isOwnerOfPO || isDeptMember) && !isOnlinePurchaser;
         } else if (po.purchaseChannel === 'ONLINE' && isOnlinePurchaser) {
           isClaimAction = true;
+        } else if (po.purchaseChannel === 'ONLINE' && !isOnlinePurchaser) {
+          const isDeptMember = hasDepartmentAccess(currentRole, po.department);
+          isWaiting = (isOwnerOfPO || isDeptMember);
         }
       }
 
@@ -314,8 +324,8 @@ export const workflowEngine = {
         if (po.status === 'ORDERED' || po.status === 'ORDERED_PENDING_DELIVERY') return '🚚 สินค้ากำลังจัดส่ง: รอตรวจรับของ';
         if (po.status === 'PARTIAL' || po.status === 'PARTIAL_RECEIVED' || po.status === 'WAITING_DELIVERY_ROUND_2') return 'ตรวจรับพัสดุรอบถัดไป / ติดตามของเคลม';
         if (po.status === 'IN_PROGRESS_ONLINE') return '🛒 รอจัดซื้อออนไลน์ดำเนินการ';
-        if (po.status === 'CLAIM_REPORTED' || po.status === 'CLAIM_IN_PROGRESS') {
-           if (po.purchaseChannel === 'ONLINE') return 'รอจัดซื้อออนไลน์เจรจาเคลมกับร้านค้า';
+        if (po.status === 'CLAIM_REPORTED' || po.status === 'CLAIM_IN_PROGRESS' || po.status === 'CLAIM_PENDING' || po.status === 'PARTIALLY_RECEIVED_IN_CLAIM' || po.hasUnresolvedClaim) {
+           if (po.purchaseChannel === 'ONLINE') return '⏳ รอฝ่ายจัดซื้อออนไลน์ดำเนินการเคลมกับร้านค้า';
            return '🚨 แจ้งปัญหาแล้ว: รอดำเนินการแก้ไข';
         }
         return null;
@@ -2895,7 +2905,7 @@ export const workflowEngine = {
     const requesterRole = po.department === 'PD' ? 'REQUESTER_PD' : 'REQUESTER_QC';
 
     if (['RESEND', 'REPLACEMENT'].includes(resolution.type)) {
-      po.status = 'ORDERED_PENDING_DELIVERY';
+      po.status = 'WAITING_DELIVERY_ROUND_2';
       po.claimStatus = 'REPLACEMENT_PENDING';
       po.refundAmount = 0;
       noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: ${resolution.type} — จัดซื้อใหม่/ส่งสินค้าทดแทน (รอบที่ ${po.claimRound}), คาดรับวันที่: ${resolution.expectedDate || '-'} — ${resolution.note} โดย ${user.name}`;
@@ -2935,7 +2945,7 @@ export const workflowEngine = {
         po.status = 'COMPLETED';
         po.claimStatus = resolution.type === 'CANCEL' ? 'CANCELLED' : 'REFUNDED';
       } else {
-        po.status = (po.status && po.status !== 'COMPLETED' && po.status !== 'CLOSED') ? po.status : 'PARTIALLY_RECEIVED_IN_CLAIM';
+        po.status = (po.status && po.status !== 'COMPLETED' && po.status !== 'CLOSED') ? po.status : 'CLAIM_PENDING';
         po.claimStatus = 'IN_CLAIM';
       }
 
@@ -2971,7 +2981,7 @@ export const workflowEngine = {
         po.status = resolution.type === 'WRITE_OFF' ? 'CLOSED' : 'COMPLETED';
         po.claimStatus = resolution.type === 'WRITE_OFF' ? 'WRITE_OFF' : 'CLOSE_NO_ACTION';
       } else {
-        po.status = (po.status && po.status !== 'COMPLETED' && po.status !== 'CLOSED') ? po.status : 'PARTIALLY_RECEIVED_IN_CLAIM';
+        po.status = (po.status && po.status !== 'COMPLETED' && po.status !== 'CLOSED') ? po.status : 'CLAIM_PENDING';
         po.claimStatus = 'IN_CLAIM';
       }
       noteMsg = `[${channel} CLAIM RESOLVED] ดำเนินการ: ${resolution.type} — ${resolution.type === 'WRITE_OFF' ? 'ตัดจำหน่าย/ยกเว้นเคลม (ปิดเคส)' : 'ปิดเคสโดยไม่ดำเนินการต่อ'} | ${resolution.note || ''} โดย ${user.name}`;
@@ -3093,7 +3103,7 @@ export const workflowEngine = {
         );
 
         if (hasPendingDeliveries) {
-          po.status = 'ORDERED_PENDING_DELIVERY';
+          po.status = 'WAITING_DELIVERY_ROUND_2';
           po.claimStatus = 'REPLACEMENT_PENDING';
         } else {
           po.status = 'COMPLETED';
@@ -3103,7 +3113,7 @@ export const workflowEngine = {
         po.hasDispute = false;
         po.isInClaim = false;
       } else {
-        po.status = (po.status && po.status !== 'COMPLETED' && po.status !== 'CLOSED') ? po.status : 'PARTIALLY_RECEIVED_IN_CLAIM';
+        po.status = (po.status && po.status !== 'COMPLETED' && po.status !== 'CLOSED') ? po.status : 'CLAIM_PENDING';
         po.claimStatus = 'IN_CLAIM';
       }
     }

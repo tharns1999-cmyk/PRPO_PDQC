@@ -812,6 +812,7 @@ export default function StockCardView({
           currentUser={currentRole}
           currentRole={currentRole}
           onClose={() => setSelectedProduct(null)}
+          onRefresh={onRefresh}
         />
 
       )}

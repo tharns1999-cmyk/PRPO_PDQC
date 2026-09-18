@@ -313,6 +313,82 @@ export const calculateDisputeMetrics = (item, poStatus = null, poHasGRN = null) 
   };
 };
 
+// ✅ ฟังก์ชันดึงและจัดระเบียบข้อมูลหลักฐานจากหน้างาน (GRN Evidence Resolver)
+export const resolveGRNEvidence = (po, group = null) => {
+  if (!po) return null;
+  const ev = po.claimEvidence || po.disputeInfo || po.claimData || {};
+  const latestGRN = Array.isArray(po.grnHistory) && po.grnHistory.length > 0 
+    ? po.grnHistory[po.grnHistory.length - 1] 
+    : null;
+
+  const inspectorName = ev.inspectorName || 
+                        po.receivedBy || 
+                        po.receiverName || 
+                        latestGRN?.receivedBy || 
+                        'ผู้ตรวจรับพัสดุ';
+
+  const rawInspectedAt = ev.inspectedAt || 
+                         ev.date || 
+                         po.receivedAt || 
+                         latestGRN?.date || 
+                         '-';
+
+  let formattedInspectedAt = '-';
+  if (rawInspectedAt && rawInspectedAt !== '-') {
+    try {
+      const d = new Date(rawInspectedAt);
+      formattedInspectedAt = isNaN(d.getTime()) ? String(rawInspectedAt) : d.toLocaleString('th-TH');
+    } catch {
+      formattedInspectedAt = String(rawInspectedAt);
+    }
+  }
+
+  // Defect note
+  const groupItemNotes = (group?.items || [])
+    .map(i => i.defectReason || i.defectNote)
+    .filter(Boolean);
+  const allItemNotes = (po.items || [])
+    .map(i => i.defectReason || i.defectNote)
+    .filter(Boolean);
+
+  const defectNote = ev.defectNote || 
+                     ev.notes || 
+                     (groupItemNotes.length > 0 ? groupItemNotes.join('; ') : '') || 
+                     (allItemNotes.length > 0 ? allItemNotes.join('; ') : '') || 
+                     latestGRN?.note || 
+                     po.claimData?.reason || 
+                     'พบสินค้าชำรุดหรือของขาดจากการตรวจรับ';
+
+  // Attachments / Images
+  const rawImages = ev.defectImages || 
+                    ev.evidenceAttachments || 
+                    ev.attachments || 
+                    latestGRN?.attachments || 
+                    po.attachments || 
+                    [];
+
+  const images = (Array.isArray(rawImages) ? rawImages : [rawImages])
+    .filter(Boolean)
+    .map((img, i) => {
+      if (typeof img === 'string') {
+        return { id: `ev-${i}`, url: img, viewUrl: img, name: `หลักฐานชำรุด ${i + 1}` };
+      }
+      return {
+        ...img,
+        url: img.url || img.viewUrl || img.previewUrl || img.dataUrl || '',
+        name: img.name || img.fileName || `หลักฐานชำรุด ${i + 1}`
+      };
+    })
+    .filter(img => Boolean(img.url));
+
+  return {
+    inspectorName,
+    inspectedAt: formattedInspectedAt,
+    defectNote,
+    images
+  };
+};
+
 export default function OnlineOrderCard({ 
   po, 
   activeTab,
@@ -1411,7 +1487,7 @@ export default function OnlineOrderCard({
 
       if (allOtherDisputesResolved) {
         if (hasPendingDeliveries) {
-          nextOrderStatus = 'ORDERED_PENDING_DELIVERY';
+          nextOrderStatus = 'WAITING_DELIVERY_ROUND_2';
           nextClaimStatus = 'REPLACEMENT_PENDING';
         } else {
           nextOrderStatus = 'COMPLETED';
@@ -2623,6 +2699,77 @@ export default function OnlineOrderCard({
 
                 return (
                   <div className="p-3 bg-white border-t border-slate-100">
+                    {/* 4. กล่องหลักฐานจากหน้างาน (GRN Evidence Panel) เหนือแผงเครื่องมือเจรจา */}
+                    {(() => {
+                      const evData = resolveGRNEvidence(po, group);
+                      if (!evData) return null;
+                      return (
+                        <div className="mb-3 p-3.5 bg-amber-50/70 border border-amber-200/90 rounded-xl space-y-2.5">
+                          <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
+                            <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                              <span>📌 รายงานจาก:</span>
+                              <span className="text-slate-800 font-semibold">{evData.inspectorName}</span>
+                              <span className="text-amber-800/80 font-normal font-mono">({evData.inspectedAt})</span>
+                            </div>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-100/90 text-amber-900 border border-amber-300/60 text-[11px] font-semibold">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                              หลักฐานการตรวจรับ (GRN Evidence)
+                            </span>
+                          </div>
+
+                          {/* แสดงหมายเหตุอาการชำรุด ในกล่องข้อความสีขาวอ่านง่าย */}
+                          {evData.defectNote && (
+                            <div className="p-2.5 bg-white border border-amber-200/80 rounded-lg text-xs text-slate-800 shadow-2xs">
+                              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                                หมายเหตุอาการชำรุด / ปัญหาที่พบ
+                              </div>
+                              <p className="whitespace-pre-wrap break-words font-medium text-slate-700 leading-relaxed">
+                                {evData.defectNote}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* แสดงแกลเลอรีรูปภาพ: แสดงรูปภาพ Thumbnail ที่ผู้ตรวจรับแนบมา */}
+                          {evData.images && evData.images.length > 0 ? (
+                            <div>
+                              <div className="text-[11px] font-semibold text-slate-600 mb-1.5 flex items-center gap-1">
+                                <ImageIcon className="w-3.5 h-3.5 text-amber-700" />
+                                <span>รูปภาพหลักฐานความเสียหาย ({evData.images.length} รูป) — คลิกเพื่อดูรูปขนาดเต็ม</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {evData.images.map((img, imgIdx) => {
+                                  const driveSrc = resolveDriveImageUrl(img.url);
+                                  return (
+                                    <div
+                                      key={img.id || imgIdx}
+                                      onClick={() => openLightbox(evData.images, imgIdx, `หลักฐานความเสียหาย: ${po?.poNo || po?.id} (ร้าน ${group.storeName || group.storeKey})`)}
+                                      className="relative group w-16 h-16 sm:w-20 sm:h-20 rounded-lg border border-amber-200 bg-white overflow-hidden cursor-pointer shadow-2xs hover:shadow-md hover:border-amber-400 transition-all"
+                                      title="คลิกเพื่อดูภาพขนาดเต็มและบันทึกรูปไปยื่นเคลมบน Shopee/Lazada"
+                                    >
+                                      <img
+                                        src={driveSrc}
+                                        alt={img.name || 'รูปหลักฐาน'}
+                                        onError={handleDriveImageError}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                        loading="lazy"
+                                      />
+                                      <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <Eye className="w-4 h-4 text-white drop-shadow" />
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-slate-400 italic">
+                              (ไม่มีรูปภาพแนบจากฟอร์มตรวจรับ)
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     {/* Unified Quick Settlement Action Bar (Modern Linear SaaS Style) */}
                     <div className="bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/70">
                       <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 text-xs">
@@ -3073,6 +3220,3 @@ export default function OnlineOrderCard({
     </div>
   );
 }
-
-// Named alias for flexible imports
-export const OnlinePurchaseActionCard = OnlineOrderCard;

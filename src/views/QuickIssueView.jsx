@@ -174,6 +174,13 @@ export default function QuickIssueView({
     });
   }, [filteredProducts]);
 
+  // Fresh fetch on mount: Always retrieve latest product & inventory data
+  useEffect(() => {
+    if (typeof onRefresh === 'function') {
+      onRefresh(true);
+    }
+  }, [onRefresh]);
+
   // Set initial product if not set
   React.useEffect(() => {
     if (filteredProducts.length > 0 && (!selectedProdId || !filteredProducts.some(p => p.id === selectedProdId))) {
@@ -254,6 +261,49 @@ export default function QuickIssueView({
   const sUnit = selectedProduct?.stockUnit || selectedProduct?.unit || 'ชิ้น';
   const pUnit = selectedProduct?.purchaseUnit || selectedProduct?.unit || sUnit;
   const rate = Number(selectedProduct?.conversionRate) > 0 ? Number(selectedProduct.conversionRate) : 1;
+
+  // Moving Average Cost (MAC) with Auto-fallback Fail-safe:
+  // If product.averageCost > 0, use it immediately.
+  // If 0/empty but product has remaining stock, fall back to unitPrice from latest IN log in stockLogs.
+  const effectiveUnitCost = useMemo(() => {
+    const rawCost = Number(
+      selectedProduct?.averageCost !== undefined && selectedProduct?.averageCost !== '' && selectedProduct?.averageCost !== null
+        ? selectedProduct.averageCost
+        : (selectedProduct?.avgCost !== undefined && selectedProduct?.avgCost !== '' && selectedProduct?.avgCost !== null
+          ? selectedProduct.avgCost
+          : (selectedProduct?.unitCost || 0))
+    );
+    if (rawCost > 0) return rawCost;
+
+    if (stockLogs && stockLogs.length > 0 && selectedProduct) {
+      const pId = String(selectedProduct.id || '').trim().toLowerCase();
+      const pCode = String(selectedProduct.code || selectedProduct.sku || '').trim().toLowerCase();
+      const pName = String(selectedProduct.name || '').trim().toLowerCase();
+
+      const inLogs = stockLogs.filter(l => {
+        if (!l) return false;
+        const lSku = String(l.productCode || l.code || l.sku || '').trim().toLowerCase();
+        const lId = String(l.productId || '').trim().toLowerCase();
+        const lName = String(l.name || l.productName || '').trim().toLowerCase();
+        const match = (pId && lId === pId) || (pCode && (lSku === pCode || lId === pCode)) || (pName && lName === pName);
+        const lType = String(l.type || '').toUpperCase();
+        const qty = Number(l.quantity !== undefined ? l.quantity : (l.qty || 0));
+        return match && lType === 'IN' && qty > 0;
+      });
+
+      if (inLogs.length > 0) {
+        inLogs.sort((a, b) => new Date(b.timestamp || b.date || 0).getTime() - new Date(a.timestamp || a.date || 0).getTime());
+        const fallbackCost = Number(
+          inLogs[0].unitPrice !== undefined ? inLogs[0].unitPrice : 
+          (inLogs[0].actualUnitPrice !== undefined ? inLogs[0].actualUnitPrice : 
+          (inLogs[0].unitCost || inLogs[0].baseUnitCost || 0))
+        );
+        if (fallbackCost > 0) return fallbackCost;
+      }
+    }
+
+    return 0;
+  }, [selectedProduct, stockLogs]);
 
   // Recent OUT stock logs for this department (Live sidebar)
   const recentIssueLogs = useMemo(() => {
@@ -1180,13 +1230,13 @@ export default function QuickIssueView({
                   <div>
                     <span className="text-[10px] font-medium text-indigo-500 uppercase tracking-wider block">มูลค่าเงินที่เบิกครั้งนี้</span>
                     <p className="font-mono text-sm font-bold text-indigo-700 mt-0.5">
-                      ฿{((selectedProduct?.avgCost || selectedProduct?.costPrice || selectedProduct?.price || 0) * qtyNumber).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ฿{(effectiveUnitCost * qtyNumber).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div className="text-right">
                     <span className="text-[9px] font-medium text-slate-400 block">(คำนวณจากต้นทุนเฉลี่ย)</span>
                     <p className="font-mono text-[11px] text-slate-500 mt-0.5">
-                      ฿{Number(selectedProduct?.avgCost || selectedProduct?.costPrice || selectedProduct?.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {sUnit}
+                      ฿{effectiveUnitCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {sUnit}
                     </p>
                   </div>
                 </div>
